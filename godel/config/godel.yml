@@ -1,0 +1,18 @@
+# The godel-conjure-plugin (com.palantir.godel-conjure-plugin:conjure-plugin:6.109.0, pinned to
+# match go-oikumenea's own godel.yml) is added here in the same PR as the first real
+# api/<module>.conjure.yml source (docs/development-process.md's "backend" gate) — the plugin's
+# conjure task hard-fails `./godelw verify` if registered with no real IDL to compile, and this
+# repo has none yet (all modules are still at "designed", see docs/milestones.md's stage board).
+# See godel/config/conjure-plugin.yml (to be added then) for the project shape once it lands.
+exclude:
+  names:
+    - "\\..+"
+    - "vendor"
+  paths:
+    - "godel"
+    - "internal/conjure"
+    # A separate npm project (web/go.mod fences it off as its own Go module boundary too, but
+    # gödel's own package discovery walks directories directly and isn't module-boundary-aware —
+    # without this, a stray .go file bundled inside an npm dependency under web/node_modules gets
+    # picked up as a package).
+    - "web"

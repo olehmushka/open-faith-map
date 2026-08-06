@@ -1,0 +1,30 @@
+OpenFaithMap
+Copyright 2026 Oleh Mushka
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+================================================================================
+THIRD-PARTY SOFTWARE
+================================================================================
+
+This product includes software developed at Palantir Technologies, Inc.
+(witchcraft-go-server, conjure-go-runtime, godel and the palantir/pkg
+libraries), licensed under the Apache License 2.0 and the BSD 3-Clause License.
+
+Other dependencies are licensed under the Apache License 2.0, the MIT License,
+the BSD 2-/3-Clause Licenses, the ISC License and the Mozilla Public License
+2.0. Their license texts ship with the respective modules; run `go list -m all`
+and inspect the module cache for the authoritative set.
+
+================================================================================
+CORE DEPENDENCY
+================================================================================
+
+OpenFaithMap is a facade over github.com/olehmushka/go-oikumenea (D-CoreDependency,
+see docs/architecture/decisions.md), consumed exclusively via its docker image and
+generated SDK — never vendored into this repository. go-oikumenea is separately
+licensed and separately notices its own bundled reference data; see that project's
+own NOTICE for detail.
+
+PostgreSQL is NOT distributed with this product. openfaithmap-api connects to an
+operator-provided PostgreSQL server over the network.

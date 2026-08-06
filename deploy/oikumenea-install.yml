@@ -1,0 +1,72 @@
+# go-oikumenea install config for THIS repo's docker-compose.yml (M1, D-CoreDependency). Lives here
+# (not in go-oikumenea's own repo) because it's OpenFaithMap's deployment concern, mirroring the
+# pattern go-oikumenea's own docker-compose.yml uses for its console-bff (deploy/install.docker.yml).
+#
+# No Keycloak: per an explicit decision to keep OpenFaithMap on Google directly rather than brokering
+# through a self-hosted IdP (deviates from the docs' original Keycloak-shared-realm sketch in
+# architecture/decisions.md — that doc needs an update pass to catch up with this choice). Two issuers:
+#   - Google (https://accounts.google.com), for human login AND for OpenFaithMap's own service
+#     principal — a GCP service account's self-minted ID token carries the SAME issuer, distinguished
+#     by its own (issuer, subject) pair, targeted at the "openfaithmap-api" audience.
+#   - A local-dev HS256 issuer, used ONLY to bootstrap the very first instance admin (no browser-based
+#     OAuth consent flow is possible in this environment) — that admin then registers the real Google
+#     service-account identity as a service principal via the normal API. Not used after bootstrap.
+product-name: oikumenea
+product-version: 0.0.1
+use-console-log: true
+server:
+  address: "0.0.0.0"
+  port: 8443
+  management-port: 8444
+  context-path: ""
+
+environment: local
+
+postgres:
+  dsn: "postgres://oikumenea:dev@postgres:5432/postgres?sslmode=disable"
+
+idp:
+  clock-skew-seconds: 60
+  jit:
+    enabled: true
+    claim: email
+    match: account-email
+  issuers:
+    # Bootstrap-only local-dev issuer (see header comment). Anyone who knows this key can mint a
+    # token for ANY subject on this issuer — fine for a throwaway local compose stack, never for a
+    # real deployment.
+    - issuer: "https://local-dev.oikumenea.test"
+      type: hs256
+      label: "Local dev bootstrap (HS256)"
+      audience: oikumenea
+      hmac-key: "local-dev-insecure-signing-key-change-me"
+    # Google — direct OIDC issuer, no broker. audience = the openfaithmap-web OAuth client (human
+    # login); "openfaithmap-api" = the target_audience OpenFaithMap's service principal's self-minted
+    # Google ID tokens carry (see internal/coreintegration).
+    - issuer: "https://accounts.google.com"
+      type: oidc
+      label: "Google"
+      audiences:
+        - "213972482832-0pm8g1d42qshrs3euopkfpf854tpngri.apps.googleusercontent.com"
+        - "openfaithmap-api"
+
+account:
+  identity-linking-enabled: true
+
+# Bootstrap-only local-dev admin (see header comment) — bound to the HS256 issuer above, never to a
+# real identity. Used once to register OpenFaithMap's actual (Google) service principal, then unused.
+bootstrap-admin:
+  issuer: "https://local-dev.oikumenea.test"
+  subject: "local-admin"
+  email: "bootstrap@openfaithmap.local"
+  display-name: "OpenFaithMap Bootstrap"
+  person-code: "openfaithmap-bootstrap"
+
+# Insecure local-dev-only defaults, matching go-oikumenea's own documented examples verbatim — change
+# for any non-local deployment.
+crypto:
+  provider: local-dev
+  blind-index-key: "bG9jYWwtZGV2LWluc2VjdXJlLWJsaW5kLWlkeC1rZXk="
+  dek-cache-ttl-seconds: 300
+  local-dev:
+    kek: "bG9jYWwtZGV2LWluc2VjdXJlLWtlay1jaGFuZ2UtbWU="

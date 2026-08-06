@@ -1,0 +1,35 @@
+# License headers (Apache-2.0). Applied by `./godelw license`, verified by `./godelw verify`.
+#
+# The SPDX short form is used deliberately instead of the 13-line Apache boilerplate: it is the
+# form provenance scanners (REUSE, scancode, FOSSA) actually parse, and it keeps the header from
+# dwarfing short files. Apache-2.0 only requires that LICENSE and NOTICE ship with the work —
+# per-file headers are recommended, not mandated. The full text lives in LICENSE; attribution
+# lives in NOTICE. Matches go-oikumenea's own license-plugin.yml convention.
+header: |
+  // Copyright 2026 Oleh Mushka
+  // SPDX-License-Identifier: Apache-2.0
+
+# Generated code is never hand-edited (D-Conjure / D-Stack), so it is never header-stamped either:
+# the next regeneration would drop the header and fail `verify`.
+exclude:
+  names:
+    # sqlc output: <query>.sql.go plus the db/models/querier/copyfrom scaffolding it emits.
+    - ".*\\.sql\\.go"
+    - "db\\.go"
+    - "models\\.go"
+    - "querier\\.go"
+    - "copyfrom\\.go"
+    - "batch\\.go"
+    # conjure-go output, wherever it lands (internal/conjure and the generated Go SDK).
+    - ".*\\.conjure\\.go"
+  paths:
+    # Conjure-generated server interfaces, clients and structs.
+    - "internal/conjure"
+    # Generated SDK trees, once they exist: only the hand-written façade carries a header.
+    - "clients/go/openfaithmap"
+    - "clients/typescript"
+    # Build artifacts and scratch output.
+    - "out"
+    - "var"
+    # The web tier is a separate npm project; JS/TS tooling handles its own headers.
+    - "web"

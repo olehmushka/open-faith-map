@@ -1,0 +1,98 @@
+# Local stack (docs/architecture/overview.md's deployment topology; M1, D-CoreDependency).
+#
+# ONE shared Postgres instance for both go-oikumenea and OpenFaithMap, separated by SCHEMA
+# (`oikumenea` vs `openfaithmap` — conventions.md already named these as schemas, one level down in
+# each project's own database; running them as two schemas in the same database rather than two
+# separate database instances is a simplification for local dev, decided over chat, not yet written
+# up as its own D-<Name> in architecture/decisions.md). Still no cross-schema FKs (conventions.md) —
+# OpenFaithMap's tables still only ever store a go-oikumenea RID as an opaque TEXT foreign value.
+#
+# go-oikumenea's own four-service bootstrap sequence (postgres / oikumenea-migrate /
+# oikumenea-init-role / oikumenea-app), reused from its own docker-compose.yml shape, image pulled
+# from its published registry (docker.io/olegamysk/oikumenea) rather than built from source.
+# `oikumenea-app` publishes NO host port (D-HeadlessTopology) — reachable only from other containers
+# on this network; openfaithmap-api reaches it at https://oikumenea-app:8443.
+#
+# No Keycloak: OpenFaithMap authenticates directly against Google (see deploy/oikumenea-install.yml's
+# header comment for the full rationale and how the service-principal bootstrap works without a
+# browser-based OAuth flow). This deviates from architecture/decisions.md's original shared-Keycloak
+# sketch — that doc still needs an update pass to record the change as a real D-<Name> decision.
+#
+# go-oikumenea's migrations aren't published as a standalone artifact yet, so oikumenea-migrate reads
+# them from a sibling checkout of the go-oikumenea repo (OIKUMENEA_SRC, default ../go-oikumenea) —
+# make sure its migrations/ matches the image tag below.
+#
+#   OIKUMENEA_SRC=/path/to/go-oikumenea docker compose up --build
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- go-oikumenea (D-CoreDependency) ---
+  oikumenea-migrate:
+    image: arigaio/atlas:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >-
+      migrate apply --allow-dirty
+      --url "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable"
+      --dir "file:///migrations"
+      --revisions-schema oikumenea
+    volumes:
+      - ${OIKUMENEA_SRC:-../go-oikumenea}/migrations:/migrations:ro
+
+  oikumenea-init-role:
+    image: postgres:16
+    depends_on:
+      oikumenea-migrate:
+        condition: service_completed_successfully
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        psql "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -c "
+          DO \$\$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'oikumenea') THEN
+              CREATE ROLE oikumenea LOGIN PASSWORD 'dev' IN ROLE oikumenea_app;
+            END IF;
+          END \$\$;"
+
+  oikumenea-app:
+    image: docker.io/olegamysk/oikumenea:0.0.1
+    depends_on:
+      oikumenea-init-role:
+        condition: service_completed_successfully
+    volumes:
+      - ./deploy/oikumenea-install.yml:/app/var/conf/install.yml:ro
+    # No published ports (D-HeadlessTopology) — internal-only, reached by openfaithmap-api over the
+    # compose network at https://oikumenea-app:8443.
+
+  # --- OpenFaithMap's own services ---
+  # openfaithmap-migrate would run here once the content/moderation/vouching schema exists (M3) —
+  # same postgres service, --revisions-schema openfaithmap, its own CREATE SCHEMA. Not yet: no
+  # OpenFaithMap migration exists (this is still a skeleton binary with no DB code at all).
+  openfaithmap-api:
+    build: .
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      oikumenea-app:
+        condition: service_started
+
+volumes:
+  postgres-data:

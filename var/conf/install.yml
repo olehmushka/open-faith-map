@@ -1,0 +1,12 @@
+# Local-dev install configuration (plaintext; ECV-encrypted in real deployments).
+product-name: openfaithmap-api
+product-version: 0.0.0-dev
+use-console-log: true
+server:
+  address: "0.0.0.0"
+  # 3000/3001, not go-oikumenea's own 8443/8444 default: go-oikumenea's dev Keycloak (brought up
+  # alongside it in docker-compose.yml, M1) defaults to host port 8080, and openfaithmap-api's own
+  # default 8080 would collide with it in the combined stack.
+  port: 3000
+  management-port: 3001
+  context-path: ""

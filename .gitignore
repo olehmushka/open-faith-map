@@ -30,3 +30,21 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# gödel build/dist output and downloaded distribution
+/out/
+/godel/dist/
+
+# witchcraft-go-server local-dev logs
+/var/log/
+
+# Next.js (web/)
+web/node_modules/
+web/.next/
+web/out/
+web/.env*.local
+
+# Atlas
+atlas.sum
+
+var/*.json

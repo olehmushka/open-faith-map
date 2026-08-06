@@ -1,0 +1,22 @@
+# Build context hygiene — keep the image build fast and free of host-local noise.
+/out/
+/.git/
+/.github/
+.env
+.env.local
+.env.*.local
+# GCP service-account keys / other local secrets — never enter the build context, even transiently
+# in the build stage (only var/conf is COPY'd into the runtime stage, but keeping them out of the
+# context entirely is the safer default).
+var/*.json
+*.swp
+.DS_Store
+*_test.go
+/docs/
+README.md
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+# Node/Next host artifacts (a future web image rebuilds these in-container; never ship host copies).
+/web/node_modules/
+/web/.next/

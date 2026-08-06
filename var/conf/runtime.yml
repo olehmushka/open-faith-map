@@ -1,0 +1,3 @@
+# Local-dev runtime configuration (hot-reloadable via pkg/refreshable).
+logging:
+  level: info
