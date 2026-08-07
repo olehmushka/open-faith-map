@@ -78,7 +78,7 @@ Conventions per [conventions.md](../architecture/conventions.md).
 | `POST /actions/{id}/reverse` | Reverse a prior action within the grace window | `moderation.act` |
 | `POST /actions/{id}/appeals` | File an appeal against an action | (the affected congregation admin, verified via go-oikumenea authority check on the unit) |
 | `GET·POST /appeals/{id}/decide` | List / decide an appeal | `moderation.act` (must differ from the original actor) |
-| `POST /exclusion-check` | Run the D-Exclusions taxon check ahead of registration (used by the web-facade's registration wizard, and callable standalone for a dry-run) | none (public) |
+| `POST /exclusion-check` | Run the D-Exclusions taxon check ahead of registration (used by the registration wizard in [web-admin](web-admin.md), and callable standalone for a dry-run) | none (public) |
 
 `moderation.read`/`moderation.act` are OpenFaithMap-defined permission codes, held by platform
 moderators — a small, fixed set of accounts, not modeled through go-oikumenea's per-unit
@@ -91,8 +91,10 @@ graph).
   service-principal-authenticated — D-Moderation); go-oikumenea's `religion` module (`religion_taxa`
   ancestor lookups for the exclusion check); [core-integration.md](core-integration.md) for the
   congregation-admin-identity check on appeals.
-- **Called by:** the [web-facade](web-facade.md) (report/appeal UI, moderator queue UI); the
-  congregation-registration flow ([core-integration.md](core-integration.md), step 1).
+- **Called by:** the [web-facade](web-facade.md) (public report-filing UI — filing a report
+  requires no login) and [web-admin](web-admin.md) (appeal filing, moderator queue UI — both
+  require being logged in); the congregation-registration flow
+  ([core-integration.md](core-integration.md), step 1).
 
 ## Authorization touchpoints
 

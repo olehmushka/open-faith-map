@@ -17,6 +17,7 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-Moderation](#d-moderation--policy-engine--audit-trail-reuse) | Policy engine + reports/appeals, audit trail reused from go-oikumenea |
 | [D-Vouching](#d-vouching--web-of-trust-guarantor-verification) | Web-of-trust guarantor verification for congregation-admin claims |
 | [D-Stack](#d-stack--the-same-toolchain-as-go-oikumenea) | Same Go/gödel/Conjure/witchcraft/Atlas/Next.js toolchain as go-oikumenea |
+| [D-AdminSurface](#d-adminsurface--the-admin-moderator-console-is-a-separate-deployment-from-the-public-site) | The verified/admin console is a separate Next.js app (`openfaithmap-admin`) from the anonymous public site (`openfaithmap-web`) |
 
 ---
 
@@ -233,3 +234,47 @@ console does (`file:` dependency in dev, a real npm package once go-oikumenea pu
 **Consequences.** OpenFaithMap's own Conjure contract, Atlas migrations, and schema-naming
 conventions follow go-oikumenea's `conventions.md` by reference (see
 [conventions.md](conventions.md)) rather than restating them.
+
+---
+
+### D-AdminSurface — The admin/moderator console is a separate deployment from the public site
+
+**Decision.** The congregation-admin console, the registration wizard (submitting a registration
+already requires being logged in — [registration.md](../modules/registration.md)), the
+operator-approval console, and the moderator console move to a **new, separate Next.js app,
+`openfaithmap-admin`** — its own deployment, its own host/origin, the *only* place in OpenFaithMap
+that ever holds a session or an Auth.js/Google credential. `openfaithmap-web` keeps the anonymous
+public site only — discovery, congregation pages, public report filing, the public exclusion
+pre-check — and holds no session at all. Both remain thin per
+[D-Facade](#d-facade--thin-on-identity-tenant-person-rbac-location-religion-taxonomy): neither owns
+identity/tenant/authorization data; only `openfaithmap-admin` ever forwards a user bearer token.
+
+**Why.** [web-facade.md](../modules/web-facade.md)'s original one-app framing was explicitly
+conditional on there being "no isolation benefit" to splitting, because both audiences supposedly
+shared one identity provider and one session. That premise doesn't hold: the public site never
+authenticates anyone at all — no session, no login, no tracking (Google Analytics is deferred, not
+built) — so there was never a session to share in the first place. Splitting now is free: no
+Auth.js/Google OAuth wiring, no session cookie, no credential of any kind ships to the surface every
+anonymous visitor loads, and the one surface that *can* hold a credential is isolated at its own
+origin rather than folded into the same deployment as the anonymous one.
+
+**Why not** keep one app with route-based gating (e.g. `/admin/*` behind a middleware check):
+rejected — it still ships admin/auth code to every anonymous visitor's bundle, and blurs the
+"which surface can possibly hold a credential" boundary at the infrastructure level down to
+application-level routing, which is weaker and easier to regress.
+
+**Consequences.**
+
+- `web/` becomes a small workspace: `web/apps/web` (public, renamed from today's `web/`) and
+  `web/apps/admin` (new), with shared code (UI primitives, the go-oikumenea/`openfaithmap-api`
+  client wrappers both apps need for reads) under `web/packages/*`. Recommend npm workspaces since
+  the repo already uses plain npm — no new tool required. Exact package boundaries are decided when
+  this is actually built, not in this decision record.
+- `openfaithmap-admin` needs its own `AUTH_URL`/Google OAuth callback origin — the Google Cloud
+  Console OAuth client's authorized redirect URIs need the new origin added (external to this repo)
+  once the admin app has a real host.
+- `docker-compose.yml` gains a new `openfaithmap-admin` service once the app exists in code (see
+  [milestones.md](../milestones.md)'s M2.1) — not built yet. `openfaithmap-web` loses its
+  `AUTH_SECRET`/`AUTH_GOOGLE_*`/`AUTH_URL` env vars at that point, since it no longer runs Auth.js.
+- [web-facade.md](../modules/web-facade.md) narrows to the public surface only;
+  [web-admin.md](../modules/web-admin.md) is the new module doc for `openfaithmap-admin`.

@@ -103,7 +103,8 @@ own resource.
   separate-document model, not a label map (see [conventions.md](../architecture/conventions.md)).
 - **Called by:** [discovery.md](discovery.md) (a site's published pages/posts feed the public
   search index for full-text content matches — content-only, never location); the
-  [web-facade](web-facade.md) (renders both the public site and the admin editor).
+  [web-facade](web-facade.md) (renders the published public site) and
+  [web-admin](web-admin.md) (the site editor, authenticated).
 
 ## Authorization touchpoints
 

@@ -20,6 +20,7 @@ gave: "it does not exist yet — the design is here."
 | M1 · go-oikumenea integration wiring | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | **Verified.** `docker-compose.yml` runs a real go-oikumenea instance (published image, migrated, shared Postgres). Service-principal auth (D-ServiceIdentities) proven end-to-end — `internal/coreintegration`, `scripts/bootstrap-service-principal`. `openfaithmap-web`'s session layer (Auth.js v5, Google as sole OIDC provider, ID-token forwarding — `web/auth.ts`, `web/lib/oikumenea.ts`, `/login`, `/whoami`) proven end-to-end with a real browser OAuth round-trip: Google login → `/whoami` resolves a real `personId`/`email` through go-oikumenea's PDP. Required `scripts/bootstrap-admin-person` (go-oikumenea's JIT is link-on-match only — a fresh instance has no person for a new Google identity to link onto) and a restart of `oikumenea-app` after an install-config edit (install config is read once at boot, not hot-reloaded from the bind-mounted file — worth remembering for future config changes). |
 | M1.1 · Core-integration doc corrections | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Applied.** Three inaccuracies in `architecture/decisions.md` / `modules/core-integration.md` / `modules/web-facade.md` / `architecture/overview.md`, found by testing M1 against a real go-oikumenea instance rather than assumed from its docs. Items 1 (`audit.write` doesn't exist) and 3 (Keycloak → Google-direct) corrected in the docs themselves. Item 2 (`religion.read` unusable by a service principal) recorded as an upstream go-oikumenea gap — a feature request, not a doc-only fix, needed before M4. |
 | M2 · Church-admin self-service facade | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built, not yet verified — see prose.** `modules/registration.md` (new — corrects the original "no schema of its own" framing). Backend, migration, and UI all built and proven end-to-end via curl against the live stack (submit, D-Exclusions check, list, approve's real go-oikumenea writes, reject, double-approve guard). **Verified is still ⬜:** the real browser round-trip (submit → operator approves → roster renders) hasn't run yet. |
+| M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet built.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + new `modules/web-admin.md`. Revises what M1's session layer and M2's UI routes actually build going forward — see prose below. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) |
 | M4 · Public discovery site | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. |
 | M5 · Moderation | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. |
@@ -143,6 +144,30 @@ landed and were confirmed in go-oikumenea), reject, and the double-approve guard
 the real browser round-trip — submitting through `/register`, approving through
 `/admin/registrations`, and confirming `/my-congregation` renders the result — needed before
 `Verified` flips to ✅.
+
+### M2.1 · Split the UI into public and admin surfaces
+
+**Depends on:** M1 (the session layer this revises), M2 (the UI routes this revises). **Leaves
+deployable:** no code change yet — this is a decision-and-design pass, same shape as M1.1.
+
+`modules/web-facade.md`'s original design put the entire UI — anonymous public site,
+congregation-admin console, moderator console — in one Next.js app, on the explicit reasoning that
+splitting would "duplicate session handling for no isolation benefit." That premise turned out to
+be false: the public site never authenticates anyone at all (no session, no tracking — analytics is
+deferred, not built), so there was never a session to share. Discussed and decided: the UI splits
+into `openfaithmap-web` (anonymous, no session) and a new `openfaithmap-admin` (the only surface
+that ever holds a credential) — full rationale in `architecture/decisions.md`'s D-AdminSurface.
+
+**What this makes stale in M1/M2's own "as built" prose above**, without rewriting it (same
+convention M1.1 used): M1's session layer (`web/auth.ts`, `web/lib/oikumenea.ts`, `/login`,
+`/whoami`) is described as living in `openfaithmap-web` — going forward, that code's destination is
+`openfaithmap-admin`. M2's UI routes (`/register`, `/admin/registrations`, `/my-congregation`) are
+described as living in the single `web/` app — going forward, all three move to
+`openfaithmap-admin` too, since submitting a registration already requires being logged in.
+
+**Not done in this pass:** no code moved, no `web/` restructuring, no `docker-compose.yml` service
+added. `Backend`/`UI` stay `⬜` until an actual `openfaithmap-admin` app exists and the routes above
+move into it.
 
 ### M3 · Content / site-builder backend
 

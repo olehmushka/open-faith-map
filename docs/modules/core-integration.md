@@ -79,7 +79,7 @@ provisioning writes) — go-oikumenea's PDP decides every one for real.
 - **Calls:** every go-oikumenea module listed above, via the generated Go/TypeScript SDK
   (D-ClientSDK) — never a raw HTTP client, never a direct database connection.
 - **Called by:** every other OpenFaithMap module doc (`content`, `discovery`, `moderation`,
-  `vouching`, `web-facade`) references this doc rather than restating the delegation.
+  `vouching`, `web-facade`, `web-admin`) references this doc rather than restating the delegation.
 
 ## Authorization touchpoints
 
