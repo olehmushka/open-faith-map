@@ -33,7 +33,8 @@ Geographic rollout: Ukraine + USA first, then Poland/UK, then the rest of EU/LAT
 | [discovery](modules/discovery.md) | Public map/search facade + a disposable read-through cache over go-oikumenea's religion discovery search | New backend module (cache only) |
 | [moderation](modules/moderation.md) | Reports, actions, appeals, the denomination-exclusion taxon check | New backend module |
 | [vouching](modules/vouching.md) | Web-of-trust guarantor verification for congregation-admin claims | New backend module |
-| [web-facade](modules/web-facade.md) | The single public-facing Next.js app (public site + admin console + moderator console) | Consumer — no schema |
+| [web-facade](modules/web-facade.md) | The anonymous public Next.js app — map, search, congregation pages, public report filing | Consumer — no schema |
+| [web-admin](modules/web-admin.md) | The verified Next.js app — registration wizard, operator/congregation-admin console, moderator console (D-AdminSurface) | Consumer — no schema |
 
 **Delegated entirely to go-oikumenea** (no OpenFaithMap module — see the
 [term-mapping table](glossary.md#term-mapping-table) for the full list): identity/login, the
@@ -46,8 +47,9 @@ search, and the audit trail.
 1. **This file** — what OpenFaithMap is, the module map.
 2. [`glossary.md`](glossary.md) — domain vocabulary, **including the term-mapping table**
    (church-discovery concept → what actually stores it now). Read this before any module doc.
-3. [`architecture/overview.md`](architecture/overview.md) — the two-service shape
-   (`openfaithmap-web` + `openfaithmap-api`), request paths, deployment topology.
+3. [`architecture/overview.md`](architecture/overview.md) — the three-service shape
+   (`openfaithmap-web` + `openfaithmap-admin` + `openfaithmap-api`), request paths, deployment
+   topology.
 4. [`architecture/decisions.md`](architecture/decisions.md) — the binding decisions: scope,
    exclusions, the core dependency, the facade split, the content model, moderation, vouching, the
    shared toolchain. If code and a decision disagree, the code is wrong.
@@ -56,11 +58,13 @@ search, and the audit trail.
    across two databases, no cross-database FKs).
 6. [`modules/core-integration.md`](modules/core-integration.md) — read this **before** any other
    module doc; it's the bridge every one of them assumes.
-7. The relevant [`modules/*.md`](modules/) for the work at hand.
-8. [`open-questions.md`](open-questions.md) — the live backlog for the next planning session.
-9. [`milestones.md`](milestones.md) — the implementation roadmap, sequenced M0…M7, and its
-   [stage board](milestones.md#stage-board), the scannable index of where each milestone sits.
-10. [`development-process.md`](development-process.md) — the feature pipeline (idea → decided →
+7. [`modules/web-facade.md`](modules/web-facade.md) and [`modules/web-admin.md`](modules/web-admin.md)
+   — the two UI surfaces (D-AdminSurface): which one holds a session, which one never does.
+8. The relevant [`modules/*.md`](modules/) for the work at hand.
+9. [`open-questions.md`](open-questions.md) — the live backlog for the next planning session.
+10. [`milestones.md`](milestones.md) — the implementation roadmap, sequenced M0…M7, and its
+    [stage board](milestones.md#stage-board), the scannable index of where each milestone sits.
+11. [`development-process.md`](development-process.md) — the feature pipeline (idea → decided →
     designed → backend → migrated → ui → verified), the runbook to advance a milestone, and how the
     stage board is kept honest. Read it before starting or reporting on any feature.
 

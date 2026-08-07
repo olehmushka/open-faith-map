@@ -23,6 +23,10 @@ of choices specific to OpenFaithMap.
 
 ## OpenFaithMap-specific
 
+- **Service naming: `openfaithmap-<noun>`.** One deployable per noun —
+  `openfaithmap-web` (public UI), `openfaithmap-admin` (verified UI, D-AdminSurface),
+  `openfaithmap-api` (backend). Precedent-only until D-AdminSurface; codified here now that a
+  second UI service exists.
 - **Schema name: `openfaithmap`.** Table prefixes per module: `openfaithmap.content_*`,
   `openfaithmap.moderation_*`, `openfaithmap.vouching_*` — mirroring go-oikumenea's
   `oikumenea.<module>_*` pattern one level down, in OpenFaithMap's own database.

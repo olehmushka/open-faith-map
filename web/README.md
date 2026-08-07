@@ -1,9 +1,14 @@
 # web/ — openfaithmap-web
 
+> **Planned split (not yet done):** per `docs/architecture/decisions.md`'s D-AdminSurface, this app
+> is slated to split into `web/apps/web` (anonymous public site) and `web/apps/admin` (the
+> session-holding admin/moderator console — see `docs/modules/web-admin.md`). Everything below still
+> describes what's actually in this directory today, pre-split (`docs/milestones.md`'s M2.1).
+
 The `openfaithmap-web` service described in
 [`docs/architecture/overview.md`](../docs/architecture/overview.md) and
-[`docs/modules/web-facade.md`](../docs/modules/web-facade.md): the single public-facing app serving
-the public site, the congregation-admin console, and the moderator console.
+[`docs/modules/web-facade.md`](../docs/modules/web-facade.md): today, still one app serving the
+public site, the congregation-admin console, and the moderator console — the target is two.
 
 **M1's session layer is wired** (`auth.ts`, `app/api/auth/[...nextauth]/route.ts`,
 `lib/oikumenea.ts`): Auth.js v5 with Google as the sole OIDC provider (no Keycloak — see
@@ -11,7 +16,7 @@ the public site, the congregation-admin console, and the moderator console.
 on go-oikumenea calls. `/login` starts the flow; `/whoami` calls
 `identityFederation.whoami()` through the forwarded token as the end-to-end proof. Everything else
 (public site, admin console, moderator console) is still unbuilt — that lands with `web-facade`'s
-later milestones.
+later milestones, then moves per D-AdminSurface once M2.1 is built.
 
 ## Local dev
 

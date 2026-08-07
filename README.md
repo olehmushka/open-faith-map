@@ -16,6 +16,34 @@ Two audiences: **visitors** (anonymous, use the map and read congregation sites)
 platform-wide **moderator** roster handles reports, appeals, and the denomination-exclusion policy.
 Geographic rollout: Ukraine + USA first, then Poland/UK, then the rest of EU/LATAM/Africa/Asia.
 
+## Architecture
+
+Three services, split by who can talk to them and whether they can ever hold a credential
+(D-AdminSurface): an anonymous public UI, a verified admin UI, and a Go backend, all in front of an
+unmodified, headless go-oikumenea core.
+
+```mermaid
+flowchart LR
+    browser(("Browser"))
+    web["openfaithmap-web\nanonymous · no session"]
+    admin["openfaithmap-admin\nGoogle login · session"]
+    api["openfaithmap-api\nGo · own Postgres"]
+    core["go-oikumenea\nheadless core"]
+
+    browser -- "anonymous" --> web
+    browser -- "Google login" --> admin
+    web -- "public reads, no token" --> api
+    web -- "public reads, no token" --> core
+    admin -- "user bearer token" --> api
+    admin -- "user bearer token" --> core
+    api -- "SDK" --> core
+```
+
+`openfaithmap-admin` is decided and designed, not yet built as a separate deployment (see
+[milestones.md](docs/milestones.md)'s M2.1) — today's code still lives in one `web/` app. Full
+detail — request paths, deployment topology, what's inherited from go-oikumenea vs. new — lives in
+[docs/architecture/overview.md](docs/architecture/overview.md).
+
 ## Status
 
 **M1 in progress** (go-oikumenea integration wiring — see the
@@ -56,7 +84,9 @@ internal/               hexagonal modules (transport → application → domain 
                          one directory per docs/modules/*.md
 docs/                   the binding design doc set — read this first
 var/conf/               local-dev install.yml / runtime.yml
-web/                    openfaithmap-web (Next.js) — placeholder, see web/README.md
+web/                    openfaithmap-web (Next.js) — placeholder, see web/README.md.
+                         Slated to split into openfaithmap-web + openfaithmap-admin
+                         (D-AdminSurface, docs/milestones.md's M2.1) — not yet restructured.
 ```
 
 `api/` (Conjure IDL contracts) and `internal/conjure/` (generated server code) don't exist yet —

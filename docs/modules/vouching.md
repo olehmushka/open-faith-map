@@ -57,9 +57,9 @@ Conventions per [conventions.md](../architecture/conventions.md).
   before accepting a vouch); [moderation.md](moderation.md) (a guarantor revocation queues review
   of their outstanding vouches as `moderation_reports`, `reason_code = guarantor_revoked`, one per
   affected claim).
-- **Called by:** the [web-facade](web-facade.md) congregation-claim flow (offers "ask an existing
-  admin to vouch for you" as an alternative/supplement to manual moderator verification); the
-  moderator console.
+- **Called by:** the [web-admin](web-admin.md) congregation-claim flow (offers "ask an existing
+  admin to vouch for you" as an alternative/supplement to manual moderator verification, requires
+  being logged in) and the moderator console.
 
 ## Authorization touchpoints
 
