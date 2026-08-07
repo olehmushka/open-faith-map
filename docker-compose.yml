@@ -127,11 +127,15 @@ services:
     depends_on:
       oikumenea-app:
         condition: service_started
+      openfaithmap-api:
+        condition: service_started
     ports:
       - "3002:3000"
     environment:
       OIKUMENEA_BASE_URL: "https://oikumenea-app:8443"
-      # oikumenea-app serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
+      # openfaithmap-api (M2) — reached over the compose network, same self-signed-cert caveat.
+      OPENFAITHMAP_API_BASE_URL: "https://openfaithmap-api:3000"
+      # oikumenea-app / openfaithmap-api both serve self-signed certs in local dev (D-HeadlessTopology). DEV ONLY.
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
       AUTH_SECRET: "${AUTH_SECRET}"
       AUTH_URL: "http://localhost:3002"

@@ -7,11 +7,13 @@
 ## Purpose
 
 Owns reports, moderator decisions, and appeals across everything OpenFaithMap surfaces — a
-congregation's content, its claimed identity, or a vouching relationship — plus the
-**taxon-level denomination-exclusion check** (D-Exclusions) run at congregation-registration time.
-No equivalent exists in go-oikumenea; every moderation action this module records is also written
-through go-oikumenea's `audit` module (D-Moderation) so there is exactly one append-only ledger
-platform-wide, not two logs to reconcile.
+congregation's content, its claimed identity, or a vouching relationship — plus, eventually, the
+**taxon-level denomination-exclusion check** (D-Exclusions). **As of M2, that check's only real
+implementation lives in [registration.md](registration.md)** — this module (M5) doesn't exist in
+code yet, and M2 needed the check now; consolidate here when M5 lands. No equivalent exists in
+go-oikumenea; every moderation action this module records is also written through go-oikumenea's
+`audit` module (D-Moderation) so there is exactly one append-only ledger platform-wide, not two
+logs to reconcile.
 
 ## Entities & aggregates
 
