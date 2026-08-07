@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Command openfaithmap-api is the composition root for OpenFaithMap's backend
-// (docs/architecture/overview.md). `serve` boots the witchcraft server. This is a scaffolding-stage
-// skeleton: it registers no modules yet, so only witchcraft's built-in /status/liveness,
-// /status/readiness, and /status/health endpoints are served. Real modules (content, discovery,
-// moderation, vouching) get wired into initServer as each reaches its "backend" gate — see
-// docs/development-process.md.
+// (docs/architecture/overview.md). `serve` boots the witchcraft server. M2 adds the first real
+// module, registration (docs/modules/registration.md) — content/moderation/vouching still land as
+// each reaches its own "backend" gate, see docs/development-process.md.
 package main
 
 import (
@@ -14,8 +12,15 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/olehmushka/open-faith-map/internal/platform/config"
+	"github.com/jackc/pgx/v5/pgxpool"
+	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
+
+	genregistration "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/registration"
+	"github.com/olehmushka/open-faith-map/internal/platform/config"
+	regadapters "github.com/olehmushka/open-faith-map/internal/registration/adapters"
+	regapplication "github.com/olehmushka/open-faith-map/internal/registration/application"
+	regtransport "github.com/olehmushka/open-faith-map/internal/registration/transport"
 )
 
 func main() {
@@ -51,9 +56,46 @@ func serve() int {
 	return 0
 }
 
-// initServer is the composition root's InitFunc (docs/architecture/overview.md). Empty for now —
-// no module has reached its "backend" gate yet (docs/milestones.md's stage board). Each module's
-// module.go gets wired in here, in dependency order, as it lands.
-func initServer(_ context.Context, _ witchcraft.InitInfo) (func(), error) {
-	return nil, nil
+// initServer is the composition root's InitFunc (docs/architecture/overview.md). Wires the
+// registration module: a Postgres pool (openfaithmap schema — migrations applied out-of-band by
+// docker-compose.yml's openfaithmap-migrate, never by this binary) and the transport/application/
+// adapters chain, registered onto witchcraft's router.
+func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
+	databaseURL := requireEnv("DATABASE_URL")
+	oikumeneaBaseURL := requireEnv("OIKUMENEA_BASE_URL")
+	rootUnitID := requireEnv("REGISTRATION_ROOT_UNIT_ID")
+	congregationAdminRoleID := requireEnv("REGISTRATION_CONGREGATION_ADMIN_ROLE_ID")
+	insecureSkipVerify := os.Getenv("OIKUMENEA_INSECURE_SKIP_VERIFY") == "true"
+
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "dial postgres")
+	}
+
+	store := regadapters.NewStore(pool)
+	appSvc := regapplication.NewService(store, regapplication.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+		RootUnitID:                  rootUnitID,
+		CongregationAdminRoleID:     congregationAdminRoleID,
+	})
+	transportSvc := regtransport.NewService(appSvc, regtransport.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+	})
+
+	if err := genregistration.RegisterRoutesRegistrationService(info.Router, transportSvc); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "register registration routes")
+	}
+
+	return pool.Close, nil
+}
+
+func requireEnv(name string) string {
+	v := os.Getenv(name)
+	if v == "" {
+		panic(fmt.Sprintf("missing required env var %s", name))
+	}
+	return v
 }

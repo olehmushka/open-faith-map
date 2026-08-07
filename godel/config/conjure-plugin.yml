@@ -1,0 +1,8 @@
+version: 1
+projects:
+  # Server-side generation used IN-REPO: server interfaces + RegisterRoutes (the transport layer
+  # implements these; D-Conjure), under internal/conjure. Matches go-oikumenea's own shape.
+  platform:
+    output-dir: internal/conjure
+    ir-locator: api
+    server: true

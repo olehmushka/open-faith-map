@@ -1,0 +1,180 @@
+# Registration module API (M2). docs/modules/registration.md. OpenFaithMap's own schema — the first
+# in openfaithmap-api — holding pending congregation-registration requests until a registration
+# operator (a person holding religionorg.manage on the shared root unit, verified live against
+# go-oikumenea's PDP — never cached locally, D-Facade) approves or rejects one.
+#
+# Approval performs the real go-oikumenea writes (createChildOrg, setOrgProfile classification,
+# createSite over a new location, createPosition/fillPosition, grantAssignment) using the OPERATOR'S
+# own forwarded bearer token — never a service-principal on-behalf-of write; go-oikumenea's PDP
+# decides for real, same as every other write in this project (core-integration.md).
+#
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: openfaithmap.registration
+    objects:
+      RegistrationStatus:
+        values:
+          - PENDING
+          - APPROVED
+          - REJECTED
+      Coordinate:
+        docs: WGS84 latitude/longitude for the congregation's site.
+        fields:
+          latitude: double
+          longitude: double
+      RegistrationRequest:
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local RID (openfaithmap.registration.request).
+          submittedByPersonId:
+            type: string
+            docs: The go-oikumenea person RID of the prospective admin who submitted this request.
+          taxonId:
+            type: string
+            docs: The selected go-oikumenea religion_taxa RID (the congregation's tradition).
+          congregationName: string
+          countryId:
+            type: string
+            docs: The go-oikumenea location country RID.
+          adminArea1: optional<string>
+          locality: optional<string>
+          street: optional<string>
+          houseNumber: optional<string>
+          postalCode: optional<string>
+          coordinate: Coordinate
+          status: RegistrationStatus
+          rejectionReason:
+            type: optional<string>
+            docs: Set only when status = REJECTED.
+          decidedByPersonId:
+            type: optional<string>
+            docs: The operator who approved/rejected this request; unset while PENDING.
+          decidedAt: optional<datetime>
+          createdUnitId:
+            type: optional<string>
+            docs: The go-oikumenea unit RID created on approval; unset until status = APPROVED.
+          createdAt: datetime
+          updatedAt: datetime
+      SubmitRegistrationRequest:
+        fields:
+          taxonId: string
+          congregationName: string
+          countryId: string
+          adminArea1: optional<string>
+          locality: optional<string>
+          street: optional<string>
+          houseNumber: optional<string>
+          postalCode: optional<string>
+          coordinate: Coordinate
+      ApproveRegistrationRequest:
+        fields:
+          unitCode:
+            type: optional<string>
+            docs: >
+              Short, unique go-oikumenea unit code. Defaults to a slug derived from
+              congregationName + a short random suffix if omitted.
+      RejectRegistrationRequest:
+        fields:
+          reason: string
+      RegistrationRequestPage:
+        fields:
+          requests: list<RegistrationRequest>
+          nextPageToken: optional<string>
+    errors:
+      RequestNotFound:
+        namespace: Registration
+        code: NOT_FOUND
+        safe-args:
+          requestId: string
+      RequestNotPending:
+        docs: The request has already been approved or rejected.
+        namespace: Registration
+        code: INVALID_ARGUMENT
+        safe-args:
+          requestId: string
+          status: string
+      TaxonExcluded:
+        docs: >
+          The selected tradition (or an ancestor) is on the named D-Exclusions list
+          (architecture/decisions.md) — the platform never permits registration under it.
+        namespace: Registration
+        code: INVALID_ARGUMENT
+        safe-args:
+          taxonId: string
+      TaxonNotFound:
+        namespace: Registration
+        code: INVALID_ARGUMENT
+        safe-args:
+          taxonId: string
+
+services:
+  RegistrationService:
+    name: Registration Service
+    package: openfaithmap.registration
+    base-path: /registration/v1
+    default-auth: header
+    docs: >
+      Congregation-registration requests: submit (any authenticated person), list/approve/reject
+      (a registration operator — verified live against go-oikumenea's PDP, not a locally-cached
+      role). See docs/modules/registration.md.
+    endpoints:
+      submitRequest:
+        http: POST /requests
+        docs: >
+          Submit a new registration request as the caller. Runs the D-Exclusions taxon check
+          (walking the taxon's ancestors via go-oikumenea's religion.read) before persisting —
+          returns Registration:TaxonExcluded if the tradition (or an ancestor) is on the named
+          exclusion list, Registration:TaxonNotFound if taxonId doesn't resolve.
+        args:
+          request: SubmitRegistrationRequest
+        returns: RegistrationRequest
+      listRequests:
+        http: GET /requests
+        docs: >
+          List registration requests. Operator-only for now (verified live: does the caller hold
+          religionorg.manage on the configured root unit?) — see open seams in
+          docs/modules/registration.md for a submitter's-own-requests view.
+        args:
+          status:
+            type: optional<string>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: RegistrationRequestPage
+      getRequest:
+        http: GET /requests/{requestId}
+        docs: Read one request. The submitter or an operator (verified live) may read it.
+        args:
+          requestId:
+            type: string
+            param-type: path
+        returns: RegistrationRequest
+      approveRequest:
+        http: POST /requests/{requestId}/approve
+        docs: >
+          Approve a PENDING request: performs the real go-oikumenea writes (createChildOrg under
+          the configured root unit, org classification, a site over a new location, a filled
+          Position, and a unit-scoped role assignment granting the submitter authority over their
+          new congregation) using the caller's own forwarded token — go-oikumenea's PDP decides for
+          real; this returns whatever error go-oikumenea's PDP does if the caller lacks authority.
+        args:
+          requestId:
+            type: string
+            param-type: path
+          request: ApproveRegistrationRequest
+        returns: RegistrationRequest
+      rejectRequest:
+        http: POST /requests/{requestId}/reject
+        docs: Reject a PENDING request with a reason. No go-oikumenea writes.
+        args:
+          requestId:
+            type: string
+            param-type: path
+          request: RejectRegistrationRequest
+        returns: RegistrationRequest
