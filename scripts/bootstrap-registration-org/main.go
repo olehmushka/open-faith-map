@@ -4,11 +4,13 @@
 // Command bootstrap-registration-org is a one-time, local-dev-only operator tool (M2): creates the
 // single shared church-domain root organization every congregation is registered as a unit beneath
 // (a project-specific simplification — one flat OpenFaithMap organization, not one root per
-// denomination), and a "registration-operator" Role carrying the permissions an M2 registration
-// approval needs (religionorg.manage, site.manage, schedule.manage, assignment.grant/revoke,
-// person.create/update, membership.create/update, position.create/update).
+// denomination), a "registration-operator" Role (the permissions an M2 registration approval needs:
+// religionorg.manage, site.manage, schedule.manage, assignment.grant/revoke, person.create/update,
+// membership.create/update, position.create/update), and a "congregation-admin" Role (granted to a
+// submitter on THEIR OWN new unit at approval time by internal/registration — created here, not
+// there, because role.create is instance-scope and a registration-operator does not hold it).
 //
-// It prints the new unit ID and role ID, and the exact SQL to run next: go-oikumenea has no
+// It prints the root unit ID and role IDs, and the exact SQL to run next: go-oikumenea has no
 // API-reachable way to grant the FIRST unit-scoped role assignment on a brand-new unit — not even
 // for an instance admin (assignment.grant is unit-scoped; instance-admin only auto-passes
 // instance-scope checks — see internal/authorization/application/service.go's GrantAssignment,
@@ -17,6 +19,9 @@
 // ("the first admin cannot be granted from inside the API, so it must be seeded out-of-band...
 // recovery/break-glass is operator-owned DB access") — one level down, for the first assignment on
 // a brand-new unit.
+//
+// Idempotent in effect: re-running against an already-bootstrapped instance finds and reuses the
+// existing org/roles rather than erroring.
 //
 // Run once per fresh go-oikumenea instance, on the compose network (oikumenea-app publishes no host
 // port — D-HeadlessTopology):
@@ -45,7 +50,8 @@ const (
 	bootstrapAud     = "oikumenea"
 	bootstrapHMACKey = "local-dev-insecure-signing-key-change-me"
 
-	roleCode = "registration-operator"
+	operatorRoleCode          = "registration-operator"
+	congregationAdminRoleCode = "congregation-admin"
 )
 
 func main() {
@@ -93,34 +99,76 @@ func main() {
 	}
 	fmt.Printf("operator person: id=%s code=%s\n", operatorPersonID, *operatorPersonCode)
 
-	profile, err := c.Religion.CreateRootOrg(ctx, religion.CreateRootOrgRequest{
-		Code: *orgCode,
-		Name: *orgName,
+	rootUnitID, err := createOrReuseRootOrg(ctx, c, *orgCode, *orgName)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "create root org:", err)
+		os.Exit(1)
+	}
+	fmt.Printf("root unit: id=%s\n", rootUnitID)
+
+	operatorRole, err := createOrReuseRole(ctx, c, authorization.CreateRoleRequest{
+		Code: operatorRoleCode,
+		Name: "Registration operator",
+		Permissions: []string{
+			"religionorg.manage",
+			"site.manage",
+			"schedule.manage",
+			"assignment.grant",
+			"assignment.revoke",
+			"person.create",
+			"person.update",
+			"membership.create",
+			"membership.update",
+			"position.create",
+			"position.update",
+		},
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "createRootOrg (if this is Religion:Conflict, the org may already exist — this script does not look up an existing org by code; pass a different -org-code or check manually):", err)
+		fmt.Fprintln(os.Stderr, "create registration-operator role:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("root unit: id=%s\n", profile.UnitId)
+	fmt.Printf("role: id=%s code=%s\n", operatorRole.Id, operatorRole.Code)
 
-	role, err := createOrReuseRole(ctx, c)
+	adminRole, err := createOrReuseRole(ctx, c, authorization.CreateRoleRequest{
+		Code: congregationAdminRoleCode,
+		Name: "Congregation admin",
+		Permissions: []string{
+			"unit.read",
+			"person.read",
+			"membership.read",
+			"position.read",
+			"role.read",
+			"person.create",
+			"person.update",
+			"membership.create",
+			"membership.update",
+			"position.create",
+			"position.update",
+			"religionorg.manage",
+			"site.manage",
+			"schedule.manage",
+		},
+	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "create role:", err)
+		fmt.Fprintln(os.Stderr, "create congregation-admin role:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("role: id=%s code=%s\n", role.Id, role.Code)
+	fmt.Printf("role: id=%s code=%s (granted per-congregation at approval time, not by this script)\n", adminRole.Id, adminRole.Code)
 
 	fmt.Println()
 	fmt.Println("done — go-oikumenea has no API path to grant the first assignment on a brand-new")
 	fmt.Println("unit (see this file's header comment). Run this SQL directly against the shared")
-	fmt.Println("Postgres instance (oikumenea schema) to finish bootstrapping the operator's authority:")
+	fmt.Println("Postgres instance (oikumenea schema) to finish bootstrapping the operator's authority")
+	fmt.Println("(idempotent: ON CONFLICT DO NOTHING, keyed on the same active-uniqueness index the")
+	fmt.Println("table itself enforces):")
 	fmt.Println()
 	fmt.Printf(`INSERT INTO oikumenea.authz_role_assignments
   (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by)
 SELECT '%s', '%s', '%s', 'subtree', g.id, NULL
-FROM oikumenea.tenant_graphs g WHERE g.code = 'canonical';
+FROM oikumenea.tenant_graphs g WHERE g.code = 'canonical'
+ON CONFLICT (subject_person_id, role_id, target_unit_id, scope, graph_id) WHERE revoked_at IS NULL DO NOTHING;
 UPDATE oikumenea.authz_epoch SET epoch = epoch + 1 WHERE singleton;
-`, operatorPersonID, role.Id, profile.UnitId)
+`, operatorPersonID, operatorRole.Id, rootUnitID)
 }
 
 func mintBootstrapAdminToken() (string, error) {
@@ -151,26 +199,48 @@ func findPersonByCode(ctx context.Context, c *client.Client, code string) (strin
 	return "", fmt.Errorf("no person found with code %q (run scripts/bootstrap-admin-person first)", code)
 }
 
-// createOrReuseRole creates the registration-operator role, or finds the existing one by code on a
-// RoleConflict — a fresh instance creates, a re-run against an already-bootstrapped instance reuses.
-func createOrReuseRole(ctx context.Context, c *client.Client) (authorization.Role, error) {
-	r, err := c.Authorization.CreateRole(ctx, authorization.CreateRoleRequest{
-		Code: roleCode,
-		Name: "Registration operator",
-		Permissions: []string{
-			"religionorg.manage",
-			"site.manage",
-			"schedule.manage",
-			"assignment.grant",
-			"assignment.revoke",
-			"person.create",
-			"person.update",
-			"membership.create",
-			"membership.update",
-			"position.create",
-			"position.update",
-		},
+// createOrReuseRootOrg creates the single shared root org, or finds its existing root unit by
+// walking organizations/units by code on a Conflict — a fresh instance creates, a re-run reuses.
+func createOrReuseRootOrg(ctx context.Context, c *client.Client, orgCode, orgName string) (string, error) {
+	profile, createErr := c.Religion.CreateRootOrg(ctx, religion.CreateRootOrgRequest{
+		Code: orgCode,
+		Name: orgName,
 	})
+	if createErr == nil {
+		return profile.UnitId, nil
+	}
+	// The tenant-layer org-code conflict doesn't map to a typed Religion:Conflict at this service
+	// boundary (surfaces as a plain 500) — always fall back to look-up-by-code rather than branching
+	// on error type; if the real cause was something else, the lookup below fails informatively too.
+	orgPage, err := c.Tenant.ListOrganizations(ctx, nil, nil, nil, nil, nil)
+	if err != nil {
+		return "", fmt.Errorf("createRootOrg failed (%v) and the look-up-existing fallback also failed: %w", createErr, err)
+	}
+	var orgID string
+	for _, org := range orgPage.Organizations {
+		if org.Code == orgCode {
+			orgID = org.Id
+			break
+		}
+	}
+	if orgID == "" {
+		return "", fmt.Errorf("createRootOrg failed (%v) and no existing organization with code %q was found", createErr, orgCode)
+	}
+	rootsOnly := true
+	unitPage, err := c.Tenant.ListUnits(ctx, orgID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &rootsOnly, nil, nil)
+	if err != nil {
+		return "", fmt.Errorf("list root units for org %s: %w", orgID, err)
+	}
+	if len(unitPage.Units) == 0 {
+		return "", fmt.Errorf("organization %s (code %q) has no root unit", orgID, orgCode)
+	}
+	return unitPage.Units[0].Id, nil
+}
+
+// createOrReuseRole creates the given role, or finds the existing one by code on a RoleConflict — a
+// fresh instance creates, a re-run against an already-bootstrapped instance reuses it.
+func createOrReuseRole(ctx context.Context, c *client.Client, req authorization.CreateRoleRequest) (authorization.Role, error) {
+	r, err := c.Authorization.CreateRole(ctx, req)
 	if err == nil {
 		return r, nil
 	}
@@ -179,12 +249,12 @@ func createOrReuseRole(ctx context.Context, c *client.Client) (authorization.Rol
 	}
 	page, err := c.Authorization.ListRoles(ctx, nil, nil)
 	if err != nil {
-		return authorization.Role{}, fmt.Errorf("list after conflict: %w", err)
+		return authorization.Role{}, fmt.Errorf("list roles after conflict: %w", err)
 	}
 	for _, existing := range page.Roles {
-		if existing.Code == roleCode {
+		if existing.Code == req.Code {
 			return existing, nil
 		}
 	}
-	return authorization.Role{}, fmt.Errorf("createRole reported a conflict but no role with code %q was found", roleCode)
+	return authorization.Role{}, fmt.Errorf("createRole reported a conflict but no role with code %q was found", req.Code)
 }
