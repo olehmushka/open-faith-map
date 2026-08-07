@@ -109,9 +109,10 @@ direct database access to go-oikumenea's schema. Two identity paths, both alread
 go-oikumenea:
 
 - **Interactive (a visitor or congregation admin using the site).** OpenFaithMap's Next.js facade
-  owns the browser session (httpOnly cookie via Auth.js against the shared Keycloak realm) and
-  forwards the end user's bearer token on every call to go-oikumenea — the console-bff pattern,
-  reused verbatim (D-HeadlessTopology).
+  owns the browser session (httpOnly cookie via Auth.js v5, Google as the sole OIDC provider — no
+  Keycloak, no shared realm; see M1's as-built note and M1.1 item 3 in
+  [milestones.md](../milestones.md)) and forwards the end user's Google ID token on every call to
+  go-oikumenea — the console-bff pattern, reused verbatim (D-HeadlessTopology).
 - **Background (moderation sweeps, vouching-graph checks, exclusion-list sync).** OpenFaithMap's
   backend registers as a **service principal** via OAuth2 client-credentials against the same IdP
   (D-ServiceIdentities), holding narrow, per-permission grants — never a role assignment, never

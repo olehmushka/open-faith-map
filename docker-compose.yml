@@ -94,5 +94,29 @@ services:
       oikumenea-app:
         condition: service_started
 
+  # openfaithmap-web (M1) — the session layer / login. Reaches oikumenea-app at
+  # https://oikumenea-app:8443 over the compose-internal network (it publishes no host port), so a
+  # host-run `next dev` cannot complete a real login — use this service for that. Forwards the
+  # logged-in user's Google ID token as the bearer on every go-oikumenea call (no Keycloak — see
+  # docs/architecture/decisions.md's D-CoreDependency).
+  openfaithmap-web:
+    build:
+      context: ./web
+    depends_on:
+      oikumenea-app:
+        condition: service_started
+    ports:
+      - "3002:3000"
+    environment:
+      OIKUMENEA_BASE_URL: "https://oikumenea-app:8443"
+      # oikumenea-app serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+      AUTH_SECRET: "${AUTH_SECRET}"
+      AUTH_URL: "http://localhost:3002"
+      AUTH_TRUST_HOST: "true"
+      # Non-secret: matches the audience deploy/oikumenea-install.yml's Google issuer entry pins.
+      AUTH_GOOGLE_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
+      AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET}"
+
 volumes:
   postgres-data:

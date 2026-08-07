@@ -28,12 +28,16 @@ deployments would duplicate session handling for no isolation benefit at this st
 
 ## Session & identity
 
-- **Login** — Auth.js v5 against the shared Keycloak realm (the same IdP go-oikumenea's own
-  console uses), matching go-oikumenea's console-bff precedent exactly.
-- **Session storage** — httpOnly cookie, server-side only; the ID/access token is never exposed to
+- **Login** — Auth.js v5, Google as the sole OIDC provider (D-CoreDependency's as-built note — no
+  Keycloak, no shared realm). go-oikumenea's own console-bff supports registering multiple IdPs;
+  OpenFaithMap uses only the one provider go-oikumenea's `deploy/oikumenea-install.yml` is
+  configured to trust for human login.
+- **Session storage** — httpOnly cookie, server-side only; the ID token is never exposed to
   client-side JavaScript.
 - **Token forwarding** — every server-side call `openfaithmap-web` makes, to either go-oikumenea or
-  `openfaithmap-api`, forwards the logged-in user's bearer token unchanged. `openfaithmap-web`
+  `openfaithmap-api`, forwards the logged-in user's Google **ID token** unchanged — not the access
+  token, which is an opaque string go-oikumenea cannot verify; the ID token is the JWT whose `aud`
+  go-oikumenea's Google issuer entry pins (`deploy/oikumenea-install.yml`). `openfaithmap-web`
   holds no credential of its own that widens what a caller can do (D-HeadlessTopology's
   no-confused-deputy guarantee, inherited).
 - **Anonymous paths** — the public site and discovery search require no session at all; report

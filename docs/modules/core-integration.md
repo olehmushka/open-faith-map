@@ -21,7 +21,7 @@ PDP is authoritative every time.
 
 | go-oikumenea module | What OpenFaithMap uses it for | Calling identity |
 |---|---|---|
-| `identity-federation` | Login (OIDC via the shared Keycloak realm), account lookup | User token (facade passthrough) |
+| `identity-federation` | Login (OIDC via Google directly — no Keycloak, no shared realm), account lookup | User token (facade passthrough — the Google ID token) |
 | `tenant` | The congregation/jurisdiction organizational graph: `church`-domain `Organization` + `Unit` nodes in the `canonical` graph | User token for admin actions; service principal for read-heavy discovery caching |
 | `person` / `personprofile` | The people directory: pastors, staff, congregation admins as `Person` records | User token |
 | `membership` | Clergy/staff **positions** at a congregation `Unit` | User token |
@@ -82,11 +82,26 @@ OpenFaithMap defines **no permission codes of its own** for anything in the dele
 — it forwards the caller's token and lets go-oikumenea's PDP answer. It *does* define permission
 codes for its own domains (content/moderation/vouching), documented in their own module docs.
 
-For background work, OpenFaithMap's service principal (D-ServiceIdentities) holds exactly these
-grants, nothing more:
-- `religion.read` (instance-wide) — refresh the discovery cache, resolve taxon ancestors for the
-  exclusion check.
-- `audit.write` (instance-wide) — write moderation actions into go-oikumenea's audit ledger.
+For background work, OpenFaithMap's service principal (D-ServiceIdentities) holds exactly this
+grant today:
+- `connector.read` (instance-wide) — the only machine-reachable grant proven end-to-end so far
+  (`internal/coreintegration`'s integration test).
+
+Two grants this doc previously listed turned out not to work against a real instance (found while
+proving M1, see [milestones.md](../milestones.md) M1.1):
+
+- **`religion.read` is not usable by a service principal today.** Every `religion` module read
+  endpoint is `RequireAnywhere`-gated — a person-shaped PEP path that unconditionally denies a
+  machine subject, regardless of grants. Only the `connector`/`wiring` modules are
+  machine-reachable in the current go-oikumenea version. Discovery-cache refresh and taxon-ancestor
+  resolution for the D-Exclusions check therefore have **no machine-callable path yet** — an
+  upstream go-oikumenea feature request (make the relevant `religion` reads
+  `RequireServiceOrPerson`) is needed before M4 is built on an assumption that doesn't hold today.
+- **`audit.write` does not exist.** go-oikumenea's `audit` module has no write endpoint — writes
+  happen in-process — confirmed live (`scripts/bootstrap-service-principal` rejects the grant with
+  `PrincipalGrantInvalid: unknown permission code`). If D-Moderation (M5) still needs OpenFaithMap's
+  own moderation actions written into go-oikumenea's audit trail, that needs a real design — the
+  mechanism this doc assumed isn't there.
 
 No role assignment, no unit reach, no write access to tenant/person/religion data as the
 principal — every write a real congregation admin makes is made with *their* token, never the
@@ -107,6 +122,10 @@ principal's.
 
 ## Open seams
 
+- **No machine-callable `religion` reads.** See the authorization-touchpoints correction above —
+  discovery-cache refresh and taxon-ancestor resolution have no service-principal path today. A
+  go-oikumenea feature request (`RequireServiceOrPerson` on the relevant reads) is a prerequisite
+  for M4, not yet filed.
 - **Taxon-level exclusion has no go-oikumenea-native home.** If a second consuming app ever needed
   the same "block this whole tradition" behavior, this logic (currently facade-side only) would be
   a candidate for a genuine go-oikumenea feature request — not attempted here since OpenFaithMap

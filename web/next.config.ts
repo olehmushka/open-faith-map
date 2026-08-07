@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
-// Scaffolding stage — no rewrites/proxying to openfaithmap-api or go-oikumenea yet
-// (docs/architecture/overview.md's request paths land at M1+).
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  // Needed for the compose-service Dockerfile's copy-only runtime stage (M1).
+  output: "standalone",
+};
 
 export default nextConfig;

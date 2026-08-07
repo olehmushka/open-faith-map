@@ -17,8 +17,8 @@ gave: "it does not exist yet — the design is here."
 | # | Decided | Designed | Backend | Migrated | UI | Verified | Stage |
 |---|---|---|---|---|---|---|---|
 | M0 · Scope & core-dependency | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** Artifact: this doc set (`architecture/decisions.md`, `modules/core-integration.md`, `glossary.md`), coherence-checked (no dangling relative links, no `faithmap-app` references). A docs-only milestone; its exit criterion is the doc set existing and being internally consistent, met. |
-| M1 · go-oikumenea integration wiring | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Backend in progress (not ✅ — see prose).** `docker-compose.yml` runs a real go-oikumenea instance (published image, migrated, shared Postgres). Service-principal auth (D-ServiceIdentities) proven end-to-end — `internal/coreintegration`, `scripts/bootstrap-service-principal`. **Not done:** `openfaithmap-web`'s session layer / human login — M1's "login working" exit criterion is unmet. See M1.1 for doc corrections found while proving this out. |
-| M1.1 · Core-integration doc corrections | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Designed, not yet applied.** Three inaccuracies in `architecture/decisions.md` / `modules/core-integration.md`, found by testing M1 against a real go-oikumenea instance rather than assumed from its docs — see detail below. Docs-only; blocks nothing in code, but M2's own doc references `modules/core-integration.md` and should not compound an already-known-wrong doc. |
+| M1 · go-oikumenea integration wiring | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built, not yet verified — see prose.** `docker-compose.yml` runs a real go-oikumenea instance (published image, migrated, shared Postgres). Service-principal auth (D-ServiceIdentities) proven end-to-end — `internal/coreintegration`, `scripts/bootstrap-service-principal`. `openfaithmap-web`'s session layer now exists (Auth.js v5, Google as sole OIDC provider, ID-token forwarding — `web/auth.ts`, `web/lib/oikumenea.ts`, `/login`, `/whoami`). **Verified is still ⬜:** proving "login working" end-to-end needs a real browser OAuth round-trip with the project owner's real Google credentials, not yet run. |
+| M1.1 · Core-integration doc corrections | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Applied.** Three inaccuracies in `architecture/decisions.md` / `modules/core-integration.md` / `modules/web-facade.md` / `architecture/overview.md`, found by testing M1 against a real go-oikumenea instance rather than assumed from its docs. Items 1 (`audit.write` doesn't exist) and 3 (Keycloak → Google-direct) corrected in the docs themselves. Item 2 (`religion.read` unusable by a service principal) recorded as an upstream go-oikumenea gap — a feature request, not a doc-only fix, needed before M4. |
 | M2 · Church-admin self-service facade | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Designed.** `modules/core-integration.md` (the provisioning flow) + `modules/web-facade.md` (the registration/roster UI shape). No dedicated schema of its own — writes go through go-oikumenea directly. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch, first genuinely new schema in the project. |
 | M4 · Public discovery site | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. |
@@ -48,51 +48,67 @@ Stand up go-oikumenea's docker image in OpenFaithMap's own `docker-compose.yml`
 backend as a service principal (D-ServiceIdentities pattern). Build `openfaithmap-web`'s session
 layer and prove token passthrough works end-to-end against a real go-oikumenea call.
 
-**As built (partial):** `docker-compose.yml` runs go-oikumenea from its published image
+**As built:** `docker-compose.yml` runs go-oikumenea from its published image
 (`docker.io/olegamysk/oikumenea`) against one shared Postgres instance with OpenFaithMap
 (`oikumenea` / `openfaithmap` schemas — a simplification from two separate database instances,
 decided over chat, not yet its own `D-<Name>`). **No Keycloak** — go-oikumenea is configured to
 trust Google directly (`deploy/oikumenea-install.yml`); a real deviation from this decision's
-original "shared Keycloak realm" premise (see `architecture/decisions.md`'s D-CoreDependency),
-also not yet its own `D-<Name>`. `internal/coreintegration` + `scripts/bootstrap-service-principal`
-prove the service-principal path for real: a GCP service account mints its own Google ID token per
-call, go-oikumenea resolves it by `(issuer, subject)`, and the PDP enforces its grant — verified
-against `connector.read` (see M1.1, item 2, for why not `religion.read`). **Not built:**
-`openfaithmap-web`'s session layer — no human ever logs in yet, so "login working" is unmet.
+original "shared Keycloak realm" premise, now corrected in `architecture/decisions.md`'s
+D-CoreDependency and `architecture/overview.md` (M1.1 item 3), though still not its own `D-<Name>`.
+`internal/coreintegration` + `scripts/bootstrap-service-principal` prove the service-principal path
+for real: a GCP service account mints its own Google ID token per call, go-oikumenea resolves it by
+`(issuer, subject)`, and the PDP enforces its grant — verified against `connector.read` (see M1.1,
+item 2, for why not `religion.read`).
+
+`openfaithmap-web`'s session layer is now built: Auth.js v5 with Google as the sole OIDC provider
+(`web/auth.ts`), forwarding the Google **ID token** (not the access token) as the bearer on every
+go-oikumenea call (`web/lib/oikumenea.ts`, via the published `oikumenea-client` npm package). A
+`/login` page starts the flow; `/whoami` is the end-to-end proof artifact — it calls
+`identityFederation.whoami()` through the forwarded token and renders the result, relying on
+go-oikumenea's JIT provisioning (`deploy/oikumenea-install.yml`'s `idp.jit`) to resolve a first-time
+Google login with no manual account setup. `docker-compose.yml` gained an `openfaithmap-web`
+service (port `3002`) so the login flow can actually reach `oikumenea-app` (which publishes no host
+port).
+
+**Still open:** the actual browser OAuth round-trip has not been run — it needs the project owner's
+real Google OAuth client secret (`AUTH_GOOGLE_SECRET` in the root `.env`) and a real browser. Until
+that's done and `/whoami` is confirmed rendering a real resolved identity, this milestone's
+`Verified` column stays `⬜`.
 
 ### M1.1 · Core-integration doc corrections
 
 **Depends on:** M1 (these were found while proving M1's service-principal path against a real
 go-oikumenea instance, not while writing the original design). **Leaves deployable:** no code
-change — this is `architecture/decisions.md` / `modules/core-integration.md` prose catching up to
-verified reality.
+change — this is `architecture/decisions.md` / `modules/core-integration.md` /
+`modules/web-facade.md` / `architecture/overview.md` prose catching up to verified reality.
 
-Three inaccuracies to fix before M2 (so M2 doesn't cite an already-known-wrong doc) or M4
-(discovery-cache refresh depends directly on item 2):
+Three inaccuracies, applied:
 
-1. **`modules/core-integration.md`'s authorization-touchpoints table lists `audit.write`** as a
+1. **`modules/core-integration.md`'s authorization-touchpoints table listed `audit.write`** as a
    grant OpenFaithMap's service principal holds. That permission does not exist: go-oikumenea's
    `audit` module has no write endpoint — "there is no write endpoint; writes happen in-process"
    (go-oikumenea's own `docs/modules/audit.md`), and its permission catalog defines only
    `audit.read`. `scripts/bootstrap-service-principal` rejected the request live
-   (`PrincipalGrantInvalid: unknown permission code`). Fix: remove `audit.write` from the table; if
-   D-Moderation (M5) still needs OpenFaithMap's own moderation actions written into go-oikumenea's
-   audit trail, that needs a real design — the current text assumes a mechanism that isn't there.
-2. **The same table implies the service principal can call go-oikumenea's `religion` read
+   (`PrincipalGrantInvalid: unknown permission code`). **Fixed:** `audit.write` removed from the
+   table; if D-Moderation (M5) still needs OpenFaithMap's own moderation actions written into
+   go-oikumenea's audit trail, that needs a real design — the mechanism the old text assumed isn't
+   there.
+2. **The same table implied the service principal can call go-oikumenea's `religion` read
    endpoints** (discovery-cache refresh, D-Exclusions taxon-ancestor resolution) using its
    `religion.read` grant. Verified false against a real instance: every `religion` module read
    endpoint is gated with `RequireAnywhere`, a person-shaped PEP path that unconditionally denies a
    machine subject, regardless of grants (`internal/authorization/pep` — "every person-shaped PEP
    path denies it at its empty-subject guard"). Only the `connector`/`wiring` modules are
    machine-reachable (`RequireService`/`RequireServiceOrPerson`) in the current go-oikumenea
-   version. This is an upstream go-oikumenea gap, not an OpenFaithMap misconfiguration — worth a
-   go-oikumenea feature request (make the relevant religion reads `RequireServiceOrPerson`) before
-   M4 is built on an assumption that doesn't hold today.
-3. **D-CoreDependency's "shared Keycloak realm" premise** no longer matches what M1 actually built
-   (Google directly, no Keycloak — see M1's as-built note above). Needs its own decision update:
-   either amend D-CoreDependency or add a new `D-<Name>` recording the Google-direct choice and why
-   (client-credentials has no Google equivalent for arbitrary resource servers; a GCP service
-   account's self-minted ID token substitutes for the service-principal leg).
+   version. **Recorded, not fixed in code** — this is an upstream go-oikumenea gap, not an
+   OpenFaithMap misconfiguration. `core-integration.md`'s open seams now cross-reference it; a
+   go-oikumenea feature request (make the relevant religion reads `RequireServiceOrPerson`) is
+   needed before M4 is built on an assumption that doesn't hold today.
+3. **D-CoreDependency's "shared Keycloak realm" premise** no longer matched what M1 actually built
+   (Google directly, no Keycloak). **Fixed:** `architecture/decisions.md`'s D-CoreDependency,
+   `architecture/overview.md`'s diagram and deployment-topology section, and
+   `modules/web-facade.md`'s session/identity section all now describe Google-direct, ID-token
+   forwarding — not their own `D-<Name>` yet, still folded into D-CoreDependency's existing text.
 
 ### M2 · Church-admin self-service facade
 

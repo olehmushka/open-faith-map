@@ -47,7 +47,7 @@ idp:
       type: oidc
       label: "Google"
       audiences:
-        - "213972482832-0pm8g1d42qshrs3euopkfpf854tpngri.apps.googleusercontent.com"
+        - "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
         - "openfaithmap-api"
 
 account:

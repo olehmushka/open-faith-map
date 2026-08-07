@@ -7,7 +7,7 @@ OpenFaithMap is **two new services sitting in front of a headless go-oikumenea c
 ```
                           ┌─────────────────────────────┐
   Visitor / congregation  │   openfaithmap-web (Next.js) │   owns the browser session
-  admin (browser)  ─────► │   public site · admin console│   (Auth.js + Keycloak)
+  admin (browser)  ─────► │   public site · admin console│   (Auth.js, Google direct)
                           └───────────────┬──────────────┘
                                           │  user's bearer token, forwarded, never widened
                     ┌──────────────────────┼──────────────────────┐
@@ -63,20 +63,28 @@ integrity check): `openfaithmap-api`'s own scheduler → calls go-oikumenea usin
 
 ## Deployment topology
 
-`open-faith-map/docker-compose.yml` (planned shape, built at M1 — see
-[milestones.md](../milestones.md)) extends go-oikumenea's own compose pattern rather than
-reinventing it:
+`open-faith-map/docker-compose.yml` (built at M1 — see [milestones.md](../milestones.md)) extends
+go-oikumenea's own compose pattern rather than reinventing it. As built, this deviates from the
+original planned shape in a few ways (no Keycloak, one shared Postgres — see M1's as-built note in
+milestones.md):
 
-- `oikumenea-postgres`, `oikumenea-migrate`, `oikumenea-init-role`, `oikumenea-app` — go-oikumenea's
-  own four-service bootstrap sequence, verbatim, image pulled from its published registry. `app`
-  publishes no host port.
-- `openfaithmap-postgres`, `openfaithmap-migrate` — OpenFaithMap's own Postgres + Atlas migration
-  runner, for the `content`/`moderation`/`vouching` schema only.
-- `openfaithmap-api` — reachable only internally by `openfaithmap-web`, no host port either.
-- `openfaithmap-web` — the only container that publishes a host port; the single ingress for both
-  human traffic and (indirectly) go-oikumenea traffic.
-- `keycloak` (dev only, mirroring go-oikumenea's `docker-compose.dev.yml`) — the shared IdP both
-  humans and OpenFaithMap's service principal authenticate against.
+- One shared `postgres` service (not a separate `oikumenea-postgres` instance) plus
+  `oikumenea-migrate`, `oikumenea-init-role`, `oikumenea-app` — go-oikumenea's own bootstrap
+  sequence, image pulled from its published registry, running against the `oikumenea` schema in
+  that shared instance. `oikumenea-app` publishes no host port.
+- `openfaithmap-postgres`, `openfaithmap-migrate` — **not built yet.** OpenFaithMap has no schema
+  of its own until M3 (`content`/`moderation`/`vouching`); when it lands, it runs as its own
+  `openfaithmap` schema in the same shared `postgres` service above, not a separate instance.
+- `openfaithmap-api` — currently **also publishes host ports directly** (`3000`/`3001`), a real gap
+  against the "only openfaithmap-web is public ingress" target below; narrowing this is a follow-up,
+  not yet its own milestone item.
+- `openfaithmap-web` — publishes host port `3002`, built at M1. Reachable internally by
+  `oikumenea-app` at `https://oikumenea-app:8443` (self-signed cert, dev-only
+  `NODE_TLS_REJECT_UNAUTHORIZED=0`) since `oikumenea-app` has no host port of its own.
+- No `keycloak` service — go-oikumenea is configured to trust Google directly
+  (`deploy/oikumenea-install.yml`); both humans (via `openfaithmap-web`'s Auth.js Google provider)
+  and OpenFaithMap's service principal (a self-minted GCP service-account ID token) authenticate
+  against the same Google issuer, distinguished by `(issuer, subject)` and audience.
 
 ## What's unchanged from go-oikumenea, what's new
 
@@ -86,4 +94,4 @@ reinventing it:
 | Toolchain | Go + gödel + Conjure + witchcraft + pgx/sqlc + Atlas | Identical |
 | Schema | `oikumenea` schema, `oikumenea.<module>_*` tables | `openfaithmap` schema, `openfaithmap.<module>_*` tables — see [conventions.md](conventions.md) |
 | UI | Optional Next.js admin console, BFF over the public API | Two audiences (public site + admin console) in one Next.js app, facade over both go-oikumenea and OpenFaithMap's own API |
-| Exposure | Headless, internal-only (D-HeadlessTopology) | `openfaithmap-web` is the only public ingress |
+| Exposure | Headless, internal-only (D-HeadlessTopology) | `openfaithmap-web` is the only public ingress — still the target, not yet fully true: `openfaithmap-api` also publishes host ports today (see deployment topology above) |
