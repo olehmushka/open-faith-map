@@ -17,10 +17,10 @@ gave: "it does not exist yet — the design is here."
 | # | Decided | Designed | Backend | Migrated | UI | Verified | Stage |
 |---|---|---|---|---|---|---|---|
 | M0 · Scope & core-dependency | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** Artifact: this doc set (`architecture/decisions.md`, `modules/core-integration.md`, `glossary.md`), coherence-checked (no dangling relative links, no `faithmap-app` references). A docs-only milestone; its exit criterion is the doc set existing and being internally consistent, met. |
-| M1 · go-oikumenea integration wiring | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built, not yet verified — see prose.** `docker-compose.yml` runs a real go-oikumenea instance (published image, migrated, shared Postgres). Service-principal auth (D-ServiceIdentities) proven end-to-end — `internal/coreintegration`, `scripts/bootstrap-service-principal`. `openfaithmap-web`'s session layer now exists (Auth.js v5, Google as sole OIDC provider, ID-token forwarding — `web/auth.ts`, `web/lib/oikumenea.ts`, `/login`, `/whoami`). **Verified is still ⬜:** proving "login working" end-to-end needs a real browser OAuth round-trip with the project owner's real Google credentials, not yet run. |
+| M1 · go-oikumenea integration wiring | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | **Verified.** `docker-compose.yml` runs a real go-oikumenea instance (published image, migrated, shared Postgres). Service-principal auth (D-ServiceIdentities) proven end-to-end — `internal/coreintegration`, `scripts/bootstrap-service-principal`. `openfaithmap-web`'s session layer (Auth.js v5, Google as sole OIDC provider, ID-token forwarding — `web/auth.ts`, `web/lib/oikumenea.ts`, `/login`, `/whoami`) proven end-to-end with a real browser OAuth round-trip: Google login → `/whoami` resolves a real `personId`/`email` through go-oikumenea's PDP. Required `scripts/bootstrap-admin-person` (go-oikumenea's JIT is link-on-match only — a fresh instance has no person for a new Google identity to link onto) and a restart of `oikumenea-app` after an install-config edit (install config is read once at boot, not hot-reloaded from the bind-mounted file — worth remembering for future config changes). |
 | M1.1 · Core-integration doc corrections | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Applied.** Three inaccuracies in `architecture/decisions.md` / `modules/core-integration.md` / `modules/web-facade.md` / `architecture/overview.md`, found by testing M1 against a real go-oikumenea instance rather than assumed from its docs. Items 1 (`audit.write` doesn't exist) and 3 (Keycloak → Google-direct) corrected in the docs themselves. Item 2 (`religion.read` unusable by a service principal) recorded as an upstream go-oikumenea gap — a feature request, not a doc-only fix, needed before M4. |
-| M2 · Church-admin self-service facade | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Designed.** `modules/core-integration.md` (the provisioning flow) + `modules/web-facade.md` (the registration/roster UI shape). No dedicated schema of its own — writes go through go-oikumenea directly. |
-| M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch, first genuinely new schema in the project. |
+| M2 · Church-admin self-service facade | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built, not yet verified — see prose.** `modules/registration.md` (new — corrects the original "no schema of its own" framing). Backend, migration, and UI all built and proven end-to-end via curl against the live stack (submit, D-Exclusions check, list, approve's real go-oikumenea writes, reject, double-approve guard). **Verified is still ⬜:** the real browser round-trip (submit → operator approves → roster renders) hasn't run yet. |
+| M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) |
 | M4 · Public discovery site | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. |
 | M5 · Moderation | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. |
 | M6 · Vouching | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/vouching.md` — web-of-trust guarantor model. |
@@ -116,10 +116,33 @@ Three inaccuracies, applied:
 real `church`-domain `Organization`/`Unit` in go-oikumenea) and see their own roster — still no
 public-facing content or discovery.
 
-Implements the provisioning flow in
-[core-integration.md](modules/core-integration.md#provisioning-a-congregation-the-core-end-to-end-flow)
-end-to-end, steps 1–5 (the D-Exclusions taxon check through the role-assignment grant). Step 6
-(creating the local `content` site) is stubbed until M3.
+**As built — deviates from the original provisioning-flow design in one load-bearing way.**
+`core-integration.md`'s original flow assumed a prospective admin's own token could call
+`POST /religion-orgs`/self-grant authority. Verified false against a real instance: creating a
+top-level org needs `religion.catalog.manage` (instance-wide), and granting anyone authority over a
+brand-new unit needs `assignment.grant` **on that unit**, which not even an instance admin holds
+automatically — go-oikumenea has no self-service org-creation path for an ungranted user. Real
+shape built instead: submit (any authenticated person, D-Exclusions-checked) → a registration
+operator (a real person with authority over one shared root unit — bootstrapped once via
+`scripts/bootstrap-registration-org`, the same "operator-owned DB access" trust level
+go-oikumenea's own `D-Bootstrap` uses for the first instance admin) approves, and *their* token
+performs the real writes. Full detail: [modules/registration.md](modules/registration.md).
+
+`openfaithmap-api` gained its first real module doing this: `internal/registration`
+(domain/adapters/application/transport), `api/registration.conjure.yml` (the first Conjure IDL in
+this repo — `godel-conjure-plugin` wired for real), and `migrations/0001_registration.sql`
+(OpenFaithMap's first schema, applied by a new `openfaithmap-migrate` compose service).
+`openfaithmap-web` gained `/register` (the wizard), `/admin/registrations` (operator
+approve/reject), and `/my-congregation` (the roster — M2's "see their own roster" exit criterion),
+via a hand-written fetch client (`web/lib/registration.ts` — no generated TS SDK for
+openfaithmap-api yet, see registration.md's open seams).
+
+Proven end-to-end via curl against the live stack: submit, the D-Exclusions check (rejects
+`jehovahs_witnesses`), list, approve (real `createChildOrg`/location/site/position/grant all
+landed and were confirmed in go-oikumenea), reject, and the double-approve guard. **Not yet run:**
+the real browser round-trip — submitting through `/register`, approving through
+`/admin/registrations`, and confirming `/my-congregation` renders the result — needed before
+`Verified` flips to ✅.
 
 ### M3 · Content / site-builder backend
 

@@ -1,0 +1,80 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
+// Package domain holds the registration module's plain Go types — no Conjure, no SQL, no HTTP
+// (docs/architecture/overview.md's transport → application → domain → adapters layering).
+package domain
+
+import (
+	"errors"
+	"time"
+)
+
+type Status string
+
+const (
+	StatusPending  Status = "PENDING"
+	StatusApproved Status = "APPROVED"
+	StatusRejected Status = "REJECTED"
+)
+
+// Coordinate is WGS84 latitude/longitude.
+type Coordinate struct {
+	Latitude  float64
+	Longitude float64
+}
+
+// Request is a congregation-registration request, pending a registration operator's decision.
+type Request struct {
+	ID                  string
+	SubmittedByPersonID string
+	TaxonID             string
+	CongregationName    string
+	CountryID           string
+	AdminArea1          *string
+	Locality            *string
+	Street              *string
+	HouseNumber         *string
+	PostalCode          *string
+	Coordinate          Coordinate
+	Status              Status
+	RejectionReason     *string
+	DecidedByPersonID   *string
+	DecidedAt           *time.Time
+	CreatedUnitID       *string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+// SubmitInput is the caller-supplied shape for a new request (everything Request derives itself —
+// id/status/timestamps — is excluded).
+type SubmitInput struct {
+	SubmittedByPersonID string
+	TaxonID             string
+	CongregationName    string
+	CountryID           string
+	AdminArea1          *string
+	Locality            *string
+	Street              *string
+	HouseNumber         *string
+	PostalCode          *string
+	Coordinate          Coordinate
+}
+
+var (
+	ErrNotFound      = errors.New("registration request not found")
+	ErrNotPending    = errors.New("registration request is not pending")
+	ErrExcluded      = errors.New("taxon is on the named exclusion list")
+	ErrTaxonNotFound = errors.New("taxon not found")
+)
+
+// ExcludedTaxonCodes is D-Exclusions' named, permanent denomination exclusion list
+// (architecture/decisions.md), by go-oikumenea religion_taxa.code — verified against the actual
+// seed data (go-oikumenea's deploy/religion-presets/gen-presets.py). Reopening this list means
+// editing architecture/decisions.md's D-Exclusions block first (the same governance weight as the
+// original FaithMap ADR-0001), then this constant to match.
+var ExcludedTaxonCodes = map[string]bool{
+	"russian_orthodox_church": true, // ROC — political exclusion
+	"jehovahs_witnesses":      true, // doctrinal exclusion (non-Trinitarian)
+	"lds_church":              true, // Mormons — doctrinal exclusion (non-Nicene Trinitarian)
+}

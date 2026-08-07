@@ -1,9 +1,9 @@
-# The godel-conjure-plugin (com.palantir.godel-conjure-plugin:conjure-plugin:6.109.0, pinned to
-# match go-oikumenea's own godel.yml) is added here in the same PR as the first real
-# api/<module>.conjure.yml source (docs/development-process.md's "backend" gate) — the plugin's
-# conjure task hard-fails `./godelw verify` if registered with no real IDL to compile, and this
-# repo has none yet (all modules are still at "designed", see docs/milestones.md's stage board).
-# See godel/config/conjure-plugin.yml (to be added then) for the project shape once it lands.
+plugins:
+  resolvers:
+    - "https://github.com/{{index GroupParts 1}}/{{index GroupParts 2}}/releases/download/v{{Version}}/{{Product}}-{{Version}}-{{OS}}-{{Arch}}.tgz"
+  plugins:
+    - locator:
+        id: "com.palantir.godel-conjure-plugin:conjure-plugin:6.109.0"
 exclude:
   names:
     - "\\..+"

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth, signOut } from "@/auth";
@@ -23,6 +24,19 @@ export default async function WhoamiPage() {
         Google ID token — this is the M1 proof that login and token passthrough work end-to-end.
       </p>
       <pre className="overflow-x-auto rounded border p-4">{JSON.stringify(who, null, 2)}</pre>
+
+      <nav className="flex flex-col gap-2 text-sm">
+        <Link href="/register" className="underline">
+          Register a congregation (M2)
+        </Link>
+        <Link href="/admin/registrations" className="underline">
+          Review registration requests (operator)
+        </Link>
+        <Link href="/my-congregation" className="underline">
+          My congregation
+        </Link>
+      </nav>
+
       <form
         action={async () => {
           "use server";

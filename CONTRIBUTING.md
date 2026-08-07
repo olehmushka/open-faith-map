@@ -45,9 +45,28 @@ npm install
 npm run dev
 ```
 
+## Branching
+
+Every change — including solo, self-reviewed ones — goes through a branch and a PR against `main`.
+No direct pushes to `main`: this formalizes what was already scaffolded
+(`.github/PULL_REQUEST_TEMPLATE.md`) but never actually required.
+
+Branch names: `<type>/<kebab-case-slug>`, one of four types:
+
+- `feature/` — new capability: a milestone's backend, UI, or both (`feature/split-admin-ui`).
+- `fix/` — a bug fix, a wrong assumption corrected, a doc-vs-code drift closed
+  (`fix/registration-idempotency`).
+- `docs/` — doc-only changes: a new `D-<Name>`, a module doc, a milestones/stage-board update
+  (`docs/git-strategy`).
+- `chore/` — everything else: tooling, CI, refactors, dependency bumps, tests
+  (`chore/upgrade-godel`).
+
+Keep the slug short and descriptive, not just the milestone number — the PR description is where
+the `D-<Name>` / module / stage-board row it advances gets linked explicitly (see below).
+
 ## Making a change
 
-1. Fork the repo and create a branch off `main`.
+1. Branch off `main` (see naming above).
 2. Follow the layering already in `internal/<module>/{transport,application,domain,adapters}` —
    domain owns its interfaces and imports no framework; cross-module calls inside
    `openfaithmap-api` are direct interface calls, cross-module mutations are domain events (same
@@ -57,13 +76,40 @@ npm run dev
    directory — never a destructive change without a documented contract-phase migration.
 5. Conjure contracts (`api/<module>.conjure.yml`) are the source of truth; generated Go/TypeScript
    code is never hand-edited.
-6. Open a PR describing what gate(s) it advances. Link the `D-<Name>` / module doc / stage-board
-   row it corresponds to.
+6. Open a PR using the template — describe what gate(s) it advances and link the `D-<Name>` /
+   module doc / stage-board row it corresponds to. Self-review and self-merge are fine while there's
+   no other maintainer; the PR exists for the record and the CI gate, not to wait on someone else.
+   Squash-merge by default — most PRs are already one well-composed commit by the time they're
+   ready (see Commit style below), so squashing is usually a no-op, and it keeps `main` linear
+   either way. Delete the branch after merge.
 
 ## Commit style
 
-Short, imperative subject line (`Add content module domain types`, not `Added` or `Adding`).
-Explain *why* in the body when the diff alone doesn't make it obvious.
+`<type>(<scope>): <Imperative summary>` — Conventional Commits' type vocabulary, this project's own
+capitalization:
+
+- **Types:** `feat`, `fix`, `docs`, `chore` (also `refactor`/`test`/`ci` for a commit that's purely
+  one of those, still under a `chore/` branch) — matches the branch prefixes above one-to-one,
+  except a `feature/` branch carries `feat:` commits (the Conventional Commits keyword, not the
+  branch word).
+- **Scope is optional** — the module or doc area touched (`feat(registration): ...`,
+  `docs(web-admin): ...`) when the change is narrow; omit it for anything cross-cutting, same as
+  most of this repo's history so far.
+- **Summary stays imperative and capitalized** after the colon (`Add content module domain types`,
+  not `added` or `adding`) — this project's existing voice, not Angular's lowercase convention.
+
+Keep composing commits the way this repo already does: one commit per gate advanced (or a coherent
+slice of one), bundling backend + migration + UI + docs for that slice rather than splitting them
+into separate commits. The body is where the real content lives — what was built, what was verified
+end-to-end (cite the actual command/test, not "should work"), and which `D-<Name>` / module doc /
+milestone row it touches. [`docs/milestones.md`](docs/milestones.md)'s stage board gets updated in
+the *same* commit that passes a gate, never a follow-up — restating
+[`docs/development-process.md`](docs/development-process.md)'s rule here because it's a
+commit-composition rule as much as a process one.
+
+End the commit with `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` (or the relevant
+model/tool trailer) whenever an AI assistant materially wrote or drove the change — every commit in
+this repo's history so far does, and that stays true going forward.
 
 ## Code of Conduct
 

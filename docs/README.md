@@ -28,6 +28,7 @@ Geographic rollout: Ukraine + USA first, then Poland/UK, then the rest of EU/LAT
 | Module | Owns | Kind |
 |---|---|---|
 | [core-integration](modules/core-integration.md) | The mapping from a church-discovery product's needs onto go-oikumenea's modules; the congregation-provisioning flow | Bridge doc — no schema |
+| [registration](modules/registration.md) | Congregation self-service registration: submission, D-Exclusions check, operator approval | New backend module — OpenFaithMap's first schema (M2) |
 | [content](modules/content.md) | Site content: pages, posts, events, typed blocks, translation groups | New backend module |
 | [discovery](modules/discovery.md) | Public map/search facade + a disposable read-through cache over go-oikumenea's religion discovery search | New backend module (cache only) |
 | [moderation](modules/moderation.md) | Reports, actions, appeals, the denomination-exclusion taxon check | New backend module |

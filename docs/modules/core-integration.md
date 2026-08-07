@@ -42,32 +42,37 @@ PDP is authoritative every time.
 
 ## Provisioning a congregation (the core end-to-end flow)
 
-This is the flow every other module doc in this repo references, so it's spelled out once here:
+**Superseded by M2's real build — see [registration.md](registration.md) for the authoritative
+flow.** This section originally assumed a prospective admin's own token could call
+`POST /religion-orgs` directly and self-grant authority over the resulting unit. Verified false
+while building M2: creating a top-level body needs `religion.catalog.manage` (instance-wide,
+instance-admin-only in practice), and granting *anyone* authority over a brand-new unit needs
+`assignment.grant` **on that unit** — which not even an instance admin holds automatically
+(instance-admin only auto-passes instance-scope PDP checks; a unit-scoped one still needs a real
+assignment row). go-oikumenea has no self-service path for an ungranted user to create an org or
+gain authority over one — full detail, including the actual bootstrap mechanism used, is in
+registration.md's "authority-bootstrapping finding".
 
-1. A prospective admin picks their congregation's tradition — a `religion_taxa` node, read via
-   `GET /religion/taxa?query=…` (unauthenticated, `religion.read`). OpenFaithMap checks the picked
-   taxon (and its ancestors, via the taxonomy closure) against the [D-Exclusions](../architecture/decisions.md)
-   list **before** proceeding — a match stops the flow with a clear message, no go-oikumenea call
-   made.
-2. If eligible, OpenFaithMap calls go-oikumenea's `POST /religion-orgs` (if this is a new top-level
-   body) or `POST /units/{parentId}/child-orgs` (a congregation under an existing jurisdiction) to
-   create the `church`-domain `Organization`/`Unit` — user-token-authenticated, so go-oikumenea's
-   PDP decides whether this caller may create it.
-3. OpenFaithMap sets the unit's `religion_org_classifications` (tradition tag) and
-   `religion_org_profiles` via `PUT /units/{unitId}/religion-profile`.
-4. The admin attaches a location (`location` module) and a `religion_sites` row
-   (`POST /units/{unitId}/sites`) — this is what makes the congregation appear in discovery.
-5. The admin's own `person` record gets a `membership` `Position` at the unit and an
-   `authorization` role assignment scoped to that unit — granting them authority over exactly this
-   congregation (and its descendants only if scope is `subtree`, e.g. a diocese admin).
-6. OpenFaithMap creates the congregation's `content` site (its own table, step 3 in
-   [content.md](content.md)) — a purely local operation, no go-oikumenea call.
+The real flow, kept here at a glance (registration.md is authoritative):
 
-Nothing in this flow gives OpenFaithMap's backend elevated authority: every write in steps 2–5 is
-made with the *admin's own token*, so an admin can only provision what go-oikumenea's PDP already
-lets them provision (e.g. a brand-new top-level body requires whatever permission
-`POST /religion-orgs` requires today; a congregation under an existing jurisdiction requires
-authority over that parent unit).
+1. A prospective admin picks their congregation's tradition — a `religion_taxa` node — and submits
+   a request (name, tradition, address/coordinates) to OpenFaithMap's own `registration` module.
+   The [D-Exclusions](../architecture/decisions.md) taxon-ancestor check runs at submission time,
+   against a live `religion.read` call — a match rejects the submission, no go-oikumenea write
+   attempted.
+2. A **registration operator** — a real person holding authority over OpenFaithMap's one shared
+   root unit (registration.md's "single shared root organization" simplification) — reviews and
+   approves. Approval uses the **operator's own forwarded token**, never OpenFaithMap's backend
+   acting on the submitter's behalf, to call go-oikumenea's `POST /units/{rootUnitId}/child-orgs`
+   (the submitter's congregation, as a child of the shared root), set its tradition classification,
+   attach a location + site, create and fill a `membership` `Position`, and grant the submitter a
+   `unit`-scoped role over their own new unit.
+3. OpenFaithMap creates the congregation's `content` site (its own table, step 3 in
+   [content.md](content.md)) — still stubbed until M3, unchanged from the original plan.
+
+Nothing in this flow gives OpenFaithMap's backend elevated authority: every go-oikumenea write is
+made with a *real person's own token* (the submitter's, for reads; the operator's, for the actual
+provisioning writes) — go-oikumenea's PDP decides every one for real.
 
 ## Dependencies
 

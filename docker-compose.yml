@@ -80,9 +80,19 @@ services:
     # compose network at https://oikumenea-app:8443.
 
   # --- OpenFaithMap's own services ---
-  # openfaithmap-migrate would run here once the content/moderation/vouching schema exists (M3) —
-  # same postgres service, --revisions-schema openfaithmap, its own CREATE SCHEMA. Not yet: no
-  # OpenFaithMap migration exists (this is still a skeleton binary with no DB code at all).
+  openfaithmap-migrate:
+    image: arigaio/atlas:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >-
+      migrate apply --allow-dirty
+      --url "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable"
+      --dir "file:///migrations"
+      --revisions-schema openfaithmap
+    volumes:
+      - ./migrations:/migrations:ro
+
   openfaithmap-api:
     build: .
     ports:
@@ -91,8 +101,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      openfaithmap-migrate:
+        condition: service_completed_successfully
       oikumenea-app:
         condition: service_started
+    environment:
+      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable"
+      OIKUMENEA_BASE_URL: "https://oikumenea-app:8443"
+      # oikumenea-app serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
+      OIKUMENEA_INSECURE_SKIP_VERIFY: "true"
+      # M2 registration module — the single shared root unit + the role granted to a newly approved
+      # congregation admin, both produced by scripts/bootstrap-registration-org. Instance-specific
+      # RIDs, not committed elsewhere — set per environment.
+      REGISTRATION_ROOT_UNIT_ID: "${REGISTRATION_ROOT_UNIT_ID}"
+      REGISTRATION_CONGREGATION_ADMIN_ROLE_ID: "${REGISTRATION_CONGREGATION_ADMIN_ROLE_ID}"
 
   # openfaithmap-web (M1) — the session layer / login. Reaches oikumenea-app at
   # https://oikumenea-app:8443 over the compose-internal network (it publishes no host port), so a
@@ -105,11 +127,15 @@ services:
     depends_on:
       oikumenea-app:
         condition: service_started
+      openfaithmap-api:
+        condition: service_started
     ports:
       - "3002:3000"
     environment:
       OIKUMENEA_BASE_URL: "https://oikumenea-app:8443"
-      # oikumenea-app serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
+      # openfaithmap-api (M2) — reached over the compose network, same self-signed-cert caveat.
+      OPENFAITHMAP_API_BASE_URL: "https://openfaithmap-api:3000"
+      # oikumenea-app / openfaithmap-api both serve self-signed certs in local dev (D-HeadlessTopology). DEV ONLY.
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
       AUTH_SECRET: "${AUTH_SECRET}"
       AUTH_URL: "http://localhost:3002"
