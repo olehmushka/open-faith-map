@@ -1,0 +1,30 @@
+{
+  "name": "openfaithmap-admin",
+  "private": true,
+  "version": "0.0.0",
+  "description": "OpenFaithMap's admin/moderator console — the only surface that ever holds a session, see docs/modules/web-admin.md.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "next": "^16.3.0",
+    "next-auth": "5.0.0-beta.32",
+    "oikumenea-client": "^0.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@next/eslint-plugin-next": "^16.3.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "eslint": "^9.39.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.66.0"
+  }
+}

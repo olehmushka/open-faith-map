@@ -84,11 +84,11 @@ constraint enforces each status's required fields are present (e.g. `APPROVED` a
   `internal/coreintegration.NewUserClient` bound to the caller's forwarded token. Never the
   service-principal path for anything in this module — every write is the real person's own
   authority.
-- **Called by:** `openfaithmap-web`'s `/register` (submit), `/admin/registrations` (operator
+- **Called by:** `openfaithmap-admin`'s `/register` (submit), `/admin/registrations` (operator
   approve/reject), `/my-congregation` (reads an approved request's `createdUnitId`, then calls
   go-oikumenea directly for the roster) — via a hand-written fetch client
-  (`web/lib/registration.ts`), not a generated TypeScript SDK (openfaithmap-api has no TS codegen
-  pipeline yet — see open seams).
+  (`web/apps/admin/lib/registration.ts`), not a generated TypeScript SDK (openfaithmap-api has no TS
+  codegen pipeline yet — see open seams).
 
 ## Authorization touchpoints
 
@@ -113,7 +113,7 @@ re-decides every one, so this module's local gate permits nothing on its own.
 
 ## Open seams
 
-- **No generated TypeScript SDK for openfaithmap-api.** `web/lib/registration.ts` is a
+- **No generated TypeScript SDK for openfaithmap-api.** `web/apps/admin/lib/registration.ts` is a
   hand-written fetch client — go-oikumenea's TS-SDK pipeline (`scripts/gen-ts-client.sh`,
   `tools/ir2openapi`, `conjure-typescript`) doesn't exist in this repo yet. Revisit once a second
   module needs the same treatment.

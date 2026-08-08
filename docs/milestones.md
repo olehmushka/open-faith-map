@@ -21,7 +21,7 @@ gave: "it does not exist yet — the design is here."
 | M1.1 · Core-integration doc corrections | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Applied.** Three inaccuracies in `architecture/decisions.md` / `modules/core-integration.md` / `modules/web-facade.md` / `architecture/overview.md`, found by testing M1 against a real go-oikumenea instance rather than assumed from its docs. Items 1 (`audit.write` doesn't exist) and 3 (Keycloak → Google-direct) corrected in the docs themselves. Item 2 (`religion.read` unusable by a service principal) recorded as an upstream go-oikumenea gap — a feature request, not a doc-only fix, needed before M4. |
 | M1.2 · Instance-admin console (`oikumenea-console`) | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built, not yet verified — see prose.** D-InstanceAdminConsole (`architecture/decisions.md`). `docker-compose.yml` runs go-oikumenea's own published console image as OpenFaithMap's third UI surface, super-admin-only. |
 | M2 · Church-admin self-service facade | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built, not yet verified — see prose.** `modules/registration.md` (new — corrects the original "no schema of its own" framing). Backend, migration, and UI all built and proven end-to-end via curl against the live stack (submit, D-Exclusions check, list, approve's real go-oikumenea writes, reject, double-approve guard). **Verified is still ⬜:** the real browser round-trip (submit → operator approves → roster renders) hasn't run yet. |
-| M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet built.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + new `modules/web-admin.md`. Revises what M1's session layer and M2's UI routes actually build going forward — see prose below. |
+| M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built, not yet verified — see prose.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + `modules/web-admin.md`. `web/` split into two independent Next.js apps, `web/apps/web` (no session, ever) and `web/apps/admin` (the only surface that ever holds a credential) — no application logic changed, only moved. |
 | M2.2 · Bulk congregation import (`hermenea`) | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet built.** D-BulkImport (`architecture/decisions.md`), `modules/import.md` (new). A CLI that replays `registration`'s existing submit/approve endpoints in a loop — see prose below. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) |
 | M4 · Public discovery site | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. |
@@ -128,8 +128,9 @@ than provisioning a new one or reintroducing Keycloak — `deploy/oikumenea-inst
 issuer entry already trusted this audience, so no install-config value changed, only its comment
 (doc-accuracy). Its own Auth.js session secret (`OIKUMENEA_CONSOLE_AUTH_SECRET` in `.env.example`)
 is distinct from `openfaithmap-web`'s `AUTH_SECRET` — two independent sessions. Published on host
-port `3003` for local dev — not profile-gated the way go-oikumenea's own `docker-compose.yml`
-treats its `console-bff`, a deliberate choice for this repo.
+port `3003` (continuing the `300x` sequence `openfaithmap-api`/`openfaithmap-web` already use) for
+local dev — not profile-gated the way go-oikumenea's own `docker-compose.yml` treats its
+`console-bff`, a deliberate choice for this repo.
 
 **Network exposure — decided, not yet implemented.** A real (non-local-dev) deployment puts
 `oikumenea-console` behind a WireGuard VPN rather than a bare public port, given its instance-wide
@@ -195,16 +196,21 @@ deferred, not built), so there was never a session to share. Discussed and decid
 into `openfaithmap-web` (anonymous, no session) and a new `openfaithmap-admin` (the only surface
 that ever holds a credential) — full rationale in `architecture/decisions.md`'s D-AdminSurface.
 
-**What this makes stale in M1/M2's own "as built" prose above**, without rewriting it (same
-convention M1.1 used): M1's session layer (`web/auth.ts`, `web/lib/oikumenea.ts`, `/login`,
-`/whoami`) is described as living in `openfaithmap-web` — going forward, that code's destination is
-`openfaithmap-admin`. M2's UI routes (`/register`, `/admin/registrations`, `/my-congregation`) are
-described as living in the single `web/` app — going forward, all three move to
-`openfaithmap-admin` too, since submitting a registration already requires being logged in.
+**As built.** `web/auth.ts`, `web/lib/oikumenea.ts`, `web/lib/registration.ts`, `/login`,
+`/whoami`, `/register`, `/register/submitted`, `/admin/registrations`, and `/my-congregation` all
+moved unchanged into the new `web/apps/admin` app; `web/app/page.tsx`/`layout.tsx` moved into
+`web/apps/web`, which now has no Auth.js dependency at all — confirmed by dropping `next-auth`/
+`oikumenea-client` from its `package.json` entirely. `docker-compose.yml` gained an
+`openfaithmap-admin` service (port `3004`); `openfaithmap-web`'s service lost its entire `AUTH_*`
+environment and its dependency on `oikumenea-app`/`openfaithmap-api`. No application logic
+changed — this was a pure restructure plus config/doc sync. Two independent apps, no npm workspace,
+no `web/packages/*` — see D-AdminSurface's "as implemented" note in `architecture/decisions.md`.
 
-**Not done in this pass:** no code moved, no `web/` restructuring, no `docker-compose.yml` service
-added. `Backend`/`UI` stay `⬜` until an actual `openfaithmap-admin` app exists and the routes above
-move into it.
+**Still open:** the new `openfaithmap-admin` origin needs
+`http://localhost:3004/api/auth/callback/google` added as an authorized redirect URI on the shared
+Google OAuth client (external, Google Cloud Console) before a real login round-trip can be tested —
+same open item M1/M1.2 already carry. `Verified` stays ⬜ until that's done and a browser confirms
+both `openfaithmap-admin` login and `openfaithmap-web` shipping zero Auth.js code.
 
 ### M2.2 · Bulk congregation import (`hermenea`)
 

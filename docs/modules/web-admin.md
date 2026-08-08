@@ -82,10 +82,8 @@ single-app `openfaithmap-web` used to before the split.
 
 ## Open seams
 
-- **Not built yet.** This module doc describes the target shape; the code that exists today
-  (Auth.js session layer, `/register`, `/admin/registrations`, `/my-congregation`) still lives in
-  the single `web/` app built before D-AdminSurface — see
-  [milestones.md](../milestones.md)'s M2.1 for what moving it here actually involves.
-- **Shared-code boundary with `openfaithmap-web`** (UI primitives, typed API client wrappers) isn't
-  decided at the package level yet — D-AdminSurface recommends npm workspaces but leaves the exact
-  split to whoever builds M2.1.
+- **Shared-code boundary with `openfaithmap-web`** is resolved as "none" (M2.1): the two apps are
+  fully independent, no `web/packages/*`. Revisit only if config/UI-primitive duplication between
+  them becomes a real cost.
+- **`admin.openfaithmap.org`-style dedicated subdomain** isn't provisioned yet — this app runs on a
+  plain host port (`3004`) in local dev, same as every other compose service.
