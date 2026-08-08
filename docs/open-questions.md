@@ -38,3 +38,11 @@ from the module doc it was raised in.
 - **DS-OFM-9 — M7 (hardening) is unscoped.** Rate limiting on anonymous report/registration
   endpoints, moderation-queue UX at real volume, and observability are all named but not designed —
   first real work item once M1–M6 are live. See [milestones.md](milestones.md#m7--hardening--real-user-feedback-idea-stage).
+- **DS-OFM-10 — `hermenea`'s input file schema and row-attribution.** Format (CSV/JSON), field set,
+  and how an imported row's congregation-contact person is resolved to a go-oikumenea person RID
+  for attribution are all undecided — pick when M2.2 is actually built. See
+  [import.md](modules/import.md#open-seams).
+- **DS-OFM-11 — `oikumenea-console`'s network exposure.** Needs a real restriction (VPN, IP
+  allowlist, protected subdomain) given its instance-wide power — not a bare public host port the
+  way `openfaithmap-web`/`openfaithmap-admin` deliberately are. Pick when M1.2 is actually built.
+  See [D-InstanceAdminConsole](architecture/decisions.md#d-instanceadminconsole--reuse-go-oikumeneas-own-console-as-the-third-super-admin-only-surface).

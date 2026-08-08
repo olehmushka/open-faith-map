@@ -19,8 +19,10 @@ gave: "it does not exist yet — the design is here."
 | M0 · Scope & core-dependency | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** Artifact: this doc set (`architecture/decisions.md`, `modules/core-integration.md`, `glossary.md`), coherence-checked (no dangling relative links, no `faithmap-app` references). A docs-only milestone; its exit criterion is the doc set existing and being internally consistent, met. |
 | M1 · go-oikumenea integration wiring | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | **Verified.** `docker-compose.yml` runs a real go-oikumenea instance (published image, migrated, shared Postgres). Service-principal auth (D-ServiceIdentities) proven end-to-end — `internal/coreintegration`, `scripts/bootstrap-service-principal`. `openfaithmap-web`'s session layer (Auth.js v5, Google as sole OIDC provider, ID-token forwarding — `web/auth.ts`, `web/lib/oikumenea.ts`, `/login`, `/whoami`) proven end-to-end with a real browser OAuth round-trip: Google login → `/whoami` resolves a real `personId`/`email` through go-oikumenea's PDP. Required `scripts/bootstrap-admin-person` (go-oikumenea's JIT is link-on-match only — a fresh instance has no person for a new Google identity to link onto) and a restart of `oikumenea-app` after an install-config edit (install config is read once at boot, not hot-reloaded from the bind-mounted file — worth remembering for future config changes). |
 | M1.1 · Core-integration doc corrections | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Applied.** Three inaccuracies in `architecture/decisions.md` / `modules/core-integration.md` / `modules/web-facade.md` / `architecture/overview.md`, found by testing M1 against a real go-oikumenea instance rather than assumed from its docs. Items 1 (`audit.write` doesn't exist) and 3 (Keycloak → Google-direct) corrected in the docs themselves. Item 2 (`religion.read` unusable by a service principal) recorded as an upstream go-oikumenea gap — a feature request, not a doc-only fix, needed before M4. |
+| M1.2 · Instance-admin console (`oikumenea-console`) | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet deployed.** D-InstanceAdminConsole (`architecture/decisions.md`). Deploy go-oikumenea's own published console image as OpenFaithMap's third UI surface, super-admin-only — see prose below. |
 | M2 · Church-admin self-service facade | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built, not yet verified — see prose.** `modules/registration.md` (new — corrects the original "no schema of its own" framing). Backend, migration, and UI all built and proven end-to-end via curl against the live stack (submit, D-Exclusions check, list, approve's real go-oikumenea writes, reject, double-approve guard). **Verified is still ⬜:** the real browser round-trip (submit → operator approves → roster renders) hasn't run yet. |
 | M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet built.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + new `modules/web-admin.md`. Revises what M1's session layer and M2's UI routes actually build going forward — see prose below. |
+| M2.2 · Bulk congregation import (`hermenea`) | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet built.** D-BulkImport (`architecture/decisions.md`), `modules/import.md` (new). A CLI that replays `registration`'s existing submit/approve endpoints in a loop — see prose below. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) |
 | M4 · Public discovery site | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. |
 | M5 · Moderation | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. |
@@ -111,6 +113,33 @@ Three inaccuracies, applied:
    `modules/web-facade.md`'s session/identity section all now describe Google-direct, ID-token
    forwarding — not their own `D-<Name>` yet, still folded into D-CoreDependency's existing text.
 
+### M1.2 · Instance-admin console (`oikumenea-console`)
+
+**Depends on:** M1 (needs `oikumenea-app` running). **Leaves deployable:** yes — adds a third UI
+surface with no dependency on anything OpenFaithMap-specific, so it can land any time after M1,
+independent of M2's registration work.
+
+Adds `oikumenea-console` — go-oikumenea's own published console image, reused unmodified
+(D-InstanceAdminConsole) — as OpenFaithMap's third UI surface, for super admins (go-oikumenea
+instance admins) only. Concretely:
+
+1. Add an `oikumenea-console` service to `docker-compose.yml` (image
+   `docker.io/olegamysk/oikumenea-console`), reaching `oikumenea-app` over the compose-internal
+   network the same way `openfaithmap-api` does today.
+2. Decide and implement its network exposure. Unlike `openfaithmap-web`/`openfaithmap-admin`
+   (deliberately public), `oikumenea-console` carries instance-wide power — this milestone's exit
+   criterion includes picking a real restriction (VPN, IP allowlist, protected subdomain), not
+   leaving it as a bare `ports:` mapping the way `openfaithmap-api`'s host-port gap currently is.
+3. Document it as the human-facing replacement for what `scripts/bootstrap-service-principal` and
+   `scripts/bootstrap-admin-person` do today — those scripts can stay for reproducible/CI
+   bootstrapping, but a human operator should be able to do the same actions through
+   `oikumenea-console` instead of `psql`/a one-off Go script.
+
+No OpenFaithMap backend or schema work — this is a deployment-and-access-policy milestone, same
+shape as M1's `oikumenea-app` addition. `oikumenea-console` has no OpenFaithMap module doc of its
+own since OpenFaithMap builds none of it (D-Facade extended to the UI layer — see
+D-InstanceAdminConsole in `architecture/decisions.md`).
+
 ### M2 · Church-admin self-service facade
 
 **Depends on:** M1. **Leaves deployable:** a congregation admin can register a congregation (a
@@ -168,6 +197,26 @@ described as living in the single `web/` app — going forward, all three move t
 **Not done in this pass:** no code moved, no `web/` restructuring, no `docker-compose.yml` service
 added. `Backend`/`UI` stay `⬜` until an actual `openfaithmap-admin` app exists and the routes above
 move into it.
+
+### M2.2 · Bulk congregation import (`hermenea`)
+
+**Depends on:** M2 (the `registration` module's `POST /requests`/`POST /requests/{id}/approve`
+endpoints must exist — this milestone calls them, it doesn't add new ones). **Leaves deployable:**
+yes — a registration operator can onboard many congregations in one run; nothing else about the
+platform changes.
+
+Builds `hermenea` per [modules/import.md](modules/import.md) (D-BulkImport): a Go CLI, `cmd/hermenea`
+in this repo, published as `docker.io/olegamysk/hermenea`. For each row of an input file, it calls
+`openfaithmap-api`'s existing `RegistrationService` — submit, then approve — using a real
+registration operator's own forwarded token for the run. No new backend endpoint, no new schema, no
+new credential type: this milestone's work is entirely the CLI itself plus deciding the open seams
+`import.md` already names (input file schema, attribution for an imported row's
+congregation-contact person, partial-failure reporting shape).
+
+Exit criterion: a batch run against the live stack — N rows submitted and approved, D-Exclusions
+still enforced per row (at least one excluded-tradition row in the batch is rejected, not silently
+skipped), confirmed the same way M2's curl proof worked (real go-oikumenea writes landed, checked
+directly).
 
 ### M3 · Content / site-builder backend
 
