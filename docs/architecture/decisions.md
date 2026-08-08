@@ -326,19 +326,27 @@ OpenFaithMap-owned tables go-oikumenea's generic console has no knowledge of and
 (D-Facade); those stay in `openfaithmap-admin`, unchanged from D-AdminSurface.
 
 **Consequences.**
-- `docker-compose.yml` gains an `oikumenea-console` service (image
-  `docker.io/olegamysk/oikumenea-console`), reaching `oikumenea-app` the same way
-  `openfaithmap-api` does (compose-internal network, self-signed cert, dev-only
-  `NODE_TLS_REJECT_UNAUTHORIZED=0`).
+- `docker-compose.yml` gains an `oikumenea-console` service, pinned to
+  `docker.io/olegamysk/oikumenea-console:0.0.1` (matching how `oikumenea-app` is pinned to an exact
+  version rather than `latest`), reaching `oikumenea-app` the same way `openfaithmap-api` does
+  (compose-internal network, self-signed cert, dev-only `NODE_TLS_REJECT_UNAUTHORIZED=0`). It reuses
+  `openfaithmap-web`'s existing Google OAuth client rather than provisioning a new one or
+  reintroducing Keycloak — `deploy/oikumenea-install.yml`'s Google issuer entry already trusts this
+  audience, so no install-config change is needed there. The one external, out-of-repo action is
+  adding this surface's own callback origin to that same Google Cloud OAuth client's authorized
+  redirect URIs — the same treatment this decision already gives `openfaithmap-admin`'s callback
+  origin.
 - Its blast radius is strictly larger than either OpenFaithMap surface's (instance-wide, not
   congregation- or public-scoped), so unlike `openfaithmap-web`/`openfaithmap-admin` it must **not**
-  get a bare public host port at any real deployment beyond local dev — network-level restriction
-  (VPN, IP allowlist, or a protected subdomain) is part of what M1.2 (see
-  [milestones.md](../milestones.md)) has to decide, not left as a follow-up the way
-  `openfaithmap-api`'s host-port gap currently is.
+  get a bare public host port at any real deployment beyond local dev. **Decided:** a WireGuard VPN
+  in front of this surface at any real (non-local-dev) deployment, not an IP allowlist or protected
+  subdomain. **Not yet implemented:** there is no real deployment target in this project yet, so
+  there is nothing to configure the VPN against — local dev continues to publish a normal host port
+  (`docker-compose.yml`'s `oikumenea-console` service), the same exposure model
+  `openfaithmap-api`/`openfaithmap-web` already use, until a real deployment target exists.
 - Becomes the documented, human-facing replacement for what `scripts/bootstrap-service-principal`
-  and `scripts/bootstrap-admin-person` do today; those scripts may still be kept for
-  reproducible/CI bootstrapping, but a human operator no longer has to reach for `psql` or a
+  and `scripts/bootstrap-admin-person` do today; those scripts stay unchanged as the
+  reproducible/CI bootstrapping path — a human operator no longer has to reach for `psql` or a
   one-off Go script for these actions.
 
 ---
