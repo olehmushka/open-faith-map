@@ -38,12 +38,12 @@ go.work.sum
 # witchcraft-go-server local-dev logs
 /var/log/
 
-# Next.js (web/)
-web/node_modules/
-web/.next/
-web/out/
-web/.env*.local
-web/*.tsbuildinfo
+# Next.js (web/apps/*, M2.1)
+web/**/node_modules/
+web/**/.next/
+web/**/out/
+web/**/.env*.local
+web/**/*.tsbuildinfo
 
 # Atlas
 atlas.sum

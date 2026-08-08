@@ -280,6 +280,12 @@ application-level routing, which is weaker and easier to regress.
   `AUTH_SECRET`/`AUTH_GOOGLE_*`/`AUTH_URL` env vars at that point, since it no longer runs Auth.js.
 - [web-facade.md](../modules/web-facade.md) narrows to the public surface only;
   [web-admin.md](../modules/web-admin.md) is the new module doc for `openfaithmap-admin`.
+- **As implemented (M2.1):** no npm workspace, no `web/packages/*` shared-code directory — this
+  decision's original npm-workspaces recommendation was reconsidered and explicitly not taken.
+  `web/apps/web` and `web/apps/admin` are two fully independent apps, each with its own
+  `package.json`/`package-lock.json`/`Dockerfile`; the ~10 lines of boilerplate config
+  (`next.config.ts`, `eslint.config.mjs`, etc.) are duplicated rather than shared. Revisit if/when
+  that duplication becomes a real maintenance cost.
 
 ---
 

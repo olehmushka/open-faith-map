@@ -1,6 +1,6 @@
-# openfaithmap-web (M1) — docker-compose.yml's openfaithmap-web service. Standalone Next.js build;
-# oikumenea-client is a real npm dependency (published, not a file: link to a sibling checkout), so
-# the build context is this directory alone.
+# openfaithmap-web (M2.1, D-AdminSurface) — docker-compose.yml's openfaithmap-web service.
+# Standalone Next.js build, no Auth.js/go-oikumenea dependency at all (the anonymous public
+# surface never holds a session) — self-contained, no shared workspace with web/apps/admin.
 
 FROM node:22-alpine AS deps
 WORKDIR /app

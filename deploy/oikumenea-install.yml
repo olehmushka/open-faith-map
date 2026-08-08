@@ -41,7 +41,8 @@ idp:
       audience: oikumenea
       hmac-key: "local-dev-insecure-signing-key-change-me"
     # Google — direct OIDC issuer, no broker. audience = the shared Google OAuth client used for
-    # human login by BOTH openfaithmap-web and oikumenea-console (M1.2, D-InstanceAdminConsole —
+    # human login by BOTH openfaithmap-admin (M2.1, D-AdminSurface — the only OpenFaithMap-built
+    # surface that ever holds a session) and oikumenea-console (M1.2, D-InstanceAdminConsole —
     # reused as-is, same client id, no new audience needed); "openfaithmap-api" = the
     # target_audience OpenFaithMap's service principal's self-minted Google ID tokens carry (see
     # internal/coreintegration).

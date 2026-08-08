@@ -2,7 +2,7 @@
   "name": "openfaithmap-web",
   "private": true,
   "version": "0.0.0",
-  "description": "OpenFaithMap public site + congregation-admin console + moderator console, see docs/modules/web-facade.md.",
+  "description": "OpenFaithMap's anonymous public site — never holds a session, see docs/modules/web-facade.md.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "next": "^16.3.0",
-    "next-auth": "5.0.0-beta.32",
-    "oikumenea-client": "^0.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

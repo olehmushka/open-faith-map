@@ -1,42 +1,13 @@
-# web/ — openfaithmap-web
+# web/ — OpenFaithMap's two Next.js apps
 
-> **Planned split (not yet done):** per `docs/architecture/decisions.md`'s D-AdminSurface, this app
-> is slated to split into `web/apps/web` (anonymous public site) and `web/apps/admin` (the
-> session-holding admin/moderator console — see `docs/modules/web-admin.md`). Everything below still
-> describes what's actually in this directory today, pre-split (`docs/milestones.md`'s M2.1).
+Per `docs/architecture/decisions.md`'s D-AdminSurface, this directory holds two fully independent
+Next.js apps — no shared workspace, no shared code:
 
-The `openfaithmap-web` service described in
-[`docs/architecture/overview.md`](../docs/architecture/overview.md) and
-[`docs/modules/web-facade.md`](../docs/modules/web-facade.md): today, still one app serving the
-public site, the congregation-admin console, and the moderator console — the target is two.
+- **[`apps/web`](apps/web/README.md)** — `openfaithmap-web`, the anonymous public site. Never holds
+  a session. See `docs/modules/web-facade.md`.
+- **[`apps/admin`](apps/admin/README.md)** — `openfaithmap-admin`, the only surface that ever holds
+  a credential: registration wizard, operator-approval console, congregation-admin console,
+  moderator console. See `docs/modules/web-admin.md`.
 
-**M1's session layer is wired** (`auth.ts`, `app/api/auth/[...nextauth]/route.ts`,
-`lib/oikumenea.ts`): Auth.js v5 with Google as the sole OIDC provider (no Keycloak — see
-`docs/architecture/decisions.md`'s D-CoreDependency), forwarding the Google ID token as the bearer
-on go-oikumenea calls. `/login` starts the flow; `/whoami` calls
-`identityFederation.whoami()` through the forwarded token as the end-to-end proof. Everything else
-(public site, admin console, moderator console) is still unbuilt — that lands with `web-facade`'s
-later milestones, then moves per D-AdminSurface once M2.1 is built.
-
-## Local dev
-
-```sh
-npm install
-npm run dev
-```
-
-`npm run dev` alone is only useful for iterating on things that don't call go-oikumenea (build,
-typecheck, static pages) — `oikumenea-app` publishes no host port, so a host-run dev server can't
-reach it. Testing the real login flow requires the compose stack:
-
-```sh
-docker compose up --build
-```
-
-with `AUTH_SECRET` and `AUTH_GOOGLE_SECRET` set in the repo-root `.env` (see `.env.example`). See
-`web/.env.example` for the full set of variables this service reads.
-
-## Stack (D-Stack)
-
-Next.js (App Router), React 19, Tailwind, Auth.js v5 (Google provider) — see
-[`docs/architecture/decisions.md#d-stack--the-same-toolchain-as-go-oikumenea`](../docs/architecture/decisions.md).
+`web/go.mod` walls this whole directory off from the root Go module (see its header comment) — it
+covers both apps, no real Go code lives in it.

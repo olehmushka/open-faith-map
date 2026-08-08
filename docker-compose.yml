@@ -116,31 +116,44 @@ services:
       REGISTRATION_ROOT_UNIT_ID: "${REGISTRATION_ROOT_UNIT_ID}"
       REGISTRATION_CONGREGATION_ADMIN_ROLE_ID: "${REGISTRATION_CONGREGATION_ADMIN_ROLE_ID}"
 
-  # openfaithmap-web (M1) — the session layer / login. Reaches oikumenea-app at
-  # https://oikumenea-app:8443 over the compose-internal network (it publishes no host port), so a
-  # host-run `next dev` cannot complete a real login — use this service for that. Forwards the
-  # logged-in user's Google ID token as the bearer on every go-oikumenea call (no Keycloak — see
-  # docs/architecture/decisions.md's D-CoreDependency).
+  # openfaithmap-web (M2.1, D-AdminSurface) — the anonymous public surface. Holds no session, no
+  # Auth.js, no credential of any kind (docs/modules/web-facade.md). Reads no env vars today — it
+  # serves only the static placeholder home page; OIKUMENEA_BASE_URL/OPENFAITHMAP_API_BASE_URL get
+  # added here once a real data-reading public page exists (M4).
   openfaithmap-web:
     build:
-      context: ./web
+      context: ./web/apps/web
+    ports:
+      - "3002:3000"
+
+  # openfaithmap-admin (M2.1, D-AdminSurface) — the only surface that ever holds a session: the
+  # registration wizard, operator-approval console, congregation-admin console, moderator console
+  # (docs/modules/web-admin.md). Forwards the logged-in user's Google ID token as the bearer on
+  # every go-oikumenea / openfaithmap-api call (no Keycloak — docs/architecture/decisions.md's
+  # D-CoreDependency).
+  openfaithmap-admin:
+    build:
+      context: ./web/apps/admin
     depends_on:
       oikumenea-app:
         condition: service_started
       openfaithmap-api:
         condition: service_started
     ports:
-      - "3002:3000"
+      - "3004:3000"
     environment:
       OIKUMENEA_BASE_URL: "https://oikumenea-app:8443"
       # openfaithmap-api (M2) — reached over the compose network, same self-signed-cert caveat.
       OPENFAITHMAP_API_BASE_URL: "https://openfaithmap-api:3000"
       # oikumenea-app / openfaithmap-api both serve self-signed certs in local dev (D-HeadlessTopology). DEV ONLY.
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
-      AUTH_SECRET: "${AUTH_SECRET}"
-      AUTH_URL: "http://localhost:3002"
+      AUTH_SECRET: "${OPENFAITHMAP_ADMIN_AUTH_SECRET}"
+      AUTH_URL: "http://localhost:3004"
       AUTH_TRUST_HOST: "true"
       # Non-secret: matches the audience deploy/oikumenea-install.yml's Google issuer entry pins.
+      # Reuses the same Google OAuth client oikumenea-console already uses — needs
+      # http://localhost:3004/api/auth/callback/google added as an authorized redirect URI on that
+      # client in Google Cloud Console (external step, same treatment M1.2 gave oikumenea-console).
       AUTH_GOOGLE_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
       AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET}"
 
@@ -162,15 +175,15 @@ services:
       API_BASE_URL: "https://oikumenea-app:8443"
       # oikumenea-app serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
-      # Auth.js session secret — DISTINCT from openfaithmap-web's AUTH_SECRET above (two independent
-      # sessions). See .env.example.
+      # Auth.js session secret — DISTINCT from openfaithmap-admin's OPENFAITHMAP_ADMIN_AUTH_SECRET
+      # above (two independent sessions). See .env.example.
       AUTH_SECRET: "${OIKUMENEA_CONSOLE_AUTH_SECRET}"
       AUTH_URL: "http://localhost:3003"
       AUTH_TRUST_HOST: "true"
-      # Reuses openfaithmap-web's own Google OAuth client (same client id/secret) rather than
-      # provisioning a new one or reintroducing Keycloak — deploy/oikumenea-install.yml's Google
-      # issuer entry already trusts this audience, so no install-config change is needed. Manual,
-      # out-of-repo step required: add http://localhost:3003/api/auth/callback/google as an
+      # Reuses the same shared Google OAuth client openfaithmap-admin uses (same client id/secret)
+      # rather than provisioning a new one or reintroducing Keycloak — deploy/oikumenea-install.yml's
+      # Google issuer entry already trusts this audience, so no install-config change is needed.
+      # Manual, out-of-repo step required: add http://localhost:3003/api/auth/callback/google as an
       # authorized redirect URI on that same Google Cloud OAuth client.
       AUTH_GOOGLE_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
       AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET}"
