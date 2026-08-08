@@ -5,13 +5,12 @@
 OpenFaithMap is **three new services sitting in front of a headless go-oikumenea core** — two UI
 surfaces, split by whether they can ever hold a credential (D-AdminSurface), plus one backend —
 alongside **two things OpenFaithMap doesn't build**: a third, super-admin-only UI reused from
-go-oikumenea itself (D-InstanceAdminConsole), and a CLI that replays the backend's own registration
-flow in bulk rather than adding a new one (D-BulkImport):
+go-oikumenea itself (D-InstanceAdminConsole), and go-oikumenea's own reference-data companion
+service, deployed (not built) by OpenFaithMap (D-BulkImport):
 
 ```mermaid
 flowchart LR
     browser(("Browser"))
-    operator(("Registration operator"))
 
     subgraph ui["UI — three surfaces, ascending blast radius"]
         web["openfaithmap-web\nNext.js · anonymous · no session"]
@@ -19,8 +18,8 @@ flowchart LR
         console["oikumenea-console\ngo-oikumenea's own console\nsuper admins only · reused, not built"]
     end
 
-    subgraph tools["Offline tool — no new write path"]
-        hermenea["hermenea\nCLI · bulk congregation import\nreplays registration's own endpoints"]
+    subgraph reference["Reference-data seeding — deployed, not built"]
+        hermenea["hermenea\ngo-oikumenea's own companion\nown DB · own credential · cron/on-demand"]
     end
 
     subgraph backend["Backend"]
@@ -36,8 +35,7 @@ flowchart LR
     admin -- "user bearer token, forwarded" --> api
     admin -- "user bearer token, forwarded" --> core
     console -- "instance-admin token" --> core
-    operator -- "hands hermenea their own token, one run at a time" --> hermenea
-    hermenea -- "submit + approve, looped\nsame endpoints the wizard/console call" --> api
+    hermenea -- "POST /import/{objectType}\nhermenea-importer service principal" --> core
     api -- "SDK · user or service-principal token" --> core
 ```
 
@@ -58,8 +56,8 @@ Three new binaries, same toolchain go-oikumenea uses (D-Stack):
   else it is a **pure client** of go-oikumenea's generated SDK — it holds no tenant/person/
   authorization state of its own (D-Facade).
 
-Plus a third UI surface OpenFaithMap does **not** build, and one offline tool that adds no new
-write path (D-InstanceAdminConsole, D-BulkImport — see
+Plus a third UI surface OpenFaithMap does **not** build, and a reference-data service OpenFaithMap
+deploys but doesn't build either (D-InstanceAdminConsole, D-BulkImport — see
 [architecture/decisions.md](decisions.md)):
 
 - **`oikumenea-console`** — go-oikumenea's own published console image, reused unmodified, for
@@ -68,10 +66,11 @@ write path (D-InstanceAdminConsole, D-BulkImport — see
   than either OpenFaithMap surface — never gets a bare public host port beyond local dev (see
   [modules/import.md](../modules/import.md) and this doc's deployment topology below for the
   parallel with `oikumenea-app`'s own no-public-port rule).
-- **`hermenea`** — a Go CLI (`docker.io/olegamysk/hermenea`, `cmd/hermenea` in this repo) that lets
-  a registration operator bulk-onboard congregations by replaying `openfaithmap-api`'s existing
-  registration submit/approve endpoints in a loop, using the operator's own forwarded token. Not a
-  service anything else calls into — see [modules/import.md](../modules/import.md).
+- **`hermenea`** — go-oikumenea's own pre-existing reference-data companion service (countries,
+  languages, external orgs, geo places), not built by OpenFaithMap. Deployed via this repo's own
+  `docker-compose.yml` (its own database, its own `hermenea-importer` service-principal credential,
+  HTTP-only coupling to go-oikumenea's core). Has no relationship to `registration` or
+  `openfaithmap-api` at all — see [modules/import.md](../modules/import.md).
 
 go-oikumenea itself is unmodified — run from its published docker image, headless
 (D-CoreDependency), exactly as go-oikumenea's own `docker-compose.yml` runs its `app` container:
@@ -80,9 +79,9 @@ no host port published, reachable only over the compose-internal network.
 **Not built yet.** `openfaithmap-admin` is a decided, designed target (D-AdminSurface,
 [milestones.md](../milestones.md)'s M2.1) — the code that will become it currently still lives in
 the single `web/` app built before this split. See [web-facade.md](../modules/web-facade.md) and
-[web-admin.md](../modules/web-admin.md) for exactly what moves where. `oikumenea-console`
-(D-InstanceAdminConsole, M1.2) and `hermenea` (D-BulkImport, M2.2) are decided and designed, not
-yet deployed/built either — see [milestones.md](../milestones.md).
+[web-admin.md](../modules/web-admin.md) for exactly what moves where. `oikumenea-console` (D-InstanceAdminConsole, M1.2) is deployed and built; `hermenea`
+(D-BulkImport, M2.2) is decided and designed, deploy wiring not yet landed — see
+[milestones.md](../milestones.md).
 
 ## Request paths
 
@@ -107,14 +106,13 @@ integrity check): `openfaithmap-api`'s own scheduler → calls go-oikumenea usin
 **service-principal** client-credentials token (D-ServiceIdentities) → narrow, named grants only
 (see [core-integration.md](../modules/core-integration.md#authorization-touchpoints)).
 
-**Bulk congregation import** (a registration operator onboarding an existing church directory): a
-real operator runs `hermenea` locally, handing it their own forwarded token → for each row,
-`hermenea` calls `openfaithmap-api`'s `RegistrationService` — `POST /requests` then
-`POST /requests/{id}/approve`, the same two calls the wizard and operator-approval console make →
-`openfaithmap-api` performs the real go-oikumenea writes with **that same operator token**, never a
-service-principal or a `hermenea`-owned credential (D-BulkImport, see
-[modules/import.md](../modules/import.md)). No new path into go-oikumenea exists here — it is the
-authenticated-write path above, called in a loop.
+**Reference-data seeding** (countries, languages, external orgs): go-oikumenea's own `hermenea`
+companion service — deployed by OpenFaithMap, built by neither — runs on its own cron (or is
+triggered on demand via `POST /sync/{source-code}`), fetches from its configured source connectors,
+and posts `CanonicalEnvelope` batches to go-oikumenea's core at `POST /import/{objectType}`,
+authenticated as its own `hermenea-importer` service principal (`import.manage` only). Neither
+`openfaithmap-web`, `openfaithmap-admin`, nor `openfaithmap-api` is in this path — `hermenea` talks
+to go-oikumenea's core directly (D-BulkImport, see [modules/import.md](../modules/import.md)).
 
 **Instance administration** (managing the religion taxonomy, issuing a new service principal,
 bootstrapping a new instance admin): a super admin logs into `oikumenea-console` directly —
@@ -160,10 +158,12 @@ milestones.md):
   `openfaithmap-web`/`openfaithmap-admin`, it must not get a bare `ports:` mapping at any real
   deployment — its instance-wide power means M1.2 has to pick a network-level restriction (VPN, IP
   allowlist, protected subdomain) before it ships anywhere beyond local dev.
-- `hermenea` — **not built yet** (D-BulkImport, [milestones.md](../milestones.md)'s M2.2). Not a
-  long-running service and not a `docker-compose.yml` entry at all in the normal sense — a CLI a
-  registration operator runs locally (`docker run olegamysk/hermenea ...` or a compose `profiles:`
-  entry that's opt-in only), pointed at `openfaithmap-api`'s already-published host port.
+- `hermenea` — go-oikumenea's own companion service, deploy wiring not yet landed (D-BulkImport,
+  [milestones.md](../milestones.md)'s M2.2). A **persistent** service with its own database and
+  migration set, built from a sibling go-oikumenea checkout (no published image, matching how
+  go-oikumenea's own migrations are already sourced) via its `Dockerfile.hermenea`, publishing its
+  own ports (9443/9444) for local-dev triggering — see [modules/import.md](../modules/import.md)'s
+  "Operating hermenea" section for the exact compose services.
 
 ## What's unchanged from go-oikumenea, what's new
 
@@ -174,4 +174,4 @@ milestones.md):
 | Schema | `oikumenea` schema, `oikumenea.<module>_*` tables | `openfaithmap` schema, `openfaithmap.<module>_*` tables — see [conventions.md](conventions.md) |
 | UI | Optional Next.js admin console (`oikumenea-console`), BFF over the public API — super-admin-only, reused as-is by OpenFaithMap (D-InstanceAdminConsole) | Two separate Next.js apps (D-AdminSurface): `openfaithmap-web` (anonymous, no session) and `openfaithmap-admin` (the only OpenFaithMap-built surface that ever holds a credential), both facades over go-oikumenea and OpenFaithMap's own API |
 | Exposure | Headless, internal-only (D-HeadlessTopology); `oikumenea-console` is a separate, more-privileged surface OpenFaithMap deploys but never widens | `openfaithmap-web` and `openfaithmap-admin` are the two intended public ingress points — still the target, not yet fully true: `openfaithmap-api` also publishes host ports today, and `openfaithmap-admin` doesn't exist as a separate deployment yet (see deployment topology above) |
-| Bulk data entry | N/A | `hermenea` (D-BulkImport) — a CLI that replays `openfaithmap-api`'s own registration endpoints in a loop; no new write path, no service that runs unattended |
+| Reference-data seeding | Ships `hermenea`, its own companion service (own DB, own service-principal credential, `POST /import/{objectType}`) | Deploys go-oikumenea's `hermenea` unmodified (D-BulkImport) — no code, no credential, no write path of its own |

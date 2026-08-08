@@ -38,7 +38,12 @@ from the module doc it was raised in.
 - **DS-OFM-9 — M7 (hardening) is unscoped.** Rate limiting on anonymous report/registration
   endpoints, moderation-queue UX at real volume, and observability are all named but not designed —
   first real work item once M1–M6 are live. See [milestones.md](milestones.md#m7--hardening--real-user-feedback-idea-stage).
-- **DS-OFM-10 — `hermenea`'s input file schema and row-attribution.** Format (CSV/JSON), field set,
-  and how an imported row's congregation-contact person is resolved to a go-oikumenea person RID
-  for attribution are all undecided — pick when M2.2 is actually built. See
+- **DS-OFM-10 — A future scraped-church-data importer has no name, schema, or design.** M2.2's
+  original congregation-bulk-import scenario is real (importing an existing directory of churches
+  from a legacy system or scraped source) but is not `hermenea` — that name belongs to
+  go-oikumenea's own reference-data companion, deployed unmodified for M2.2 (see D-BulkImport's
+  Correction in [decisions.md](architecture/decisions.md)). A narrower, separately-named tool near
+  `openfaithmap-api` is expected to address it eventually; input format, field set, row-attribution
+  (how an imported congregation's real-world contact is resolved to a go-oikumenea person RID, if
+  at all), and connector shape are all undecided — pick when that milestone is actually scoped. See
   [import.md](modules/import.md#open-seams).

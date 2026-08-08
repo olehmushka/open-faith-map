@@ -19,7 +19,7 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-Stack](#d-stack--the-same-toolchain-as-go-oikumenea) | Same Go/gödel/Conjure/witchcraft/Atlas/Next.js toolchain as go-oikumenea |
 | [D-AdminSurface](#d-adminsurface--the-admin-moderator-console-is-a-separate-deployment-from-the-public-site) | The verified/admin console is a separate Next.js app (`openfaithmap-admin`) from the anonymous public site (`openfaithmap-web`) |
 | [D-InstanceAdminConsole](#d-instanceadminconsole--reuse-go-oikumeneas-own-console-as-the-third-super-admin-only-surface) | A third UI surface, `oikumenea-console`, is go-oikumenea's own published console reused unmodified — not built by OpenFaithMap |
-| [D-BulkImport](#d-bulkimport--hermenea-replays-the-existing-registration-flow-in-bulk-no-new-write-path) | `hermenea`, a CLI, bulk-onboards congregations by replaying registration's existing submit/approve endpoints — no new write path, no new credential |
+| [D-BulkImport](#d-bulkimport--hermenea-replays-the-existing-registration-flow-in-bulk-no-new-write-path) | OpenFaithMap deploys go-oikumenea's own `hermenea` companion service for reference-data seeding (countries, etc.) — no new code, no new write path; corrects the original CLI premise (see Correction) |
 
 ---
 
@@ -359,7 +359,36 @@ OpenFaithMap-owned tables go-oikumenea's generic console has no knowledge of and
 
 ### D-BulkImport — hermenea replays the existing registration flow in bulk, no new write path
 
-**Decision.** **`hermenea`**, a small Go CLI (published as its own image,
+**Correction (found while scoping M2.2 for real, before any code landed).** The decision and prose
+below describe a CLI OpenFaithMap was going to build. That premise was wrong on two counts, found
+in this order:
+
+1. **The mechanism didn't actually work.** `registration`'s `SubmitRegistrationRequest` carries no
+   contact-person field, and `submittedByPersonId` is *always* resolved server-side from the
+   caller's own bearer token via go-oikumenea's `whoami` — never client-supplied
+   ([registration.md](../modules/registration.md)). Since a bulk-import CLI can only ever hold the
+   *operator's* token (this decision's own "why not on-behalf-of" already forbids anything else),
+   every imported row would have been submitted, approved, **and granted `congregation-admin`** to
+   the operator — not to each congregation's real contact. "Bulk-onboard congregations on behalf of
+   their own admins" was never actually buildable on top of `registration`'s existing endpoints as
+   they stand today.
+2. **The name was already taken, by something that already does what M2.2 actually needs.**
+   go-oikumenea ships its own service, also named `hermenea` (sibling repo, `cmd/hermenea` +
+   `internal/hermenea/*`) — a persistent, already-built reference-data companion (countries,
+   languages, external orgs, geo places) with its own database, its own migrations, its own
+   `hermenea-importer` service-principal credential, coupled to go-oikumenea's core purely over
+   HTTP (`POST /import/{objectType}`). It self-seeds nothing OpenFaithMap needs to write code for —
+   OpenFaithMap's real job for M2.2 is **deploying** it (compose wiring + an install config), never
+   building a CLI, and never touching `registration`'s submit/approve endpoints at all. Full detail:
+   [modules/import.md](../modules/import.md).
+
+The original congregation-bulk-import scenario this decision was chasing is still real — a future,
+separately-named, not-yet-scoped tool near `openfaithmap-api` for scraped church data is expected to
+address it eventually — but it is out of scope for M2.2 and has no design yet (see
+[open-questions.md](../open-questions.md)'s `DS-OFM-10`). The Decision/Why/Why-not/Consequences
+text below is kept as historical record of the rejected CLI design, not as current guidance.
+
+**Decision (superseded — see Correction above).** **`hermenea`**, a small Go CLI (published as its own image,
 `docker.io/olegamysk/hermenea`, same D-Stack toolchain, living in this repo as `cmd/hermenea`) lets
 a registration operator bulk-onboard many congregations at once — e.g. importing an existing
 directory of churches — instead of one submission at a time through `openfaithmap-admin`'s
@@ -396,13 +425,18 @@ everything a bulk run needs; a batch endpoint would just be the same logic behin
 transport, with no invariant it adds. Revisit only if per-row HTTP round-trips prove too slow for
 real import volumes.
 
-**Consequences.**
+**Consequences (as originally written — see Correction above for what's actually true).**
 - Depends on M2 (the `registration` module's submit/approve endpoints must exist) — sequenced as
-  M2.2, not before.
+  M2.2, not before. **Superseded:** the corrected M2.2 has no dependency on `registration` at all.
 - No new schema, no new backend module of its own — `hermenea` is a new *consumer* of
   `openfaithmap-api`'s existing surface, documented in
   [modules/import.md](../modules/import.md) the same way `web-facade`/`web-admin` are documented
-  as schema-less consumers.
+  as schema-less consumers. **Still true, for a different reason:** the corrected M2.2 also adds no
+  OpenFaithMap backend module, schema, or code of any kind — it's deploy wiring only, for a service
+  OpenFaithMap doesn't own.
 - Because it needs a real operator's token, `hermenea` cannot run unattended in the background —
   every run is initiated by a real registration operator, consistent with
-  [core-integration.md](../modules/core-integration.md)'s no-on-behalf-of invariant.
+  [core-integration.md](../modules/core-integration.md)'s no-on-behalf-of invariant. **Superseded:**
+  go-oikumenea's actual `hermenea` holds its own service-principal credential and is designed to run
+  unattended, on cron or triggered via its own `POST /sync/{source}` — the opposite of this
+  constraint.

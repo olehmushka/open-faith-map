@@ -21,11 +21,13 @@ rationale.
 Two audiences: **visitors** (anonymous, use the map and read congregation sites) and
 **congregation admins** (verified, manage one or more congregations' presence and roster). A small
 platform-wide **moderator** roster handles reports, appeals, and the denomination-exclusion policy.
-Two further, smaller roles sit outside OpenFaithMap's own product surface entirely: **super admins**
+A further, smaller role sits outside OpenFaithMap's own product surface entirely: **super admins**
 manage go-oikumenea itself (taxonomy, tenants, service principals) through go-oikumenea's own
-`oikumenea-console`, reused unmodified (D-InstanceAdminConsole); a **registration operator** can
-bulk-onboard congregations with `hermenea` instead of one submission at a time (D-BulkImport).
-Geographic rollout: Ukraine + USA first, then Poland/UK, then the rest of EU/LATAM/Africa/Asia.
+`oikumenea-console`, reused unmodified (D-InstanceAdminConsole). go-oikumenea's own `hermenea`
+companion service, deployed by OpenFaithMap for reference-data seeding (D-BulkImport), has no
+OpenFaithMap-specific role of its own — it runs on cron with its own credential, not on behalf of
+any OpenFaithMap user. Geographic rollout: Ukraine + USA first, then Poland/UK, then the rest of
+EU/LATAM/Africa/Asia.
 
 ## The modules
 
@@ -39,7 +41,7 @@ Geographic rollout: Ukraine + USA first, then Poland/UK, then the rest of EU/LAT
 | [vouching](modules/vouching.md) | Web-of-trust guarantor verification for congregation-admin claims | New backend module |
 | [web-facade](modules/web-facade.md) | The anonymous public Next.js app — map, search, congregation pages, public report filing | Consumer — no schema |
 | [web-admin](modules/web-admin.md) | The verified Next.js app — registration wizard, operator/congregation-admin console, moderator console (D-AdminSurface) | Consumer — no schema |
-| [import](modules/import.md) | `hermenea` — a CLI that bulk-onboards congregations by replaying `registration`'s own submit/approve endpoints (D-BulkImport) | Consumer — no schema |
+| [import](modules/import.md) | Deploy wiring for `hermenea` — go-oikumenea's own reference-data companion service (D-BulkImport) | Not an OpenFaithMap module — deploy doc only, no schema, no code |
 
 **Not an OpenFaithMap module at all:** `oikumenea-console`, go-oikumenea's own published console
 image, reused unmodified as the third UI surface — super admins only (D-InstanceAdminConsole, see
@@ -59,8 +61,8 @@ search, and the audit trail.
    (church-discovery concept → what actually stores it now). Read this before any module doc.
 3. [`architecture/overview.md`](architecture/overview.md) — the three-service shape
    (`openfaithmap-web` + `openfaithmap-admin` + `openfaithmap-api`), plus the third UI surface
-   OpenFaithMap doesn't build (`oikumenea-console`) and the offline import tool that doesn't add a
-   new write path (`hermenea`); request paths; deployment topology.
+   OpenFaithMap doesn't build (`oikumenea-console`) and the reference-data companion service
+   OpenFaithMap deploys but doesn't build (`hermenea`); request paths; deployment topology.
 4. [`architecture/decisions.md`](architecture/decisions.md) — the binding decisions: scope,
    exclusions, the core dependency, the facade split, the content model, moderation, vouching, the
    shared toolchain. If code and a decision disagree, the code is wrong.
@@ -71,10 +73,11 @@ search, and the audit trail.
    module doc; it's the bridge every one of them assumes.
 7. [`modules/web-facade.md`](modules/web-facade.md) and [`modules/web-admin.md`](modules/web-admin.md)
    — the two OpenFaithMap-built UI surfaces (D-AdminSurface): which one holds a session, which one
-   never does. [`modules/import.md`](modules/import.md) — `hermenea`, the bulk-import CLI
-   (D-BulkImport). `oikumenea-console` (the third, super-admin-only surface, D-InstanceAdminConsole)
-   has no module doc — it's documented in `architecture/decisions.md` and `architecture/overview.md`
-   only, since OpenFaithMap builds none of it.
+   never does. [`modules/import.md`](modules/import.md) — the deploy wiring for `hermenea`,
+   go-oikumenea's own reference-data companion service (D-BulkImport). `oikumenea-console` (the
+   third, super-admin-only surface, D-InstanceAdminConsole) has no module doc — it's documented in
+   `architecture/decisions.md` and `architecture/overview.md` only, since OpenFaithMap builds none
+   of it.
 8. The relevant [`modules/*.md`](modules/) for the work at hand.
 9. [`open-questions.md`](open-questions.md) — the live backlog for the next planning session.
 10. [`milestones.md`](milestones.md) — the implementation roadmap, sequenced M0…M7, and its
