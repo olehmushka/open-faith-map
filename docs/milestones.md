@@ -22,7 +22,7 @@ gave: "it does not exist yet — the design is here."
 | M1.2 · Instance-admin console (`oikumenea-console`) | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built, not yet verified — see prose.** D-InstanceAdminConsole (`architecture/decisions.md`). `docker-compose.yml` runs go-oikumenea's own published console image as OpenFaithMap's third UI surface, super-admin-only. |
 | M2 · Church-admin self-service facade | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built, not yet verified — see prose.** `modules/registration.md` (new — corrects the original "no schema of its own" framing). Backend, migration, and UI all built and proven end-to-end via curl against the live stack (submit, D-Exclusions check, list, approve's real go-oikumenea writes, reject, double-approve guard). **Verified is still ⬜:** the real browser round-trip (submit → operator approves → roster renders) hasn't run yet. |
 | M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built, not yet verified — see prose.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + `modules/web-admin.md`. `web/` split into two independent Next.js apps, `web/apps/web` (no session, ever) and `web/apps/admin` (the only surface that ever holds a credential) — no application logic changed, only moved. |
-| M2.2 · Bulk congregation import (`hermenea`) | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet built.** D-BulkImport (`architecture/decisions.md`), `modules/import.md` (new). A CLI that replays `registration`'s existing submit/approve endpoints in a loop — see prose below. |
+| M2.2 · Reference-data seeding (`hermenea`) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** D-BulkImport (`architecture/decisions.md`, corrected), `modules/import.md` (corrected). Deploys go-oikumenea's own `hermenea` companion service for reference-data seeding — no OpenFaithMap code, corrects the original congregation-bulk-import-CLI premise. Real `docker compose up` proof: `geo-countries-iso3166` synced successfully, 250 rows confirmed in `oikumenea.geo_countries` — see prose below. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) |
 | M4 · Public discovery site | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. |
 | M5 · Moderation | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. |
@@ -212,25 +212,49 @@ Google OAuth client (external, Google Cloud Console) before a real login round-t
 same open item M1/M1.2 already carry. `Verified` stays ⬜ until that's done and a browser confirms
 both `openfaithmap-admin` login and `openfaithmap-web` shipping zero Auth.js code.
 
-### M2.2 · Bulk congregation import (`hermenea`)
+### M2.2 · Reference-data seeding (`hermenea`)
 
-**Depends on:** M2 (the `registration` module's `POST /requests`/`POST /requests/{id}/approve`
-endpoints must exist — this milestone calls them, it doesn't add new ones). **Leaves deployable:**
-yes — a registration operator can onboard many congregations in one run; nothing else about the
-platform changes.
+**Depends on:** M0 only (D-CoreDependency — go-oikumenea must be running). **Leaves deployable:**
+yes — go-oikumenea's core gets enriched reference data (country geometries, a fuller language
+catalog, external orgs); nothing else about the platform changes.
 
-Builds `hermenea` per [modules/import.md](modules/import.md) (D-BulkImport): a Go CLI, `cmd/hermenea`
-in this repo, published as `docker.io/olegamysk/hermenea`. For each row of an input file, it calls
-`openfaithmap-api`'s existing `RegistrationService` — submit, then approve — using a real
-registration operator's own forwarded token for the run. No new backend endpoint, no new schema, no
-new credential type: this milestone's work is entirely the CLI itself plus deciding the open seams
-`import.md` already names (input file schema, attribution for an imported row's
-congregation-contact person, partial-failure reporting shape).
+**Correction (found while scoping this milestone for real, before any code landed).** The original
+design — a Go CLI at `cmd/hermenea` bulk-onboarding *congregations* by replaying `registration`'s
+`POST /requests`/`POST /requests/{id}/approve` in a loop — didn't survive contact with
+`registration`'s actual contract. `SubmitRegistrationRequest` has no contact-person field, and
+`submittedByPersonId` is always resolved server-side from the caller's own token, never
+client-supplied ([registration.md](modules/registration.md)) — so a CLI holding only the operator's
+token would have made the operator, not each congregation's real contact, the submitter and
+resulting `congregation-admin` grantee for every row. Worse, the name was already taken:
+go-oikumenea ships its own service also named `hermenea` (sibling repo, `cmd/hermenea`) — a
+persistent reference-data companion (countries, languages, external orgs, geo places) with its own
+database and credential, entirely unrelated to congregation registration. Full detail in
+D-BulkImport's Correction ([architecture/decisions.md](architecture/decisions.md)).
 
-Exit criterion: a batch run against the live stack — N rows submitted and approved, D-Exclusions
-still enforced per row (at least one excluded-tradition row in the batch is rejected, not silently
-skipped), confirmed the same way M2's curl proof worked (real go-oikumenea writes landed, checked
-directly).
+**As built.** M2.2 is now deploy wiring only: `docker-compose.yml` gained `init-hermenea-db`,
+`migrate-hermenea`, and a `hermenea` service (built from a sibling go-oikumenea checkout via
+`Dockerfile.hermenea` — no published image exists — matching the `OIKUMENEA_SRC` sibling-checkout
+pattern `oikumenea-migrate` already uses), plus the two shared-secret env vars
+(`HERMENEA_OIKUMENEA_TOKEN`/`OIKUMENEA_HERMENEA_TOKEN`) added to `oikumenea-app`. A new
+`deploy/hermenea-install.docker.yml` (adapted from go-oikumenea's own reference config, retargeting
+`oikumenea.base-url` at this repo's `oikumenea-app` service name) declares the source list —
+including the bundled, network-free `geo-countries-iso3166` source that covers the "countries"
+case directly. No OpenFaithMap backend code, schema, or UI — see
+[modules/import.md](modules/import.md)'s "Operating hermenea" section for the runbook. The original
+congregation-bulk-import scenario is retargeted to a future, unscoped, separately-named tool — see
+[open-questions.md](open-questions.md)'s `DS-OFM-10`.
+
+**Verified.** Brought the full stack up (`OIKUMENEA_SRC=../go-oikumenea docker compose up --build`)
+against real containers: `init-hermenea-db`/`migrate-hermenea` completed, `hermenea` built from the
+sibling checkout and started, reached readiness (`GET /status/readiness` → 200). The bundled
+`geo-countries-iso3166` source ran automatically on first boot and reached
+`hermenea.import_runs.status = succeeded` (0 created / 2 updated / 30 skipped against go-oikumenea's
+own pinax-seeded baseline); `oikumenea.geo_countries` held 250 real rows afterward. Manually
+re-triggering via `POST /hermenea/v1/sync/geo-countries-iso3166` (bearer =
+`OIKUMENEA_HERMENEA_TOKEN`) also returned `200 {"jobId":...,"status":"queued"}` — confirming the
+corrected route (`docs/modules/import.md`'s runbook fixes the `/sync/{source}` path go-oikumenea's
+own compose comment shows, which 404s against a real instance; the real base-path is
+`/hermenea/v1`). Stack torn down after verification (`docker compose down`).
 
 ### M3 · Content / site-builder backend
 

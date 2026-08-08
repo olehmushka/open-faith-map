@@ -20,7 +20,10 @@
 #
 # go-oikumenea's migrations aren't published as a standalone artifact yet, so oikumenea-migrate reads
 # them from a sibling checkout of the go-oikumenea repo (OIKUMENEA_SRC, default ../go-oikumenea) —
-# make sure its migrations/ matches the image tag below.
+# make sure its migrations/ matches the image tag below. The same sibling checkout is now also used
+# for hermenea (M2.2, D-BulkImport) — go-oikumenea's own reference-data companion service, which has
+# no published image, so it's built from OIKUMENEA_SRC's Dockerfile.hermenea, and its own migration
+# set is read from OIKUMENEA_SRC's migrations/hermenea/. See docs/modules/import.md.
 #
 #   OIKUMENEA_SRC=/path/to/go-oikumenea docker compose up --build
 
@@ -76,8 +79,76 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./deploy/oikumenea-install.yml:/app/var/conf/install.yml:ro
+    environment:
+      # Two trust directions, two secrets (M2.2, D-BulkImport). HERMENEA_OIKUMENEA_TOKEN is the
+      # bearer go-oikumenea requires on inbound POST /import/{objectType} calls from hermenea
+      # (authenticates the hermenea-importer service principal, import.manage only).
+      # OIKUMENEA_HERMENEA_TOKEN is what go-oikumenea presents outbound when proxying a
+      # UI-triggered sync call to hermenea's own control API. Read as env-var overlays only (no
+      # install-config field) — see go-oikumenea's internal/platform/config's Hermenea struct.
+      # INSECURE local-dev defaults, matching go-oikumenea's own docker-compose.yml literally so
+      # both repos interoperate out of the box — replace for any real deployment.
+      HERMENEA_OIKUMENEA_TOKEN: "dev-hermenea-importer-token-change-me"
+      OIKUMENEA_HERMENEA_TOKEN: "dev-oikumenea-trigger-token-change-me"
     # No published ports (D-HeadlessTopology) — internal-only, reached by openfaithmap-api over the
     # compose network at https://oikumenea-app:8443.
+
+  # hermenea (M2.2, D-BulkImport) — go-oikumenea's own reference-data companion service, deployed
+  # unmodified, not built by OpenFaithMap (docs/modules/import.md). Owns a SEPARATE Postgres
+  # database (named `hermenea`, not a schema inside `oikumenea`/`openfaithmap`) with its own
+  # migration set. No published image exists, so it's built from the same OIKUMENEA_SRC sibling
+  # checkout oikumenea-migrate already uses, via that checkout's Dockerfile.hermenea.
+  init-hermenea-db:
+    image: postgres:16
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        psql "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -tc \
+          "SELECT 1 FROM pg_database WHERE datname='hermenea'" | grep -q 1 || \
+        psql "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -c \
+          "CREATE DATABASE hermenea;"
+
+  migrate-hermenea:
+    image: arigaio/atlas:latest
+    depends_on:
+      init-hermenea-db:
+        condition: service_completed_successfully
+    command: >-
+      migrate apply
+      --url "postgres://postgres:postgres@postgres:5432/hermenea?sslmode=disable"
+      --dir "file:///migrations"
+      --revisions-schema hermenea
+    volumes:
+      - ${OIKUMENEA_SRC:-../go-oikumenea}/migrations/hermenea:/migrations:ro
+
+  hermenea:
+    build:
+      context: ${OIKUMENEA_SRC:-../go-oikumenea}
+      dockerfile: Dockerfile.hermenea
+    command: ["serve"]
+    depends_on:
+      migrate-hermenea:
+        condition: service_completed_successfully
+      oikumenea-app:
+        condition: service_started
+    volumes:
+      - ./deploy/hermenea-install.docker.yml:/app/var/conf/hermenea-install.yml:ro
+    environment:
+      HERMENEA_OIKUMENEA_TOKEN: "dev-hermenea-importer-token-change-me"
+      OIKUMENEA_HERMENEA_TOKEN: "dev-oikumenea-trigger-token-change-me"
+    # Lets an enabled source point at a dist served from the host (e.g. a local test fixture) —
+    # inert unless such a source is enabled in deploy/hermenea-install.docker.yml.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Published directly, unlike oikumenea-app's D-HeadlessTopology no-port rule: hermenea holds no
+    # OpenFaithMap-sensitive data of its own, and local dev triggers it from the host
+    # (docs/modules/import.md's "Operating hermenea" curl example targets localhost:9443).
+    ports:
+      - "9443:9443"
+      - "9444:9444"
 
   # --- OpenFaithMap's own services ---
   openfaithmap-migrate:

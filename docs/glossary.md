@@ -123,10 +123,12 @@ instance admins) only. Manages instance-wide go-oikumenea concerns (the `religio
 tenant structure, service-principal issuance, other instance admins), never anything
 OpenFaithMap-owned. Not built by OpenFaithMap; see [architecture/decisions.md](architecture/decisions.md).
 
-**`hermenea`.** A Go CLI, published as its own image, that lets a **registration operator**
-bulk-onboard many congregations in one run by replaying [registration](modules/registration.md)'s
-existing submit/approve endpoints in a loop — no new write path, no new credential
-(D-BulkImport). See [modules/import.md](modules/import.md).
+**`hermenea`.** **go-oikumenea's own** pre-existing reference-data companion service (not built by
+OpenFaithMap) — seeds and enriches go-oikumenea's catalog data (countries, languages, external
+organizations, geo places) via declarative source connectors, coupled to go-oikumenea's core purely
+over HTTP. OpenFaithMap deploys it (compose wiring + an install config) — no code, no new write
+path, no new credential of OpenFaithMap's own (D-BulkImport). See
+[modules/import.md](modules/import.md).
 
 ---
 
