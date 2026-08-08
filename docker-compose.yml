@@ -144,5 +144,36 @@ services:
       AUTH_GOOGLE_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
       AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET}"
 
+  # oikumenea-console (M1.2, D-InstanceAdminConsole) — go-oikumenea's own published admin console,
+  # reused unmodified. Super-admin-only: manages the religion_taxa catalog, tenant/org structure
+  # instance-wide, service-principal registration, and other instance admins — nothing
+  # OpenFaithMap-specific. Reaches oikumenea-app the same way openfaithmap-api does (compose-internal
+  # network, self-signed cert). Published on a normal host port for local dev only — a real
+  # deployment restricts this behind a WireGuard VPN instead (decided, not yet implemented — see
+  # D-InstanceAdminConsole's consequences in docs/architecture/decisions.md).
+  oikumenea-console:
+    image: docker.io/olegamysk/oikumenea-console:0.0.1
+    depends_on:
+      oikumenea-app:
+        condition: service_started
+    ports:
+      - "3003:3000"
+    environment:
+      API_BASE_URL: "https://oikumenea-app:8443"
+      # oikumenea-app serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+      # Auth.js session secret — DISTINCT from openfaithmap-web's AUTH_SECRET above (two independent
+      # sessions). See .env.example.
+      AUTH_SECRET: "${OIKUMENEA_CONSOLE_AUTH_SECRET}"
+      AUTH_URL: "http://localhost:3003"
+      AUTH_TRUST_HOST: "true"
+      # Reuses openfaithmap-web's own Google OAuth client (same client id/secret) rather than
+      # provisioning a new one or reintroducing Keycloak — deploy/oikumenea-install.yml's Google
+      # issuer entry already trusts this audience, so no install-config change is needed. Manual,
+      # out-of-repo step required: add http://localhost:3003/api/auth/callback/google as an
+      # authorized redirect URI on that same Google Cloud OAuth client.
+      AUTH_GOOGLE_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
+      AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET}"
+
 volumes:
   postgres-data:

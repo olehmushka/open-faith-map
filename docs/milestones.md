@@ -19,7 +19,7 @@ gave: "it does not exist yet — the design is here."
 | M0 · Scope & core-dependency | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** Artifact: this doc set (`architecture/decisions.md`, `modules/core-integration.md`, `glossary.md`), coherence-checked (no dangling relative links, no `faithmap-app` references). A docs-only milestone; its exit criterion is the doc set existing and being internally consistent, met. |
 | M1 · go-oikumenea integration wiring | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | **Verified.** `docker-compose.yml` runs a real go-oikumenea instance (published image, migrated, shared Postgres). Service-principal auth (D-ServiceIdentities) proven end-to-end — `internal/coreintegration`, `scripts/bootstrap-service-principal`. `openfaithmap-web`'s session layer (Auth.js v5, Google as sole OIDC provider, ID-token forwarding — `web/auth.ts`, `web/lib/oikumenea.ts`, `/login`, `/whoami`) proven end-to-end with a real browser OAuth round-trip: Google login → `/whoami` resolves a real `personId`/`email` through go-oikumenea's PDP. Required `scripts/bootstrap-admin-person` (go-oikumenea's JIT is link-on-match only — a fresh instance has no person for a new Google identity to link onto) and a restart of `oikumenea-app` after an install-config edit (install config is read once at boot, not hot-reloaded from the bind-mounted file — worth remembering for future config changes). |
 | M1.1 · Core-integration doc corrections | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Applied.** Three inaccuracies in `architecture/decisions.md` / `modules/core-integration.md` / `modules/web-facade.md` / `architecture/overview.md`, found by testing M1 against a real go-oikumenea instance rather than assumed from its docs. Items 1 (`audit.write` doesn't exist) and 3 (Keycloak → Google-direct) corrected in the docs themselves. Item 2 (`religion.read` unusable by a service principal) recorded as an upstream go-oikumenea gap — a feature request, not a doc-only fix, needed before M4. |
-| M1.2 · Instance-admin console (`oikumenea-console`) | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet deployed.** D-InstanceAdminConsole (`architecture/decisions.md`). Deploy go-oikumenea's own published console image as OpenFaithMap's third UI surface, super-admin-only — see prose below. |
+| M1.2 · Instance-admin console (`oikumenea-console`) | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built, not yet verified — see prose.** D-InstanceAdminConsole (`architecture/decisions.md`). `docker-compose.yml` runs go-oikumenea's own published console image as OpenFaithMap's third UI surface, super-admin-only. |
 | M2 · Church-admin self-service facade | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built, not yet verified — see prose.** `modules/registration.md` (new — corrects the original "no schema of its own" framing). Backend, migration, and UI all built and proven end-to-end via curl against the live stack (submit, D-Exclusions check, list, approve's real go-oikumenea writes, reject, double-approve guard). **Verified is still ⬜:** the real browser round-trip (submit → operator approves → roster renders) hasn't run yet. |
 | M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet built.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + new `modules/web-admin.md`. Revises what M1's session layer and M2's UI routes actually build going forward — see prose below. |
 | M2.2 · Bulk congregation import (`hermenea`) | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided + designed, not yet built.** D-BulkImport (`architecture/decisions.md`), `modules/import.md` (new). A CLI that replays `registration`'s existing submit/approve endpoints in a loop — see prose below. |
@@ -119,26 +119,34 @@ Three inaccuracies, applied:
 surface with no dependency on anything OpenFaithMap-specific, so it can land any time after M1,
 independent of M2's registration work.
 
-Adds `oikumenea-console` — go-oikumenea's own published console image, reused unmodified
-(D-InstanceAdminConsole) — as OpenFaithMap's third UI surface, for super admins (go-oikumenea
-instance admins) only. Concretely:
+**As built.** `docker-compose.yml` gained an `oikumenea-console` service, pinned to
+`docker.io/olegamysk/oikumenea-console:0.0.1` (matching how `oikumenea-app` is pinned rather than
+using `latest`), reaching `oikumenea-app` the same way `openfaithmap-api` does (compose-internal
+network at `https://oikumenea-app:8443`, dev-only `NODE_TLS_REJECT_UNAUTHORIZED=0`). It reuses
+`openfaithmap-web`'s own Google OAuth client (same `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET`) rather
+than provisioning a new one or reintroducing Keycloak — `deploy/oikumenea-install.yml`'s Google
+issuer entry already trusted this audience, so no install-config value changed, only its comment
+(doc-accuracy). Its own Auth.js session secret (`OIKUMENEA_CONSOLE_AUTH_SECRET` in `.env.example`)
+is distinct from `openfaithmap-web`'s `AUTH_SECRET` — two independent sessions. Published on host
+port `3003` for local dev — not profile-gated the way go-oikumenea's own `docker-compose.yml`
+treats its `console-bff`, a deliberate choice for this repo.
 
-1. Add an `oikumenea-console` service to `docker-compose.yml` (image
-   `docker.io/olegamysk/oikumenea-console`), reaching `oikumenea-app` over the compose-internal
-   network the same way `openfaithmap-api` does today.
-2. Decide and implement its network exposure. Unlike `openfaithmap-web`/`openfaithmap-admin`
-   (deliberately public), `oikumenea-console` carries instance-wide power — this milestone's exit
-   criterion includes picking a real restriction (VPN, IP allowlist, protected subdomain), not
-   leaving it as a bare `ports:` mapping the way `openfaithmap-api`'s host-port gap currently is.
-3. Document it as the human-facing replacement for what `scripts/bootstrap-service-principal` and
-   `scripts/bootstrap-admin-person` do today — those scripts can stay for reproducible/CI
-   bootstrapping, but a human operator should be able to do the same actions through
-   `oikumenea-console` instead of `psql`/a one-off Go script.
+**Network exposure — decided, not yet implemented.** A real (non-local-dev) deployment puts
+`oikumenea-console` behind a WireGuard VPN rather than a bare public port, given its instance-wide
+blast radius (D-InstanceAdminConsole). There is no real deployment target in this project yet, so
+there is nothing to implement beyond recording the decision — see D-InstanceAdminConsole's
+consequences in `architecture/decisions.md`.
 
-No OpenFaithMap backend or schema work — this is a deployment-and-access-policy milestone, same
-shape as M1's `oikumenea-app` addition. `oikumenea-console` has no OpenFaithMap module doc of its
-own since OpenFaithMap builds none of it (D-Facade extended to the UI layer — see
-D-InstanceAdminConsole in `architecture/decisions.md`).
+**Still open:** the real login round trip (Google OAuth → `oikumenea-console` rendering the
+instance-admin UI) has not been run — same caveat M1's own browser round-trip has: it needs the
+project owner's real `AUTH_GOOGLE_SECRET` and a browser, plus one manual, out-of-repo step: adding
+`http://localhost:3003/api/auth/callback/google` as an authorized redirect URI on the same Google
+Cloud OAuth client `openfaithmap-web` already uses. Until that's done, `Verified` stays ⬜.
+`scripts/bootstrap-service-principal`/`scripts/bootstrap-admin-person` are untouched — they remain
+the CI/reproducible-bootstrap path; `oikumenea-console` is the human-facing alternative for the same
+actions, not a replacement. No OpenFaithMap backend or schema work — `oikumenea-console` has no
+OpenFaithMap module doc of its own since OpenFaithMap builds none of it (D-Facade extended to the
+UI layer — see D-InstanceAdminConsole in `architecture/decisions.md`).
 
 ### M2 · Church-admin self-service facade
 
