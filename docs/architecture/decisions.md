@@ -18,6 +18,8 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-Vouching](#d-vouching--web-of-trust-guarantor-verification) | Web-of-trust guarantor verification for congregation-admin claims |
 | [D-Stack](#d-stack--the-same-toolchain-as-go-oikumenea) | Same Go/gödel/Conjure/witchcraft/Atlas/Next.js toolchain as go-oikumenea |
 | [D-AdminSurface](#d-adminsurface--the-admin-moderator-console-is-a-separate-deployment-from-the-public-site) | The verified/admin console is a separate Next.js app (`openfaithmap-admin`) from the anonymous public site (`openfaithmap-web`) |
+| [D-InstanceAdminConsole](#d-instanceadminconsole--reuse-go-oikumeneas-own-console-as-the-third-super-admin-only-surface) | A third UI surface, `oikumenea-console`, is go-oikumenea's own published console reused unmodified — not built by OpenFaithMap |
+| [D-BulkImport](#d-bulkimport--hermenea-replays-the-existing-registration-flow-in-bulk-no-new-write-path) | `hermenea`, a CLI, bulk-onboards congregations by replaying registration's existing submit/approve endpoints — no new write path, no new credential |
 
 ---
 
@@ -278,3 +280,115 @@ application-level routing, which is weaker and easier to regress.
   `AUTH_SECRET`/`AUTH_GOOGLE_*`/`AUTH_URL` env vars at that point, since it no longer runs Auth.js.
 - [web-facade.md](../modules/web-facade.md) narrows to the public surface only;
   [web-admin.md](../modules/web-admin.md) is the new module doc for `openfaithmap-admin`.
+
+---
+
+### D-InstanceAdminConsole — Reuse go-oikumenea's own console as the third, super-admin-only surface
+
+**Decision.** A third UI surface exists: **`oikumenea-console`**, go-oikumenea's own published
+console image (`architecture/overview.md`'s comparison table already noted go-oikumenea ships an
+"optional Next.js admin console, BFF over the public API" — this is that product, reused
+unmodified). It is deployed alongside `oikumenea-app` exactly as `oikumenea-app` itself is
+(D-CoreDependency: published image, no source in this repo) and is for **super admins only** —
+whoever holds go-oikumenea's own instance-admin authority (see go-oikumenea's own `D-Bootstrap`).
+It manages exactly what go-oikumenea already owns and nothing OpenFaithMap-specific: the
+`religion_taxa` catalog, tenant/organization structure instance-wide, service-principal
+registration, and other instance admins. OpenFaithMap builds none of this — same D-Facade reasoning
+already applied to the backend (D-Facade), now applied to the third UI: don't build a bespoke admin
+surface for concerns a product that already exists already covers.
+
+This makes three total UI surfaces, each a strictly narrower blast radius than the last:
+
+| Surface | Audience | Scope | Built by |
+|---|---|---|---|
+| `oikumenea-console` | Super admins (instance admins) | Instance-wide: taxonomy, tenants, service principals, other instance admins | go-oikumenea (reused, unmodified) |
+| `openfaithmap-admin` | Congregation admins, registration operators, moderators | OpenFaithMap-domain: one or more congregations, registration approval, moderation queue | OpenFaithMap (D-AdminSurface) |
+| `openfaithmap-web` | Anonymous visitors | Public read-only: map, search, congregation pages | OpenFaithMap (D-AdminSurface) |
+
+**Why.** `oikumenea-console` already exists, is already maintained as part of go-oikumenea, and
+covers concerns (taxonomy management, service-principal issuance, instance-admin bootstrapping)
+that today have no human-facing UI at all in this project — only one-off scripts
+(`scripts/bootstrap-service-principal`, `scripts/bootstrap-admin-person`,
+`scripts/bootstrap-registration-org`). Reusing it closes that gap for free and keeps
+OpenFaithMap's own two surfaces free of any instance-wide power, matching D-Facade's "thin on
+identity/tenant" framing extended to the UI layer.
+
+**Why not** fold instance-admin capability into `openfaithmap-admin`: rejected — `openfaithmap-admin`
+is scoped to OpenFaithMap-domain authority (a congregation, the registration queue, the moderation
+queue), never instance-wide go-oikumenea authority. Blurring that line would mean a congregation-admin
+console occasionally also being an instance-admin console depending on who's logged in — the same
+"which surface can possibly hold how much power" regression D-AdminSurface already rejected once for
+the public/admin split.
+
+**Why not** fold operator-approval or moderator functions into `oikumenea-console` instead (the
+inverse question): rejected — `registration_requests`, moderation reports, and vouching are
+OpenFaithMap-owned tables go-oikumenea's generic console has no knowledge of and never will
+(D-Facade); those stay in `openfaithmap-admin`, unchanged from D-AdminSurface.
+
+**Consequences.**
+- `docker-compose.yml` gains an `oikumenea-console` service (image
+  `docker.io/olegamysk/oikumenea-console`), reaching `oikumenea-app` the same way
+  `openfaithmap-api` does (compose-internal network, self-signed cert, dev-only
+  `NODE_TLS_REJECT_UNAUTHORIZED=0`).
+- Its blast radius is strictly larger than either OpenFaithMap surface's (instance-wide, not
+  congregation- or public-scoped), so unlike `openfaithmap-web`/`openfaithmap-admin` it must **not**
+  get a bare public host port at any real deployment beyond local dev — network-level restriction
+  (VPN, IP allowlist, or a protected subdomain) is part of what M1.2 (see
+  [milestones.md](../milestones.md)) has to decide, not left as a follow-up the way
+  `openfaithmap-api`'s host-port gap currently is.
+- Becomes the documented, human-facing replacement for what `scripts/bootstrap-service-principal`
+  and `scripts/bootstrap-admin-person` do today; those scripts may still be kept for
+  reproducible/CI bootstrapping, but a human operator no longer has to reach for `psql` or a
+  one-off Go script for these actions.
+
+---
+
+### D-BulkImport — hermenea replays the existing registration flow in bulk, no new write path
+
+**Decision.** **`hermenea`**, a small Go CLI (published as its own image,
+`docker.io/olegamysk/hermenea`, same D-Stack toolchain, living in this repo as `cmd/hermenea`) lets
+a registration operator bulk-onboard many congregations at once — e.g. importing an existing
+directory of churches — instead of one submission at a time through `openfaithmap-admin`'s
+registration wizard. It does this by **replaying registration's existing Conjure endpoints in a
+loop** ([registration.md](../modules/registration.md)'s `POST /requests` then
+`POST /requests/{id}/approve`), reading rows from a structured input file (schema decided when
+M2.2 is actually built — see [milestones.md](../milestones.md)) and calling exactly the API
+surface the wizard and the operator-approval console already call. It introduces **no new write
+path and no new credential**: `hermenea` holds no token of its own — an operator hands it their
+own real forwarded token for the duration of one run, the same "operator-owned" trust level
+`scripts/bootstrap-registration-org` already assumes today ([registration.md](../modules/registration.md)'s
+authority-bootstrapping finding).
+
+**Why.** M2's registration flow was designed for one prospective admin submitting their own
+congregation — reasonable for organic growth, unworkable for onboarding an existing list of
+hundreds of churches (the actual scenario a legacy-directory migration or a partner-diocese bulk
+signup needs). Reusing the existing submit/approve endpoints in a loop means every invariant
+`registration.md` already guarantees (the D-Exclusions check per row, `unit`-scoped grants only,
+the submitter's person RID always resolved from a real token, never client-supplied) holds for a
+bulk run exactly as it does for a single manual one — bulk import is a new *client*, not a new
+*mechanism*.
+
+**Why not** give `hermenea` its own service-principal grant to write registrations directly (skip
+the human-token requirement): rejected — this is exactly the on-behalf-of write
+[core-integration.md](../modules/core-integration.md)'s invariants already forbid ("OpenFaithMap's
+backend never presents its service-principal token to act as a specific person, even for
+automation"). A bulk-import tool is not a special case of that rule; widening it here would create
+a second, higher-privilege write path around the same review workflow that exists specifically to
+keep a human decision (and the D-Exclusions check) in the loop.
+
+**Why not** a new bulk-specific backend endpoint (e.g. `POST /requests/bulk`) instead of a CLI
+replaying the existing ones: rejected for now — the existing per-row endpoints already do
+everything a bulk run needs; a batch endpoint would just be the same logic behind a different
+transport, with no invariant it adds. Revisit only if per-row HTTP round-trips prove too slow for
+real import volumes.
+
+**Consequences.**
+- Depends on M2 (the `registration` module's submit/approve endpoints must exist) — sequenced as
+  M2.2, not before.
+- No new schema, no new backend module of its own — `hermenea` is a new *consumer* of
+  `openfaithmap-api`'s existing surface, documented in
+  [modules/import.md](../modules/import.md) the same way `web-facade`/`web-admin` are documented
+  as schema-less consumers.
+- Because it needs a real operator's token, `hermenea` cannot run unattended in the background —
+  every run is initiated by a real registration operator, consistent with
+  [core-integration.md](../modules/core-integration.md)'s no-on-behalf-of invariant.

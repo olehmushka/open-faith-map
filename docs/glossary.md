@@ -117,6 +117,17 @@ driven by a live user request.
 (no public port) via its docker image — the sole source of truth for identity, tenant/organization
 structure, role authority, location, and the religion taxonomy.
 
+**`oikumenea-console`.** go-oikumenea's own published admin-console image, reused unmodified as
+OpenFaithMap's third UI surface (D-InstanceAdminConsole) — for **super admins** (go-oikumenea
+instance admins) only. Manages instance-wide go-oikumenea concerns (the `religion_taxa` catalog,
+tenant structure, service-principal issuance, other instance admins), never anything
+OpenFaithMap-owned. Not built by OpenFaithMap; see [architecture/decisions.md](architecture/decisions.md).
+
+**`hermenea`.** A Go CLI, published as its own image, that lets a **registration operator**
+bulk-onboard many congregations in one run by replaying [registration](modules/registration.md)'s
+existing submit/approve endpoints in a loop — no new write path, no new credential
+(D-BulkImport). See [modules/import.md](modules/import.md).
+
 ---
 
 ## Term-mapping table
