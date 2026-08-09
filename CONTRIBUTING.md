@@ -37,13 +37,15 @@ gödel version on first run, no separate install needed. See
 for why this toolchain (gödel + Conjure + witchcraft-go-server + pgx/sqlc + Atlas) rather than
 something more generic.
 
-For the web tier:
+For the web tier — two fully independent apps, no npm workspace (D-AdminSurface):
 
 ```sh
-cd web
-npm install
-npm run dev
+cd web/apps/web   && npm install && npm run dev   # openfaithmap-web  — anonymous public site
+cd web/apps/admin && npm install && npm run dev   # openfaithmap-admin — the surface with a session
 ```
+
+Each has its own `package.json`, `package-lock.json`, and `Dockerfile`; there is nothing to install
+at `web/` itself.
 
 ## Branching
 
@@ -71,9 +73,14 @@ the `D-<Name>` / module / stage-board row it advances gets linked explicitly (se
    domain owns its interfaces and imports no framework; cross-module calls inside
    `openfaithmap-api` are direct interface calls, cross-module mutations are domain events (same
    rule go-oikumenea applies inside its own monolith).
-3. Run `./godelw verify` before pushing — it runs format, lint, and test in one gate.
-4. Migrations (once any exist) are expand-only via Atlas, under `migrations/`, one repo-root
-   directory — never a destructive change without a documented contract-phase migration.
+3. Run `./godelw verify` before pushing — it runs format, lint, and test for the Go tree. Note it
+   does **not** cover `web/`: run each app's own `npm run lint && npm run build` when you touch one.
+   CI runs both. ⚠️ **CI's `web` job has been failing since the M2.1 split** — it still expects the
+   deleted `web/package.json`. Fixed by [M2.4](docs/milestones.md); until then, `main` being red is
+   known, and no milestone may advance to Verified while it is.
+4. Migrations are expand-only via Atlas, under `migrations/`, one repo-root directory — never a
+   destructive change without a documented contract-phase migration. Re-hash with
+   `atlas migrate hash --env local` after adding one, or `atlas.sum` fails the apply.
 5. Conjure contracts (`api/<module>.conjure.yml`) are the source of truth; generated Go/TypeScript
    code is never hand-edited.
 6. Open a PR using the template — describe what gate(s) it advances and link the `D-<Name>` /

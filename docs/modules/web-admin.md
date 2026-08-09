@@ -55,6 +55,12 @@ single-app `openfaithmap-web` used to before the split.
   tenant/person/religion-shaped (congregation roster, claim provisioning); `openfaithmap-api`'s own
   generated TypeScript SDK for content/moderation/vouching writes. Never a raw `fetch` against either
   service's REST surface — always the typed client.
+  > **Not true yet for `openfaithmap-api` (audit 2026-08-09).** `web/apps/admin/lib/registration.ts`
+  > is a hand-written fetch client: `openfaithmap-api` has no TypeScript codegen pipeline, so there
+  > is no generated SDK to import. The go-oikumenea half of this dependency *is* satisfied
+  > (`oikumenea-client`). [milestones.md](../milestones.md)'s **M2.6** stands the pipeline up, and is
+  > sequenced before M3 so a second hand-written client is never written. The invariant stays as
+  > stated because it is the target; treat any new hand-written client as a regression.
 - **Called by:** nothing — it is one of two public ingress points (the other is
   [`openfaithmap-web`](web-facade.md#dependencies)). It publishes its own host port and, once built,
   is expected to sit at its own subdomain (e.g. `admin.openfaithmap.org`), separate from the public
@@ -66,10 +72,13 @@ single-app `openfaithmap-web` used to before the split.
   already decided to include — it does not fetch permissively and hide UI client-side. A disallowed
   action returns an error from go-oikumenea/`openfaithmap-api`, surfaced as a normal error state, not
   silently prevented by a hidden button.
-- **Registration wizard runs the exclusion pre-check first.** Before any go-oikumenea call, the
-  wizard calls `POST /moderation/v1/exclusion-check` — see
-  [core-integration.md](core-integration.md#provisioning-a-congregation-the-core-end-to-end-flow)
-  step 1 — so an ineligible tradition never reaches the point of attempting org creation.
+- **The exclusion check runs before any go-oikumenea write.** *As designed*, the wizard would call
+  `POST /moderation/v1/exclusion-check` first. **As built (M2), there is no separate pre-check
+  call:** `moderation` doesn't exist yet, and `POST /registration/v1/requests` runs the D-Exclusions
+  taxon-ancestor walk server-side before persisting anything, returning
+  `Registration:TaxonExcluded` ([registration.md](registration.md)). The invariant that matters —
+  an ineligible tradition never reaches org creation — holds either way. Revisit the split when M5
+  lands and the check consolidates into `moderation`.
 
 ## Invariants
 

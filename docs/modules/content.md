@@ -90,11 +90,20 @@ Conventions per [conventions.md](../architecture/conventions.md): RID PKs, `TIME
 | `GET·PUT /block-types` | Read / manage the block-type catalog | none (public read) / `content.catalog.manage` (platform) |
 
 Public reads never expose `draft` documents or blocks belonging to them. `content.manage` is
-**not a go-oikumenea permission code** — it is checked by `openfaithmap-api` calling go-oikumenea's
-own `GET /units/{unitId}` (or an equivalent authority probe) with the caller's forwarded token and
-treating a successful, authoritative read/write on that unit as proof of standing — the actual
-authorization decision is still go-oikumenea's PDP, OpenFaithMap just interprets its answer for its
-own resource.
+**not a go-oikumenea permission code** — it is OpenFaithMap's name for a **target-scoped capability
+check** against go-oikumenea's PDP: "does this caller hold write authority over *this specific*
+congregation unit?" See [D-PlatformModerator](../architecture/decisions.md) for the pattern, which
+every OpenFaithMap-owned module follows.
+
+> **Corrected at the 2026-08-09 audit.** This paragraph previously defined `content.manage` as
+> "call `GET /units/{unitId}` with the caller's forwarded token and treat a successful,
+> authoritative read on that unit as proof of standing." That is wrong in a way worth spelling out,
+> because it is an easy mistake to re-make: **read authority is not write authority.** Under
+> go-oikumenea's model a person can hold `unit.read` over a unit they have no business editing —
+> `congregation-admin` itself holds `unit.read`, and a future jurisdiction-level or moderator role
+> would hold it over many units. Treating a successful read as proof of standing would let anyone
+> who can *see* a congregation rewrite its website. The check must name the write authority it
+> actually requires, against the unit it actually concerns.
 
 ## Dependencies
 
@@ -108,10 +117,18 @@ own resource.
 
 ## Authorization touchpoints
 
-`content.manage` (per congregation unit — proxies go-oikumenea's own authority check on that unit,
-see above) and `content.catalog.manage` (platform-wide, block-type catalog edits — restricted to
-platform moderators). No permission code here is ever consulted by go-oikumenea's PDP; it has no
-knowledge of the `content` schema at all.
+`content.manage` (per congregation unit — a target-scoped capability check against go-oikumenea's
+PDP for write authority on *that* unit, see above) and `content.catalog.manage` (platform-wide,
+block-type catalog edits — restricted to platform moderators, whose authority is a
+`platform-moderator` Role on the shared root unit per
+[D-PlatformModerator](../architecture/decisions.md), not a local roster).
+
+Neither name is ever consulted by go-oikumenea's PDP — it has no knowledge of the `content` schema.
+What the PDP answers is the underlying capability question; these names are how this module refers
+to that answer. That distinction matters for the same reason it does in
+[registration.md](registration.md)'s known defects: when the rows being protected are
+OpenFaithMap's own, the local check is the *entire* access-control decision, with no PDP behind it
+to catch a wrong answer. Get the target and the verb right.
 
 ## Invariants
 
@@ -130,9 +147,17 @@ knowledge of the `content` schema at all.
 
 ## Open seams
 
-- **Post and Event are designed but not MVP.** The MVP milestone (see
-  [milestones.md](../milestones.md)) ships `page` only; `post`/`event` land at the discovery
-  milestone once the public site has something to link them from.
+- **Post and Event are designed but not MVP.** M3 ships `page` only; `post`/`event` land at **M4**,
+  once the public site has something to link them from. *(Audit 2026-08-09: this doc and
+  milestones.md's M3 previously disagreed — M3's entry said "this milestone's own later iteration,"
+  this doc said the discovery milestone. M4 is the answer, and both now say so.)*
+- **`content_sites.slug` collisions have no design.** The column is globally `UNIQUE`, but under
+  [D-FlatRoot](../architecture/decisions.md) congregations self-register with no namespace between
+  them, so two "St. Mary's" collide on first publish. `registration`'s `slugCode` solves the
+  equivalent problem for go-oikumenea unit codes by appending a random suffix; nothing here does.
+  Decide when M3's migration is written — random suffix, per-country namespacing, or admin-chosen
+  with a uniqueness probe and a real error message. The last is the only one that produces a URL a
+  congregation would want to print on a sign.
 - **Full-text content search** (searching page/post bodies, not just location) has no owner yet —
   a candidate for a dedicated search index once content volume justifies one; not needed at MVP
   scale.

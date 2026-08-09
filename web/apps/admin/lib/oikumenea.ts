@@ -3,7 +3,7 @@
 
 // Server-only: builds a go-oikumenea SDK client bound to the current session's Google ID token
 // (M1, docs/modules/core-integration.md). Never called from client-side code — the token must
-// never reach the browser (docs/modules/web-facade.md's session/identity invariants).
+// never reach the browser (docs/modules/web-admin.md's session/identity invariants).
 import "server-only";
 import { createOikumeneaClient, type OikumeneaClient } from "oikumenea-client";
 

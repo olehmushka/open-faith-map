@@ -14,8 +14,14 @@ this doc defines the gates it moves through.
 | designed | A module doc written to the fixed template (purpose → entities → data model → Conjure sketch → dependencies → authorization touchpoints → invariants → open seams) + an `M#` row added to [`milestones.md`](milestones.md) | `milestones.md`, `modules/`, `glossary.md` |
 | backend | A Go module in `openfaithmap-api` + an `api/<module>.conjure.yml` (generated, never hand-edited) | code |
 | migrated | One versioned Atlas migration under `migrations/`, expand-only, lint-gated | code |
-| ui | Page(s) under `openfaithmap-web/`, or `➖` for a backend-only milestone | code |
-| verified | The milestone's exit criteria are met, tests pass, the slice boots/migrates/demos end-to-end | stage board → ✅ |
+| ui | Page(s) under `web/apps/web/` (anonymous) or `web/apps/admin/` (verified) — D-AdminSurface — or `➖` for a backend-only milestone | code |
+| verified | The milestone's exit criteria are met, **CI is green on `main`**, and the slice boots/migrates/demos end-to-end | stage board → ✅ |
+
+**A sixth gate symbol: 🔶.** A milestone that is fully built but blocked on a named external action
+(an OAuth redirect URI added in a console this repo can't automate, an upstream feature request)
+shows `🔶` in `Verified`, not `⬜` — "done, waiting on one specific thing someone must do" and
+"not started" are different states, and collapsing them hides work that is one step from finished.
+Name the blocking action in the milestone's prose; `🔶` without a named action is just `⬜`.
 
 Two entry points converge at "decided": a raw idea logged in `todo.md`, or a seam parked in
 [`open-questions.md`](open-questions.md). An idea-stage feature lives only in `todo.md` until it
@@ -44,6 +50,18 @@ SDK (never a raw HTTP client — see [D-CoreDependency](architecture/decisions.m
 passing end-to-end test — never from memory. This is the same rule go-oikumenea's own
 `CLAUDE.md` states for its stage board, carried over unchanged because it's the discipline that
 actually keeps a stage board trustworthy.
+
+**Check CI before you write ✅.** Added after the 2026-08-09 audit found `main` had been red since
+M2.1 — the split deleted `web/package.json` and left CI's `web` job pointing at it — while three
+subsequent milestones passed their gates and `CONTRIBUTING.md` kept promising "the same gate CI
+runs." A green run on `main` at the merge commit is now part of the definition above. A red `main`
+means no milestone advances to Verified until it's green, whatever else was proven by hand.
+
+**A happy-path proof is not a Verified proof.** M2 was proven end-to-end by curl and still shipped
+three defects — an authorization gate that discloses every submitter's PII, an endpoint with no
+authorization at all, and a distributed write with no atomicity — because none of them appear on the
+happy path. When the exit criteria are about *authorization* or *failure modes*, the artifact has to
+exercise those specifically: a second token that should be refused, a process killed mid-write.
 
 ## Stage-board honesty
 

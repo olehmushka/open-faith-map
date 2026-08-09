@@ -14,6 +14,26 @@ never becomes a second source of truth for where a congregation is. The one thin
 OpenFaithMap's single highest-traffic, mostly-anonymous surface and re-querying go-oikumenea's
 PostGIS discovery search on every map pan/zoom would be wasteful for both services.
 
+## ⚠️ Two unverified assumptions block this module (audit 2026-08-09)
+
+Everything below is designed against go-oikumenea behavior nobody has measured. M1.1 established
+that every `religion` module read endpoint is `RequireAnywhere`-gated — a person-shaped PEP path
+that denies subjects with no person behind them. Two consequences:
+
+1. **The cache refresh has no callable path.** It is specified as a background job on the service
+   principal (D-ServiceIdentities), and a service principal is exactly the machine subject
+   `RequireAnywhere` denies. Refreshing under a real person's token instead would violate
+   [core-integration.md](core-integration.md)'s no-on-behalf-of invariant, so there is no fallback.
+2. **The public read path may be denied too, which would be much worse.** An anonymous caller is
+   *also* a subject with no person behind it. If `RequireAnywhere` denies it,
+   `GET /religion/discovery/sites` is not reachable from `openfaithmap-web` at all and this module's
+   entire premise — a thin public read facade — fails, not just its cache layer.
+
+Point 2 is **unmeasured**. It costs one afternoon to settle and it decides whether this design
+survives: [milestones.md](../milestones.md)'s **M2.5** measures both, files the upstream
+go-oikumenea feature request, and blocks M4's `designed` gate on the answer. Do not build against
+this doc until M2.5 reports.
+
 ## Entities & aggregates
 
 - **Discovery cache row** — a denormalized, short-TTL projection of one go-oikumenea
@@ -84,7 +104,17 @@ cache, not re-applied here.
 - **Refresh cadence** (background job on a timer vs. webhook-driven from go-oikumenea) is not
   decided — go-oikumenea has no outbound webhook for religion-site changes today; scheduled
   polling via the service principal is the interim default (see
-  [core-integration.md](core-integration.md)).
+  [core-integration.md](core-integration.md)). **Note this is downstream of a bigger question:**
+  polling via the service principal is not currently *possible* at all — see the blocked
+  assumptions at the top of this doc. Cadence is only worth deciding once M2.5 establishes that a
+  machine-callable path exists.
+- **`discovery_site_cache.content_site_id` is a real FK to `content_sites`**, a schema-level
+  coupling between two modules inside `openfaithmap-api`.
+  [conventions.md](../architecture/conventions.md) specifies cross-module *code* boundaries
+  (interface calls, domain events) but says nothing about cross-module foreign keys. Worth settling
+  before M3/M4 add more of them — either the FK is fine because both tables live in one schema and
+  one deployable, or the cache should hold an opaque local RID like it does for every go-oikumenea
+  reference. See `DS-OFM-13`.
 - **Content full-text search** (searching page bodies, not just location) is explicitly out of
   scope here — see [content.md](content.md#open-seams).
 - **A dedicated map tile/vector layer** for high-density regions (many congregations in one city)

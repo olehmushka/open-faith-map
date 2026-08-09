@@ -1,11 +1,11 @@
 # OpenFaithMap — architecture documentation
 
-> **Audience: Claude Code (and any future contributor).** These docs describe a project that is
-> **design-complete, pre-code** (see [Status](#status)). They are the source of truth code will be
-> held to once it lands. Every module doc is self-contained: read one without reading the others.
-> Treat [`architecture/decisions.md`](architecture/decisions.md) as binding, and follow the feature
-> pipeline in [`development-process.md`](development-process.md) — the
-> [stage board](milestones.md#stage-board) shows where each milestone sits.
+> **Audience: Claude Code (and any future contributor).** These docs are the source of truth code is
+> held to. Part of the system is built and part is still design-only — the
+> [stage board](milestones.md#stage-board) is authoritative for which is which, and
+> [Status](#status) summarizes it. Every module doc is self-contained: read one without reading the
+> others. Treat [`architecture/decisions.md`](architecture/decisions.md) as binding, and follow the
+> feature pipeline in [`development-process.md`](development-process.md).
 
 ## What OpenFaithMap is
 
@@ -82,6 +82,9 @@ search, and the audit trail.
 9. [`open-questions.md`](open-questions.md) — the live backlog for the next planning session.
 10. [`milestones.md`](milestones.md) — the implementation roadmap, sequenced M0…M7, and its
     [stage board](milestones.md#stage-board), the scannable index of where each milestone sits.
+    It opens with the
+    [unresolved-unknowns index](milestones.md#unresolved-unknowns--read-this-before-building-anything)
+    — read that before starting any build work, whichever milestone you're on.
 11. [`development-process.md`](development-process.md) — the feature pipeline (idea → decided →
     designed → backend → migrated → ui → verified), the runbook to advance a milestone, and how the
     stage board is kept honest. Read it before starting or reporting on any feature.
@@ -99,8 +102,33 @@ vouching). See [D-Facade](architecture/decisions.md) for the full rationale and
 
 ## Status
 
-**Design-complete at the architecture level for M0–M6** (see [milestones.md](milestones.md)).
-**No application code exists yet.** When asked to "find the code that does X," the answer is "it
-does not exist yet — the design is here." Build order: M0 (done, this doc set) → M1 (go-oikumenea
-integration wiring) → M2 (congregation self-service) → M3 (content backend) → M4 (public discovery)
-→ M5 (moderation) → M6 (vouching) → M7 (hardening, not yet designed).
+The [stage board](milestones.md#stage-board) is authoritative; this is the summary.
+
+**Built and running:** M0 (this doc set) · M1 (go-oikumenea integration, service principal, session
+layer) · M1.1 (doc corrections) · M1.2 (`oikumenea-console`) · M2 (congregation self-service —
+`internal/registration`, `migrations/0001_registration.sql`, the wizard/operator/roster pages) ·
+M2.1 (the `openfaithmap-web` / `openfaithmap-admin` split) · M2.2 (`hermenea` deploy wiring).
+
+**Designed, not built:** M3 (content) · M4 (discovery) · M5 (moderation) · M6 (vouching). When
+asked to "find the code that does X" for any of these, the answer is still "it does not exist yet
+— the design is here."
+
+**Opened by the 2026-08-09 audit, ahead of M3:** M2.3 (registration hardening — three real defects
+in M2's shipped code) · M2.4 (CI has been red on `main` since M2.1, plus deployment hygiene) ·
+M2.5 (a reachability spike M4's whole design depends on) · M2.6 (TypeScript codegen) · M4.1
+(jurisdiction units, which M5 needs).
+
+**Build order:** M0 → M1 → M2 → **M2.3–M2.6** → M3 → M2.5-gated M4 → M4.1 → M5 → M6 → M7.
+
+> **Before building anything, read
+> [milestones.md's unresolved-unknowns index](milestones.md#unresolved-unknowns--read-this-before-building-anything).**
+> It lists every place this doc set says "we don't actually know" — three assumptions that must be
+> measured against a live go-oikumenea instance before the plans resting on them are trustworthy,
+> five deferred decisions, and five contradictions or orphans. Nothing is parked silently; if a
+> design has a hole, it is in that table.
+
+Two habits this doc set has, worth knowing before reading further. First, a decision that turned
+out to be wrong is **corrected in place with its history intact**, not deleted — see D-BulkImport
+and D-Moderation, each of which carries a `Correction` block above superseded text. Second, several
+things were found false only by testing against a real go-oikumenea instance rather than reading its
+docs; where that happened, the doc says so explicitly.

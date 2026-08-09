@@ -6,28 +6,91 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 
 ## Status
 
-**Design-complete for M0–M6 at the architecture level.** No application code exists yet — this
-session produced the decision records, the integration mapping, and every module's design doc.
-The build sequence below is dependency-ordered so each milestone leaves the system deployable.
-Until code lands, "where's the code that does X" has the same answer go-oikumenea's own early docs
-gave: "it does not exist yet — the design is here."
+**M0–M2.2 are built; M3–M7 are designed or later.** Real, running code exists: `openfaithmap-api`
+with its first module (`registration`), OpenFaithMap's first migration, two Next.js apps, and a
+`docker-compose.yml` that stands up go-oikumenea, `oikumenea-console`, and `hermenea` alongside
+them. M0, M1, M1.1, and M2.2 are Verified; M1.2, M2, and M2.1 are built but blocked on one shared
+external step (see the stage board's 🔶 rows). M3–M6 remain design-complete-not-built; M7 is still
+at idea stage.
+
+**Audit pass, 2026-08-09.** A full docs↔code consistency and architecture review added six
+milestones (M2.3–M2.6, M4.1) and five decision blocks (D-SharedDatabase, D-GoogleDirect,
+D-OAuthClients, D-FlatRoot, D-PlatformModerator), plus a Correction to D-Moderation. Verified rows
+below are frozen; where their prose cites a path that later moved, an append-only
+`> **Note (audit 2026-08-09):**` line records the correction without editing the original text.
+
+## Unresolved unknowns — read this before building anything
+
+Every place this doc set currently says "we don't actually know." Kept here, at the top of the file
+every session reads, so none of it can be lost in a module doc's open-seams section. Detail lives
+where the third column points; this table exists so nothing is hidden, not to duplicate it.
+
+### Group 1 — must be measured against a real instance
+
+These are **assumptions, not facts.** Each one has a design built on top of it, and each was written
+from reading go-oikumenea's docs rather than calling it. M1.1 and M2 both discovered the hard way
+that this repo's assumptions about go-oikumenea's permission model are wrong more often than not —
+so measure first, then build.
+
+| # | The unknown | Blocks | Detail |
+|---|---|---|---|
+| U1 | **Does `MyCapabilities()` accept a target unit, or return a flat permission list?** M2.3's fix for the PII leak assumes a target-scoped capability check exists. If the response is flat with no target, the fix is a different mechanism — an authority probe against the root unit — not a parameter change. Nobody has checked the SDK or a live response. | **M2.3 item 1**, and by extension the [D-PlatformModerator](architecture/decisions.md) pattern every later module follows | [M2.3](#m23--registration-hardening-security--correctness) |
+| U2 | **Can an anonymous caller read `GET /religion/discovery/sites`?** Every `religion` read is `RequireAnywhere`-gated, which denies subjects with no person behind them — and an anonymous caller is one. If the answer is no, the public map cannot read go-oikumenea at all and M4 needs a different design, not an adjustment. | **M4's `designed` gate** | [M2.5](#m25--discovery-reachability-spike) · [discovery.md](modules/discovery.md) |
+| U3 | **Can go-oikumenea re-parent a live `Unit` in the `canonical` graph?** M4.1 has to move every existing congregation under a new jurisdiction unit while preserving its admin's grant. If there is no re-parenting path, that milestone blocks on an upstream request — exactly how M2's own org-creation assumption failed. Check this before scoping the rest of M4.1. | **M4.1**, and therefore **M5** | [M4.1](#m41--jurisdiction-units) |
+
+### Group 2 — decisions deliberately deferred to their milestone
+
+Real choices with no obvious default, parked on purpose. Each needs someone to pick, not measure.
+
+| # | The decision | Owner |
+|---|---|---|
+| U4 | How a generated TypeScript package reaches two workspace-less apps whose Dockerfiles each copy only their own directory (`file:` dependency, published package, or something else). | [M2.6](#m26--typescript-sdk-for-openfaithmap-api) |
+| U5 | `content_sites.slug` collisions — two self-registered "St. Mary's" collide on a globally-`UNIQUE` column, and unlike `registration`'s unit codes there is no disambiguation story. | [M3](#m3--content--site-builder-backend) · [content.md](modules/content.md) |
+| U6 | `registration_requests` uses a `uuid` PK where conventions specify composed URN RIDs. Do `content_*` follow the precedent or the convention? Pick before four modules do two things. | `DS-OFM-11` |
+| U7 | Cross-module foreign keys inside `openfaithmap-api` (`discovery_site_cache.content_site_id` → `content_sites`) are neither permitted nor forbidden by conventions.md. | `DS-OFM-13` |
+| U8 | Whether `--allow-dirty` is still needed on both Atlas migrate services now that each has its own revisions schema — it currently suppresses drift detection permanently. | [M2.4](#m24--ci-repair--deployment-hygiene) |
+
+### Group 3 — contradictions and orphans needing a call
+
+Places where the doc set disagrees with itself or specifies something with no home. These do not
+block a milestone; they mislead whoever reads them next, which is worse.
+
+| # | The problem | Where |
+|---|---|---|
+| U9 | **`Impersonation` is an orphan and contradicts a binding invariant.** It is defined in the glossary — a moderator logging in as a congregation admin — and appears **nowhere else**: no `D-` block, no endpoint in moderation.md's API surface, no milestone. It also directly contradicts [core-integration.md](modules/core-integration.md)'s **no-on-behalf-of** invariant, which forbids OpenFaithMap ever acting as a specific person. Either write a decision explaining how it can exist (go-oikumenea would have to mint the impersonated session, not OpenFaithMap), or delete the term. **Do not build it from the glossary entry alone.** | `DS-OFM-15` · [glossary.md](glossary.md) |
+| U10 | **M5 ships public unauthenticated write endpoints one milestone before M7 hardens them.** `POST /reports` and `POST /exclusion-check` are both anonymous by design; rate limiting is parked at M7. Decide at M5 scoping whether basic limiting moves forward. | `DS-OFM-9` · [moderation.md](modules/moderation.md) |
+| U11 | **`churchSiteTypeID` fails silently.** If go-oikumenea's seeded `church` site type is ever renamed, `approveRequest` attaches every congregation to whatever the first site type happens to be, with no error. Prefer failing loudly. | [registration.md](modules/registration.md) |
+| U12 | **Config bypasses the install-config convention.** `internal/platform/config` exists to hold openfaithmap-api's settings and is empty; `cmd/openfaithmap-api` reads five real settings straight from the environment via `requireEnv` — no schema, no validation, no ECV path for the secrets among them. | [conventions.md](architecture/conventions.md) |
+| U13 | **Per-surface OAuth clients and WireGuard have no milestone**, because there is no deployment milestone at all. Both are recorded as prerequisites for any non-local-dev deployment; whoever creates that milestone inherits them. | `DS-OFM-14` |
 
 ## Stage board
+
+**Gate legend.** ✅ passed · ⬜ not started · ➖ not applicable · 🔶 **passed once, now blocked on a
+named dependency** — either built and waiting on an external action nobody in this repo can perform
+(M1.2, M2, M2.1: an OAuth redirect URI), or designed and reopened because a load-bearing assumption
+turned out to be unverified (M4, M5). Always named in that milestone's prose; 🔶 without a named
+blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
+[development-process.md](development-process.md).
 
 | # | Decided | Designed | Backend | Migrated | UI | Verified | Stage |
 |---|---|---|---|---|---|---|---|
 | M0 · Scope & core-dependency | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** Artifact: this doc set (`architecture/decisions.md`, `modules/core-integration.md`, `glossary.md`), coherence-checked (no dangling relative links, no `faithmap-app` references). A docs-only milestone; its exit criterion is the doc set existing and being internally consistent, met. |
 | M1 · go-oikumenea integration wiring | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | **Verified.** `docker-compose.yml` runs a real go-oikumenea instance (published image, migrated, shared Postgres). Service-principal auth (D-ServiceIdentities) proven end-to-end — `internal/coreintegration`, `scripts/bootstrap-service-principal`. `openfaithmap-web`'s session layer (Auth.js v5, Google as sole OIDC provider, ID-token forwarding — `web/auth.ts`, `web/lib/oikumenea.ts`, `/login`, `/whoami`) proven end-to-end with a real browser OAuth round-trip: Google login → `/whoami` resolves a real `personId`/`email` through go-oikumenea's PDP. Required `scripts/bootstrap-admin-person` (go-oikumenea's JIT is link-on-match only — a fresh instance has no person for a new Google identity to link onto) and a restart of `oikumenea-app` after an install-config edit (install config is read once at boot, not hot-reloaded from the bind-mounted file — worth remembering for future config changes). |
 | M1.1 · Core-integration doc corrections | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Applied.** Three inaccuracies in `architecture/decisions.md` / `modules/core-integration.md` / `modules/web-facade.md` / `architecture/overview.md`, found by testing M1 against a real go-oikumenea instance rather than assumed from its docs. Items 1 (`audit.write` doesn't exist) and 3 (Keycloak → Google-direct) corrected in the docs themselves. Item 2 (`religion.read` unusable by a service principal) recorded as an upstream go-oikumenea gap — a feature request, not a doc-only fix, needed before M4. |
-| M1.2 · Instance-admin console (`oikumenea-console`) | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built, not yet verified — see prose.** D-InstanceAdminConsole (`architecture/decisions.md`). `docker-compose.yml` runs go-oikumenea's own published console image as OpenFaithMap's third UI surface, super-admin-only. |
-| M2 · Church-admin self-service facade | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built, not yet verified — see prose.** `modules/registration.md` (new — corrects the original "no schema of its own" framing). Backend, migration, and UI all built and proven end-to-end via curl against the live stack (submit, D-Exclusions check, list, approve's real go-oikumenea writes, reject, double-approve guard). **Verified is still ⬜:** the real browser round-trip (submit → operator approves → roster renders) hasn't run yet. |
-| M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built, not yet verified — see prose.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + `modules/web-admin.md`. `web/` split into two independent Next.js apps, `web/apps/web` (no session, ever) and `web/apps/admin` (the only surface that ever holds a credential) — no application logic changed, only moved. |
+| M1.2 · Instance-admin console (`oikumenea-console`) | ✅ | ✅ | ➖ | ➖ | ✅ | 🔶 | **Built, blocked on the shared Google-redirect-URI step — see prose.** D-InstanceAdminConsole (`architecture/decisions.md`). `docker-compose.yml` runs go-oikumenea's own published console image as OpenFaithMap's third UI surface, super-admin-only. |
+| M2 · Church-admin self-service facade | ✅ | ✅ | ✅ | ✅ | ✅ | 🔶 | **Built, blocked — see prose.** `modules/registration.md` (new — corrects the original "no schema of its own" framing). Backend, migration, and UI all built and proven end-to-end via curl against the live stack (submit, D-Exclusions check, list, approve's real go-oikumenea writes, reject, double-approve guard). **Verified blocked on two things:** the real browser round-trip (submit → operator approves → roster renders), and M2.3's security fixes — the 2026-08-09 audit found the operator gate discloses every submitter's PII to any congregation admin, so this milestone must not be marked Verified as built. |
+| M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ➖ | ➖ | ✅ | 🔶 | **Built, blocked — see prose.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + `modules/web-admin.md`. `web/` split into two independent Next.js apps, `web/apps/web` (no session, ever) and `web/apps/admin` (the only surface that ever holds a credential) — no application logic changed, only moved. |
 | M2.2 · Reference-data seeding (`hermenea`) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** D-BulkImport (`architecture/decisions.md`, corrected), `modules/import.md` (corrected). Deploys go-oikumenea's own `hermenea` companion service for reference-data seeding — no OpenFaithMap code, corrects the original congregation-bulk-import-CLI premise. Real `docker compose up` proof: `geo-countries-iso3166` synced successfully, 250 rows confirmed in `oikumenea.geo_countries` — see prose below. |
-| M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) |
-| M4 · Public discovery site | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. |
-| M5 · Moderation | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. |
-| M6 · Vouching | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/vouching.md` — web-of-trust guarantor model. |
-| M7 · Hardening / real-user feedback | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Idea.** Named and sequenced here; no `D-<Name>` block or module doc yet — first real milestone to pass through the full pipeline once M1–M6 have shipped code and real congregations are using the platform. |
+| M2.3 · Registration hardening (security + correctness) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed (audit 2026-08-09).** D-PlatformModerator's target-scoped-capability pattern. Three defects found in M2's shipped code: the operator gate discloses every submitter's PII to any congregation admin, `getRequest` has no authorization at all, and `approveRequest` is a non-atomic 7-call distributed write with no idempotency. **Blocks M2's Verified.** |
+| M2.4 · CI repair + deployment hygiene | ✅ | ✅ | ➖ | ⬜ | ➖ | ⬜ | **Designed (audit 2026-08-09).** CI's `web` job has failed on every run since M2.1 (it still expects the deleted `web/package.json`), so no milestone since has had a green gate. Also: the least-privilege database role D-SharedDatabase requires, `openfaithmap-api`'s host-port exposure, and `hermenea`'s hardcoded secrets. **Blocks every later milestone's Verified.** |
+| M2.5 · Discovery reachability spike | ➖ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Scoped (audit 2026-08-09).** A measurement, not a decision — hence `Decided ➖`. M1.1 found `religion` reads deny machine subjects; unverified and higher-stakes is whether they also deny *anonymous* subjects, which would break the public map itself, not just the cache refresh. Method and exit criterion are written. **Blocks M4's `designed` gate.** |
+| M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ⬜ | ⬜ | ➖ | ➖ | ⬜ | **Decided; one design question open (audit 2026-08-09).** D-Stack's Conjure-first rule and both consumer module docs require a generated typed client; `web/apps/admin/lib/registration.ts` is hand-written. Stand up the codegen pipeline before M3 adds a second one. `Designed ⬜` because how the generated package reaches two workspace-less apps with separate Docker build contexts isn't settled — see the detail section. |
+| M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) Two audit corrections applied to that doc: `content.manage`'s definition (D-PlatformModerator) and the post/event sequencing contradiction. |
+| M4 · Public discovery site | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. Both the cache-refresh path and possibly the public read path rest on go-oikumenea behavior M2.5 has to measure first. |
+| M4.1 · Jurisdiction units | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | **Decided (audit 2026-08-09).** D-FlatRoot. Replaces the flat single-root org with real jurisdiction units and re-parents existing congregations. **Blocks M5's `designed` gate** — moderation's `jurisdiction` queue scope and D-Exclusions' org-level backstop both need an ancestor chain that does not exist today. |
+| M5 · Moderation | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. Two dependencies resolved into decisions (D-PlatformModerator for the moderator roster, D-Moderation's Correction for the audit trail); one still open (M4.1's jurisdiction units). |
+| M6 · Vouching | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both now have a real mechanism (D-PlatformModerator), which they lacked before the 2026-08-09 audit. |
+| M7 · Hardening / real-user feedback | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Idea.** Named and sequenced here; no `D-<Name>` block or module doc yet — first real milestone to pass through the full pipeline once M1–M6 have shipped code and real congregations are using the platform. Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. |
 
 ## Per-milestone detail
 
@@ -78,6 +141,20 @@ real Google OAuth client secret (`AUTH_GOOGLE_SECRET` in the root `.env`) and a 
 that's done and `/whoami` is confirmed rendering a real resolved identity, this milestone's
 `Verified` column stays `⬜`.
 
+> **Note (audit 2026-08-09).** This milestone is Verified and its text above is frozen. Three
+> corrections for readers, none of which change what it proved:
+> 1. **Paths moved at M2.1.** `web/auth.ts` → `web/apps/admin/auth.ts`; `web/lib/oikumenea.ts` →
+>    `web/apps/admin/lib/oikumenea.ts`. `/login` and `/whoami` now live in `openfaithmap-admin`,
+>    not `openfaithmap-web` — which, post-split, holds no session at all (D-AdminSurface).
+> 2. **"Still open" is resolved.** The stage-board row above already records the real browser
+>    round-trip as done; this prose paragraph predates that and was never revised.
+> 3. **Two as-built deviations named here as "not yet its own `D-<Name>`" now have one:** the
+>    shared-Postgres simplification is [D-SharedDatabase](architecture/decisions.md), and
+>    Google-direct-instead-of-Keycloak is
+>    [D-GoogleDirect](architecture/decisions.md). D-SharedDatabase records a gap this milestone
+>    introduced without noticing: `openfaithmap-api` connects as the `postgres` superuser, so it can
+>    reach go-oikumenea's schema directly — see M2.4.
+
 ### M1.1 · Core-integration doc corrections
 
 **Depends on:** M1 (these were found while proving M1's service-principal path against a real
@@ -113,6 +190,18 @@ Three inaccuracies, applied:
    `modules/web-facade.md`'s session/identity section all now describe Google-direct, ID-token
    forwarding — not their own `D-<Name>` yet, still folded into D-CoreDependency's existing text.
 
+> **Note (audit 2026-08-09).** Frozen text above; two follow-ups landed since.
+> - Item 3's "not their own `D-<Name>` yet" is resolved:
+>   [D-GoogleDirect](architecture/decisions.md) now records it, including two consequences this
+>   milestone did not draw out — every human user needs a Google account (a real adoption
+>   constraint for the Ukraine-first rollout), and there is no second issuer to fail over to.
+> - Item 1's open question ("if D-Moderation still needs moderation actions in go-oikumenea's audit
+>   trail, that needs a real design") is answered: see D-Moderation's **Correction**.
+>   `openfaithmap.moderation_actions` becomes the ledger of record and the one-ledger goal is
+>   dropped. Item 2 (`religion.read` unusable by a service principal) is still open and is now
+>   owned by **M2.5**, which also asks the larger question this item did not: whether those reads
+>   deny *anonymous* callers too.
+
 ### M1.2 · Instance-admin console (`oikumenea-console`)
 
 **Depends on:** M1 (needs `oikumenea-app` running). **Leaves deployable:** yes — adds a third UI
@@ -142,7 +231,8 @@ consequences in `architecture/decisions.md`.
 instance-admin UI) has not been run — same caveat M1's own browser round-trip has: it needs the
 project owner's real `AUTH_GOOGLE_SECRET` and a browser, plus one manual, out-of-repo step: adding
 `http://localhost:3003/api/auth/callback/google` as an authorized redirect URI on the same Google
-Cloud OAuth client `openfaithmap-web` already uses. Until that's done, `Verified` stays ⬜.
+Cloud OAuth client `openfaithmap-web` already uses. Until that's done, `Verified` stays 🔶
+(built, blocked on a named external action — see the stage board's gate legend).
 `scripts/bootstrap-service-principal`/`scripts/bootstrap-admin-person` are untouched — they remain
 the CI/reproducible-bootstrap path; `oikumenea-console` is the human-facing alternative for the same
 actions, not a replacement. No OpenFaithMap backend or schema work — `oikumenea-console` has no
@@ -183,6 +273,33 @@ the real browser round-trip — submitting through `/register`, approving throug
 `/admin/registrations`, and confirming `/my-congregation` renders the result — needed before
 `Verified` flips to ✅.
 
+**Audit 2026-08-09 — three defects found in the code above; `Verified` must not flip until M2.3
+lands.** The curl proof exercised the happy path of each endpoint, which is why none of these
+surfaced: they are authorization and failure-mode defects, not functional ones.
+
+1. **The operator gate discloses every submitter's PII to every congregation admin.**
+   `application.IsOperator` asks `MyCapabilities()` whether the caller holds `religionorg.manage`
+   *anywhere* — there is no target unit in the check. `scripts/bootstrap-registration-org` puts
+   `religionorg.manage` in the **`congregation-admin`** role. So the moment anyone's registration is
+   approved, they can call `GET /registration/v1/requests` and read every pending submission
+   platform-wide: congregation names, street addresses, coordinates, and submitter person RIDs.
+   `registration.md` describes this gate as "cosmetic only," which is true for *writes* — approve
+   and reject are still re-decided by go-oikumenea's PDP — and false for *reads*, where this check
+   is the entire access-control decision.
+2. **`getRequest` has no authorization at all.** `transport.GetRequest` calls the application
+   service directly: no `whoami`, no operator check, no submitter comparison. Any authenticated
+   person can read any request by id. The Conjure contract states "The submitter or an operator
+   (verified live) may read it"; the code implements neither half.
+3. **`approveRequest` is a non-atomic 7-call distributed write.** `createChildOrg` →
+   `listSiteTypes` → `createLocation` → `createSite` → `createPosition` → `fillPosition` →
+   `grantAssignment` → local `UPDATE`, with no compensation and no idempotency key. A failure at
+   any step after the first leaves an orphaned go-oikumenea unit (possibly with a location, a site,
+   and a position) while the local request stays `PENDING`. Retrying then creates a *second* child
+   org — `slugCode` appends a random suffix, so there is no unique-code collision to stop it, and
+   nothing reconciles the orphan.
+
+The as-built text above is otherwise accurate and stays as written.
+
 ### M2.1 · Split the UI into public and admin surfaces
 
 **Depends on:** M1 (the session layer this revises), M2 (the UI routes this revises). **Leaves
@@ -209,8 +326,24 @@ no `web/packages/*` — see D-AdminSurface's "as implemented" note in `architect
 **Still open:** the new `openfaithmap-admin` origin needs
 `http://localhost:3004/api/auth/callback/google` added as an authorized redirect URI on the shared
 Google OAuth client (external, Google Cloud Console) before a real login round-trip can be tested —
-same open item M1/M1.2 already carry. `Verified` stays ⬜ until that's done and a browser confirms
+same open item M1/M1.2 already carry. `Verified` stays 🔶 until that's done and a browser confirms
 both `openfaithmap-admin` login and `openfaithmap-web` shipping zero Auth.js code.
+
+**Audit 2026-08-09 — this milestone broke CI and nobody noticed.** Deleting `web/package.json` and
+`web/package-lock.json` left `.github/workflows/ci.yml`'s `web` job pointing at files that no longer
+exist; it fails at `actions/setup-node` before `npm ci` even runs
+(`Some specified paths were not resolved, unable to cache dependencies`). Every CI run on `main`
+since PR #5 has been red, including M2.2's. `CONTRIBUTING.md` promises "`./godelw verify` — the same
+gate CI runs" and `development-process.md` defines Verified as "tests pass"; neither has been true
+since this landed. Fixed by **M2.4**, which also makes CI-green an explicit part of the Verified
+gate so this cannot recur silently.
+
+Also noted: the shared-Google-OAuth-client arrangement this milestone inherited from M1.2 is now
+recorded as [D-OAuthClients](architecture/decisions.md) — `openfaithmap-admin` and
+`oikumenea-console` mint tokens with an identical `aud`, so the "ascending blast radius" tiering
+D-InstanceAdminConsole describes has no enforcement at the token layer. Not an escalation (the PDP
+still gates on the caller's own assignments), but per-surface clients are now a documented
+prerequisite for any real deployment.
 
 ### M2.2 · Reference-data seeding (`hermenea`)
 
@@ -256,33 +389,293 @@ corrected route (`docs/modules/import.md`'s runbook fixes the `/sync/{source}` p
 own compose comment shows, which 404s against a real instance; the real base-path is
 `/hermenea/v1`). Stack torn down after verification (`docker compose down`).
 
+> **Note (audit 2026-08-09).** Verified and frozen; two deployment-hygiene items this milestone
+> introduced are picked up by **M2.4**, neither affecting what it proved:
+> - `HERMENEA_OIKUMENEA_TOKEN` / `OIKUMENEA_HERMENEA_TOKEN` are **hardcoded literals** in the
+>   committed `docker-compose.yml` (both `oikumenea-app` and `hermenea`), unlike every other secret
+>   in this repo, which goes through `${...}` + `.env.example`. A real deployment has to remember to
+>   edit the compose file itself.
+> - `hermenea` publishes host ports `9443`/`9444` with that same hardcoded trigger token as the only
+>   gate on `POST /hermenea/v1/sync/{source}`. Fine for local dev, and the compose comment explains
+>   the reasoning, but it is the one service in this stack whose exposure was decided without a
+>   corresponding note in `architecture/overview.md`'s deployment topology.
+>
+> Also, the "exact verified table name" open seam in `modules/import.md` is resolved by this
+> milestone's own verification (`oikumenea.geo_countries`, 250 rows) — that doc still lists it as
+> unconfirmed and has been corrected.
+
+### M2.3 · Registration hardening (security + correctness)
+
+**Depends on:** M2 (this fixes M2's own code). **Blocks:** M2's `Verified`. **Leaves deployable:**
+yes — no schema-breaking change; one expand-only migration adds a status value and an index.
+
+Three defects the 2026-08-09 audit found in M2's shipped `registration` module (full description in
+M2's detail section above). Each item below is independently landable; they are grouped because
+they touch the same three files.
+
+**1 · Scope the operator gate to the root unit.** `application.IsOperator` currently asks
+`MyCapabilities()` for a bare `religionorg.manage` with no target, and `congregation-admin` holds
+that permission on its own unit — so every approved congregation admin reads as an operator and
+`listRequests` returns every submitter's name, address, and coordinates to them.
+
+- Replace the untargeted check with a **target-scoped** capability check against
+  `Config.RootUnitID` specifically, following D-PlatformModerator's pattern.
+- ⚠️ **Unknown `U1` — settle this before writing the fix.** Nobody has checked whether
+  `MyCapabilities()` accepts a target unit or returns a flat permission list, and the two answers
+  need different code. If it takes a target, this is a parameter change. If it returns a flat list,
+  there is no way to ask "on which unit" and the check must become something else — an authority
+  probe against the root unit (attempt a narrow, harmless root-scoped operation and read the PDP's
+  answer), or an upstream request for a targeted capability endpoint. Read the SDK and call it
+  against a live instance first. The same answer determines how
+  [D-PlatformModerator](architecture/decisions.md)'s pattern is implemented everywhere else, so
+  this is worth getting right once.
+- Acceptance: a person holding only a `unit`-scoped `congregation-admin` grant on their own
+  congregation calls `GET /registration/v1/requests` and sees **only their own** submissions. A
+  person holding the `subtree`-scoped `registration-operator` grant on the root unit sees all.
+  Prove both with two real tokens against the live stack, not with a unit test alone.
+
+**2 · Authorize `getRequest`.** It currently has no check of any kind. Resolve the caller via
+`whoami`, then permit iff the caller is the request's `submittedByPersonId` **or** passes the same
+root-unit operator check as item 1. Return `Registration:RequestNotFound` (not a distinct
+"forbidden") for a non-permitted read, so the endpoint does not confirm the existence of requests
+the caller may not see.
+
+- Acceptance: person A submits, person B (authenticated, unrelated) gets `RequestNotFound` for A's
+  id; A and an operator both get the row.
+
+**3 · Make `approveRequest` idempotent and resumable.** Today a failure after `createChildOrg`
+orphans a real go-oikumenea unit and leaves the request `PENDING`, and a retry creates a second org.
+
+- Add a `PROVISIONING` status to `registration_requests.status`'s `CHECK` constraint and to the
+  Conjure `RegistrationStatus` enum, plus a nullable `created_unit_id` write **as soon as
+  `createChildOrg` returns** — that is the only step that cannot be re-derived.
+- `approveRequest` on a `PROVISIONING` row resumes from the persisted `created_unit_id` rather than
+  re-creating the org. The remaining steps (location, site, position, grant) are re-runnable; where
+  go-oikumenea rejects a duplicate, treat the conflict as success.
+- The `registration_requests_decision_shape` CHECK gains a `PROVISIONING` arm
+  (`created_unit_id IS NOT NULL AND decided_by_person_id IS NOT NULL`).
+- Acceptance: kill `openfaithmap-api` between `createSite` and `grantAssignment`, restart, re-issue
+  the same approve call, and confirm exactly one child org exists in go-oikumenea and the request
+  reaches `APPROVED`.
+
+**Also in scope, because there is nothing to regress against today:** the first real unit tests in
+this repo. `checkNotExcluded`'s ancestor walk (including the cycle cap), `slugCode`, and the
+status-transition guards currently have **zero** coverage — `go test ./...` passes vacuously, since
+the only test in the repo is the skipped `coreintegration` integration test.
+
+### M2.4 · CI repair + deployment hygiene
+
+**Depends on:** M2.1 (which broke CI), M2.2 (which added the hermenea secrets). **Blocks:** every
+later milestone's `Verified`. **Leaves deployable:** yes — CI and configuration only, no product
+change.
+
+**1 · Repair the `web` CI job.** `.github/workflows/ci.yml`'s `web` job still runs
+`working-directory: web` with `cache-dependency-path: web/package-lock.json`; M2.1 deleted both
+`web/package.json` and `web/package-lock.json` when it split the app in two. The job has failed on
+every run since — it never reaches `npm ci`. Replace it with a matrix over `web/apps/web` and
+`web/apps/admin`, each running its own `npm ci && npm run lint && npm run build`.
+
+- Acceptance: a green CI run on `main`, with both apps' lint and build visible as separate matrix
+  legs.
+
+**2 · Make CI-green part of the Verified gate.** `development-process.md`'s Verified row says "tests
+pass" without saying whose. Amend it to require a green CI run on `main` at the milestone's merge
+commit, and note it in the stage-board honesty section — the failure mode this milestone exists to
+fix is precisely that three milestones passed their gates while `main` was red.
+
+**3 · Least-privilege database role (D-SharedDatabase).** `openfaithmap-api` connects as the
+`postgres` superuser, so it can read and write go-oikumenea's entire schema — which D-CoreDependency
+calls "rejected outright." Add an `openfaithmap_app` role with `USAGE` + DML on the `openfaithmap`
+schema only and **no** grant on `oikumenea`, mirroring `oikumenea-init-role`'s existing shape; point
+`DATABASE_URL` at it.
+
+- Acceptance: from inside `openfaithmap-api`'s container, `SELECT` against any `oikumenea.*` table
+  fails with a permission error, while the registration flow still works end-to-end.
+- While here, check whether `--allow-dirty` is still needed on both migrate services now that each
+  has its own revisions schema; it currently suppresses Atlas's drift detection permanently.
+
+**4 · Stop publishing `openfaithmap-api`'s host ports.** `docker-compose.yml` maps `3000`/`3001` to
+the host, contradicting `architecture/overview.md`'s "the two UI surfaces are the only public
+ingress" target — and this service accepts and forwards bearer tokens. `openfaithmap-admin` already
+reaches it internally at `https://openfaithmap-api:3000`, so removing the mapping should be nearly
+free; keep `3001` (management/health) if local debugging needs it, and say so in the compose
+comment.
+
+**5 · Move hermenea's shared secrets into `.env`.** `HERMENEA_OIKUMENEA_TOKEN` and
+`OIKUMENEA_HERMENEA_TOKEN` are hardcoded literals in `docker-compose.yml` in two places each.
+Convert to `${...}` with entries in `.env.example`, matching every other secret in this repo.
+
+### M2.5 · Discovery reachability spike
+
+**Depends on:** M1 (a running instance to measure against). **Blocks:** M4's `designed` gate.
+**Leaves deployable:** yes — a measurement and an upstream issue; no code in this repo.
+
+M1.1 item 2 established that `religion` module reads are `RequireAnywhere`-gated, a person-shaped
+PEP path that denies machine subjects, which kills `discovery`'s service-principal cache refresh.
+The audit found a larger, **unverified** question hiding behind it:
+`architecture/overview.md`'s anonymous-discovery request path claims
+`GET /religion/discovery/sites` is an "unauthenticated public read." If `RequireAnywhere` denies
+callers with an empty subject, an anonymous caller is *also* an empty subject — which would mean the
+public map cannot read go-oikumenea at all, and M4's entire premise fails, not just its cache.
+
+Nobody has measured this. It is the single highest-risk unknown on the roadmap and it costs one
+afternoon to settle.
+
+**Do:**
+
+1. Bring up the stack and call `GET /religion/discovery/sites` three ways — with no `Authorization`
+   header, with a real person's ID token, and with the service principal's token — recording the
+   exact status and error body for each.
+2. Repeat for the taxon reads `registration`'s D-Exclusions check depends on (`GetTaxon` and its
+   ancestor walk), which today only ever run under a real person's token.
+3. Write the result into `modules/discovery.md` and `modules/core-integration.md` as verified fact,
+   replacing the current inference.
+4. File the upstream go-oikumenea feature request (`RequireServiceOrPerson`, or genuinely public,
+   on the relevant `religion` reads) and link the issue from `core-integration.md`'s open seams —
+   M1.1 named this as needed "before M4" and it has been unowned since.
+
+**Exit criterion:** a documented answer to "can an anonymous caller and can a service principal each
+read go-oikumenea's discovery and taxon endpoints today," plus a filed upstream issue for whichever
+answers are no. If anonymous reads turn out to be denied, M4's design needs reopening before it is
+built — that is the whole point of doing this first.
+
+### M2.6 · TypeScript SDK for `openfaithmap-api`
+
+**Depends on:** M2 (the first Conjure contract to generate from). **Blocks:** nothing hard, but it
+should land **before M3's UI** so a second hand-written client is never written. **Leaves
+deployable:** yes — a build-tooling addition plus one client swap.
+
+D-Stack makes Conjure the contract source of truth and says generated code is never hand-edited;
+`web-admin.md` and `web-facade.md` both state as a dependency that every call goes through the
+generated typed client, "never a raw `fetch`." `web/apps/admin/lib/registration.ts` is a
+hand-written fetch client — a documented, deliberate scope cut at M2, but one that multiplies with
+every module M3/M5/M6 add.
+
+Stand up the pipeline go-oikumenea already has (its `scripts/gen-ts-client.sh` + `tools/ir2openapi`
++ `conjure-typescript` chain is the reference implementation), generate a client from
+`api/registration.conjure.yml`, and replace `lib/registration.ts` with it.
+
+- Decide and record: does the generated client ship as a `file:` dependency into
+  `web/apps/admin`, or as a published package? D-Stack notes go-oikumenea uses `file:` in dev and a
+  real npm package once published; with two independent apps and no workspace (D-AdminSurface's
+  as-implemented note), `file:` across directories needs checking against each app's own Dockerfile
+  build context, which currently only copies its own directory.
+- Acceptance: `web/apps/admin` has no hand-written HTTP client for `openfaithmap-api`, the
+  registration flow still works end-to-end, and regenerating from an edited `.conjure.yml` produces
+  a compile error in the app when a field is removed.
+
 ### M3 · Content / site-builder backend
 
-**Depends on:** M2 (needs a real congregation `Unit` RID to attach a site to). **Leaves
-deployable:** a congregation admin can build and publish a real page; nothing public discovers it
-yet (no map).
+**Depends on:** M2 (needs a real congregation `Unit` RID to attach a site to), plus **M2.3**
+(don't build a second module on top of an authorization pattern that is known-broken) and
+**M2.6** (so its UI consumes a generated client rather than adding a second hand-written one).
+**Leaves deployable:** a congregation admin can build and publish a real page; nothing public
+discovers it yet (no map).
 
-Builds `openfaithmap-api`'s `content` module per [content.md](modules/content.md): sites, pages
-(post/event deferred to this milestone's own later iteration per that doc's open seams), blocks,
-translation groups, the block-type catalog seeded with the MVP set.
+Builds `openfaithmap-api`'s `content` module per [content.md](modules/content.md): sites, pages,
+blocks, translation groups, the block-type catalog seeded with the MVP set. **`post` and `event`
+are out of scope for M3** and land at M4 — see that doc's open seams, where the audit resolved a
+contradiction between this milestone's old "this milestone's own later iteration" phrasing and
+content.md's "land at the discovery milestone." M4 is the answer: a post or event with no public
+site to surface it has nowhere to be read.
+
+Two audit corrections to [content.md](modules/content.md) apply to this milestone's scope:
+
+- **`content.manage` is a target-scoped capability check**, not "call `GET /units/{unitId}` and
+  treat a successful read as proof of standing" (D-PlatformModerator). Read authority is not write
+  authority; the original definition would let anyone who can see a congregation edit its site.
+- **`content_sites.slug` collision has no design.** The column is globally `UNIQUE`, but under
+  D-FlatRoot self-service registration two congregations named "St. Mary's" collide, and unlike
+  `slugCode`'s unit codes there is no disambiguation story. Pick one (suffix, per-country
+  namespacing, or admin-chosen with a uniqueness probe) when writing the migration.
 
 ### M4 · Public discovery site
 
-**Depends on:** M2 (site data exists) and go-oikumenea's `religion` sites/schedules being
-populated as part of M2's provisioning flow. **Leaves deployable:** the first real end-to-end
-product demo — a visitor can find a congregation on a map and read its published page.
+**Depends on:** M2 (site data exists), go-oikumenea's `religion` sites/schedules being populated as
+part of M2's provisioning flow, and — new at the 2026-08-09 audit — **M2.5**, whose measurement
+decides whether this milestone's design survives contact with a real instance. **Leaves
+deployable:** the first real end-to-end product demo — a visitor can find a congregation on a map
+and read its published page.
 
 Builds `discovery`'s cache + search facade per [discovery.md](modules/discovery.md) and the public
-site rendering in [web-facade.md](modules/web-facade.md).
+site rendering in [web-facade.md](modules/web-facade.md). Also ships `content`'s `post` and `event`
+document kinds, deferred here from M3 (see M3's detail and content.md's open seams) — this is the
+milestone where a public site exists to surface them.
+
+**Its `designed` gate is reopened.** Two load-bearing assumptions are unverified:
+
+1. **The cache refresh has no callable path.** It is specified as a background job on the service
+   principal, and M1.1 proved `religion` reads deny machine subjects. Until M2.5's upstream request
+   is accepted, there is no mechanism — the fallback (refresh under some real person's token) would
+   violate core-integration.md's no-on-behalf-of invariant and is not an option.
+2. **The public read path may not exist either.** See M2.5. If anonymous callers are also denied,
+   this milestone needs a different design entirely, not an adjustment.
+
+Do not pass this milestone's `designed` gate again until M2.5 has answered both.
+
+### M4.1 · Jurisdiction units
+
+**Depends on:** M2 (real congregations to re-parent), and best done alongside or after M4 so the
+jurisdictions modeled are the ones real registrations turned out to need. **Blocks:** M5's
+`designed` gate. **Leaves deployable:** yes, if the re-parenting migration preserves existing
+grants — that is the milestone's central risk.
+
+[D-FlatRoot](architecture/decisions.md) accepted one flat root organization as an M2 build-time
+simplification and requires real jurisdiction units before M5. Three designs in this doc set assume
+an ancestor chain that does not exist today: moderation's `jurisdiction` queue scope, the glossary's
+Jurisdiction term mapping, and D-Exclusions' org-level backstop (which has no per-body root unit to
+attach a `religion_org_policies` row to).
+
+**Do:**
+
+1. **Model the jurisdiction layer.** Decide what a jurisdiction unit actually is for the Ukraine and
+   USA rollouts — a national synod, a diocese, a district? — informed by whatever real registrations
+   exist by then. This is a product decision and needs its own `D-` block or an extension of
+   D-FlatRoot, not just a schema.
+2. **Extend registration.** A submission gains a jurisdiction selection (or an operator assigns one
+   at approval time); `approveRequest`'s `createChildOrg` targets that jurisdiction's unit rather
+   than the single root. Note this interacts with M2.3's idempotency work — sequence M2.3 first.
+3. **Re-parent existing congregations** in the `canonical` graph, preserving each congregation
+   admin's `unit`-scoped grant. Verify against a real instance whether go-oikumenea supports
+   re-parenting a live unit at all; if it does not, that is an upstream request and this milestone
+   blocks on it. **Check this before scoping the rest** — it is the assumption most likely to be
+   false, in the same way M2's own org-creation assumption was.
+4. **Attach D-Exclusions' org-level backstop** to the excluded bodies' root units, making the
+   documented defense-in-depth real for the first time.
+
+**Exit criterion:** a congregation's ancestor walk returns at least one unit between it and the
+root, moderation can express a jurisdiction-scoped query against it, and every pre-existing
+congregation admin retains exactly the authority they had before the migration.
 
 ### M5 · Moderation
 
-**Depends on:** M3, M4 (needs real content and real discoverable congregations to moderate).
+**Depends on:** M3, M4 (needs real content and real discoverable congregations to moderate), and
+**M4.1** (its `jurisdiction` queue scope has no ancestor chain to walk without it).
 **Leaves deployable:** yes — a functioning platform with a safety net, ready for real (if limited)
 users.
 
 Builds `moderation` per [moderation.md](modules/moderation.md): reports, actions, appeals, and
 wires the D-Exclusions check (already used at M2 registration time) into the moderator console.
+
+**Two blockers the 2026-08-09 audit resolved into decisions**, both of which had left this
+milestone specified against mechanisms that did not exist:
+
+- **The moderator roster now has a home.** `moderation.read`/`moderation.act` were described only as
+  "held by a small, fixed set of accounts" — no table, no role, no mechanism, in a milestone whose
+  every endpoint gates on them (and in M6, which gates on them too).
+  [D-PlatformModerator](architecture/decisions.md) makes them a go-oikumenea `platform-moderator`
+  Role granted `subtree` on the shared root unit, resolved by a **target-scoped** capability check.
+  `scripts/bootstrap-registration-org` gains that role; its permission set is decided here.
+- **The audit-trail mirror is withdrawn.** D-Moderation's Correction establishes that `audit.write`
+  does not exist and cannot, so `openfaithmap.moderation_actions` is the ledger of record and
+  moderation.md's "mirrored into go-oikumenea's audit ledger before it is considered complete"
+  invariant is replaced. Build the append-only table with the `reject_mutation()` guard and do not
+  design a mirror.
+
+**Still open when this is scoped:** rate limiting on `POST /reports` and `POST /exclusion-check`,
+both public and unauthenticated. `DS-OFM-9` parks this at M7, but this milestone is what actually
+ships the public endpoints — decide whether that is acceptable or whether basic limiting moves
+forward into M5.
 
 ### M6 · Vouching
 
@@ -290,7 +683,11 @@ wires the D-Exclusions check (already used at M2 registration time) into the mod
 moderation queue). **Leaves deployable:** yes — reduces manual verification load without changing
 what's already live.
 
-Builds `vouching` per [vouching.md](modules/vouching.md).
+Builds `vouching` per [vouching.md](modules/vouching.md). Its two authorization dependencies —
+`moderation.read`/`moderation.act` on the guarantor-management endpoints, and the
+"`content.manage`-equivalent authority on **some** congregation" gate on `POST /vouches` — both
+resolve through [D-PlatformModerator](architecture/decisions.md)'s target-scoped-capability pattern,
+which they lacked any mechanism for before the 2026-08-09 audit.
 
 ### M7 · Hardening / real-user feedback (idea stage)
 
