@@ -103,12 +103,19 @@ service directly — no `whoami`, no operator check, no submitter comparison. An
 person can read any request by id. The Conjure contract's own docs say "The submitter or an
 operator (verified live) may read it"; neither half is implemented.
 
-**3 · `approveRequest` is a non-atomic distributed write.** Seven go-oikumenea calls followed by a
-local `UPDATE`, with no compensation and no idempotency key. Any failure after `createChildOrg`
-orphans a real unit (possibly with a location, site, and position attached) while the request stays
-`PENDING` — and retrying creates a *second* org, because `slugCode` appends a random suffix so
-nothing collides. The invariants below are all true of a successful approval; none of them say
-anything about a partial one.
+**3 · `approveRequest` is a non-atomic distributed write.** ~~Seven go-oikumenea calls followed by a
+local `UPDATE`, with no compensation and no idempotency key.~~ **Fixed.** A new `PROVISIONING`
+status (`migrations/0002_registration_provisioning.sql`) is persisted, with `created_unit_id`, as
+soon as `createChildOrg` returns — the one step that can't be re-derived — so a retry resumes from
+the real unit instead of creating a second org. The remaining steps are re-runnable:
+`ensurePosition`/`ensureFilled`/`ensureGrant` treat go-oikumenea's own `PositionConflict` /
+`PositionAlreadyFilled` / `AssignmentConflict` errors on a repeat call as success; `ensureSite` checks
+`listUnitSites` for an existing primary site first, because `createSite` has **no** uniqueness key to
+reject a duplicate on — a gap the original ticket text didn't account for.
+
+Items 1 and 2 above are still open: item 1 is blocked on `U1` (unmeasured `MyCapabilities()`
+target-scoping); item 2 was deferred rather than shipped against today's untargeted operator check,
+since it would inherit item 1's known false-positive.
 
 ## Dependencies
 

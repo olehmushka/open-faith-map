@@ -13,9 +13,13 @@ import (
 type Status string
 
 const (
-	StatusPending  Status = "PENDING"
-	StatusApproved Status = "APPROVED"
-	StatusRejected Status = "REJECTED"
+	StatusPending Status = "PENDING"
+	// StatusProvisioning marks a request that has passed the point of no return —
+	// createChildOrg has produced a real go-oikumenea unit — but hasn't finished the remaining
+	// approval writes yet. Approve resumes from here on retry rather than re-creating the org.
+	StatusProvisioning Status = "PROVISIONING"
+	StatusApproved     Status = "APPROVED"
+	StatusRejected     Status = "REJECTED"
 )
 
 // Coordinate is WGS84 latitude/longitude.

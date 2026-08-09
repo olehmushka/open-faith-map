@@ -458,6 +458,16 @@ orphans a real go-oikumenea unit and leaves the request `PENDING`, and a retry c
   the same approve call, and confirm exactly one child org exists in go-oikumenea and the request
   reaches `APPROVED`.
 
+> **As implemented (2026-08-09).** Item 3 landed on its own — items 1 and 2 are still open (1 blocked
+> on `U1`; 2 deferred rather than shipped against today's untargeted operator check, which would
+> inherit item 1's known false-positive). One addition beyond the text above: `createSite` turns out
+> to have no uniqueness key at all (checked against go-oikumenea's own `religion.conjure.yml`), so
+> "where go-oikumenea rejects a duplicate, treat the conflict as success" doesn't apply to it the way
+> it does to `createPosition`/`fillPosition`/`grantAssignment`. `ensureSite` instead lists the unit's
+> sites first and reuses an existing primary one on resume. See `modules/registration.md`'s defect 3
+> for the full design. Not yet run against a live instance (the acceptance test above needs a real
+> kill-mid-write); this milestone's gates stay as they are until that's done alongside items 1 and 2.
+
 **Also in scope, because there is nothing to regress against today:** the first real unit tests in
 this repo. `checkNotExcluded`'s ancestor walk (including the cycle cap), `slugCode`, and the
 status-transition guards currently have **zero** coverage — `go test ./...` passes vacuously, since
