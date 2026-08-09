@@ -13,15 +13,16 @@ type RegistrationStatus struct {
 type RegistrationStatus_Value string
 
 const (
-	RegistrationStatus_PENDING  RegistrationStatus_Value = "PENDING"
-	RegistrationStatus_APPROVED RegistrationStatus_Value = "APPROVED"
-	RegistrationStatus_REJECTED RegistrationStatus_Value = "REJECTED"
-	RegistrationStatus_UNKNOWN  RegistrationStatus_Value = "UNKNOWN"
+	RegistrationStatus_PENDING      RegistrationStatus_Value = "PENDING"
+	RegistrationStatus_PROVISIONING RegistrationStatus_Value = "PROVISIONING"
+	RegistrationStatus_APPROVED     RegistrationStatus_Value = "APPROVED"
+	RegistrationStatus_REJECTED     RegistrationStatus_Value = "REJECTED"
+	RegistrationStatus_UNKNOWN      RegistrationStatus_Value = "UNKNOWN"
 )
 
 // RegistrationStatus_Values returns all known variants of RegistrationStatus.
 func RegistrationStatus_Values() []RegistrationStatus_Value {
-	return []RegistrationStatus_Value{RegistrationStatus_PENDING, RegistrationStatus_APPROVED, RegistrationStatus_REJECTED}
+	return []RegistrationStatus_Value{RegistrationStatus_PENDING, RegistrationStatus_PROVISIONING, RegistrationStatus_APPROVED, RegistrationStatus_REJECTED}
 }
 
 func New_RegistrationStatus(value RegistrationStatus_Value) RegistrationStatus {
@@ -31,7 +32,7 @@ func New_RegistrationStatus(value RegistrationStatus_Value) RegistrationStatus {
 // IsUnknown returns false for all known variants of RegistrationStatus and true otherwise.
 func (e RegistrationStatus) IsUnknown() bool {
 	switch e.val {
-	case RegistrationStatus_PENDING, RegistrationStatus_APPROVED, RegistrationStatus_REJECTED:
+	case RegistrationStatus_PENDING, RegistrationStatus_PROVISIONING, RegistrationStatus_APPROVED, RegistrationStatus_REJECTED:
 		return false
 	}
 	return true
@@ -58,6 +59,8 @@ func (e *RegistrationStatus) UnmarshalText(data []byte) error {
 		*e = New_RegistrationStatus(RegistrationStatus_Value(v))
 	case "PENDING":
 		*e = New_RegistrationStatus(RegistrationStatus_PENDING)
+	case "PROVISIONING":
+		*e = New_RegistrationStatus(RegistrationStatus_PROVISIONING)
 	case "APPROVED":
 		*e = New_RegistrationStatus(RegistrationStatus_APPROVED)
 	case "REJECTED":

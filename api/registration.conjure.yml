@@ -16,6 +16,7 @@ types:
       RegistrationStatus:
         values:
           - PENDING
+          - PROVISIONING
           - APPROVED
           - REJECTED
       Coordinate:
@@ -54,7 +55,10 @@ types:
           decidedAt: optional<datetime>
           createdUnitId:
             type: optional<string>
-            docs: The go-oikumenea unit RID created on approval; unset until status = APPROVED.
+            docs: >
+              The go-oikumenea unit RID createChildOrg produced. Set as soon as status = PROVISIONING
+              (the one approval step that cannot be re-derived on a retry), and stays set through
+              APPROVED.
           createdAt: datetime
           updatedAt: datetime
       SubmitRegistrationRequest:

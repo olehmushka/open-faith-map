@@ -14,7 +14,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/olehmushka/open-faith-map/internal/registration/domain"
 )
 
@@ -103,14 +102,34 @@ func (s *Store) ListBySubmitter(ctx context.Context, submittedByPersonID string,
 	return out, rows.Err()
 }
 
-// Approve flips a PENDING request to APPROVED, recording the operator and the go-oikumenea unit
-// createChildOrg produced. Returns domain.ErrNotPending if the row isn't currently PENDING (guards
-// a double-approve race — the CHECK constraint would also reject a malformed row shape).
+// MarkProvisioning transitions a PENDING request to PROVISIONING, persisting the operator and the
+// go-oikumenea unit createChildOrg produced — the one approval step that cannot be re-derived on a
+// retry. Returns domain.ErrNotPending if the row isn't currently PENDING (guards a double-start
+// race — the CHECK constraint would also reject a malformed row shape).
+func (s *Store) MarkProvisioning(ctx context.Context, id, decidedByPersonID, createdUnitID string) (domain.Request, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.registration_requests
+		SET status = 'PROVISIONING', decided_by_person_id = $2, created_unit_id = $3
+		WHERE id = $1 AND status = 'PENDING'
+		RETURNING `+selectColumns,
+		id, decidedByPersonID, createdUnitID,
+	)
+	req, err := scanRequest(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Request{}, domain.ErrNotPending
+	}
+	return req, err
+}
+
+// Approve flips a PENDING or PROVISIONING request to APPROVED, recording the operator and the
+// go-oikumenea unit createChildOrg produced. Returns domain.ErrNotPending if the row is in neither
+// state (guards a double-approve race — the CHECK constraint would also reject a malformed row
+// shape).
 func (s *Store) Approve(ctx context.Context, id, decidedByPersonID, createdUnitID string) (domain.Request, error) {
 	row := s.pool.QueryRow(ctx, `
 		UPDATE openfaithmap.registration_requests
 		SET status = 'APPROVED', decided_by_person_id = $2, decided_at = $3, created_unit_id = $4
-		WHERE id = $1 AND status = 'PENDING'
+		WHERE id = $1 AND status IN ('PENDING', 'PROVISIONING')
 		RETURNING `+selectColumns,
 		id, decidedByPersonID, time.Now(), createdUnitID,
 	)

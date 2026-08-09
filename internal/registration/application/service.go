@@ -19,7 +19,6 @@ import (
 	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/location"
 	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/membership"
 	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/religion"
-
 	"github.com/olehmushka/open-faith-map/internal/coreintegration"
 	"github.com/olehmushka/open-faith-map/internal/registration/adapters"
 	"github.com/olehmushka/open-faith-map/internal/registration/domain"
@@ -133,12 +132,19 @@ func (s *Service) Get(ctx context.Context, id string) (domain.Request, error) {
 // location + site over it, a filled Position, and a unit-scoped grant of CongregationAdminRoleID to
 // the submitter. go-oikumenea's PDP decides for real: if the caller lacks religionorg.manage /
 // assignment.grant on RootUnitID, these calls fail and Approve returns that failure unchanged.
+//
+// Resumable (M2.3 item 3): a request already in PROVISIONING (a prior attempt died after
+// createChildOrg, the one step that can't be re-derived) resumes from its persisted
+// created_unit_id instead of creating a second org. The remaining steps are re-runnable: ensureSite
+// checks for an existing primary site first (createSite has no duplicate-conflict to catch), and
+// ensurePosition/ensureFilled/ensureGrant treat go-oikumenea's own conflict errors for a repeat call
+// as success.
 func (s *Service) Approve(ctx context.Context, token, decidedByPersonID, id string, unitCodeOverride *string) (domain.Request, error) {
 	req, err := s.store.Get(ctx, id)
 	if err != nil {
 		return domain.Request{}, err
 	}
-	if req.Status != domain.StatusPending {
+	if req.Status != domain.StatusPending && req.Status != domain.StatusProvisioning {
 		return domain.Request{}, domain.ErrNotPending
 	}
 
@@ -147,26 +153,70 @@ func (s *Service) Approve(ctx context.Context, token, decidedByPersonID, id stri
 		return domain.Request{}, err
 	}
 
+	unitID, err := s.ensureUnit(ctx, c, decidedByPersonID, req, unitCodeOverride)
+	if err != nil {
+		return domain.Request{}, err
+	}
+	if err := s.ensureSite(ctx, c, unitID, req); err != nil {
+		return domain.Request{}, err
+	}
+	position, err := s.ensurePosition(ctx, c, unitID)
+	if err != nil {
+		return domain.Request{}, err
+	}
+	if err := s.ensureFilled(ctx, c, position, req.SubmittedByPersonID); err != nil {
+		return domain.Request{}, err
+	}
+	if err := s.ensureGrant(ctx, c, req.SubmittedByPersonID, unitID); err != nil {
+		return domain.Request{}, err
+	}
+
+	return s.store.Approve(ctx, id, decidedByPersonID, unitID)
+}
+
+// ensureUnit returns req's go-oikumenea unit, reusing the persisted created_unit_id on a resumed
+// PROVISIONING request rather than calling createChildOrg a second time.
+func (s *Service) ensureUnit(ctx context.Context, c *oikumenea.Client, decidedByPersonID string, req domain.Request, unitCodeOverride *string) (string, error) {
+	if req.Status == domain.StatusProvisioning && req.CreatedUnitID != nil {
+		return *req.CreatedUnitID, nil
+	}
+
 	unitCode := slugCode(req.CongregationName)
 	if unitCodeOverride != nil && *unitCodeOverride != "" {
 		unitCode = *unitCodeOverride
 	}
-
 	profile, err := c.Religion.CreateChildOrg(ctx, s.cfg.RootUnitID, religion.CreateChildOrgRequest{
 		Code:           unitCode,
 		Name:           req.CongregationName,
 		PrimaryTaxonId: &req.TaxonID,
 	})
 	if err != nil {
-		return domain.Request{}, fmt.Errorf("createChildOrg: %w", err)
+		return "", fmt.Errorf("createChildOrg: %w", err)
 	}
-	unitID := profile.UnitId
+	if _, err := s.store.MarkProvisioning(ctx, req.ID, decidedByPersonID, profile.UnitId); err != nil {
+		return "", fmt.Errorf("markProvisioning: %w", err)
+	}
+	return profile.UnitId, nil
+}
+
+// ensureSite makes sure unitID has a primary site, creating one from req's location fields only if
+// none exists yet. createSite has no natural duplicate-conflict (unlike the position/fill/grant
+// steps below), so a resumed retry must check first rather than rely on an error to catch.
+func (s *Service) ensureSite(ctx context.Context, c *oikumenea.Client, unitID string, req domain.Request) error {
+	sites, err := c.Religion.ListUnitSites(ctx, unitID)
+	if err != nil {
+		return fmt.Errorf("listUnitSites: %w", err)
+	}
+	for _, site := range sites.Sites {
+		if site.IsPrimary {
+			return nil
+		}
+	}
 
 	siteTypeID, err := churchSiteTypeID(ctx, c)
 	if err != nil {
-		return domain.Request{}, err
+		return err
 	}
-
 	loc, err := c.Location.CreateLocation(ctx, location.LocationWrite{
 		Coordinate: &location.CoordinateInput{
 			Format:    "latlon",
@@ -181,7 +231,7 @@ func (s *Service) Approve(ctx context.Context, token, decidedByPersonID, id stri
 		PostalCode:  req.PostalCode,
 	})
 	if err != nil {
-		return domain.Request{}, fmt.Errorf("createLocation: %w", err)
+		return fmt.Errorf("createLocation: %w", err)
 	}
 
 	isPrimary := true
@@ -190,32 +240,67 @@ func (s *Service) Approve(ctx context.Context, token, decidedByPersonID, id stri
 		SiteTypeId: siteTypeID,
 		IsPrimary:  &isPrimary,
 	}); err != nil {
-		return domain.Request{}, fmt.Errorf("createSite: %w", err)
+		return fmt.Errorf("createSite: %w", err)
 	}
+	return nil
+}
 
+const congregationAdminPositionCode = "admin"
+
+// ensurePosition returns unitID's "admin" position, creating it on a first attempt and reusing the
+// existing one on a resumed retry — createPosition rejects a repeat code with
+// Position:PositionConflict, which is exactly the signal a resume needs.
+func (s *Service) ensurePosition(ctx context.Context, c *oikumenea.Client, unitID string) (membership.Position, error) {
 	position, err := c.Membership.CreatePosition(ctx, unitID, membership.CreatePositionRequest{
-		Code:  "admin",
+		Code:  congregationAdminPositionCode,
 		Title: "Congregation Admin",
 	})
-	if err != nil {
-		return domain.Request{}, fmt.Errorf("createPosition: %w", err)
+	if err == nil {
+		return position, nil
 	}
-	if _, err := c.Membership.FillPosition(ctx, position.Id, membership.FillPositionRequest{
-		PersonId: req.SubmittedByPersonID,
-	}); err != nil {
-		return domain.Request{}, fmt.Errorf("fillPosition: %w", err)
+	if !membership.IsPositionConflict(err) {
+		return membership.Position{}, fmt.Errorf("createPosition: %w", err)
 	}
 
+	positions, err := c.Membership.ListPositions(ctx, unitID, nil, nil, nil)
+	if err != nil {
+		return membership.Position{}, fmt.Errorf("listPositions after PositionConflict: %w", err)
+	}
+	for _, p := range positions.Positions {
+		if p.Code == congregationAdminPositionCode {
+			return p, nil
+		}
+	}
+	return membership.Position{}, fmt.Errorf("createPosition: PositionConflict reported but %q not found in unit %s", congregationAdminPositionCode, unitID)
+}
+
+// ensureFilled fills position with personID, treating an already-filled position (a resumed retry —
+// this position is created fresh per request, so no other actor can have filled it) as success.
+func (s *Service) ensureFilled(ctx context.Context, c *oikumenea.Client, position membership.Position, personID string) error {
+	if _, err := c.Membership.FillPosition(ctx, position.Id, membership.FillPositionRequest{PersonId: personID}); err != nil {
+		if membership.IsPositionAlreadyFilled(err) {
+			return nil
+		}
+		return fmt.Errorf("fillPosition: %w", err)
+	}
+	return nil
+}
+
+// ensureGrant grants CongregationAdminRoleID to personID on unitID, treating an identical existing
+// grant (a resumed retry) as success.
+func (s *Service) ensureGrant(ctx context.Context, c *oikumenea.Client, personID, unitID string) error {
 	if _, err := c.Authorization.GrantAssignment(ctx, authorization.GrantAssignmentRequest{
-		SubjectPersonId: req.SubmittedByPersonID,
+		SubjectPersonId: personID,
 		RoleId:          s.cfg.CongregationAdminRoleID,
 		TargetUnitId:    unitID,
 		Scope:           "unit", // never subtree — a congregation admin never reaches another congregation
 	}); err != nil {
-		return domain.Request{}, fmt.Errorf("grantAssignment: %w", err)
+		if authorization.IsAssignmentConflict(err) {
+			return nil
+		}
+		return fmt.Errorf("grantAssignment: %w", err)
 	}
-
-	return s.store.Approve(ctx, id, decidedByPersonID, unitID)
+	return nil
 }
 
 func (s *Service) Reject(ctx context.Context, decidedByPersonID, id, reason string) (domain.Request, error) {

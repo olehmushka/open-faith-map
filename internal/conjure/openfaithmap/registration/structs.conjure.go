@@ -73,7 +73,7 @@ type RegistrationRequest struct {
 	// The operator who approved/rejected this request; unset while PENDING.
 	DecidedByPersonId *string            `json:"decidedByPersonId,omitempty"`
 	DecidedAt         *datetime.DateTime `json:"decidedAt,omitempty"`
-	// The go-oikumenea unit RID created on approval; unset until status = APPROVED.
+	// The go-oikumenea unit RID createChildOrg produced. Set as soon as status = PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays set through APPROVED.
 	CreatedUnitId *string           `json:"createdUnitId,omitempty"`
 	CreatedAt     datetime.DateTime `json:"createdAt"`
 	UpdatedAt     datetime.DateTime `json:"updatedAt"`
