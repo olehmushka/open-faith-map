@@ -46,7 +46,7 @@ Conventions per [conventions.md](../architecture/conventions.md).
 
 | Op | Intent | Perm |
 |---|---|---|
-| `POST /vouches` | Guarantor vouches for a claimant on a congregation | caller must hold an active `content.manage`-equivalent authority on **some** congregation (proven the same way [content.md](content.md) proves it — a live go-oikumenea authority check), and must not themselves be `revoked` |
+| `POST /vouches` | Guarantor vouches for a claimant on a congregation | caller must hold write authority over **some** congregation unit — a live, target-scoped capability check per [D-PlatformModerator](../architecture/decisions.md), the same mechanism [content.md](content.md)'s `content.manage` uses — and must not themselves be `revoked` |
 | `GET /vouches?claimant=&congregation=` | List vouches for a claim (moderator/support tooling) | `moderation.read` |
 | `POST /guarantors/{personRid}/revoke` | Revoke a guarantor | `moderation.act` |
 | `GET /guarantors/{personRid}/status` | Read current status | `moderation.read` |
@@ -63,18 +63,34 @@ Conventions per [conventions.md](../architecture/conventions.md).
 
 ## Authorization touchpoints
 
-`moderation.read`/`moderation.act` gate the guarantor-management endpoints (same platform-moderator
-roster as [moderation.md](moderation.md)). Filing a vouch itself is gated by proof of the
-guarantor's *own* standing over a real congregation — proven live against go-oikumenea, never
+`moderation.read`/`moderation.act` gate the guarantor-management endpoints — the same
+`platform-moderator` Role on the shared root unit that [moderation.md](moderation.md) uses
+([D-PlatformModerator](../architecture/decisions.md)). Filing a vouch itself is gated by proof of
+the guarantor's *own* standing over a real congregation — proven live against go-oikumenea, never
 cached (same rule as [core-integration.md](core-integration.md#invariants)).
+
+*(Audit 2026-08-09: before D-PlatformModerator, both gates in this module referred to a moderator
+roster that had no designed home anywhere in the doc set — this module was blocked on a primitive
+`moderation.md` only described in prose. That is now resolved; the two gates below are unchanged in
+intent.)*
+
+**Note the "some congregation" gate is deliberately weak, and that is a design choice worth
+re-reading before M6 is built.** Any admin with standing over any congregation may vouch for a
+claimant on *any other* congregation — there is no relationship requirement between guarantor and
+claim. That is what makes vouching useful (a known pastor in the next city can vouch) and also what
+makes `DS-OFM-4`'s eligibility-threshold question the real control. A single compromised
+congregation-admin account can currently mint unlimited vouches.
 
 ## Invariants
 
 - **A vouch is evidence, never authority.** Nothing in this module ever creates or modifies a
   go-oikumenea role assignment. A heavily-vouched claim still requires the claimant to actually
   receive congregation authority through the normal go-oikumenea-mediated flow
-  ([core-integration.md](core-integration.md), step 5) — vouching only shapes how much moderator
-  scrutiny that grant gets before or after the fact.
+  ([registration.md](registration.md)'s approve flow — a `unit`-scoped `congregation-admin` grant
+  made with a real operator's token) — vouching only shapes how much moderator scrutiny that grant
+  gets before or after the fact. *(Audit 2026-08-09: this previously cited
+  "core-integration.md, step 5," a step number that no longer exists — that doc's provisioning flow
+  was superseded by registration.md at M2 and now has three steps.)*
 - **The vouching graph is append-only.** `vouching_edges` rows are never edited or deleted
   (`reject_mutation()`-guarded); a mistaken vouch is addressed by moderator action on the
   *claim*, not by erasing the vouch.

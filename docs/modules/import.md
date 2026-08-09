@@ -129,6 +129,14 @@ the pattern, not a specific manifest.
   default (`@weekly` cron, live calls to raw.githubusercontent.com / iso639-3.sil.org /
   query.wikidata.org). Reasonable defaults to carry over unchanged, but worth a deliberate choice
   later if a quieter local-dev default is preferred.
-- **Exact verified table name for a post-import check** — `geo_countries` is expected (per
-  go-oikumenea's `migrations/0001_platform_core.sql`) but wasn't confirmed against a live run as
-  part of this doc pass.
+- ~~**Exact verified table name for a post-import check.**~~ **Resolved by M2.2's own verification:**
+  `oikumenea.geo_countries`, confirmed with 250 real rows after the boot-time
+  `geo-countries-iso3166` run. Already stated in the runbook above; this seam predated that
+  confirmation.
+- **Shared secrets are hardcoded in `docker-compose.yml`.** `HERMENEA_OIKUMENEA_TOKEN` and
+  `OIKUMENEA_HERMENEA_TOKEN` appear as literals in two services each, unlike every other secret in
+  this repo, which goes through `${...}` + `.env.example`. Combined with `hermenea` publishing host
+  ports 9443/9444, that token is the only gate on `POST /hermenea/v1/sync/{source}` from the host.
+  Fine for local dev; a real deployment has to remember to edit the compose file itself, which is
+  exactly the kind of thing that gets forgotten. Moved to `.env` by
+  [milestones.md](../milestones.md)'s **M2.4**.

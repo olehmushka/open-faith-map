@@ -76,12 +76,13 @@ go-oikumenea itself is unmodified — run from its published docker image, headl
 (D-CoreDependency), exactly as go-oikumenea's own `docker-compose.yml` runs its `app` container:
 no host port published, reachable only over the compose-internal network.
 
-**Not built yet.** `openfaithmap-admin` is a decided, designed target (D-AdminSurface,
-[milestones.md](../milestones.md)'s M2.1) — the code that will become it currently still lives in
-the single `web/` app built before this split. See [web-facade.md](../modules/web-facade.md) and
-[web-admin.md](../modules/web-admin.md) for exactly what moves where. `oikumenea-console` (D-InstanceAdminConsole, M1.2) is deployed and built; `hermenea`
-(D-BulkImport, M2.2) is decided and designed, deploy wiring not yet landed — see
-[milestones.md](../milestones.md).
+**Build status.** All five services above exist in `docker-compose.yml` and run:
+`openfaithmap-api` (M1/M2), `openfaithmap-web` and `openfaithmap-admin` (split at M2.1 —
+[web-facade.md](../modules/web-facade.md) and [web-admin.md](../modules/web-admin.md)),
+`oikumenea-console` (M1.2), and `hermenea` (M2.2). What is *not* built is most of what
+`openfaithmap-api` is eventually for: it owns exactly one module today, `registration`. `content`,
+`discovery`, `moderation`, and `vouching` are designed only — see the
+[stage board](../milestones.md#stage-board), which is authoritative for stage.
 
 ## Request paths
 
@@ -90,6 +91,13 @@ the single `web/` app built before this split. See [web-facade.md](../modules/we
 `GET /religion/discovery/sites` directly (unauthenticated public read, `religion.read`) → merged
 response rendered by `openfaithmap-web`. No user token exists anywhere in this path —
 `openfaithmap-web` has none to forward.
+
+> ⚠️ **Unverified, and M4 depends on it.** M1.1 established that every `religion` module read is
+> `RequireAnywhere`-gated, a person-shaped PEP path that denies subjects with no person behind
+> them. An anonymous caller is also such a subject — so "unauthenticated public read" above may
+> simply be false, which would break the public map itself and not merely the cache-refresh job
+> M1.1 already flagged. Nobody has measured it. **M2.5** does, and blocks M4's `designed` gate on
+> the answer.
 
 **Authenticated write** (a congregation admin editing their site): browser (with session cookie) →
 `openfaithmap-admin` extracts the bearer token from the session → calls `openfaithmap-api` for
@@ -123,55 +131,49 @@ instance-wide authority.
 
 ## Deployment topology
 
-`open-faith-map/docker-compose.yml` (built at M1 — see [milestones.md](../milestones.md)) extends
-go-oikumenea's own compose pattern rather than reinventing it. As built, this deviates from the
-original planned shape in a few ways (no Keycloak, one shared Postgres — see M1's as-built note in
-milestones.md):
+`open-faith-map/docker-compose.yml` (built at M1, extended at M1.2/M2/M2.1/M2.2 — see
+[milestones.md](../milestones.md)) extends go-oikumenea's own compose pattern rather than
+reinventing it. Two deviations from the original planned shape are now their own decisions:
+[D-SharedDatabase](decisions.md) (one Postgres instance, two schemas — not two instances) and
+[D-GoogleDirect](decisions.md) (Google is the sole IdP — no Keycloak service).
 
-- One shared `postgres` service (not a separate `oikumenea-postgres` instance) plus
-  `oikumenea-migrate`, `oikumenea-init-role`, `oikumenea-app` — go-oikumenea's own bootstrap
-  sequence, image pulled from its published registry, running against the `oikumenea` schema in
-  that shared instance. `oikumenea-app` publishes no host port.
-- `openfaithmap-postgres`, `openfaithmap-migrate` — **not built yet.** OpenFaithMap has no schema
-  of its own until M3 (`content`/`moderation`/`vouching`); when it lands, it runs as its own
-  `openfaithmap` schema in the same shared `postgres` service above, not a separate instance.
-- `openfaithmap-api` — currently **also publishes host ports directly** (`3000`/`3001`), a real gap
-  against the "only the UI surfaces are public ingress" target below; narrowing this is a follow-up,
-  not yet its own milestone item.
-- `openfaithmap-web` — publishes host port `3002`, built at M1. Reachable internally by
-  `oikumenea-app` at `https://oikumenea-app:8443` (self-signed cert, dev-only
-  `NODE_TLS_REJECT_UNAUTHORIZED=0`) since `oikumenea-app` has no host port of its own. Once
-  D-AdminSurface's split lands in code, this service drops its Auth.js env vars
-  (`AUTH_SECRET`/`AUTH_GOOGLE_*`/`AUTH_URL`) entirely — it will no longer run Auth.js at all.
-- `openfaithmap-admin` — **not built yet** (D-AdminSurface, [milestones.md](../milestones.md)'s
-  M2.1). Today's `openfaithmap-web` service in `docker-compose.yml` is what will eventually split
-  into `openfaithmap-web` (public, above) and this new service — its own host port, and once
-  deployed beyond local dev, its own subdomain (e.g. `admin.openfaithmap.org`), separate from the
-  public site's origin. It inherits the Auth.js/Google env vars `openfaithmap-web` currently holds.
-- No `keycloak` service — go-oikumenea is configured to trust Google directly
-  (`deploy/oikumenea-install.yml`); both humans (via `openfaithmap-admin`'s Auth.js Google provider)
-  and OpenFaithMap's service principal (a self-minted GCP service-account ID token) authenticate
-  against the same Google issuer, distinguished by `(issuer, subject)` and audience.
-- `oikumenea-console` — **not built yet** (D-InstanceAdminConsole,
-  [milestones.md](../milestones.md)'s M1.2). Image `docker.io/olegamysk/oikumenea-console`,
-  reaching `oikumenea-app` the same internal-network way `openfaithmap-api` does. Unlike
-  `openfaithmap-web`/`openfaithmap-admin`, it must not get a bare `ports:` mapping at any real
-  deployment — its instance-wide power means M1.2 has to pick a network-level restriction (VPN, IP
-  allowlist, protected subdomain) before it ships anywhere beyond local dev.
-- `hermenea` — go-oikumenea's own companion service, deploy wiring not yet landed (D-BulkImport,
-  [milestones.md](../milestones.md)'s M2.2). A **persistent** service with its own database and
-  migration set, built from a sibling go-oikumenea checkout (no published image, matching how
-  go-oikumenea's own migrations are already sourced) via its `Dockerfile.hermenea`, publishing its
-  own ports (9443/9444) for local-dev triggering — see [modules/import.md](../modules/import.md)'s
-  "Operating hermenea" section for the exact compose services.
+Everything below is **as built and running today** unless marked otherwise.
+
+| Service | Host port | Notes |
+|---|---|---|
+| `postgres` | 5432 | One shared instance (D-SharedDatabase). Holds the `oikumenea` and `openfaithmap` schemas, plus `hermenea`'s own separate database. |
+| `oikumenea-migrate` · `oikumenea-init-role` · `oikumenea-app` | — | go-oikumenea's own bootstrap sequence, published image. `oikumenea-app` publishes **no** host port (D-HeadlessTopology). |
+| `openfaithmap-migrate` | — | Applies `migrations/` to the `openfaithmap` schema. Built at M2, not M3 as originally planned — `registration_requests` turned out to be OpenFaithMap's first schema. |
+| `openfaithmap-api` | 3000 / 3001 | ⚠️ Publishes host ports, contradicting the "only UI surfaces are public ingress" target below. Removal is **M2.4**. |
+| `openfaithmap-web` | 3002 | Anonymous public surface. Holds no Auth.js env vars at all since the M2.1 split. |
+| `openfaithmap-admin` | 3004 | The only OpenFaithMap-built surface with a session. Holds the `AUTH_*` vars `openfaithmap-web` used to. Its own subdomain (e.g. `admin.openfaithmap.org`) once deployed beyond local dev. |
+| `oikumenea-console` | 3003 | go-oikumenea's own published console, pinned to `:0.0.1`. See the exposure rule below. |
+| `init-hermenea-db` · `migrate-hermenea` · `hermenea` | 9443 / 9444 | Persistent service with its own database and migration set, built from a sibling go-oikumenea checkout via `Dockerfile.hermenea` (no published image). See [modules/import.md](../modules/import.md)'s "Operating hermenea". |
+
+Three exposure rules, in descending strictness:
+
+- **`oikumenea-app` never gets a host port**, in any environment (D-HeadlessTopology). Reached only
+  over the compose network at `https://oikumenea-app:8443`, self-signed cert, dev-only
+  `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+- **`oikumenea-console` never gets a bare public port beyond local dev.** Its blast radius is
+  instance-wide. D-InstanceAdminConsole decides a WireGuard VPN in front of it; not implemented
+  because there is no real deployment target yet. It also shares an OAuth client with
+  `openfaithmap-admin` today — see [D-OAuthClients](decisions.md).
+- **`hermenea` publishes 9443/9444 in local dev**, gated only by a shared trigger token that is
+  currently a hardcoded literal in the compose file. Moving it to `.env` is **M2.4**.
+
+**Known gap: least privilege.** `openfaithmap-api` connects to the shared instance as the `postgres`
+superuser, so it *can* reach go-oikumenea's schema directly — which D-CoreDependency forbids
+outright. Nothing does; nothing prevents it either. The `openfaithmap_app` role that closes this is
+**M2.4**. See D-SharedDatabase's consequences.
 
 ## What's unchanged from go-oikumenea, what's new
 
 | | go-oikumenea | OpenFaithMap |
 |---|---|---|
-| Auth model | Delegates to external IdP, decides authorization (PDP) | Delegates *entirely* to go-oikumenea for anything tenant/person/religion-shaped; owns a narrow authorization check only for its own content/moderation/vouching tables |
-| Toolchain | Go + gödel + Conjure + witchcraft + pgx/sqlc + Atlas | Identical |
-| Schema | `oikumenea` schema, `oikumenea.<module>_*` tables | `openfaithmap` schema, `openfaithmap.<module>_*` tables — see [conventions.md](conventions.md) |
+| Auth model | Delegates to external IdP, decides authorization (PDP) | Delegates *entirely* to go-oikumenea for anything tenant/person/religion-shaped; owns a narrow authorization check only for its own content/moderation/vouching tables. That check is a **target-scoped capability check** against go-oikumenea's PDP ([D-PlatformModerator](decisions.md)) — never a local role table, and never (as `content.md` originally proposed) a successful read treated as proof of write authority |
+| Toolchain | Go + gödel + Conjure + witchcraft + pgx/sqlc + Atlas | Identical — with two documented deviations: `registration` uses hand-written pgx rather than sqlc, and `openfaithmap-api` has no TypeScript codegen pipeline yet (**M2.6**) |
+| Schema | `oikumenea` schema, `oikumenea.<module>_*` tables | `openfaithmap` schema, `openfaithmap.<module>_*` tables in the **same** Postgres instance ([D-SharedDatabase](decisions.md)) — see [conventions.md](conventions.md) |
 | UI | Optional Next.js admin console (`oikumenea-console`), BFF over the public API — super-admin-only, reused as-is by OpenFaithMap (D-InstanceAdminConsole) | Two separate Next.js apps (D-AdminSurface): `openfaithmap-web` (anonymous, no session) and `openfaithmap-admin` (the only OpenFaithMap-built surface that ever holds a credential), both facades over go-oikumenea and OpenFaithMap's own API |
-| Exposure | Headless, internal-only (D-HeadlessTopology); `oikumenea-console` is a separate, more-privileged surface OpenFaithMap deploys but never widens | `openfaithmap-web` and `openfaithmap-admin` are the two intended public ingress points — still the target, not yet fully true: `openfaithmap-api` also publishes host ports today, and `openfaithmap-admin` doesn't exist as a separate deployment yet (see deployment topology above) |
+| Exposure | Headless, internal-only (D-HeadlessTopology); `oikumenea-console` is a separate, more-privileged surface OpenFaithMap deploys but never widens | `openfaithmap-web` and `openfaithmap-admin` are the two intended public ingress points — still the target, not yet fully true: `openfaithmap-api` and `hermenea` both publish host ports today (**M2.4** narrows both; see deployment topology above) |
 | Reference-data seeding | Ships `hermenea`, its own companion service (own DB, own service-principal credential, `POST /import/{objectType}`) | Deploys go-oikumenea's `hermenea` unmodified (D-BulkImport) — no code, no credential, no write path of its own |

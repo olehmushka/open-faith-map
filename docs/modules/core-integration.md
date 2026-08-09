@@ -29,7 +29,7 @@ PDP is authoritative every time.
 | `location` | The physical address + coordinate behind a congregation's site | User token (write) / unauthenticated public read (via `religion` discovery) |
 | `religion` | The faith taxonomy (`religion_taxa`), organization profiles, clergy credentials, lay affiliation, sites, service schedules, discovery search | Mixed — see [discovery.md](discovery.md) |
 | `search` | Cross-type object search inside the congregation-admin console (finding a person/unit by name) | User token |
-| `audit` | The single append-only ledger for both go-oikumenea's own actions and OpenFaithMap's moderation actions | Service principal (writes from OpenFaithMap's backend) |
+| `audit` | ~~The single append-only ledger for both go-oikumenea's own actions and OpenFaithMap's moderation actions~~ **Read-only, and not used by OpenFaithMap.** go-oikumenea's audit module has no write endpoint (M1.1 item 1); D-Moderation's Correction makes `openfaithmap.moderation_actions` OpenFaithMap's own ledger of record. go-oikumenea's trail still covers every write a forwarded token makes *through* go-oikumenea. | — (no OpenFaithMap call) |
 
 ## What OpenFaithMap owns instead
 
@@ -85,7 +85,28 @@ provisioning writes) — go-oikumenea's PDP decides every one for real.
 
 OpenFaithMap defines **no permission codes of its own** for anything in the delegation table above
 — it forwards the caller's token and lets go-oikumenea's PDP answer. It *does* define permission
-codes for its own domains (content/moderation/vouching), documented in their own module docs.
+names for its own domains (content/moderation/vouching), documented in their own module docs.
+
+### The one pattern every OpenFaithMap-owned module must follow
+
+For OpenFaithMap's *own* tables there is no PDP behind the check — the local answer is the whole
+decision. [D-PlatformModerator](../architecture/decisions.md) fixes the pattern:
+
+> **Ask go-oikumenea a target-scoped question, and act on that answer only.** "Does this caller hold
+> *this authority* over *this unit*?" Never "does this caller hold P anywhere," and never "did a
+> read succeed, so they must have standing."
+
+Both anti-patterns are real, not hypothetical:
+
+- **The untargeted check** shipped in `registration`'s `IsOperator`, which asks for
+  `religionorg.manage` with no unit — and `congregation-admin` holds that permission on its own
+  unit, so every congregation admin reads as a registration operator and sees every submitter's
+  address ([registration.md](registration.md#known-defects-audit-2026-08-09), fixed by M2.3).
+- **Read-as-proof-of-write** was `content.md`'s original definition of `content.manage`, which
+  would have let anyone who can see a congregation edit its site ([content.md](content.md)).
+
+A useful test when writing one of these: name the unit and the verb out loud. If either is missing
+from the call you are about to make, the check is wrong.
 
 For background work, OpenFaithMap's service principal (D-ServiceIdentities) holds exactly this
 grant today:
@@ -104,9 +125,9 @@ proving M1, see [milestones.md](../milestones.md) M1.1):
   `RequireServiceOrPerson`) is needed before M4 is built on an assumption that doesn't hold today.
 - **`audit.write` does not exist.** go-oikumenea's `audit` module has no write endpoint — writes
   happen in-process — confirmed live (`scripts/bootstrap-service-principal` rejects the grant with
-  `PrincipalGrantInvalid: unknown permission code`). If D-Moderation (M5) still needs OpenFaithMap's
-  own moderation actions written into go-oikumenea's audit trail, that needs a real design — the
-  mechanism this doc assumed isn't there.
+  `PrincipalGrantInvalid: unknown permission code`). **Resolved (audit 2026-08-09):** D-Moderation
+  carries a Correction; `openfaithmap.moderation_actions` is OpenFaithMap's ledger of record and the
+  one-ledger goal is dropped as unachievable. M5 needs no audit grant.
 
 No role assignment, no unit reach, no write access to tenant/person/religion data as the
 principal — every write a real congregation admin makes is made with *their* token, never the
@@ -130,7 +151,15 @@ principal's.
 - **No machine-callable `religion` reads.** See the authorization-touchpoints correction above —
   discovery-cache refresh and taxon-ancestor resolution have no service-principal path today. A
   go-oikumenea feature request (`RequireServiceOrPerson` on the relevant reads) is a prerequisite
-  for M4, not yet filed.
+  for M4. **Now owned by [milestones.md](../milestones.md)'s M2.5** (it had been unowned since M1.1
+  named it), which also asks the larger question M1.1 did not: `RequireAnywhere` denies subjects
+  with no person behind them, and an **anonymous** caller is such a subject — so
+  `architecture/overview.md`'s "unauthenticated public read" of
+  `GET /religion/discovery/sites` may be false, which would break the public map itself. Unmeasured.
+- **The D-Exclusions taxon check has no non-interactive caller.** Today it runs under the
+  submitter's own token inside `registration`. Any future automated use — scheduled re-validation
+  (`DS-OFM-6`), a bulk importer (`DS-OFM-10`), or `moderation`'s public
+  `POST /exclusion-check` — needs the same machine-callable path M2.5 is chasing.
 - **Taxon-level exclusion has no go-oikumenea-native home.** If a second consuming app ever needed
   the same "block this whole tradition" behavior, this logic (currently facade-side only) would be
   a candidate for a genuine go-oikumenea feature request — not attempted here since OpenFaithMap

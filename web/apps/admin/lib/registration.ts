@@ -4,7 +4,7 @@
 // Server-only: a typed fetch client for openfaithmap-api's registration module (M2). Plain
 // fetch, not a generated SDK — openfaithmap-api has no TypeScript SDK generation pipeline set up
 // yet (unlike go-oikumenea's clients/typescript), a deliberate, documented scope cut for this pass.
-// Forwards the session's Google ID token unchanged, same as web/lib/oikumenea.ts.
+// Forwards the session's Google ID token unchanged, same as lib/oikumenea.ts.
 import "server-only";
 
 import { auth } from "@/auth";

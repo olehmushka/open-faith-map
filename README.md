@@ -39,59 +39,57 @@ flowchart LR
     api -- "SDK" --> core
 ```
 
-`openfaithmap-admin` is decided and designed, not yet built as a separate deployment (see
-[milestones.md](docs/milestones.md)'s M2.1) — today's code still lives in one `web/` app. Full
-detail — request paths, deployment topology, what's inherited from go-oikumenea vs. new — lives in
-[docs/architecture/overview.md](docs/architecture/overview.md).
+Plus two surfaces OpenFaithMap deploys but does not build: `oikumenea-console` (go-oikumenea's own
+super-admin console, D-InstanceAdminConsole) and `hermenea` (its reference-data companion service,
+D-BulkImport). Full detail — request paths, deployment topology, what's inherited from go-oikumenea
+vs. new — lives in [docs/architecture/overview.md](docs/architecture/overview.md).
 
 ## Status
 
-**M1 in progress** (go-oikumenea integration wiring — see the
-[stage board](docs/milestones.md#stage-board)). The architecture is design-complete for milestones
-M0–M6 (see [docs/milestones.md](docs/milestones.md)) — every binding decision, module, and entity
-model is written down before any of it is built, on purpose (see
-[docs/development-process.md](docs/development-process.md)). This repository currently holds:
+The [stage board](docs/milestones.md#stage-board) is authoritative. In short: **M0–M2.2 are built,
+M3–M6 are designed, M7 is an idea.**
 
-- The full design doc set under [docs/](docs/) — **read `docs/README.md` first**, it is the source
-  of truth code is held to.
-- A minimal, runnable `openfaithmap-api` skeleton (boots, serves health checks).
-- `docker-compose.yml`: a real, working go-oikumenea instance (its published image, migrated, on a
-  shared Postgres with OpenFaithMap — see `oikumenea` vs `openfaithmap` schemas in the compose file)
-  plus `openfaithmap-api`. **No Keycloak** — OpenFaithMap authenticates directly against Google (see
-  `deploy/oikumenea-install.yml`'s header comment); this is a real deviation from
-  `architecture/decisions.md`'s original shared-Keycloak sketch that still needs its own `D-<Name>`
-  write-up.
-- `internal/coreintegration`: a real, proven service-principal client — a GCP service account mints
-  its own Google ID token per call (no OAuth2 client-credentials, no Keycloak), which go-oikumenea
-  validates and resolves by `(issuer, subject)`. `scripts/bootstrap-service-principal` registers it
-  against a fresh instance. Proven end-to-end (`internal/coreintegration`'s integration test) against
-  `connector.read`, not the `religion.read` grant OpenFaithMap's own docs describe needing — every
-  religion-module read endpoint currently denies machine subjects outright (`RequireAnywhere`, a
-  person-only PEP path); only the `connector`/`wiring` modules are machine-reachable
-  (`RequireService`) today. That's a real go-oikumenea gap worth raising upstream, not something
-  papered over here. `core-integration.md`'s `audit.write` grant also doesn't exist (go-oikumenea's
-  audit module is read-only from the API) — both are documented in the script's comments, not yet
-  corrected in `docs/modules/core-integration.md`.
-- A placeholder `web/` for the future `openfaithmap-web` Next.js app — the user-token-passthrough /
-  login path is still deferred to a follow-up session, so M1's "login working" exit criterion isn't
-  met yet.
+Running today:
+
+- **`openfaithmap-api`** with its first real module, `registration` — congregation self-service
+  submission, the D-Exclusions taxon check, and operator approval that performs real go-oikumenea
+  writes with the operator's own forwarded token. Plus `api/registration.conjure.yml`,
+  `migrations/0001_registration.sql`, and `internal/conjure/` generated server code.
+- **Two Next.js apps** (D-AdminSurface): `web/apps/web` (anonymous, no session, ever) and
+  `web/apps/admin` (the only surface that ever holds a credential — login, registration wizard,
+  operator console, roster).
+- **`docker-compose.yml`**: a real go-oikumenea instance from its published image, plus
+  `oikumenea-console`, `hermenea`, and both OpenFaithMap apps. One shared Postgres, two schemas
+  (D-SharedDatabase). **No Keycloak** — Google is the sole IdP (D-GoogleDirect).
+- **`internal/coreintegration`**: a proven service-principal client — a GCP service account mints
+  its own Google ID token per call, which go-oikumenea validates and resolves by
+  `(issuer, subject)`. Proven against `connector.read`, **not** the `religion.read` grant these docs
+  describe needing: every religion-module read endpoint denies machine subjects outright
+  (`RequireAnywhere`, a person-only PEP path). That's a real go-oikumenea gap, tracked as M2.5.
+
+Not built: `content`, `discovery`, `moderation`, `vouching` — designed only, see
+[docs/](docs/). A 2026-08-09 audit also opened M2.3–M2.6 and M4.1 ahead of M3; **M2.3 and M2.4 both
+carry defects in already-shipped code**, so read those before extending anything.
 
 ## Repository layout
 
 ```
 cmd/openfaithmap-api/   composition root — the openfaithmap-api binary
+api/                    Conjure IDL contracts — the API source of truth
+internal/conjure/       generated server code — never hand-edited
 internal/               hexagonal modules (transport → application → domain → adapters),
-                         one directory per docs/modules/*.md
+                         one directory per docs/modules/*.md. Today: registration,
+                         coreintegration, platform/config; content/discovery/moderation/
+                         vouching are doc-only stubs.
+migrations/             Atlas versioned migrations (openfaithmap schema)
+scripts/                one-off bootstrap commands (service principal, admin person,
+                         registration org) — the reproducible/CI path
 docs/                   the binding design doc set — read this first
 var/conf/               local-dev install.yml / runtime.yml
-web/                    openfaithmap-web (Next.js) — placeholder, see web/README.md.
-                         Slated to split into openfaithmap-web + openfaithmap-admin
-                         (D-AdminSurface, docs/milestones.md's M2.1) — not yet restructured.
+web/apps/web/           openfaithmap-web — anonymous public site, no session
+web/apps/admin/         openfaithmap-admin — the only surface with a credential
+deploy/                 install configs for the services this repo deploys but doesn't build
 ```
-
-`api/` (Conjure IDL contracts) and `internal/conjure/` (generated server code) don't exist yet —
-they're added together, in the same PR as the first module's first `<module>.conjure.yml`, once a
-module reaches its "backend" gate (see [docs/development-process.md](docs/development-process.md)).
 
 ## Toolchain (D-Stack)
 
@@ -109,15 +107,26 @@ go run ./cmd/openfaithmap-api serve
 curl -sk https://localhost:3001/status/liveness   # 3000 = app API, 3001 = management (health/readiness)
 ```
 
-To also bring up a real go-oikumenea instance (M1) — needs a sibling checkout of
-[go-oikumenea](https://github.com/olehmushka/go-oikumenea) for its migrations (not published as a
-standalone artifact yet), and a GCP service-account key for the service principal:
+For the web tier, each app is independent (no npm workspace — D-AdminSurface):
 
 ```sh
-docker compose up -d postgres oikumenea-migrate oikumenea-init-role oikumenea-app
+cd web/apps/web   && npm install && npm run dev   # or web/apps/admin
+```
+
+To bring up the full stack — needs a sibling checkout of
+[go-oikumenea](https://github.com/olehmushka/go-oikumenea) for its migrations and `hermenea`'s
+Dockerfile (neither is published as a standalone artifact yet), a GCP service-account key for the
+service principal, and a populated `.env` (copy `.env.example`):
+
+```sh
+OIKUMENEA_SRC=../go-oikumenea docker compose up --build
 docker run --rm --network open-faith-map_default -v "$PWD":/src -w /src golang:1.26-bookworm \
   go run ./scripts/bootstrap-service-principal -subject <google-service-account-numeric-sub>
 ```
+
+Host ports: `3000`/`3001` openfaithmap-api · `3002` openfaithmap-web · `3003` oikumenea-console ·
+`3004` openfaithmap-admin · `9443`/`9444` hermenea. `oikumenea-app` deliberately publishes none
+(D-HeadlessTopology).
 
 ## Contributing
 

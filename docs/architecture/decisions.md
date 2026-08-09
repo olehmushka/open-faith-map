@@ -12,14 +12,19 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-Scope](#d-scope--christian-only-discovery--presence-ukraine--usa-first) | Christian-only, discovery + presence, Ukraine + USA first |
 | [D-Exclusions](#d-exclusions--a-named-permanent-denomination-exclusion-list) | Named, permanent denomination exclusion list (ROC, JW, LDS) |
 | [D-CoreDependency](#d-coredependency--go-oikumenea-is-the-headless-core-consumed-via-its-docker-image) | go-oikumenea is the headless core, consumed via its docker image |
-| [D-Facade](#d-facade--thin-on-identity-tenant-person-rbac-location-religion-taxonomy) | Thin on identity/tenant/person/RBAC/location/religion-taxonomy; owns content/discovery-glue/moderation/vouching |
-| [D-ContentModel](#d-contentmodel--block-based-site-builder-owned-by-openfaithmap) | Block-based site builder, owned by OpenFaithMap, not go-oikumenea |
+| [D-Facade](#d-facade--thin-on-identitytenantpersonrbaclocationreligion-taxonomy) | Thin on identity/tenant/person/RBAC/location/religion-taxonomy; owns content/discovery-glue/moderation/vouching |
+| [D-ContentModel](#d-contentmodel--block-based-site-builder-owned-by-openfaithmap-not-go-oikumenea) | Block-based site builder, owned by OpenFaithMap, not go-oikumenea |
 | [D-Moderation](#d-moderation--policy-engine--audit-trail-reuse) | Policy engine + reports/appeals, audit trail reused from go-oikumenea |
 | [D-Vouching](#d-vouching--web-of-trust-guarantor-verification) | Web-of-trust guarantor verification for congregation-admin claims |
 | [D-Stack](#d-stack--the-same-toolchain-as-go-oikumenea) | Same Go/gödel/Conjure/witchcraft/Atlas/Next.js toolchain as go-oikumenea |
-| [D-AdminSurface](#d-adminsurface--the-admin-moderator-console-is-a-separate-deployment-from-the-public-site) | The verified/admin console is a separate Next.js app (`openfaithmap-admin`) from the anonymous public site (`openfaithmap-web`) |
+| [D-AdminSurface](#d-adminsurface--the-adminmoderator-console-is-a-separate-deployment-from-the-public-site) | The verified/admin console is a separate Next.js app (`openfaithmap-admin`) from the anonymous public site (`openfaithmap-web`) |
 | [D-InstanceAdminConsole](#d-instanceadminconsole--reuse-go-oikumeneas-own-console-as-the-third-super-admin-only-surface) | A third UI surface, `oikumenea-console`, is go-oikumenea's own published console reused unmodified — not built by OpenFaithMap |
 | [D-BulkImport](#d-bulkimport--hermenea-replays-the-existing-registration-flow-in-bulk-no-new-write-path) | OpenFaithMap deploys go-oikumenea's own `hermenea` companion service for reference-data seeding (countries, etc.) — no new code, no new write path; corrects the original CLI premise (see Correction) |
+| [D-SharedDatabase](#d-shareddatabase--one-postgres-instance-two-schemas) | One Postgres instance, two schemas (`oikumenea` / `openfaithmap`) — not two database instances |
+| [D-GoogleDirect](#d-googledirect--google-is-the-sole-identity-provider-no-keycloak) | Google is the sole IdP for every human and machine subject — no Keycloak, no shared realm |
+| [D-OAuthClients](#d-oauthclients--one-google-oauth-client-today-one-per-surface-as-the-target) | One shared Google OAuth client across `openfaithmap-admin` and `oikumenea-console` today; per-surface clients are the target state |
+| [D-FlatRoot](#d-flatroot--one-flat-root-organization-now-real-jurisdiction-units-before-m5) | Every congregation is a direct child of one flat root org today; real jurisdiction units land before M5 |
+| [D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit) | Platform-moderator authority is a go-oikumenea Role on the shared root unit, checked target-scoped — not an OpenFaithMap roster table |
 
 ---
 
@@ -31,9 +36,21 @@ online presence — a map (discovery) and a per-congregation site builder (prese
 [D-Exclusions](#d-exclusions--a-named-permanent-denomination-exclusion-list). "Open" in the
 project name means *open-source and free*, not multi-faith — this is a deliberate, narrow product
 surface, not a placeholder for a broader one. Geographic rollout: Ukraine + USA first, Poland/UK
-next, then the rest of EU/LATAM/Africa/Asia. Three audiences: visitors (anonymous), congregation
-admins (verified, manage one or more congregations), platform moderators (seed/verify/moderate
-platform-wide).
+next, then the rest of EU/LATAM/Africa/Asia.
+
+**Five audiences** (the original three, plus two the build surfaced — see
+[glossary.md](../glossary.md) for each one's definition):
+
+| Audience | Authority | Surface |
+|---|---|---|
+| Visitor | None — anonymous | `openfaithmap-web` |
+| Congregation admin | `unit`-scoped, over their own congregation only | `openfaithmap-admin` |
+| Registration operator | `subtree`-scoped over the shared root unit; approves/rejects registrations ([registration.md](../modules/registration.md)) | `openfaithmap-admin` |
+| Platform moderator | `subtree`-scoped over the shared root unit; reports/actions/appeals ([D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit)) | `openfaithmap-admin` |
+| Super admin | Instance-wide go-oikumenea authority — taxonomy, tenants, service principals ([D-InstanceAdminConsole](#d-instanceadminconsole--reuse-go-oikumeneas-own-console-as-the-third-super-admin-only-surface)) | `oikumenea-console` |
+
+Registration operator and super admin were absent from this decision's original three-audience
+framing; both turned out to be real, separately-bootstrapped roles once M2 and M1.2 were built.
 
 **Why.** A narrow, named perimeter is cheap to defend and expensive to re-litigate — every
 contributor knows immediately what is and isn't in scope. go-oikumenea's own `religion` module is
@@ -90,6 +107,12 @@ for a single already-registered body (`religion_org_policies.excludes_child_crea
    `religion_org_policies` with policy kind `excludes_child_creation`, which makes go-oikumenea
    itself refuse `POST /units/{id}/child-orgs` beneath it — defense in depth, not the primary
    control.
+   **Designed, not real today.** Under
+   [D-FlatRoot](#d-flatroot--one-flat-root-organization-now-real-jurisdiction-units-before-m5)
+   there are no per-body root units to attach a policy to — every congregation is a direct child of
+   one shared root. This layer becomes implementable at M4.1, when real jurisdiction units land.
+   Until then the taxon-level gate is the *only* enforcement, so the documented defense-in-depth is
+   one layer, not two.
 
 **Why.** The taxon-level check is the *product* decision and belongs where OpenFaithMap's scope is
 decided, not inside a general-purpose directory core that intentionally hard-codes no faith
@@ -134,6 +157,16 @@ OpenFaithMap to an internal schema that D-CoreDependency explicitly keeps replac
 bootstrap sequence, then the `app` container unpublished on the internal network, matching
 go-oikumenea's own `docker-compose.yml` shape. A go-oikumenea version bump is a dependency bump
 (the SDK), not a schema migration OpenFaithMap has to write.
+
+**Two later decisions narrow this one — read them together with it:**
+
+- [D-SharedDatabase](#d-shareddatabase--one-postgres-instance-two-schemas) — "alongside
+  go-oikumenea's own Postgres" became one shared instance with two schemas. Note the open gap it
+  records: `openfaithmap-api` currently connects as superuser, so the no-direct-database-access rule
+  above is enforced only by convention until M2.4 lands a least-privilege role.
+- [D-GoogleDirect](#d-googledirect--google-is-the-sole-identity-provider-no-keycloak) — the
+  "shared Keycloak realm" premise this decision originally carried is gone; Google is the sole
+  issuer for both identity paths below.
 
 ---
 
@@ -184,18 +217,45 @@ Conjure contract are entirely its own — no go-oikumenea coupling at the schema
 
 ### D-Moderation — Policy engine + audit-trail reuse
 
-**Decision.** Reports, moderation actions, and appeals are OpenFaithMap-owned tables (see
-[moderation.md](../modules/moderation.md)), but every moderation action is **also** written through
-go-oikumenea's `audit` module (a service-principal-authenticated write) so there is exactly one
-append-only, permission-sensitive-action ledger across both services — not two logs to reconcile
-during an incident.
+**Correction (found at M1.1, while proving M1's service-principal path against a real instance).**
+The single-ledger mechanism below **does not exist and cannot be built today.** go-oikumenea's
+`audit` module has no write endpoint — "there is no write endpoint; writes happen in-process"
+(go-oikumenea's own `docs/modules/audit.md`), and its permission catalog defines only `audit.read`.
+`scripts/bootstrap-service-principal` rejected the grant live with
+`PrincipalGrantInvalid: unknown permission code`. There is no service-principal-authenticated path
+by which OpenFaithMap can append anything to go-oikumenea's audit trail.
 
-**Why.** go-oikumenea's audit module already exists, is already the append-only ledger every other
-consumer of go-oikumenea trusts, and duplicating it would fragment incident response across two
-systems with no single source of truth.
+**Corrected decision.** Reports, moderation actions, and appeals are OpenFaithMap-owned tables (see
+[moderation.md](../modules/moderation.md)), and **`openfaithmap.moderation_actions` is the ledger of
+record** for OpenFaithMap's own moderation decisions: append-only, `reject_mutation()`-guarded, the
+same discipline go-oikumenea applies to its own append-only tables. The "exactly one platform-wide
+ledger" goal is **dropped as unachievable** — go-oikumenea's audit trail covers go-oikumenea's own
+permission-sensitive actions (including every write an approval or a moderator's forwarded token
+makes *through* go-oikumenea), and OpenFaithMap's covers OpenFaithMap's. Incident response reads
+two logs, correlated by `person` RID and timestamp.
 
-**Consequences.** OpenFaithMap's backend needs an audit-write grant on its service principal from
-day one of the moderation milestone (M5, see [milestones.md](../milestones.md)).
+**Why accept two logs.** The alternative — blocking M5 until go-oikumenea grows an audit-ingest
+endpoint — makes the moderation milestone's schedule depend on upstream work nobody has scoped, for
+a property (one query instead of two during an incident) that is convenient rather than
+load-bearing. Every moderation action that actually *changes* go-oikumenea state does so through a
+real person's forwarded token and is therefore already in go-oikumenea's own trail; what
+`moderation_actions` uniquely holds is the OpenFaithMap-side decision record, which go-oikumenea
+would have no schema for anyway.
+
+**Why not** an OpenFaithMap-side mirror written through some other go-oikumenea endpoint: rejected —
+there isn't one. `POST /import/{objectType}` is reference-data-shaped and belongs to `hermenea`'s
+credential (D-BulkImport); repurposing it for audit records would be an abuse of a contract built
+for something else.
+
+**Consequences.**
+- M5 needs **no** audit-write grant on OpenFaithMap's service principal — that grant does not exist.
+  `core-integration.md`'s authorization-touchpoints table already reflects this.
+- `moderation.md`'s invariant "every action is mirrored into go-oikumenea's audit ledger before it
+  is considered complete" is **withdrawn**; the replacement invariant is that
+  `moderation_actions` is append-only and written before the action's effect is applied.
+- **Revisit if upstream changes.** If go-oikumenea ever ships an audit-ingest endpoint, backfilling
+  `moderation_actions` into it becomes a real option — tracked as `DS-OFM-12` in
+  [open-questions.md](../open-questions.md), not a commitment.
 
 ---
 
@@ -248,7 +308,7 @@ operator-approval console, and the moderator console move to a **new, separate N
 that ever holds a session or an Auth.js/Google credential. `openfaithmap-web` keeps the anonymous
 public site only — discovery, congregation pages, public report filing, the public exclusion
 pre-check — and holds no session at all. Both remain thin per
-[D-Facade](#d-facade--thin-on-identity-tenant-person-rbac-location-religion-taxonomy): neither owns
+[D-Facade](#d-facade--thin-on-identitytenantpersonrbaclocationreligion-taxonomy): neither owns
 identity/tenant/authorization data; only `openfaithmap-admin` ever forwards a user bearer token.
 
 **Why.** [web-facade.md](../modules/web-facade.md)'s original one-app framing was explicitly
@@ -275,9 +335,9 @@ application-level routing, which is weaker and easier to regress.
 - `openfaithmap-admin` needs its own `AUTH_URL`/Google OAuth callback origin — the Google Cloud
   Console OAuth client's authorized redirect URIs need the new origin added (external to this repo)
   once the admin app has a real host.
-- `docker-compose.yml` gains a new `openfaithmap-admin` service once the app exists in code (see
-  [milestones.md](../milestones.md)'s M2.1) — not built yet. `openfaithmap-web` loses its
-  `AUTH_SECRET`/`AUTH_GOOGLE_*`/`AUTH_URL` env vars at that point, since it no longer runs Auth.js.
+- `docker-compose.yml` gains a new `openfaithmap-admin` service (**built at M2.1**, host port
+  `3004`). `openfaithmap-web` lost its `AUTH_SECRET`/`AUTH_GOOGLE_*`/`AUTH_URL` env vars at the same
+  time, since it no longer runs Auth.js.
 - [web-facade.md](../modules/web-facade.md) narrows to the public surface only;
   [web-admin.md](../modules/web-admin.md) is the new module doc for `openfaithmap-admin`.
 - **As implemented (M2.1):** no npm workspace, no `web/packages/*` shared-code directory — this
@@ -440,3 +500,228 @@ real import volumes.
   go-oikumenea's actual `hermenea` holds its own service-principal credential and is designed to run
   unattended, on cron or triggered via its own `POST /sync/{source}` — the opposite of this
   constraint.
+
+---
+
+### D-SharedDatabase — One Postgres instance, two schemas
+
+**Decision.** go-oikumenea and OpenFaithMap share **one** Postgres instance, separated by schema
+(`oikumenea` and `openfaithmap`), rather than running two independent database instances as
+[D-CoreDependency](#d-coredependency--go-oikumenea-is-the-headless-core-consumed-via-its-docker-image)'s
+original "alongside go-oikumenea's own Postgres" phrasing implied. `hermenea` (D-BulkImport) adds a
+third logical store — a separate **database** named `hermenea` on that same instance, with its own
+Atlas migration set. Recorded here retroactively: this was decided in conversation while building
+M1 and has governed `docker-compose.yml` ever since without a decision block of its own.
+
+**Why.** One instance is materially simpler for local dev and for a small single-operator
+deployment: one backup target, one connection string family, one health check, one thing to size.
+Schema separation already gives the property that actually matters to the design — OpenFaithMap's
+tables live under `openfaithmap.*`, never inside go-oikumenea's namespace — and
+[conventions.md](conventions.md)'s no-cross-database-FK rule is unchanged by the collapse (it is now
+literally a no-cross-*schema*-FK rule; OpenFaithMap still stores every go-oikumenea RID as an opaque
+`TEXT` foreign value).
+
+**Why not** two instances: rejected for now as premature operational cost. Revisit when either
+service's load, backup window, or availability requirement stops fitting a shared instance —
+splitting later is a connection-string change plus a data move, not a schema redesign, precisely
+because nothing crosses the schema boundary.
+
+**Consequences.**
+
+- **Physical isolation is gone; only convention separates the two schemas.** Today
+  `openfaithmap-api` connects as the `postgres` superuser (`docker-compose.yml`'s `DATABASE_URL`),
+  which means it *can* read and write every table in the `oikumenea` schema directly. That
+  contradicts D-CoreDependency's "never direct database access to go-oikumenea's schema," which
+  that decision calls "rejected outright — it would bypass the PDP." Nothing in the code does this;
+  nothing prevents it either.
+  **Required fix:** a least-privilege `openfaithmap_app` role with `USAGE`/DML on the
+  `openfaithmap` schema only, and no grant of any kind on `oikumenea`. Sequenced as
+  [milestones.md](../milestones.md)'s **M2.4** — until it lands, D-CoreDependency's database-access
+  invariant is enforced by discipline, not by the database.
+- **No independent backup, restore, or failover.** A point-in-time restore of OpenFaithMap's data
+  necessarily rolls back go-oikumenea's too, and vice versa. Acceptable at present scale; a real
+  reason to revisit this decision once either side has data whose recovery objective differs.
+- **Two Atlas revision tables in one database** (`--revisions-schema oikumenea` and
+  `--revisions-schema openfaithmap`), both currently applied with `--allow-dirty`. That flag was
+  needed because each migrate service sees a database the other has already written to; it also
+  permanently suppresses Atlas's own drift detection. Narrowing it is part of M2.4.
+
+---
+
+### D-GoogleDirect — Google is the sole identity provider, no Keycloak
+
+**Decision.** go-oikumenea is configured to trust **Google directly**
+(`deploy/oikumenea-install.yml`) as the sole OIDC issuer for every subject in this deployment:
+humans (via `openfaithmap-admin`'s and `oikumenea-console`'s Auth.js Google provider) and machines
+(OpenFaithMap's service principal, which mints its own Google-signed ID token from a GCP
+service-account key — `internal/coreintegration`). There is **no Keycloak**, no self-hosted IdP, and
+no shared realm. Subjects are distinguished by `(issuer, subject)` and audience. Recorded here
+retroactively: built at M1, corrected into D-CoreDependency's prose at M1.1, but never given a
+decision block of its own despite being a load-bearing product constraint.
+
+**Why.** Standing up and operating Keycloak is real infrastructure — its own database, its own
+upgrade cadence, its own backup story, its own attack surface — for a project whose entire
+architectural premise (D-Facade) is not building what someone else already runs. Google's issuer is
+free, already trusted by go-oikumenea's issuer catalog, and covers both identity paths with one
+configuration. Proven end-to-end at M1: a real browser OAuth round-trip resolves a real
+`personId` through go-oikumenea's PDP.
+
+**Why not** Keycloak (the original D-CoreDependency premise): rejected as unjustified operational
+cost at this stage. It remains the natural answer if either consequence below becomes binding.
+
+**Consequences.**
+
+- **Every human user needs a Google account.** There is no email/password path, no Apple/Microsoft
+  login, no institutional SSO. For a platform whose first rollout market is **Ukraine**, serving
+  small, often volunteer-run congregations, this is a real adoption constraint and not merely a
+  technical one — it is the most likely reason this decision gets reopened.
+- **Single point of identity failure.** A Google outage, a suspended OAuth client, or a policy
+  change locks every human and machine subject out simultaneously. There is no second issuer to
+  fail over to.
+- **Reopening means adding an issuer, not replacing one.** go-oikumenea's issuer catalog is a list;
+  a second IdP (Keycloak, or another public provider) is an install-config addition plus an
+  Auth.js provider entry — existing Google-linked accounts keep working. That is what makes
+  deferring this cheap.
+- Install config is read once at boot and is **not** hot-reloaded from the bind-mounted file —
+  changing an issuer entry requires restarting `oikumenea-app` (found the hard way at M1).
+
+---
+
+### D-OAuthClients — One Google OAuth client today, one per surface as the target
+
+**Decision.** `openfaithmap-admin` (host port `3004`) and `oikumenea-console` (host port `3003`)
+currently share **one** Google OAuth client — the same `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET`, with
+two authorized redirect URIs and two independent Auth.js session secrets. This is accepted for local
+dev and recorded as a known weakening of
+[D-InstanceAdminConsole](#d-instanceadminconsole--reuse-go-oikumeneas-own-console-as-the-third-super-admin-only-surface)'s
+blast-radius tiering. **Target state: one OAuth client per surface**, required before either surface
+is deployed beyond local dev.
+
+**Why the shared client today.** `deploy/oikumenea-install.yml`'s Google issuer entry already pinned
+this audience, so reusing it meant M1.2 and M2.1 could each land without an install-config change or
+a `oikumenea-app` restart — and without provisioning a second client in an external console the
+repo can't automate.
+
+**Why it's a weakening.** The three surfaces are documented as having strictly ascending blast
+radius (public → congregation-scoped → instance-wide). Two of them now mint tokens with an
+**identical `aud`**, which means go-oikumenea cannot tell from a token which surface issued it. The
+PDP still gates instance-admin power by the caller's own role assignments, so this is **not** a
+privilege escalation — a congregation admin's token does not become an instance-admin token by
+sharing a client. What is lost is any token-layer enforcement of the tiering at all: the separation
+is a property of who is logged in, not of which surface they logged into. A leaked client secret
+also compromises the login flow of both surfaces at once.
+
+**Why not** fix it now: the fix is entirely outside this repo (provision a second OAuth client in
+Google Cloud Console, add its id/secret to `.env`, add the issuer audience to
+`deploy/oikumenea-install.yml`, restart `oikumenea-app`). There is no real deployment target yet, so
+it would be configuration with nothing to protect.
+
+**Consequences.**
+- Per-surface OAuth clients are a **prerequisite for any non-local-dev deployment**, listed
+  alongside D-InstanceAdminConsole's WireGuard requirement. Both are deployment-gate items, not
+  milestone-gate items — there is no deployment milestone yet to attach them to.
+- `deploy/oikumenea-install.yml` gains a second `audiences` entry when that happens.
+- The service principal is unaffected — it authenticates with its own GCP service-account key and
+  its own target audience, never this OAuth client.
+
+---
+
+### D-FlatRoot — One flat root organization now, real jurisdiction units before M5
+
+**Decision.** Every congregation registers as a **direct child** of one shared root
+`Organization`/`Unit` (`scripts/bootstrap-registration-org`), not beneath a denomination's or a
+diocese's own unit. There is no intermediate jurisdiction layer in the `canonical` graph today.
+This is accepted as-built for M2–M4, and **must be replaced with real jurisdiction units before M5**
+— sequenced as [milestones.md](../milestones.md)'s **M4.1**. Recorded here retroactively: the
+flattening was a build-time simplification noted in
+[registration.md](../modules/registration.md)'s open seams, never a decision block.
+
+**Why flat, at M2.** go-oikumenea has no self-service org-creation path for an ungranted user
+(registration.md's authority-bootstrapping finding), so *some* pre-existing unit had to own the
+first assignment. One flat root needed exactly one out-of-band SQL seed; a per-denomination or
+per-jurisdiction root would have needed one per branch, each with its own operator, before a single
+congregation could register.
+
+**Why it has to change before M5.** Three designs in this doc set assume a real ancestor chain and
+silently do not work under a flat root:
+
+1. [moderation.md](../modules/moderation.md)'s `queue_scope = 'jurisdiction'` is defined as
+   "walking go-oikumenea's `canonical` religion graph" to a congregation's jurisdictional ancestors.
+   Under a flat root every congregation's only ancestor is the shared root, so `jurisdiction` and
+   `platform` collapse into the same scope — the enum value would be dead on arrival.
+2. [glossary.md](../glossary.md)'s term mapping models Jurisdiction as "a `Unit` one or more levels
+   up the `canonical` graph." No such unit exists.
+3. [D-Exclusions](#d-exclusions--a-named-permanent-denomination-exclusion-list)'s **org-level
+   backstop** (`religion_org_policies.excludes_child_creation` on an excluded body's root unit)
+   has nothing to attach to — there are no per-body root units. Only the taxon-level gate is real
+   today, so the documented defense-in-depth is currently one layer, not two.
+
+**Why not** build jurisdictions now (at M2/M3): rejected — it would have blocked M2 on modeling a
+denominational hierarchy for Ukraine and the USA before a single congregation existed to place in
+it. Real registrations are the input that tells us which jurisdictions are actually needed.
+
+**Why not** drop jurisdictions from the product instead: considered and rejected. Jurisdiction-scoped
+moderation (a diocese's own staff triaging reports about their own parishes) is the mechanism that
+keeps moderator load sublinear as the platform grows — the same load argument
+[D-Vouching](#d-vouching--web-of-trust-guarantor-verification) makes. Removing it would push every
+report to the small platform-wide roster.
+
+**Consequences.**
+- M4.1 must migrate **existing** congregations, not just accept new ones under jurisdictions:
+  re-parenting a live `Unit` in the `canonical` graph, preserving each congregation admin's
+  `unit`-scoped grant. Scoped in [milestones.md](../milestones.md).
+- Until M4.1 lands, `moderation.md` keeps `jurisdiction` in its design but marks it blocked; M5
+  cannot pass its `designed` gate while that dependency is open.
+- D-Exclusions' org-level backstop stays documented as **designed-not-real** until per-body root
+  units exist.
+
+---
+
+### D-PlatformModerator — Moderator authority is a go-oikumenea Role on the root unit
+
+**Decision.** Platform-moderator authority is a real go-oikumenea **Role**
+(`code = platform-moderator`), granted `subtree`-scoped on the shared root unit — the same
+mechanism, the same bootstrap script, and the same trust level `registration-operator` already uses
+(`scripts/bootstrap-registration-org`). OpenFaithMap stores **no** moderator roster of its own.
+`moderation.read`/`moderation.act` remain OpenFaithMap-defined *names* for what the module gates on,
+but each resolves to a live, **target-scoped** capability check against go-oikumenea's PDP, not to a
+row in an OpenFaithMap table.
+
+**Why.** [moderation.md](../modules/moderation.md) and [vouching.md](../modules/vouching.md) both
+gate on these two codes and both described them only as "held by a small, fixed set of accounts" —
+no table, no role, no mechanism. That is an undesigned primitive blocking two milestones. Putting it
+in go-oikumenea keeps
+[D-Facade](#d-facade--thin-on-identitytenantpersonrbaclocationreligion-taxonomy)'s governing
+property intact — OpenFaithMap still makes zero authorization decisions of its own — and reuses a
+bootstrap path that already works end-to-end.
+
+**Why not** an OpenFaithMap-owned `platform_roles` table: rejected. It would be a second
+authorization system that has to stay consistent with the first, which is the exact liability
+D-Facade exists to avoid, and it would need its own management UI, its own audit story, and its own
+answer to "who can edit the roster."
+
+**Why not** reuse `registration-operator`: rejected — approving registrations and adjudicating
+reports are different jobs with different escalation paths, and an appeal must be decidable by
+someone who did not take the original action ([moderation.md](../modules/moderation.md)'s
+invariant). Two roles keep that separable.
+
+**Consequences.**
+
+- **Capability checks must be target-scoped, and today's are not.** `registration`'s `IsOperator`
+  asks `MyCapabilities()` for a bare permission string with **no target unit**, so it answers "does
+  this caller hold `religionorg.manage` *anywhere*" — and `congregation-admin` holds
+  `religionorg.manage` on its own unit. Every approved congregation admin therefore reads as an
+  operator. Moderation must not repeat this: `moderation.read`/`moderation.act` resolve to a
+  capability check **against the shared root unit specifically**. Fixing the existing registration
+  gate is [milestones.md](../milestones.md)'s **M2.3**; this decision is the pattern both must
+  follow.
+- **`content.manage` follows the same pattern.** [content.md](../modules/content.md) originally
+  defined it as "call `GET /units/{unitId}` with the caller's token and treat a successful read as
+  proof of standing." Read authority is not write authority — that would let anyone who can *see* a
+  congregation edit its site. Replaced with a target-scoped capability check on that congregation's
+  own unit; see content.md's authorization touchpoints.
+- `scripts/bootstrap-registration-org` gains the `platform-moderator` Role alongside the two it
+  already creates. Its permission set is decided when M5 is scoped, not here.
+- A moderator's authority is visible in go-oikumenea's own audit trail and manageable from
+  `oikumenea-console` — a real benefit of not owning the roster, and partial compensation for
+  D-Moderation's now-corrected two-ledger reality.

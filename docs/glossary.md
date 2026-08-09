@@ -15,7 +15,7 @@ in [`modules/`](modules/) assumes it.
 church-admin-facing editor for them. One site per congregation `Unit`.
 
 **Page.** A long-lived document on a site (home, about, beliefs, contact, staff). Composed of
-ordered [blocks](#block). Supports a shallow page hierarchy (up to 3 levels).
+ordered **blocks** (defined below). Supports a shallow page hierarchy (up to 3 levels).
 
 **Post.** A time-stamped, reverse-chronological news item on a site's feed. Composed of ordered
 blocks.
@@ -42,7 +42,7 @@ a congregation picks for its site. Data, not code — never a per-tenant templat
 
 ---
 
-## Moderation (new — owned by OpenFaithMap, reuses go-oikumenea's audit trail)
+## Moderation (new — owned by OpenFaithMap, including its own ledger)
 
 **Report.** A flag raised by anyone — including an anonymous visitor — against a site, a piece of
 content, a congregation's claimed identity, or a vouching relationship. Queued for moderator
@@ -50,8 +50,11 @@ review.
 
 **Moderation action.** An immutable record of a moderator decision (`hide`, `suspend`, `archive`,
 `warn_admin`, `revoke_vouch`). Reversible within a grace window; the reversal is itself an action,
-recorded the same way. Every action is written through go-oikumenea's [audit](#term-mapping-table)
-module as its permission-sensitive-action ledger — OpenFaithMap does not keep a second audit log.
+recorded the same way. `openfaithmap.moderation_actions` is the **ledger of record** — append-only,
+`reject_mutation()`-guarded. *(Corrected 2026-08-09: this previously said every action is written
+through go-oikumenea's audit module and that OpenFaithMap "does not keep a second audit log."
+go-oikumenea's audit module has no write endpoint, so that was never possible — see D-Moderation's
+Correction.)*
 
 **Appeal.** A structured challenge by a congregation admin against a moderation action affecting
 them, routed to a different moderator than the one who took the original action.
@@ -80,8 +83,18 @@ guarantor is currently trusted. A revoked guarantor triggers moderator review of
 made.
 
 **Impersonation.** A moderator mechanism to log in as a congregation admin for debugging support
-requests. Time-limited, banner-visible in the UI, double-logged in the audit trail (both the
-moderator's action and the impersonated session).
+requests. Time-limited, banner-visible in the UI, double-logged (both the moderator's action and
+the impersonated session).
+
+> ⚠️ **Orphan term — decide or delete (audit 2026-08-09).** Impersonation appears in this glossary
+> and nowhere else in the doc set: no `D-` block, no endpoint in
+> [moderation.md](modules/moderation.md)'s API surface, no milestone. It also contradicts
+> [core-integration.md](modules/core-integration.md)'s **no-on-behalf-of** invariant head-on, which
+> forbids OpenFaithMap ever acting as a specific person. Any real version would have to be
+> go-oikumenea minting the impersonated session — a feature it does not have — not OpenFaithMap
+> forging one. **Do not build it from this entry alone.** Tracked as `DS-OFM-15` in
+> [open-questions.md](open-questions.md) and as `U9` in
+> [milestones.md](milestones.md#unresolved-unknowns--read-this-before-building-anything).
 
 ---
 
@@ -99,6 +112,37 @@ unchanged from go-oikumenea's `religion_sites.public_precision`
 (`exact`/`street`/`neighborhood`/`city`/`hidden`), coarsened app-side. This is the mechanism that
 protects congregations in hostile or persecuted-church contexts; OpenFaithMap never overrides it
 client-side.
+
+---
+
+## Roles (who does what — see [D-Scope](architecture/decisions.md)'s audience table)
+
+**Visitor.** Anonymous. Uses `openfaithmap-web`; never authenticates, never has a session.
+
+**Congregation admin.** Holds a `unit`-scoped `congregation-admin` role assignment over their own
+congregation's `Unit`, granted at registration approval. Never `subtree` — approving one
+registration never gives its submitter reach over any other congregation.
+
+**Registration operator.** A real person holding the `registration-operator` role `subtree`-scoped
+on the shared root unit, who reviews and approves congregation-registration requests; approval
+performs the real go-oikumenea writes with *their own* token
+([registration.md](modules/registration.md)). Bootstrapped once via
+`scripts/bootstrap-registration-org` plus one out-of-band SQL insert, the same "operator-owned DB
+access" trust level go-oikumenea's own `D-Bootstrap` uses for the first instance admin.
+
+**Platform moderator.** A real person holding the `platform-moderator` role `subtree`-scoped on the
+shared root unit ([D-PlatformModerator](architecture/decisions.md)). Handles reports, actions,
+appeals, and guarantor management. Platform-wide authority expressed as subtree scope on the root —
+not a separate OpenFaithMap roster table.
+
+**Super admin (instance admin).** Holds go-oikumenea's own instance-wide authority: the
+`religion_taxa` catalog, tenant structure, service-principal issuance, other instance admins. Works
+through `oikumenea-console`, never through an OpenFaithMap-built surface
+([D-InstanceAdminConsole](architecture/decisions.md)). Strictly larger blast radius than any
+OpenFaithMap role.
+
+*(Registration operator and super admin were missing from this glossary and from D-Scope's original
+three-audience framing until the 2026-08-09 audit; both are real, separately-bootstrapped roles.)*
 
 ---
 
@@ -141,7 +185,7 @@ The concept a church-discovery product needs, and what actually stores it now.
 | Tenant / organizational entity | **go-oikumenea `tenant`** | A `tenant_organizations` row (the `church` domain) + `tenant_units` graph nodes. See [core-integration.md](modules/core-integration.md). |
 | Congregation | **go-oikumenea `tenant` + `religion`** | A `Unit` with `religion_org_kinds.code = congregation`, placed in the `canonical` graph under its jurisdiction. |
 | Denomination / tradition | **go-oikumenea `religion`** | A node in `religion_taxa` (the faith taxonomy tree), not a tenant. A denomination's *governing body* (e.g. a national synod) is separately a `Unit`. |
-| Jurisdiction | **go-oikumenea `tenant`** | A `Unit` one or more levels up the `canonical` graph from a congregation (diocese/synod/district), same graph, no separate entity. |
+| Jurisdiction | **go-oikumenea `tenant`** | A `Unit` one or more levels up the `canonical` graph from a congregation (diocese/synod/district), same graph, no separate entity. ⚠️ **Does not exist yet:** under [D-FlatRoot](architecture/decisions.md) every congregation is a direct child of one shared root, so there is no intermediate unit to be a jurisdiction. Real jurisdiction units land at M4.1, before M5 needs them. |
 | Person (a pastor, staff member, visitor) | **go-oikumenea `person`/`personprofile`** | The instance-global person directory. A congregation's staff are people with a [membership](#term-mapping-table) position and/or a [clergy credential](#term-mapping-table) at that unit. |
 | User account / login | **go-oikumenea `identity-federation`** | External IdP identity → go-oikumenea `account`, optionally attached to a `person`. OpenFaithMap issues no credentials of its own. |
 | Role / permission | **go-oikumenea `authorization`** | Role assignments `(person, role, target_unit, scope)` over the `canonical` graph. OpenFaithMap defines no parallel RBAC. |
@@ -151,7 +195,7 @@ The concept a church-discovery product needs, and what actually stores it now.
 | Service schedule | **go-oikumenea `religion`** | `religion_service_schedules`, owned per `religion_sites` row. |
 | Site content (pages/posts/events/blocks) | **OpenFaithMap `content`** | No go-oikumenea equivalent — genuinely new. See [content.md](modules/content.md). |
 | Public discovery (map + search) | **OpenFaithMap `discovery`** (facade) | Reads go-oikumenea's `location`/`religion`/`search` modules; adds no location index of its own. |
-| Moderation / reports / policy engine | **OpenFaithMap `moderation`** | New tables for reports/appeals; writes through go-oikumenea's `audit` module rather than a second ledger. |
+| Moderation / reports / policy engine | **OpenFaithMap `moderation`** | New tables for reports/actions/appeals. `moderation_actions` is the append-only ledger of record — *not* mirrored into go-oikumenea's audit module, which has no write endpoint (D-Moderation's Correction). |
 | Denomination exclusion | **OpenFaithMap `moderation`, backed by go-oikumenea `religion`** | Facade-side taxon check + `religion_org_policies` at the org level. See [D-Exclusions](architecture/decisions.md). |
 | Web-of-trust vouching | **OpenFaithMap `vouching`** | No go-oikumenea equivalent — genuinely new. |
-| Audit trail | **go-oikumenea `audit`** | OpenFaithMap's moderation actions and admin operations are written here, not duplicated. |
+| Audit trail | **both, separately** | go-oikumenea's `audit` covers every write a forwarded token makes through go-oikumenea. OpenFaithMap's own `moderation_actions` (append-only) covers its moderation decisions. ⚠️ **Corrected 2026-08-09:** this row previously said OpenFaithMap's actions "are written here, not duplicated" — go-oikumenea's audit module has **no write endpoint**, so that was never possible. See D-Moderation's Correction. |

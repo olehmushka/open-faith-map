@@ -39,6 +39,13 @@ can hold a credential. Anything that needs to know who's logged in belongs in
   public content reads (the discovery cache). Every call is unauthenticated — no token exists in
   this app to forward. Never a raw `fetch` against either service's REST surface — always the typed
   client.
+  > **Two audit notes (2026-08-09).** (a) This app makes **no** backend calls today — it serves a
+  > static placeholder home page and reads no env vars; the first real data-reading page lands at
+  > M4. (b) The `openfaithmap-api` generated SDK does not exist yet — see
+  > [web-admin.md](web-admin.md#dependencies) and **M2.6**. (c) Whether the unauthenticated
+  > go-oikumenea read above is *possible at all* is unverified and is **M2.5**'s question — every
+  > `religion` read is `RequireAnywhere`-gated, which may deny anonymous callers. That would make
+  > this bullet, and much of M4, undeliverable as designed.
 - **Called by:** nothing — it is one of two public ingress points (the other is
   [`openfaithmap-admin`](web-admin.md#dependencies)). It publishes its own host port, independent of
   `openfaithmap-admin`'s.

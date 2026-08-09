@@ -11,9 +11,26 @@ congregation's content, its claimed identity, or a vouching relationship — plu
 **taxon-level denomination-exclusion check** (D-Exclusions). **As of M2, that check's only real
 implementation lives in [registration.md](registration.md)** — this module (M5) doesn't exist in
 code yet, and M2 needed the check now; consolidate here when M5 lands. No equivalent exists in
-go-oikumenea; every moderation action this module records is also written through go-oikumenea's
-`audit` module (D-Moderation) so there is exactly one append-only ledger platform-wide, not two
-logs to reconcile.
+go-oikumenea.
+
+`openfaithmap.moderation_actions` is this platform's **ledger of record** for moderation decisions:
+append-only, `reject_mutation()`-guarded. It is *not* mirrored into go-oikumenea's audit trail —
+see D-Moderation's **Correction**: `audit.write` does not exist and go-oikumenea's audit module has
+no write endpoint at all, so the original "exactly one append-only ledger platform-wide" goal was
+never buildable. Incident response reads two logs (go-oikumenea's, for everything a forwarded token
+did *through* go-oikumenea; this one, for OpenFaithMap's own decisions), correlated by person RID
+and timestamp.
+
+## Blocked dependencies (audit 2026-08-09)
+
+This module cannot pass its `designed` gate again until these clear. Two of the three that the
+audit found were resolved into decisions; one remains real work.
+
+| Dependency | Status |
+|---|---|
+| **Who is a moderator?** `moderation.read`/`moderation.act` gate every endpoint here and four in [vouching.md](vouching.md), but were specified only as "held by a small, fixed set of accounts" — no table, no role, no mechanism. | **Resolved.** [D-PlatformModerator](../architecture/decisions.md): a go-oikumenea `platform-moderator` Role, granted `subtree` on the shared root unit, resolved by a target-scoped capability check. No OpenFaithMap roster table. `scripts/bootstrap-registration-org` gains the role at M5. |
+| **The audit mirror doesn't exist.** | **Resolved.** D-Moderation's Correction; see Purpose above and the withdrawn invariant below. |
+| **`queue_scope = 'jurisdiction'` has no ancestor chain to walk.** Under [D-FlatRoot](../architecture/decisions.md) every congregation is a direct child of one shared root, so `jurisdiction` and `platform` are the same set. | **Open — blocks M5.** [milestones.md](../milestones.md)'s **M4.1** introduces real jurisdiction units and re-parents existing congregations. Keep the enum value in this design; it becomes meaningful when M4.1 lands. |
 
 ## Entities & aggregates
 
@@ -80,17 +97,23 @@ Conventions per [conventions.md](../architecture/conventions.md).
 | `GET·POST /appeals/{id}/decide` | List / decide an appeal | `moderation.act` (must differ from the original actor) |
 | `POST /exclusion-check` | Run the D-Exclusions taxon check ahead of registration (used by the registration wizard in [web-admin](web-admin.md), and callable standalone for a dry-run) | none (public) |
 
-`moderation.read`/`moderation.act` are OpenFaithMap-defined permission codes, held by platform
+`moderation.read`/`moderation.act` are OpenFaithMap-defined *names* for a target-scoped capability
+check against go-oikumenea's PDP — specifically, does the caller hold the `platform-moderator`
+Role's authority on the **shared root unit** (D-PlatformModerator)? Moderation is platform-wide, and
+`subtree` scope on the root unit is exactly how "platform-wide" is expressed in go-oikumenea's model,
+so this needs no parallel RBAC. *(Audit 2026-08-09: this previously read "held by platform
 moderators — a small, fixed set of accounts, not modeled through go-oikumenea's per-unit
-authorization (moderation is a platform-wide role, not tied to any one congregation's authority
-graph).
+authorization," which named no mechanism at all and left both this module and M6 blocked on an
+undesigned primitive.)*
 
 ## Dependencies
 
-- **Calls:** go-oikumenea's `audit` module (every `moderation_actions` write is mirrored there,
-  service-principal-authenticated — D-Moderation); go-oikumenea's `religion` module (`religion_taxa`
-  ancestor lookups for the exclusion check); [core-integration.md](core-integration.md) for the
-  congregation-admin-identity check on appeals.
+- **Calls:** go-oikumenea's `religion` module (`religion_taxa` ancestor lookups for the exclusion
+  check — note this has **no machine-callable path today**, see
+  [core-integration.md](core-integration.md)'s open seams and M2.5; today's only implementation, in
+  `registration`, runs under a real submitter's token); [core-integration.md](core-integration.md)
+  for the congregation-admin-identity check on appeals and the target-scoped moderator capability
+  check (D-PlatformModerator). **Not** go-oikumenea's `audit` module — see Purpose.
 - **Called by:** the [web-facade](web-facade.md) (public report-filing UI — filing a report
   requires no login) and [web-admin](web-admin.md) (appeal filing, moderator queue UI — both
   require being logged in); the congregation-registration flow
@@ -98,11 +121,18 @@ graph).
 
 ## Authorization touchpoints
 
-`moderation.read`, `moderation.act` (both platform-scoped, held by a small fixed moderator roster
-— not derived from go-oikumenea role assignments, since platform moderation authority is
-orthogonal to any single congregation's authority graph). The exclusion check
-(`POST /exclusion-check`) is unauthenticated by design — it must run *before* anyone has proven any
-standing, as part of deciding whether registration can even begin.
+`moderation.read`, `moderation.act` — both resolve to the caller's authority on the shared root
+unit, via the `platform-moderator` Role (D-PlatformModerator). Derived from a real go-oikumenea role
+assignment, not a local roster; the check must always name the root unit as its target, never ask
+"does this caller hold P anywhere," which is the defect
+[registration.md](registration.md#known-defects-audit-2026-08-09) documents.
+
+The exclusion check (`POST /exclusion-check`) is unauthenticated by design — it must run *before*
+anyone has proven any standing, as part of deciding whether registration can even begin. **Note the
+tension with M2.5:** an unauthenticated caller cannot reach go-oikumenea's taxon reads today (every
+`religion` read is `RequireAnywhere`-gated), so this endpoint as specified has no data source until
+that resolves. `registration`'s own check sidesteps it by running under the authenticated
+submitter's token.
 
 ## Invariants
 
@@ -120,14 +150,21 @@ standing, as part of deciding whether registration can even begin.
 - **The exclusion check is re-run at registration, never cached from a prior visit.** A taxon's
   exclusion status could in principle change (a future ADR revision); nothing about it is
   memoized client-side.
-- **Every moderation action is mirrored into go-oikumenea's audit ledger** before it is considered
-  complete — a write that succeeds locally but fails to reach go-oikumenea's audit endpoint is
-  retried, not silently dropped (background job, service-principal authenticated).
+- ~~**Every moderation action is mirrored into go-oikumenea's audit ledger** before it is considered
+  complete.~~ **Withdrawn (audit 2026-08-09).** The endpoint this invariant assumed does not exist —
+  see D-Moderation's Correction. **Replacement:** *the `moderation_actions` row is written before
+  the action's effect is applied*, so a crash mid-action leaves a recorded decision with an
+  unapplied effect (recoverable, reviewable) rather than an applied effect with no record
+  (invisible). The row is append-only and `reject_mutation()`-guarded, which is what made the
+  original mirror mostly redundant anyway.
 
 ## Open seams
 
-- **Rate limiting on anonymous report filing** is a hardening item (M7), not designed in detail
-  yet — see [milestones.md](../milestones.md).
+- **Rate limiting on anonymous report filing** is parked at M7 (`DS-OFM-9`), but **this module is
+  what ships the public endpoints** — `POST /reports` and `POST /exclusion-check` are both
+  unauthenticated. Shipping an unlimited public write endpoint and hardening it a milestone later
+  is a real sequencing risk; decide at M5 scoping whether basic limiting moves forward.
+- **`queue_scope = 'jurisdiction'` is inert until M4.1** — see Blocked dependencies above.
 - **Automated exclusion enforcement beyond registration-time** (e.g., detecting a congregation that
   quietly re-affiliates with an excluded body after registration) has no design yet — today the
   check only runs once, at intake.
