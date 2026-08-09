@@ -44,6 +44,11 @@ services:
       retries: 10
 
   # --- go-oikumenea (D-CoreDependency) ---
+  # --allow-dirty (here and on openfaithmap-migrate below): NOT about the two schemas sharing one
+  # database (M2.4 checked — each already has its own --revisions-schema, and that alone isn't why).
+  # Verified against a genuinely fresh volume: the postgis/postgis image itself bootstraps a `tiger`
+  # schema before any migration ever runs, and Atlas's dirty-check flags that regardless of
+  # --revisions-schema. Permanent, not a M2.1-era leftover to clean up later.
   oikumenea-migrate:
     image: arigaio/atlas:latest
     depends_on:
@@ -86,10 +91,11 @@ services:
       # OIKUMENEA_HERMENEA_TOKEN is what go-oikumenea presents outbound when proxying a
       # UI-triggered sync call to hermenea's own control API. Read as env-var overlays only (no
       # install-config field) — see go-oikumenea's internal/platform/config's Hermenea struct.
-      # INSECURE local-dev defaults, matching go-oikumenea's own docker-compose.yml literally so
-      # both repos interoperate out of the box — replace for any real deployment.
-      HERMENEA_OIKUMENEA_TOKEN: "dev-hermenea-importer-token-change-me"
-      OIKUMENEA_HERMENEA_TOKEN: "dev-oikumenea-trigger-token-change-me"
+      # Values come from .env (see .env.example) — INSECURE local-dev defaults there, matching
+      # go-oikumenea's own docker-compose.yml literally so both repos interoperate out of the box;
+      # replace for any real deployment.
+      HERMENEA_OIKUMENEA_TOKEN: "${HERMENEA_OIKUMENEA_TOKEN}"
+      OIKUMENEA_HERMENEA_TOKEN: "${OIKUMENEA_HERMENEA_TOKEN}"
     # No published ports (D-HeadlessTopology) — internal-only, reached by openfaithmap-api over the
     # compose network at https://oikumenea-app:8443.
 
@@ -137,8 +143,9 @@ services:
     volumes:
       - ./deploy/hermenea-install.docker.yml:/app/var/conf/hermenea-install.yml:ro
     environment:
-      HERMENEA_OIKUMENEA_TOKEN: "dev-hermenea-importer-token-change-me"
-      OIKUMENEA_HERMENEA_TOKEN: "dev-oikumenea-trigger-token-change-me"
+      # Same two secrets as oikumenea-app above (M2.2, D-BulkImport) — values from .env.
+      HERMENEA_OIKUMENEA_TOKEN: "${HERMENEA_OIKUMENEA_TOKEN}"
+      OIKUMENEA_HERMENEA_TOKEN: "${OIKUMENEA_HERMENEA_TOKEN}"
     # Lets an enabled source point at a dist served from the host (e.g. a local test fixture) —
     # inert unless such a source is enabled in deploy/hermenea-install.docker.yml.
     extra_hosts:
@@ -164,20 +171,47 @@ services:
     volumes:
       - ./migrations:/migrations:ro
 
+  # M2.4, D-SharedDatabase: mirrors oikumenea-init-role above — creates the LOGIN role
+  # openfaithmap-api actually connects as, a member of migration 0003's openfaithmap_app group role.
+  # A role with a password has no business being version-controlled Atlas DDL.
+  openfaithmap-init-role:
+    image: postgres:16
+    depends_on:
+      openfaithmap-migrate:
+        condition: service_completed_successfully
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        psql "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -c "
+          DO \$\$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openfaithmap') THEN
+              CREATE ROLE openfaithmap LOGIN PASSWORD 'dev' IN ROLE openfaithmap_app;
+            END IF;
+          END \$\$;"
+
   openfaithmap-api:
     build: .
+    # 3000 (the app port) is NOT published (M2.4): openfaithmap-admin is the only caller and reaches
+    # it internally at https://openfaithmap-api:3000, same D-HeadlessTopology rule oikumenea-app
+    # already follows — this service accepts and forwards bearer tokens, so it has no business being
+    # host-reachable. 3001 (witchcraft's management/health port, no auth) stays published for local
+    # debugging (curl localhost:3001/status/liveness).
     ports:
-      - "3000:3000"
       - "3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
       openfaithmap-migrate:
         condition: service_completed_successfully
+      openfaithmap-init-role:
+        condition: service_completed_successfully
       oikumenea-app:
         condition: service_started
     environment:
-      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable"
+      # M2.4, D-SharedDatabase: the least-privilege role above, not the postgres superuser — has no
+      # grant of any kind on the oikumenea schema (verify: SELECT against oikumenea.* from inside this
+      # container fails with a permission error).
+      DATABASE_URL: "postgres://openfaithmap:dev@postgres:5432/postgres?sslmode=disable"
       OIKUMENEA_BASE_URL: "https://oikumenea-app:8443"
       # oikumenea-app serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
       OIKUMENEA_INSECURE_SKIP_VERIFY: "true"

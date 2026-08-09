@@ -69,3 +69,9 @@ The board is authoritative for **stage**; each milestone's own prose in
 [`milestones.md`](milestones.md) is authoritative for **detail**. Discrepancies resolve in the
 board's favor. Update the stage board in the same commit/PR that passes a gate — not as a
 follow-up.
+
+This is not a hypothetical rule. M2.1 deleted `web/package.json`, leaving CI's `web` job pointing at
+a path that no longer existed — every run since had been failing. M2.2 was still marked `✅` Verified
+on top of that red `main`, and M2.1 itself sat at 🔶 rather than being caught as the actual cause.
+**Check CI before you write `✅`** above exists because of this incident, fixed by M2.4. If the board
+and a red `main` ever disagree again, the board is wrong until CI says otherwise.

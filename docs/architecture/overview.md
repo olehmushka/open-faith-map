@@ -144,7 +144,7 @@ Everything below is **as built and running today** unless marked otherwise.
 | `postgres` | 5432 | One shared instance (D-SharedDatabase). Holds the `oikumenea` and `openfaithmap` schemas, plus `hermenea`'s own separate database. |
 | `oikumenea-migrate` · `oikumenea-init-role` · `oikumenea-app` | — | go-oikumenea's own bootstrap sequence, published image. `oikumenea-app` publishes **no** host port (D-HeadlessTopology). |
 | `openfaithmap-migrate` | — | Applies `migrations/` to the `openfaithmap` schema. Built at M2, not M3 as originally planned — `registration_requests` turned out to be OpenFaithMap's first schema. |
-| `openfaithmap-api` | 3000 / 3001 | ⚠️ Publishes host ports, contradicting the "only UI surfaces are public ingress" target below. Removal is **M2.4**. |
+| `openfaithmap-api` | 3001 | Only the management/health port is published (**M2.4**); 3000 (the app port) is internal-only, reached by `openfaithmap-admin` over the compose network. |
 | `openfaithmap-web` | 3002 | Anonymous public surface. Holds no Auth.js env vars at all since the M2.1 split. |
 | `openfaithmap-admin` | 3004 | The only OpenFaithMap-built surface with a session. Holds the `AUTH_*` vars `openfaithmap-web` used to. Its own subdomain (e.g. `admin.openfaithmap.org`) once deployed beyond local dev. |
 | `oikumenea-console` | 3003 | go-oikumenea's own published console, pinned to `:0.0.1`. See the exposure rule below. |
@@ -159,13 +159,14 @@ Three exposure rules, in descending strictness:
   instance-wide. D-InstanceAdminConsole decides a WireGuard VPN in front of it; not implemented
   because there is no real deployment target yet. It also shares an OAuth client with
   `openfaithmap-admin` today — see [D-OAuthClients](decisions.md).
-- **`hermenea` publishes 9443/9444 in local dev**, gated only by a shared trigger token that is
-  currently a hardcoded literal in the compose file. Moving it to `.env` is **M2.4**.
+- **`hermenea` publishes 9443/9444 in local dev**, gated only by a shared trigger token — read from
+  `.env` since **M2.4**, previously a hardcoded literal in the compose file.
 
-**Known gap: least privilege.** `openfaithmap-api` connects to the shared instance as the `postgres`
-superuser, so it *can* reach go-oikumenea's schema directly — which D-CoreDependency forbids
-outright. Nothing does; nothing prevents it either. The `openfaithmap_app` role that closes this is
-**M2.4**. See D-SharedDatabase's consequences.
+**Least privilege (M2.4, fixed).** `openfaithmap-api` no longer connects to the shared instance as
+the `postgres` superuser — it connects as `openfaithmap`, a login role scoped to
+`migrations/0003_least_privilege_role.sql`'s `openfaithmap_app` group role: `USAGE`/DML on the
+`openfaithmap` schema only, no grant of any kind on `oikumenea`. See D-SharedDatabase's consequences
+for how this was verified.
 
 ## What's unchanged from go-oikumenea, what's new
 

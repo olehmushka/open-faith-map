@@ -40,8 +40,9 @@ of choices specific to OpenFaithMap.
   `openfaithmap.vouching_*`, `openfaithmap.registration_*` — mirroring go-oikumenea's
   `oikumenea.<module>_*` pattern one level down. Everything below about "a different database"
   still holds as written: the boundary is real, it is just a schema boundary rather than an
-  instance boundary. Note D-SharedDatabase's open gap — `openfaithmap-api` currently connects as
-  superuser, so nothing at the database level *enforces* the boundary until M2.4.
+  instance boundary. `openfaithmap-api` connects as a least-privilege role scoped to the
+  `openfaithmap` schema (M2.4, D-SharedDatabase) — the boundary is now enforced at the database
+  level, not just by convention.
 - **RID slot allocation.** OpenFaithMap mints its own RIDs for its own entities
   (`content_pages`, `moderation_reports`, `vouching_edges`, …) — never in go-oikumenea's RID
   space. Where OpenFaithMap's tables reference a go-oikumenea entity (a congregation `Unit`, a

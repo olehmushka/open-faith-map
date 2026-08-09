@@ -528,23 +528,28 @@ because nothing crosses the schema boundary.
 
 **Consequences.**
 
-- **Physical isolation is gone; only convention separates the two schemas.** Today
-  `openfaithmap-api` connects as the `postgres` superuser (`docker-compose.yml`'s `DATABASE_URL`),
-  which means it *can* read and write every table in the `oikumenea` schema directly. That
-  contradicts D-CoreDependency's "never direct database access to go-oikumenea's schema," which
-  that decision calls "rejected outright — it would bypass the PDP." Nothing in the code does this;
-  nothing prevents it either.
-  **Required fix:** a least-privilege `openfaithmap_app` role with `USAGE`/DML on the
-  `openfaithmap` schema only, and no grant of any kind on `oikumenea`. Sequenced as
-  [milestones.md](../milestones.md)'s **M2.4** — until it lands, D-CoreDependency's database-access
-  invariant is enforced by discipline, not by the database.
+- **Physical isolation was gone; only convention separated the two schemas — fixed by M2.4.**
+  `openfaithmap-api` connected as the `postgres` superuser (`docker-compose.yml`'s `DATABASE_URL`),
+  which meant it *could* read and write every table in the `oikumenea` schema directly. That
+  contradicted D-CoreDependency's "never direct database access to go-oikumenea's schema," which
+  that decision calls "rejected outright — it would bypass the PDP." Nothing in the code did this;
+  nothing prevented it either. **Fixed:** `migrations/0003_least_privilege_role.sql` adds an
+  `openfaithmap_app` role with `USAGE`/DML on the `openfaithmap` schema only and no grant of any
+  kind on `oikumenea`; `docker-compose.yml`'s `openfaithmap-init-role` creates the login role that
+  holds it, mirroring `oikumenea-init-role`'s own shape, and `openfaithmap-api`'s `DATABASE_URL` now
+  connects as it. Verified live: `SELECT` against any `oikumenea.*` table from that role fails with
+  `permission denied for schema oikumenea`, while the registration module's own reads/writes/updates
+  (including the `set_updated_at` trigger) all still succeed.
 - **No independent backup, restore, or failover.** A point-in-time restore of OpenFaithMap's data
   necessarily rolls back go-oikumenea's too, and vice versa. Acceptable at present scale; a real
   reason to revisit this decision once either side has data whose recovery objective differs.
 - **Two Atlas revision tables in one database** (`--revisions-schema oikumenea` and
-  `--revisions-schema openfaithmap`), both currently applied with `--allow-dirty`. That flag was
-  needed because each migrate service sees a database the other has already written to; it also
-  permanently suppresses Atlas's own drift detection. Narrowing it is part of M2.4.
+  `--revisions-schema openfaithmap`), both applied with `--allow-dirty` — permanently, not a
+  narrowing target. M2.4 checked the original guess above (each migrate service sees a database the
+  other has already written to) against a genuinely fresh volume with the flag removed from both:
+  `oikumenea-migrate` fails before `openfaithmap-migrate` ever runs a single statement, because the
+  `postgis/postgis` base image bootstraps its own `tiger` schema, which Atlas's dirty-check flags
+  regardless of `--revisions-schema`. The flag stays; the reason was wrong.
 
 ---
 

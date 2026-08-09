@@ -48,7 +48,6 @@ Real choices with no obvious default, parked on purpose. Each needs someone to p
 | U5 | `content_sites.slug` collisions — two self-registered "St. Mary's" collide on a globally-`UNIQUE` column, and unlike `registration`'s unit codes there is no disambiguation story. | [M3](#m3--content--site-builder-backend) · [content.md](modules/content.md) |
 | U6 | `registration_requests` uses a `uuid` PK where conventions specify composed URN RIDs. Do `content_*` follow the precedent or the convention? Pick before four modules do two things. | `DS-OFM-11` |
 | U7 | Cross-module foreign keys inside `openfaithmap-api` (`discovery_site_cache.content_site_id` → `content_sites`) are neither permitted nor forbidden by conventions.md. | `DS-OFM-13` |
-| U8 | Whether `--allow-dirty` is still needed on both Atlas migrate services now that each has its own revisions schema — it currently suppresses drift detection permanently. | [M2.4](#m24--ci-repair--deployment-hygiene) |
 
 ### Group 3 — contradictions and orphans needing a call
 
@@ -491,7 +490,8 @@ every run since — it never reaches `npm ci`. Replace it with a matrix over `we
 **2 · Make CI-green part of the Verified gate.** `development-process.md`'s Verified row says "tests
 pass" without saying whose. Amend it to require a green CI run on `main` at the milestone's merge
 commit, and note it in the stage-board honesty section — the failure mode this milestone exists to
-fix is precisely that three milestones passed their gates while `main` was red.
+fix is precisely that M2.2 was marked `✅` Verified on top of a `main` that had already been red
+since M2.1, and M2.1 itself sat at `🔶` rather than being caught as the actual cause.
 
 **3 · Least-privilege database role (D-SharedDatabase).** `openfaithmap-api` connects as the
 `postgres` superuser, so it can read and write go-oikumenea's entire schema — which D-CoreDependency
@@ -514,6 +514,21 @@ comment.
 **5 · Move hermenea's shared secrets into `.env`.** `HERMENEA_OIKUMENEA_TOKEN` and
 `OIKUMENEA_HERMENEA_TOKEN` are hardcoded literals in `docker-compose.yml` in two places each.
 Convert to `${...}` with entries in `.env.example`, matching every other secret in this repo.
+
+> **As implemented (2026-08-09).** All five items landed. Verified against a real stack, not just
+> code review: `web/apps/{web,admin}`'s `npm ci && npm run lint && npm run build` both pass clean
+> with no env vars set (item 1); a fresh `docker compose up` through `openfaithmap-api` boots on the
+> new `openfaithmap` role, `SELECT` against `oikumenea.persons` from that role returns `permission
+> denied for schema oikumenea`, and the exact INSERT/SELECT/UPDATE/DELETE `adapters/store.go` issues
+> against `openfaithmap.registration_requests` — including the `set_updated_at` trigger — all succeed
+> (item 3); `localhost:3000` refuses the connection while `localhost:3001/status/liveness` returns
+> `200` (item 4); both `oikumenea-app` and `hermenea` resolve the token env vars from `.env` via
+> `docker inspect`/`docker compose config` (item 5). Item 3's "while here" sub-question is settled,
+> not just checked off: `--allow-dirty` stays on both migrate services permanently, but not for the
+> reason originally guessed — see `D-SharedDatabase`'s updated consequences and the compose comment
+> above `oikumenea-migrate`. Not yet run: an actual GitHub Actions run on `main` (nothing is pushed
+> yet) — item 1's CI-green acceptance criterion needs that before this milestone's `Verified` gate
+> can flip.
 
 ### M2.5 · Discovery reachability spike
 
