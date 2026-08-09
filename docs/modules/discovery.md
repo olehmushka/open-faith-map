@@ -14,25 +14,33 @@ never becomes a second source of truth for where a congregation is. The one thin
 OpenFaithMap's single highest-traffic, mostly-anonymous surface and re-querying go-oikumenea's
 PostGIS discovery search on every map pan/zoom would be wasteful for both services.
 
-## ⚠️ Two unverified assumptions block this module (audit 2026-08-09)
+## ⚠️ One blocker is fixed, one remains (M2.5, 2026-08-09) — this module still needs its redesign written
 
-Everything below is designed against go-oikumenea behavior nobody has measured. M1.1 established
-that every `religion` module read endpoint is `RequireAnywhere`-gated — a person-shaped PEP path
-that denies subjects with no person behind them. Two consequences:
+M2.5 measured both suspected failure modes live and found both true; one is now fixed upstream.
 
-1. **The cache refresh has no callable path.** It is specified as a background job on the service
-   principal (D-ServiceIdentities), and a service principal is exactly the machine subject
-   `RequireAnywhere` denies. Refreshing under a real person's token instead would violate
-   [core-integration.md](core-integration.md)'s no-on-behalf-of invariant, so there is no fallback.
-2. **The public read path may be denied too, which would be much worse.** An anonymous caller is
-   *also* a subject with no person behind it. If `RequireAnywhere` denies it,
-   `GET /religion/discovery/sites` is not reachable from `openfaithmap-web` at all and this module's
-   entire premise — a thin public read facade — fails, not just its cache layer.
+1. **The cache refresh had no callable path — fixed.** A service principal holding the
+   `religion.read` grant used to get `403 Authorization:PermissionDenied` on both
+   `GET /religion/v1/discovery/sites` and `GET /religion/v1/taxa/{id}` (`RequireAnywhere` denied
+   machine subjects regardless of grants). Filed as
+   [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33); fixed same-day
+   (`fedc094`, released as `docker.io/olegamysk/oikumenea:0.0.2`) — reads now dispatch through
+   `RequireServiceOrPerson`. Re-verified live against `0.0.2`: the same service-principal token now
+   gets `200`/correct `404`. **The service principal can refresh `discovery_site_cache` for real
+   now** — this half of the module's design is buildable as originally specified.
+2. **The public read path is still denied, unchanged, and deliberately not part of #33's fix.** An
+   unauthenticated `GET /religion/v1/discovery/sites` still returns
+   `401 IdentityFederation:Unauthorized` — denied at **authentication**, before any authorization
+   check runs, and #33 explicitly scoped genuine anonymous access out as "a separate, larger design
+   question." `openfaithmap-web` has no token to forward by design (D-AdminSurface), so this path
+   still cannot work as specified: **`openfaithmap-web` must never call go-oikumenea directly for
+   discovery reads** — it can only ever read `discovery_site_cache`.
 
-Point 2 is **unmeasured**. It costs one afternoon to settle and it decides whether this design
-survives: [milestones.md](../milestones.md)'s **M2.5** measures both, files the upstream
-go-oikumenea feature request, and blocks M4's `designed` gate on the answer. Do not build against
-this doc until M2.5 reports.
+**What this means for the redesign, not attempted here:** with #1 fixed, the fix for #2 is now
+concretely buildable rather than blocked on an upstream unknown — the service principal refreshes
+`discovery_site_cache` on a schedule, and `openfaithmap-web` reads *only* that cache, never calling
+go-oikumenea directly for discovery. That redesign still needs to be written into this doc (and
+[web-facade.md](web-facade.md)'s request-path description) before **M4's `designed` gate**, which
+stays reopened until it is.
 
 ## Entities & aggregates
 
