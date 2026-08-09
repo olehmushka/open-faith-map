@@ -34,18 +34,21 @@ jobs:
       - run: ./godelw verify --skip-test
 
   web:
-    name: web/ lint + build
+    name: web/apps/${{ matrix.app }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [web, admin]
     defaults:
       run:
-        working-directory: web
+        working-directory: web/apps/${{ matrix.app }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: web/apps/${{ matrix.app }}/package-lock.json
       - run: npm ci
       - run: npm run lint
       - run: npm run build
