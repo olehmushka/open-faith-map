@@ -24,10 +24,13 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/registration/domain"
 )
 
-// operatorPermission is the permission MyCapabilities is checked for to decide whether a caller
-// sees every pending request (an operator) or only their own (a submitter). Cosmetic/UX gating
-// only (D-SelfCapabilities) — the real enforcement is go-oikumenea's PDP re-deciding every write
-// Approve/Reject actually makes.
+// operatorPermission is the go-oikumenea permission IsOperator asks Authorize to decide, scoped to
+// Config.RootUnitID: does the caller hold operatorPermission on the shared root unit specifically?
+// For this module's own reads (List/Get) this check IS the entire access-control decision — there is
+// no go-oikumenea PDP behind an OpenFaithMap-owned table to catch a wrong local answer here
+// (D-PlatformModerator) — so it must never be treated as cosmetic for reads. It remains cosmetic only
+// for the write paths (Approve/Reject): go-oikumenea's PDP re-decides createChildOrg/site.manage/
+// grantAssignment for real against the caller's actual assignments, independent of what this said.
 const operatorPermission = "religionorg.manage"
 
 type Config struct {
@@ -90,29 +93,41 @@ func checkNotExcluded(ctx context.Context, c *oikumenea.Client, taxonID string) 
 	return fmt.Errorf("%w: ancestor chain too deep for %s", domain.ErrTaxonNotFound, taxonID)
 }
 
-// IsOperator asks go-oikumenea what the caller's own permissions are (D-SelfCapabilities,
-// authenticated-but-ungated) and checks for operatorPermission — a coarse, cosmetic-only gate; see
-// the package doc.
-func (s *Service) IsOperator(ctx context.Context, token string) (bool, error) {
+// IsOperator asks go-oikumenea's real PDP (Authorize) whether the caller holds operatorPermission
+// specifically on Config.RootUnitID — not the flat, untargeted MyCapabilities() this used to call,
+// which answers "does the caller hold this permission *anywhere*" and so also matched
+// congregation-admin, which holds religionorg.manage on its own unit (D-PlatformModerator's fix for
+// exactly this shape of bug).
+//
+// Authorize itself requires the caller to already hold assignment.read reaching the target unit, with
+// no self-exemption (go-oikumenea's own OQ-5/D-SelfCapabilities framing, deliberate).
+// scripts/bootstrap-registration-org grants registration-operator that reach; congregation-admin does
+// not. So a real operator gets a real Allow/Deny, and anyone lacking assignment.read on RootUnitID —
+// including every congregation-admin — gets the typed Authorization:PermissionDenied error, which
+// this treats as "not an operator" (false, nil), not a failure to propagate.
+func (s *Service) IsOperator(ctx context.Context, token, callerPersonID string) (bool, error) {
 	c, err := s.client(token)
 	if err != nil {
 		return false, err
 	}
-	caps, err := c.Authorization.MyCapabilities(ctx)
+	rootUnitID := s.cfg.RootUnitID
+	resp, err := c.Authorization.Authorize(ctx, authorization.AuthorizeRequest{
+		SubjectPersonId: callerPersonID,
+		Action:          operatorPermission,
+		UnitId:          &rootUnitID,
+	})
 	if err != nil {
+		if authorization.IsPermissionDenied(err) {
+			return false, nil
+		}
 		return false, err
 	}
-	for _, p := range caps.Permissions {
-		if p == operatorPermission {
-			return true, nil
-		}
-	}
-	return false, nil
+	return resp.Allow, nil
 }
 
 // List returns every request for an operator, or just the caller's own otherwise.
 func (s *Service) List(ctx context.Context, token, callerPersonID string, status *domain.Status) ([]domain.Request, error) {
-	isOperator, err := s.IsOperator(ctx, token)
+	isOperator, err := s.IsOperator(ctx, token, callerPersonID)
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +138,26 @@ func (s *Service) List(ctx context.Context, token, callerPersonID string, status
 	return s.store.ListBySubmitter(ctx, callerPersonID, pageSize)
 }
 
-func (s *Service) Get(ctx context.Context, id string) (domain.Request, error) {
-	return s.store.Get(ctx, id)
+// Get returns id iff the caller is its submitter or an operator (the same root-unit-scoped Authorize
+// check List uses) — otherwise domain.ErrNotFound, never a distinct "forbidden": this endpoint must
+// not confirm the existence of a request the caller isn't permitted to see (M2.3 item 2 acceptance
+// criterion). transport.mapErr already maps domain.ErrNotFound to Registration:RequestNotFound.
+func (s *Service) Get(ctx context.Context, token, callerPersonID, id string) (domain.Request, error) {
+	req, err := s.store.Get(ctx, id)
+	if err != nil {
+		return domain.Request{}, err
+	}
+	if req.SubmittedByPersonID == callerPersonID {
+		return req, nil
+	}
+	isOperator, err := s.IsOperator(ctx, token, callerPersonID)
+	if err != nil {
+		return domain.Request{}, err
+	}
+	if !isOperator {
+		return domain.Request{}, domain.ErrNotFound
+	}
+	return req, nil
 }
 
 // Approve performs the real go-oikumenea writes with the caller's own forwarded token — a child org

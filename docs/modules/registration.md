@@ -71,8 +71,8 @@ constraint enforces each status's required fields are present (e.g. `APPROVED` a
 | Op | Intent | Gate |
 |---|---|---|
 | `POST /requests` | Submit a request as the caller (their own resolved go-oikumenea person RID — never client-supplied, always asked of go-oikumenea's own `whoami`). Runs the D-Exclusions check first. | Authenticated |
-| `GET /requests` | List — every request for an operator (checked live via `MyCapabilities`), else just the caller's own | Authenticated ⚠️ **broken — see Known defects** |
-| `GET /requests/{id}` | Read one request | ⚠️ **ungated in code — see Known defects** |
+| `GET /requests` | List — every request for an operator (a target-scoped `Authorize` check against the root unit, D-PlatformModerator), else just the caller's own | Authenticated |
+| `GET /requests/{id}` | Read one request | Submitter or operator (same target-scoped check) |
 | `POST /requests/{id}/approve` | Approve a `PENDING` request: `createChildOrg` under the shared root unit, a location + site, a filled Position, and a `unit`-scoped grant of `congregation-admin` to the submitter — all with the **caller's own forwarded token** | go-oikumenea's PDP decides for real (`religionorg.manage`/`site.manage`/`assignment.grant` on the root unit) |
 | `POST /requests/{id}/reject` | Reject with a reason. No go-oikumenea writes. | Authenticated |
 
@@ -84,24 +84,28 @@ found by reading it against this doc, none of which the happy-path proof would h
 are recorded here rather than only in `milestones.md` because this doc is what the next person
 reads before touching the module.
 
-**1 · The operator gate is untargeted, and leaks every submitter's PII.**
-`application.IsOperator` asks go-oikumenea `MyCapabilities()` whether the caller holds
-`religionorg.manage` — with **no target unit**. `scripts/bootstrap-registration-org` grants
-`religionorg.manage` as part of the **`congregation-admin`** role. So every approved congregation
-admin passes the operator check and `GET /requests` returns them every pending submission
-platform-wide: congregation names, street addresses, latitude/longitude, and submitter person RIDs.
+**1 · The operator gate is untargeted, and leaks every submitter's PII.** ~~`application.IsOperator`
+asks go-oikumenea `MyCapabilities()` whether the caller holds `religionorg.manage` — with **no target
+unit**. `scripts/bootstrap-registration-org` grants `religionorg.manage` as part of the
+**`congregation-admin`** role. So every approved congregation admin passes the operator check and
+`GET /requests` returns them every pending submission platform-wide.~~ **Fixed.** `MyCapabilities()`
+is deliberately flat and self-only (confirmed against go-oikumenea's own SDK/docs — U1, now resolved)
+and cannot be targeted. `IsOperator` now calls go-oikumenea's `Authorize` (`POST /authorize`) with
+`{SubjectPersonId: caller, Action: "religionorg.manage", UnitId: &RootUnitID}`. `Authorize` itself
+requires the caller to already hold `assignment.read` reaching the target unit, no self-exemption
+(go-oikumenea's own "OQ-5", deliberate) — so `scripts/bootstrap-registration-org` now also grants
+`registration-operator` that permission (and reconciles it onto an already-bootstrapped instance's
+existing role via `UpdateRole`, not just on a fresh one). `congregation-admin` does **not** get
+`assignment.read` — that's what makes it correctly get `Authorization:PermissionDenied` (read by
+`IsOperator` as "not an operator") instead of a real `Allow`/`Deny` answer.
 
-The "Authorization touchpoints" section below calls this gate "cosmetic only, matching
-go-oikumenea's own `D-SelfCapabilities` framing." That reasoning holds for **writes** — approve and
-reject are re-decided by go-oikumenea's PDP no matter what the list endpoint rendered — and does not
-hold for **reads**, where this check *is* the access-control decision and there is no PDP behind it
-to catch a wrong answer. The fix is a target-scoped check against the root unit
-([D-PlatformModerator](../architecture/decisions.md) sets the pattern for every module).
-
-**2 · `getRequest` has no authorization at all.** `transport.GetRequest` calls the application
+**2 · `getRequest` has no authorization at all.** ~~`transport.GetRequest` calls the application
 service directly — no `whoami`, no operator check, no submitter comparison. Any authenticated
-person can read any request by id. The Conjure contract's own docs say "The submitter or an
-operator (verified live) may read it"; neither half is implemented.
+person can read any request by id.~~ **Fixed.** `GetRequest` now resolves the caller via `whoami`
+first; `application.Get` permits iff the caller is the request's `submittedByPersonId` or passes the
+same `IsOperator` check as item 1, and returns `domain.ErrNotFound` (mapped to
+`Registration:RequestNotFound`, not a distinct "forbidden") otherwise — so the endpoint never confirms
+the existence of a request the caller can't see.
 
 **3 · `approveRequest` is a non-atomic distributed write.** ~~Seven go-oikumenea calls followed by a
 local `UPDATE`, with no compensation and no idempotency key.~~ **Fixed.** A new `PROVISIONING`
@@ -113,14 +117,15 @@ the real unit instead of creating a second org. The remaining steps are re-runna
 `listUnitSites` for an existing primary site first, because `createSite` has **no** uniqueness key to
 reject a duplicate on — a gap the original ticket text didn't account for.
 
-Items 1 and 2 above are still open: item 1 is blocked on `U1` (unmeasured `MyCapabilities()`
-target-scoping); item 2 was deferred rather than shipped against today's untargeted operator check,
-since it would inherit item 1's known false-positive.
+All three defects are now fixed in code. Live proof against the two-real-token acceptance criterion
+(a `congregation-admin`-only account sees only its own requests; a `registration-operator` account
+sees all) has not been run yet — that needs a real browser Google OAuth login, not something
+achievable headlessly. See `milestones.md`'s M2.3 "As implemented" note.
 
 ## Dependencies
 
 - **Calls:** go-oikumenea's `religion` (taxon reads, `createChildOrg`, classification, sites),
-  `location` (address), `membership` (position), `authorization` (`MyCapabilities`,
+  `location` (address), `membership` (position), `authorization` (`Authorize`,
   `grantAssignment`), `identityfederation` (`whoami`) — via the Go SDK,
   `internal/coreintegration.NewUserClient` bound to the caller's forwarded token. Never the
   service-principal path for anything in this module — every write is the real person's own
@@ -135,18 +140,22 @@ since it would inherit item 1's known false-positive.
 
 This module defines no permission codes of its own — see the API surface table above.
 
-**For writes**, the `listRequests`/operator-view gate is genuinely cosmetic (matching go-oikumenea's
-own `D-SelfCapabilities` framing): it decides what a page renders, never what a write is allowed to
-do. The real enforcement is `approveRequest`'s actual `createChildOrg`/`grantAssignment` calls, made
-with the caller's own token — go-oikumenea's PDP re-decides every one, so this module's local gate
-permits nothing on its own.
+**For writes**, `IsOperator`'s result is cosmetic: it decides what a page renders, never what a write
+is allowed to do. The real enforcement is `approveRequest`'s actual `createChildOrg`/`grantAssignment`
+calls, made with the caller's own token — go-oikumenea's PDP re-decides every one, so this module's
+local gate permits nothing on its own, regardless of what it answers.
 
-**For reads, the same gate is the entire access-control decision, and it is currently wrong** — see
-Known defects above. There is no PDP behind `GET /requests` or `GET /requests/{id}` to catch a
-wrong local answer, because the rows being read are OpenFaithMap's own, not go-oikumenea's. Any
-capability check this module makes about *its own* tables must be target-scoped and must be treated
-as load-bearing, not cosmetic. [D-PlatformModerator](../architecture/decisions.md) generalizes this
-to every OpenFaithMap-owned module.
+**For reads, the same `IsOperator` call is the entire access-control decision** — `GET /requests` and
+`GET /requests/{id}` (`application.List`/`Get`) call it directly and there is no PDP behind either to
+catch a wrong local answer, because the rows being read are OpenFaithMap's own, not go-oikumenea's.
+That's why `IsOperator` calls go-oikumenea's real `Authorize` (`POST /authorize`), target-scoped to
+`Config.RootUnitID`, rather than the flat, untargeted `MyCapabilities()` it used before M2.3 — a
+capability check this module makes about *its own* tables must be target-scoped and load-bearing, not
+cosmetic. [D-PlatformModerator](../architecture/decisions.md) generalizes this to every
+OpenFaithMap-owned module. One dependency worth naming: `Authorize` requires the caller to already
+hold `assignment.read` reaching the target unit (go-oikumenea's own "OQ-5", no self-exemption), which
+is why `scripts/bootstrap-registration-org` grants it to `registration-operator` — without that grant,
+`IsOperator` fails closed (denies real operators too, never grants anyone extra access).
 
 ## Invariants
 
