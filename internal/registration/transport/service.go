@@ -84,7 +84,11 @@ func (s *Service) ListRequests(ctx context.Context, authHeader bearertoken.Token
 }
 
 func (s *Service) GetRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string) (genregistration.RegistrationRequest, error) {
-	req, err := s.appService.Get(ctx, requestIdArg)
+	personID, err := s.whoami(ctx, authHeader)
+	if err != nil {
+		return genregistration.RegistrationRequest{}, mapUpstreamErr(err)
+	}
+	req, err := s.appService.Get(ctx, string(authHeader), personID, requestIdArg)
 	if err != nil {
 		return genregistration.RegistrationRequest{}, mapErr(err, requestIdArg, "")
 	}

@@ -6,9 +6,12 @@
 // (a project-specific simplification — one flat OpenFaithMap organization, not one root per
 // denomination), a "registration-operator" Role (the permissions an M2 registration approval needs:
 // religionorg.manage, site.manage, schedule.manage, assignment.grant/revoke, person.create/update,
-// membership.create/update, position.create/update), and a "congregation-admin" Role (granted to a
-// submitter on THEIR OWN new unit at approval time by internal/registration — created here, not
-// there, because role.create is instance-scope and a registration-operator does not hold it).
+// membership.create/update, position.create/update — plus assignment.read, needed since M2.3 so this
+// role's own holder can pass go-oikumenea's Authorize check, which itself requires the caller already
+// hold assignment.read reaching the target unit, no self-exemption by design), and a
+// "congregation-admin" Role (granted to a submitter on THEIR OWN new unit at approval time by
+// internal/registration — created here, not there, because role.create is instance-scope and a
+// registration-operator does not hold it).
 //
 // It prints the root unit ID and role IDs, and the exact SQL to run next: go-oikumenea has no
 // API-reachable way to grant the FIRST unit-scoped role assignment on a brand-new unit — not even
@@ -115,6 +118,7 @@ func main() {
 			"schedule.manage",
 			"assignment.grant",
 			"assignment.revoke",
+			"assignment.read",
 			"person.create",
 			"person.update",
 			"membership.create",
@@ -237,8 +241,11 @@ func createOrReuseRootOrg(ctx context.Context, c *client.Client, orgCode, orgNam
 	return unitPage.Units[0].Id, nil
 }
 
-// createOrReuseRole creates the given role, or finds the existing one by code on a RoleConflict — a
-// fresh instance creates, a re-run against an already-bootstrapped instance reuses it.
+// createOrReuseRole creates the given role, or finds the existing one by code on a RoleConflict and
+// reconciles its permission set — a fresh instance creates, a re-run against an already-bootstrapped
+// instance reuses the role but still picks up any permission this script's own list has since gained
+// (e.g. M2.3 adding assignment.read to registration-operator), which a bare lookup-and-return would
+// otherwise silently leave stale forever.
 func createOrReuseRole(ctx context.Context, c *client.Client, req authorization.CreateRoleRequest) (authorization.Role, error) {
 	r, err := c.Authorization.CreateRole(ctx, req)
 	if err == nil {
@@ -253,8 +260,44 @@ func createOrReuseRole(ctx context.Context, c *client.Client, req authorization.
 	}
 	for _, existing := range page.Roles {
 		if existing.Code == req.Code {
-			return existing, nil
+			return reconcilePermissions(ctx, c, existing, req.Permissions)
 		}
 	}
 	return authorization.Role{}, fmt.Errorf("createRole reported a conflict but no role with code %q was found", req.Code)
+}
+
+// permissionsToAdd returns wanted's permissions missing from have as their union with have (existing
+// permissions are always kept — UpdateRole's Permissions field fully replaces the set, so a partial
+// list would silently revoke anything granted on the instance outside this script), and whether
+// anything was actually missing. Pure so it's unit-testable without a live go-oikumenea client.
+func permissionsToAdd(have, wanted []string) (union []string, changed bool) {
+	seen := make(map[string]bool, len(have))
+	union = append(union, have...)
+	for _, p := range have {
+		seen[p] = true
+	}
+	for _, p := range wanted {
+		if !seen[p] {
+			union = append(union, p)
+			seen[p] = true
+			changed = true
+		}
+	}
+	return union, changed
+}
+
+// reconcilePermissions ensures existing already holds every permission in wanted, calling UpdateRole
+// with the merged union only if something is missing — a re-run against an already-reconciled
+// instance makes zero UpdateRole calls, not just a harmless one.
+func reconcilePermissions(ctx context.Context, c *client.Client, existing authorization.Role, wanted []string) (authorization.Role, error) {
+	union, changed := permissionsToAdd(existing.Permissions, wanted)
+	if !changed {
+		return existing, nil
+	}
+	updated, err := c.Authorization.UpdateRole(ctx, existing.Id, authorization.UpdateRoleRequest{Permissions: &union})
+	if err != nil {
+		return authorization.Role{}, fmt.Errorf("updateRole %s (code %q) to add missing permissions: %w", existing.Id, existing.Code, err)
+	}
+	fmt.Printf("role %s (code %q): added missing permissions, now: %v\n", updated.Id, updated.Code, updated.Permissions)
+	return updated, nil
 }

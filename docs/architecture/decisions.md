@@ -712,14 +712,17 @@ invariant). Two roles keep that separable.
 
 **Consequences.**
 
-- **Capability checks must be target-scoped, and today's are not.** `registration`'s `IsOperator`
-  asks `MyCapabilities()` for a bare permission string with **no target unit**, so it answers "does
-  this caller hold `religionorg.manage` *anywhere*" — and `congregation-admin` holds
-  `religionorg.manage` on its own unit. Every approved congregation admin therefore reads as an
-  operator. Moderation must not repeat this: `moderation.read`/`moderation.act` resolve to a
-  capability check **against the shared root unit specifically**. Fixing the existing registration
-  gate is [milestones.md](../milestones.md)'s **M2.3**; this decision is the pattern both must
-  follow.
+- **Capability checks must be target-scoped — `registration`'s `IsOperator` now is the reference
+  implementation.** It used to ask `MyCapabilities()` for a bare permission string with **no target
+  unit**, so it answered "does this caller hold `religionorg.manage` *anywhere*" — and
+  `congregation-admin` holds `religionorg.manage` on its own unit, so every approved congregation
+  admin read as an operator. [milestones.md](../milestones.md)'s **M2.3** fixed this: `IsOperator`
+  now calls go-oikumenea's `Authorize` (`POST /authorize`), scoped to the shared root unit — the
+  mechanism `MyCapabilities()` couldn't provide (it's deliberately flat/self-only), and one that
+  itself required granting `registration-operator` an `assignment.read` reach it didn't have, since
+  `Authorize` has no self-exemption. Moderation must not repeat the original bug: `moderation.read`/
+  `moderation.act` resolve to a capability check **against the shared root unit specifically**, same
+  mechanism.
 - **`content.manage` follows the same pattern.** [content.md](../modules/content.md) originally
   defined it as "call `GET /units/{unitId}` with the caller's token and treat a successful read as
   proof of standing." Read authority is not write authority — that would let anyone who can *see* a

@@ -34,7 +34,6 @@ so measure first, then build.
 
 | # | The unknown | Blocks | Detail |
 |---|---|---|---|
-| U1 | **Does `MyCapabilities()` accept a target unit, or return a flat permission list?** M2.3's fix for the PII leak assumes a target-scoped capability check exists. If the response is flat with no target, the fix is a different mechanism — an authority probe against the root unit — not a parameter change. Nobody has checked the SDK or a live response. | **M2.3 item 1**, and by extension the [D-PlatformModerator](architecture/decisions.md) pattern every later module follows | [M2.3](#m23--registration-hardening-security--correctness) |
 | U2 | **Can an anonymous caller read `GET /religion/discovery/sites`?** Every `religion` read is `RequireAnywhere`-gated, which denies subjects with no person behind them — and an anonymous caller is one. If the answer is no, the public map cannot read go-oikumenea at all and M4 needs a different design, not an adjustment. | **M4's `designed` gate** | [M2.5](#m25--discovery-reachability-spike) · [discovery.md](modules/discovery.md) |
 | U3 | **Can go-oikumenea re-parent a live `Unit` in the `canonical` graph?** M4.1 has to move every existing congregation under a new jurisdiction unit while preserving its admin's grant. If there is no re-parenting path, that milestone blocks on an upstream request — exactly how M2's own org-creation assumption failed. Check this before scoping the rest of M4.1. | **M4.1**, and therefore **M5** | [M4.1](#m41--jurisdiction-units) |
 
@@ -80,7 +79,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M2 · Church-admin self-service facade | ✅ | ✅ | ✅ | ✅ | ✅ | 🔶 | **Built, blocked — see prose.** `modules/registration.md` (new — corrects the original "no schema of its own" framing). Backend, migration, and UI all built and proven end-to-end via curl against the live stack (submit, D-Exclusions check, list, approve's real go-oikumenea writes, reject, double-approve guard). **Verified blocked on two things:** the real browser round-trip (submit → operator approves → roster renders), and M2.3's security fixes — the 2026-08-09 audit found the operator gate discloses every submitter's PII to any congregation admin, so this milestone must not be marked Verified as built. |
 | M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ➖ | ➖ | ✅ | 🔶 | **Built, blocked — see prose.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + `modules/web-admin.md`. `web/` split into two independent Next.js apps, `web/apps/web` (no session, ever) and `web/apps/admin` (the only surface that ever holds a credential) — no application logic changed, only moved. |
 | M2.2 · Reference-data seeding (`hermenea`) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** D-BulkImport (`architecture/decisions.md`, corrected), `modules/import.md` (corrected). Deploys go-oikumenea's own `hermenea` companion service for reference-data seeding — no OpenFaithMap code, corrects the original congregation-bulk-import-CLI premise. Real `docker compose up` proof: `geo-countries-iso3166` synced successfully, 250 rows confirmed in `oikumenea.geo_countries` — see prose below. |
-| M2.3 · Registration hardening (security + correctness) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed (audit 2026-08-09).** D-PlatformModerator's target-scoped-capability pattern. Three defects found in M2's shipped code: the operator gate discloses every submitter's PII to any congregation admin, `getRequest` has no authorization at all, and `approveRequest` is a non-atomic 7-call distributed write with no idempotency. **Blocks M2's Verified.** |
+| M2.3 · Registration hardening (security + correctness) | ✅ | ✅ | ✅ | ✅ | ➖ | 🔶 | **Built, blocked on the live two-real-token proof — see prose.** D-PlatformModerator's target-scoped-capability pattern, implemented via go-oikumenea's `Authorize` + a new `assignment.read` grant. All three defects the 2026-08-09 audit found in M2's shipped code are fixed: the operator gate is now target-scoped (no longer discloses every submitter's PII to any congregation admin), `getRequest` is authorized (submitter or operator), and `approveRequest` is idempotent and resumable. **Blocks M2's Verified.** |
 | M2.4 · CI repair + deployment hygiene | ✅ | ✅ | ➖ | ⬜ | ➖ | ⬜ | **Designed (audit 2026-08-09).** CI's `web` job has failed on every run since M2.1 (it still expects the deleted `web/package.json`), so no milestone since has had a green gate. Also: the least-privilege database role D-SharedDatabase requires, `openfaithmap-api`'s host-port exposure, and `hermenea`'s hardcoded secrets. **Blocks every later milestone's Verified.** |
 | M2.5 · Discovery reachability spike | ➖ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Scoped (audit 2026-08-09).** A measurement, not a decision — hence `Decided ➖`. M1.1 found `religion` reads deny machine subjects; unverified and higher-stakes is whether they also deny *anonymous* subjects, which would break the public map itself, not just the cache refresh. Method and exit criterion are written. **Blocks M4's `designed` gate.** |
 | M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ⬜ | ⬜ | ➖ | ➖ | ⬜ | **Decided; one design question open (audit 2026-08-09).** D-Stack's Conjure-first rule and both consumer module docs require a generated typed client; `web/apps/admin/lib/registration.ts` is hand-written. Stand up the codegen pipeline before M3 adds a second one. `Designed ⬜` because how the generated package reaches two workspace-less apps with separate Docker build contexts isn't settled — see the detail section. |
@@ -419,15 +418,19 @@ that permission on its own unit — so every approved congregation admin reads a
 
 - Replace the untargeted check with a **target-scoped** capability check against
   `Config.RootUnitID` specifically, following D-PlatformModerator's pattern.
-- ⚠️ **Unknown `U1` — settle this before writing the fix.** Nobody has checked whether
-  `MyCapabilities()` accepts a target unit or returns a flat permission list, and the two answers
-  need different code. If it takes a target, this is a parameter change. If it returns a flat list,
-  there is no way to ask "on which unit" and the check must become something else — an authority
-  probe against the root unit (attempt a narrow, harmless root-scoped operation and read the PDP's
-  answer), or an upstream request for a targeted capability endpoint. Read the SDK and call it
-  against a live instance first. The same answer determines how
-  [D-PlatformModerator](architecture/decisions.md)'s pattern is implemented everywhere else, so
-  this is worth getting right once.
+- **`U1`, settled.** `MyCapabilities()` is flat and self-only by deliberate go-oikumenea design — it
+  cannot be scoped to a unit (confirmed against its Go SDK signature, response struct, Conjure spec,
+  and go-oikumenea's own docs). The real target-scoped primitive is `Authorize` (`POST /authorize`,
+  `{subjectPersonId, action, unitId}` → `{allow}`) — but it requires the *caller* to already hold
+  `assignment.read` reaching the target unit, no self-exemption (go-oikumenea's own "OQ-5",
+  deliberate). Neither `registration-operator` nor `congregation-admin` held it, so
+  `scripts/bootstrap-registration-org` now grants `registration-operator` that permission (and
+  reconciles it onto an already-bootstrapped instance's existing role via `UpdateRole`, not just a
+  fresh one). An "authority probe" alternative (attempt a real operation, infer authority from
+  success) was investigated and ruled out: no read anywhere in go-oikumenea is gated on
+  `religionorg.manage`, and the one plausible no-op write, `SetOrgProfile` with omitted fields, is
+  actively destructive (its SQL upsert uses `EXCLUDED.*` without `COALESCE`, silently nulling an
+  existing profile's fields on repeat calls).
 - Acceptance: a person holding only a `unit`-scoped `congregation-admin` grant on their own
   congregation calls `GET /registration/v1/requests` and sees **only their own** submissions. A
   person holding the `subtree`-scoped `registration-operator` grant on the root unit sees all.
@@ -457,15 +460,24 @@ orphans a real go-oikumenea unit and leaves the request `PENDING`, and a retry c
   the same approve call, and confirm exactly one child org exists in go-oikumenea and the request
   reaches `APPROVED`.
 
-> **As implemented (2026-08-09).** Item 3 landed on its own — items 1 and 2 are still open (1 blocked
-> on `U1`; 2 deferred rather than shipped against today's untargeted operator check, which would
-> inherit item 1's known false-positive). One addition beyond the text above: `createSite` turns out
-> to have no uniqueness key at all (checked against go-oikumenea's own `religion.conjure.yml`), so
-> "where go-oikumenea rejects a duplicate, treat the conflict as success" doesn't apply to it the way
-> it does to `createPosition`/`fillPosition`/`grantAssignment`. `ensureSite` instead lists the unit's
-> sites first and reuses an existing primary one on resume. See `modules/registration.md`'s defect 3
-> for the full design. Not yet run against a live instance (the acceptance test above needs a real
-> kill-mid-write); this milestone's gates stay as they are until that's done alongside items 1 and 2.
+> **As implemented (2026-08-09).** Item 3 landed first, on its own; items 1 and 2 landed together in a
+> follow-up pass, once `U1` was settled (see item 1's text above). One addition beyond item 3's
+> original text: `createSite` turns out to have no uniqueness key at all (checked against
+> go-oikumenea's own `religion.conjure.yml`), so "where go-oikumenea rejects a duplicate, treat the
+> conflict as success" doesn't apply to it the way it does to
+> `createPosition`/`fillPosition`/`grantAssignment`. `ensureSite` instead lists the unit's sites first
+> and reuses an existing primary one on resume. See `modules/registration.md`'s defect 3 for the full
+> design.
+>
+> For items 1 and 2: live-verified against a real `docker compose` stack (not just review) that
+> `scripts/bootstrap-registration-org`'s new `reconcilePermissions` actually calls go-oikumenea's
+> `UpdateRole` and adds `assignment.read` to an already-existing `registration-operator` role (and
+> makes zero calls, correctly, on a third run); and that `Authorize` itself returns `Allow=false`
+> before the corresponding role-assignment grant exists and `Allow=true` after, using the same call
+> shape `IsOperator` now makes. Not yet run against a live instance: the milestone's own two-real-token
+> acceptance test (a `congregation-admin`-only account, a `registration-operator` account, both via
+> real browser Google OAuth) — that's the one piece not achievable headlessly. This milestone's gates
+> stay as they are until that's done.
 
 **Also in scope, because there is nothing to regress against today:** the first real unit tests in
 this repo. `checkNotExcluded`'s ancestor walk (including the cycle cap), `slugCode`, and the
