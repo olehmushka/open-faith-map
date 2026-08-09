@@ -55,12 +55,12 @@ single-app `openfaithmap-web` used to before the split.
   tenant/person/religion-shaped (congregation roster, claim provisioning); `openfaithmap-api`'s own
   generated TypeScript SDK for content/moderation/vouching writes. Never a raw `fetch` against either
   service's REST surface — always the typed client.
-  > **Not true yet for `openfaithmap-api` (audit 2026-08-09).** `web/apps/admin/lib/registration.ts`
-  > is a hand-written fetch client: `openfaithmap-api` has no TypeScript codegen pipeline, so there
-  > is no generated SDK to import. The go-oikumenea half of this dependency *is* satisfied
-  > (`oikumenea-client`). [milestones.md](../milestones.md)'s **M2.6** stands the pipeline up, and is
-  > sequenced before M3 so a second hand-written client is never written. The invariant stays as
-  > stated because it is the target; treat any new hand-written client as a regression.
+  > **True as of M2.6 (2026-08-10).** `web/apps/admin/lib/registration.ts` now delegates to a
+  > generated client (`web/apps/admin/lib/openfaithmap`, generated in place from
+  > `api/registration.conjure.yml` — not a separate package, see D-Stack in
+  > `architecture/decisions.md`), the same shape `lib/oikumenea.ts` already used for go-oikumenea's
+  > SDK. No hand-written HTTP client remains for either service. Full detail:
+  > [milestones.md](../milestones.md)'s M2.6.
 - **Called by:** nothing — it is one of two public ingress points (the other is
   [`openfaithmap-web`](web-facade.md#dependencies)). It publishes its own host port and, once built,
   is expected to sit at its own subdomain (e.g. `admin.openfaithmap.org`), separate from the public

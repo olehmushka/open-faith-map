@@ -43,7 +43,6 @@ Real choices with no obvious default, parked on purpose. Each needs someone to p
 
 | # | The decision | Owner |
 |---|---|---|
-| U4 | How a generated TypeScript package reaches two workspace-less apps whose Dockerfiles each copy only their own directory (`file:` dependency, published package, or something else). | [M2.6](#m26--typescript-sdk-for-openfaithmap-api) |
 | U5 | `content_sites.slug` collisions — two self-registered "St. Mary's" collide on a globally-`UNIQUE` column, and unlike `registration`'s unit codes there is no disambiguation story. | [M3](#m3--content--site-builder-backend) · [content.md](modules/content.md) |
 | U6 | `registration_requests` uses a `uuid` PK where conventions specify composed URN RIDs. Do `content_*` follow the precedent or the convention? Pick before four modules do two things. | `DS-OFM-11` |
 | U7 | Cross-module foreign keys inside `openfaithmap-api` (`discovery_site_cache.content_site_id` → `content_sites`) are neither permitted nor forbidden by conventions.md. | `DS-OFM-13` |
@@ -80,9 +79,9 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M2.1 · Split the UI into public and admin surfaces | ✅ | ✅ | ➖ | ➖ | ✅ | 🔶 | **Built, blocked — see prose.** `architecture/decisions.md`'s D-AdminSurface, `modules/web-facade.md` (narrowed to the public surface) + `modules/web-admin.md`. `web/` split into two independent Next.js apps, `web/apps/web` (no session, ever) and `web/apps/admin` (the only surface that ever holds a credential) — no application logic changed, only moved. |
 | M2.2 · Reference-data seeding (`hermenea`) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** D-BulkImport (`architecture/decisions.md`, corrected), `modules/import.md` (corrected). Deploys go-oikumenea's own `hermenea` companion service for reference-data seeding — no OpenFaithMap code, corrects the original congregation-bulk-import-CLI premise. Real `docker compose up` proof: `geo-countries-iso3166` synced successfully, 250 rows confirmed in `oikumenea.geo_countries` — see prose below. |
 | M2.3 · Registration hardening (security + correctness) | ✅ | ✅ | ✅ | ✅ | ➖ | 🔶 | **Built, blocked on the live two-real-token proof — see prose.** D-PlatformModerator's target-scoped-capability pattern, implemented via go-oikumenea's `Authorize` + a new `assignment.read` grant. All three defects the 2026-08-09 audit found in M2's shipped code are fixed: the operator gate is now target-scoped (no longer discloses every submitter's PII to any congregation admin), `getRequest` is authorized (submitter or operator), and `approveRequest` is idempotent and resumable. **Blocks M2's Verified.** |
-| M2.4 · CI repair + deployment hygiene | ✅ | ✅ | ➖ | ⬜ | ➖ | ⬜ | **Designed (audit 2026-08-09).** CI's `web` job has failed on every run since M2.1 (it still expects the deleted `web/package.json`), so no milestone since has had a green gate. Also: the least-privilege database role D-SharedDatabase requires, `openfaithmap-api`'s host-port exposure, and `hermenea`'s hardcoded secrets. **Blocks every later milestone's Verified.** |
-| M2.5 · Discovery reachability spike | ➖ | ✅ | ➖ | ➖ | ➖ | 🔶 | **Measured, exit criterion met, upstream fix landed same-day (2026-08-09) — see prose.** A measurement, not a decision — hence `Decided ➖`. Both the machine-subject and anonymous-subject denials were live-verified true; [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33) fixed the machine-subject half (`0.0.2`, re-verified live), leaving anonymous access as the one still-open gap, by design (#33's own scope). **Blocked on M2.4's still-unconfirmed CI-on-`main` gate** (inherited, not this milestone's own). **Blocks M4's `designed` gate** regardless — the redesign this enables (cache-only public reads) still needs to be written, not just enabled. |
-| M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ⬜ | ⬜ | ➖ | ➖ | ⬜ | **Decided; one design question open (audit 2026-08-09).** D-Stack's Conjure-first rule and both consumer module docs require a generated typed client; `web/apps/admin/lib/registration.ts` is hand-written. Stand up the codegen pipeline before M3 adds a second one. `Designed ⬜` because how the generated package reaches two workspace-less apps with separate Docker build contexts isn't settled — see the detail section. |
+| M2.4 · CI repair + deployment hygiene | ✅ | ✅ | ➖ | ⬜ | ➖ | ✅ | **Verified (2026-08-10).** All five items landed (PR #9) and CI has run green on `main` repeatedly since — [run 31331332615](https://github.com/olehmushka/open-faith-map/actions/runs/31331332615) (the merge commit itself) through at least [run 31335009849](https://github.com/olehmushka/open-faith-map/actions/runs/31335009849) (M2.5's merge). Item 1's own acceptance criterion ("a green CI run on `main`, with both apps' lint and build visible as separate matrix legs") is met for real, not just reasoned about — the thing this milestone existed to fix is confirmed fixed. |
+| M2.5 · Discovery reachability spike | ➖ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified (2026-08-10).** A measurement, not a decision — hence `Decided ➖`. Both the machine-subject and anonymous-subject denials were live-verified true; [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33) fixed the machine-subject half (`0.0.2`, re-verified live), leaving anonymous access as the one still-open gap, by design (#33's own scope). Its own exit criterion (measure + file the upstream issue) is fully met, and the inherited CI-on-`main` blocker is resolved — [run 31335009849](https://github.com/olehmushka/open-faith-map/actions/runs/31335009849), this milestone's own merge, is green. **Still blocks M4's `designed` gate** — that's a separate, un-inherited block: the redesign this enables (cache-only public reads) is buildable now but still needs to be written, not just enabled. |
+| M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ✅ | ➖ | ➖ | ✅ | 🔶 | **Built (2026-08-10) — see prose.** D-Stack's Conjure-first rule and both consumer module docs required a generated typed client; `web/apps/admin/lib/registration.ts` was hand-written and had already drifted (missing the `PROVISIONING` status M2.3 added). `U4` resolved: generated in place into `web/apps/admin/lib/openfaithmap/generated`, not a separate package — see D-Stack. Proven live: removing a field from `api/registration.conjure.yml` and regenerating breaks `web/apps/admin`'s build with a real compile error, the milestone's own acceptance criterion. `Verified` stays `🔶`, blocked on a green CI run on `main` at this milestone's own merge commit — not yet merged. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) Two audit corrections applied to that doc: `content.manage`'s definition (D-PlatformModerator) and the post/event sequencing contradiction. |
 | M4 · Public discovery site | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. Both the cache-refresh path and possibly the public read path rest on go-oikumenea behavior M2.5 has to measure first. |
 | M4.1 · Jurisdiction units | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | **Decided (audit 2026-08-09).** D-FlatRoot. Replaces the flat single-root org with real jurisdiction units and re-parents existing congregations. **Blocks M5's `designed` gate** — moderation's `jurisdiction` queue scope and D-Exclusions' org-level backstop both need an ancestor chain that does not exist today. |
@@ -538,9 +537,12 @@ Convert to `${...}` with entries in `.env.example`, matching every other secret 
 > `docker inspect`/`docker compose config` (item 5). Item 3's "while here" sub-question is settled,
 > not just checked off: `--allow-dirty` stays on both migrate services permanently, but not for the
 > reason originally guessed — see `D-SharedDatabase`'s updated consequences and the compose comment
-> above `oikumenea-migrate`. Not yet run: an actual GitHub Actions run on `main` (nothing is pushed
-> yet) — item 1's CI-green acceptance criterion needs that before this milestone's `Verified` gate
-> can flip.
+> above `oikumenea-migrate`. **Update (2026-08-10): item 1's CI-green acceptance criterion is now
+> met.** PR #9's merge to `main` (commit `c4d2111`) produced a green CI run —
+> [31331332615](https://github.com/olehmushka/open-faith-map/actions/runs/31331332615) — and every
+> merge since has stayed green through at least
+> [31335009849](https://github.com/olehmushka/open-faith-map/actions/runs/31335009849). `Verified`
+> flips in the stage board above.
 
 ### M2.5 · Discovery reachability spike
 
@@ -624,15 +626,15 @@ built — that is the whole point of doing this first.
 > exactly as the issue scoped it to be — both consistent with intent, not just "some status code
 > changed."
 >
-> **This milestone's own row still isn't `Verified`** — not because anything here is incomplete,
-> but because `development-process.md`'s Verified gate requires a confirmed green CI run on `main`,
-> and M2.4's own detail section records that no such run has happened yet ("nothing is pushed
-> yet"). M2.4 explicitly blocks every later milestone's `Verified` for exactly this reason.
-> `designed` gate for M4 stays reopened regardless of the CI question: anonymous reads are still
-> denied, so `openfaithmap-web` must still never call go-oikumenea directly for discovery — only
-> `discovery_site_cache`. What changed is that the service principal that would populate that cache
-> can now actually read go-oikumenea, so the redesign is buildable, not just aspirational. Writing
-> it into `discovery.md` and `web-facade.md` is real M4 work, not attempted here.
+> **Update (2026-08-10): `Verified`, now that M2.4's inherited CI-on-`main` block has cleared.**
+> This milestone's own merge produced a green run —
+> [31335009849](https://github.com/olehmushka/open-faith-map/actions/runs/31335009849) — so the
+> stage board above now reads `✅`. `designed` gate for M4 stays reopened regardless of the CI
+> question, and that block is *not* inherited — it's this milestone's own finding: anonymous reads
+> are still denied, so `openfaithmap-web` must still never call go-oikumenea directly for discovery
+> — only `discovery_site_cache`. What changed is that the service principal that would populate that
+> cache can now actually read go-oikumenea, so the redesign is buildable, not just aspirational.
+> Writing it into `discovery.md` and `web-facade.md` is real M4 work, not attempted here.
 
 ### M2.6 · TypeScript SDK for `openfaithmap-api`
 
@@ -658,6 +660,45 @@ Stand up the pipeline go-oikumenea already has (its `scripts/gen-ts-client.sh` +
 - Acceptance: `web/apps/admin` has no hand-written HTTP client for `openfaithmap-api`, the
   registration flow still works end-to-end, and regenerating from an edited `.conjure.yml` produces
   a compile error in the app when a field is removed.
+
+> **As implemented (2026-08-10).** Pipeline ported from go-oikumenea's reference implementation
+> almost line-for-line: `tools/conjure-ir-dump` (a trimmed `ir2openapi`, IR extraction only — this
+> repo has no OpenAPI doc generation to preserve), `scripts/rewrite-ir-packages.mjs` (same 2-seg →
+> 3-seg fix go-oikumenea needed — `api/registration.conjure.yml`'s `default-package:
+> openfaithmap.registration` hit the identical `conjure-typescript` "at least 3 segments" error),
+> `scripts/gen-ts-client.sh` (`--verify` drift mode included), `make sdk`.
+>
+> **U4 resolved, not deferred:** generated directly into
+> `web/apps/admin/lib/openfaithmap/generated`, no separate package — see D-Stack
+> (`architecture/decisions.md`) for the full reasoning (single in-repo consumer, isolated Docker
+> build context, no workspace). `web/apps/admin/lib/openfaithmap/index.ts` is the one hand-written
+> file, wiring the generated `RegistrationService` onto a `conjure-client` `DefaultHttpApiBridge` —
+> the same façade shape as go-oikumenea's own `clients/typescript/src/index.ts`, and as
+> `lib/oikumenea.ts` already used for go-oikumenea itself.
+>
+> `lib/registration.ts` keeps its five exported function names and error shape
+> (`RegistrationApiError`) unchanged — none of its four call sites needed to change — but now
+> delegates to the generated client and re-exports its types instead of hand-copying them. That
+> swap fixes a real, live bug: the hand-written `RegistrationStatus` type was `"PENDING" |
+> "APPROVED" | "REJECTED"`, missing `"PROVISIONING"` (added in M2.3 item 3's migration) — silently
+> wrong until now, exactly the drift class a generated client rules out.
+>
+> **Acceptance criterion proven directly, not just reasoned about:** removed `congregationName`
+> from `RegistrationRequest` in `api/registration.conjure.yml`, regenerated, and confirmed
+> `web/apps/admin`'s `next build` fails with three real `TS2339` errors (one per call site reading
+> that field) — then reverted. `npm run lint && npm run build` pass clean on the real swap;
+> `./godelw verify` passes clean on the new Go tool.
+>
+> **Real end-to-end proof against a live stack**, same shape as M2's own original curl proof but
+> now through the generated client: brought up a fresh `docker compose` stack, bootstrapped the
+> registration org (`scripts/bootstrap-registration-org`) against it, and drove
+> `submitRequest → listRequests → getRequest → approveRequest → submitRequest → rejectRequest`
+> through `createOpenFaithMapClient` from a plain Node process (not through Next.js — the
+> generated client and its façade have no framework dependency). `approveRequest` performed a real
+> go-oikumenea `createChildOrg` and returned a real `createdUnitId`; the reject path set a real
+> `rejectionReason`; a lookup on a nonexistent id returned the correct
+> `404 Registration:RequestNotFound`. **Not yet run:** a confirmed green CI run on `main` at this
+> milestone's own merge commit — `Verified` stays `🔶` until that lands, per M2.4's own gate.
 
 ### M3 · Content / site-builder backend
 

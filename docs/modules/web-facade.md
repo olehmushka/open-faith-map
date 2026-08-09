@@ -39,13 +39,20 @@ can hold a credential. Anything that needs to know who's logged in belongs in
   public content reads (the discovery cache). Every call is unauthenticated — no token exists in
   this app to forward. Never a raw `fetch` against either service's REST surface — always the typed
   client.
-  > **Two audit notes (2026-08-09).** (a) This app makes **no** backend calls today — it serves a
-  > static placeholder home page and reads no env vars; the first real data-reading page lands at
-  > M4. (b) The `openfaithmap-api` generated SDK does not exist yet — see
-  > [web-admin.md](web-admin.md#dependencies) and **M2.6**. (c) Whether the unauthenticated
-  > go-oikumenea read above is *possible at all* is unverified and is **M2.5**'s question — every
-  > `religion` read is `RequireAnywhere`-gated, which may deny anonymous callers. That would make
-  > this bullet, and much of M4, undeliverable as designed.
+  > **Audit notes (2026-08-09, (b) updated 2026-08-10).** (a) This app makes **no** backend calls
+  > today — it serves a static placeholder home page and reads no env vars; the first real
+  > data-reading page lands at M4. (b) **M2.6** stood up `openfaithmap-api`'s TypeScript codegen
+  > pipeline and generated a client for `registration` (see
+  > [web-admin.md](web-admin.md#dependencies)) — but `registration` is `openfaithmap-admin`'s
+  > module, never called from here (this app holds no session, D-AdminSurface). The `discovery`/
+  > `content` contract this bullet actually needs doesn't exist yet; M2.6 stands up the *pipeline*,
+  > not this module's own SDK, which is real M3/M4 work. (c) Whether the unauthenticated
+  > go-oikumenea read above is *possible at all* is now **verified false** — see
+  > [core-integration.md](core-integration.md)'s authorization-touchpoints table and
+  > [milestones.md](../milestones.md)'s M2.5: an anonymous caller gets `401
+  > IdentityFederation:Unauthorized`. This bullet, and much of M4, needs the redesign M2.5's own
+  > notes describe (read only `openfaithmap-api`'s own cache, never go-oikumenea directly) — not
+  > attempted here.
 - **Called by:** nothing — it is one of two public ingress points (the other is
   [`openfaithmap-admin`](web-admin.md#dependencies)). It publishes its own host port, independent of
   `openfaithmap-admin`'s.

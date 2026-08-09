@@ -8,7 +8,9 @@ import tseslint from "typescript-eslint";
 // once upstream fixes land; this gets the same @next/next rule set without the breakage.
 export default tseslint.config(
   {
-    ignores: [".next/**", "node_modules/**"],
+    // lib/openfaithmap/generated is GENERATED from the Conjure contract (scripts/gen-ts-client.sh,
+    // M2.6) — never hand-edited, so never linted; same reasoning as .next/** below.
+    ignores: [".next/**", "node_modules/**", "lib/openfaithmap/generated/**"],
   },
   tseslint.configs.recommended,
   {

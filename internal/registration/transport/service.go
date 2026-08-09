@@ -10,13 +10,12 @@ package transport
 import (
 	"context"
 
-	"github.com/palantir/pkg/bearertoken"
-	"github.com/palantir/pkg/datetime"
-
 	genregistration "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/registration"
 	"github.com/olehmushka/open-faith-map/internal/coreintegration"
 	"github.com/olehmushka/open-faith-map/internal/registration/application"
 	"github.com/olehmushka/open-faith-map/internal/registration/domain"
+	"github.com/palantir/pkg/bearertoken"
+	"github.com/palantir/pkg/datetime"
 )
 
 type Service struct {

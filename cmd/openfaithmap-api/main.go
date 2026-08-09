@@ -13,14 +13,13 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	werror "github.com/palantir/witchcraft-go-error"
-	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
-
 	genregistration "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/registration"
 	"github.com/olehmushka/open-faith-map/internal/platform/config"
 	regadapters "github.com/olehmushka/open-faith-map/internal/registration/adapters"
 	regapplication "github.com/olehmushka/open-faith-map/internal/registration/application"
 	regtransport "github.com/olehmushka/open-faith-map/internal/registration/transport"
+	werror "github.com/palantir/witchcraft-go-error"
+	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
 
 func main() {
