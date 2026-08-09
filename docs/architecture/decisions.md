@@ -291,7 +291,25 @@ session ownership, Tailwind.
 **Why.** One toolchain across both services means one set of conventions, one CI shape, and a
 contributor who knows go-oikumenea's codebase can read OpenFaithMap's immediately. It also means
 OpenFaithMap can consume go-oikumenea's generated TypeScript SDK the same way go-oikumenea's own
-console does (`file:` dependency in dev, a real npm package once go-oikumenea publishes one).
+console does (`file:` dependency in dev, a real npm package once go-oikumenea publishes one) —
+confirmed as-built: `web/apps/admin` depends on the published `oikumenea-client` npm package.
+
+**OpenFaithMap's own generated TypeScript SDK (M2.6) — resolved differently, and that's
+deliberate.** `U4` asked how a generated package reaches two workspace-less apps whose Dockerfiles
+each copy only their own directory. Mirroring go-oikumenea's shape (a separate `clients/typescript`
+package, consumed via `file:`) doesn't fit here: there is no npm/pnpm workspace anywhere in this
+repo, `web/apps/admin/Dockerfile`'s build context is deliberately isolated to its own directory (no
+`../` `COPY`), and — unlike go-oikumenea, which serves its SDK to two separate consumers
+(`web`, `oikumenea-console`) — OpenFaithMap's own registration client has exactly **one** consumer,
+`web/apps/admin`, in the same repo. **Decided: generate directly into
+`web/apps/admin/lib/openfaithmap/generated`** (`scripts/gen-ts-client.sh`, `make sdk`) — no
+separate package, no `file:` dependency, no npm publish. This satisfies the Dockerfile's
+single-directory build context for free (the generated code is just part of `web/apps/admin`'s own
+tree), and avoids a real bug class go-oikumenea's own CI comment names outright: a separately-built
+package's `dist/` going stale relative to its `src/generated` while local checks stay green,
+caught only by the container rebuild — structurally impossible here since there is no separate
+build step to go stale from. Should a second in-repo consumer of this SDK ever appear, revisit
+this — go-oikumenea's own `file:`/package shape is the fallback, not ruled out permanently.
 
 **Consequences.** OpenFaithMap's own Conjure contract, Atlas migrations, and schema-naming
 conventions follow go-oikumenea's `conventions.md` by reference (see

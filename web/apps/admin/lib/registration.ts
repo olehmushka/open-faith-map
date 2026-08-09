@@ -1,53 +1,31 @@
 // Copyright 2026 Oleh Mushka
 // SPDX-License-Identifier: Apache-2.0
 
-// Server-only: a typed fetch client for openfaithmap-api's registration module (M2). Plain
-// fetch, not a generated SDK — openfaithmap-api has no TypeScript SDK generation pipeline set up
-// yet (unlike go-oikumenea's clients/typescript), a deliberate, documented scope cut for this pass.
-// Forwards the session's Google ID token unchanged, same as lib/oikumenea.ts.
+// Server-only: openfaithmap-api's registration module via the generated TypeScript SDK
+// (./openfaithmap, M2.6) instead of a hand-rolled fetch client. Forwards the session's Google ID
+// token unchanged, same as lib/oikumenea.ts. Keeps the same exported function names as the prior
+// hand-written client so no call site changes — only the implementation and the source of the
+// types (the Conjure contract, not a hand-copy of it) changed.
 import "server-only";
+
+import { isConjureError } from "conjure-client";
 
 import { auth } from "@/auth";
 
-export type RegistrationStatus = "PENDING" | "APPROVED" | "REJECTED";
+import { createOpenFaithMapClient } from "./openfaithmap";
+import type {
+  IApproveRegistrationRequest,
+  IRegistrationRequest,
+  IRegistrationRequestPage,
+  ISubmitRegistrationRequest,
+  RegistrationStatus,
+} from "./openfaithmap/generated";
 
-export interface Coordinate {
-  latitude: number;
-  longitude: number;
-}
-
-export interface RegistrationRequest {
-  id: string;
-  submittedByPersonId: string;
-  taxonId: string;
-  congregationName: string;
-  countryId: string;
-  adminArea1?: string;
-  locality?: string;
-  street?: string;
-  houseNumber?: string;
-  postalCode?: string;
-  coordinate: Coordinate;
-  status: RegistrationStatus;
-  rejectionReason?: string;
-  decidedByPersonId?: string;
-  decidedAt?: string;
-  createdUnitId?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface SubmitRegistrationInput {
-  taxonId: string;
-  congregationName: string;
-  countryId: string;
-  adminArea1?: string;
-  locality?: string;
-  street?: string;
-  houseNumber?: string;
-  postalCode?: string;
-  coordinate: Coordinate;
-}
+export type RegistrationRequest = IRegistrationRequest;
+export type RegistrationRequestPage = IRegistrationRequestPage;
+export type SubmitRegistrationInput = ISubmitRegistrationRequest;
+export type Coordinate = IRegistrationRequest["coordinate"];
+export type { RegistrationStatus };
 
 export class RegistrationApiError extends Error {
   constructor(
@@ -67,51 +45,44 @@ function requireBaseUrl(): string {
   return raw.replace(/\/+$/, "");
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+async function client() {
   const session = await auth();
-  const res = await fetch(`${requireBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      ...(session?.idToken ? { Authorization: `Bearer ${session.idToken}` } : {}),
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-    cache: "no-store",
+  return createOpenFaithMapClient({
+    baseUrl: requireBaseUrl(),
+    token: session?.idToken,
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new RegistrationApiError(res.status, body.errorName ?? "Unknown", body.parameters ?? {});
+}
+
+/** Translates a ConjureError (the SDK's transport-level error) into the errorName/parameters shape callers already handle. */
+async function unwrap<T>(promise: Promise<T>): Promise<T> {
+  try {
+    return await promise;
+  } catch (e) {
+    if (isConjureError(e) && e.body && typeof e.body === "object") {
+      const body = e.body as { errorName?: string; parameters?: Record<string, unknown> };
+      throw new RegistrationApiError(e.status ?? 0, body.errorName ?? "Unknown", body.parameters ?? {});
+    }
+    throw e;
   }
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
 }
 
-export function submitRegistration(input: SubmitRegistrationInput): Promise<RegistrationRequest> {
-  return call<RegistrationRequest>("/registration/v1/requests", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+export async function submitRegistration(input: SubmitRegistrationInput): Promise<RegistrationRequest> {
+  return unwrap((await client()).registration.submitRequest(input));
 }
 
-export function listRegistrations(status?: RegistrationStatus): Promise<{ requests: RegistrationRequest[] }> {
-  const qs = status ? `?status=${status}` : "";
-  return call(`/registration/v1/requests${qs}`);
+export async function listRegistrations(status?: RegistrationStatus): Promise<RegistrationRequestPage> {
+  return unwrap((await client()).registration.listRequests(status));
 }
 
-export function getRegistration(id: string): Promise<RegistrationRequest> {
-  return call(`/registration/v1/requests/${id}`);
+export async function getRegistration(id: string): Promise<RegistrationRequest> {
+  return unwrap((await client()).registration.getRequest(id));
 }
 
-export function approveRegistration(id: string, unitCode?: string): Promise<RegistrationRequest> {
-  return call(`/registration/v1/requests/${id}/approve`, {
-    method: "POST",
-    body: JSON.stringify(unitCode ? { unitCode } : {}),
-  });
+export async function approveRegistration(id: string, unitCode?: string): Promise<RegistrationRequest> {
+  const request: IApproveRegistrationRequest = { unitCode };
+  return unwrap((await client()).registration.approveRequest(id, request));
 }
 
-export function rejectRegistration(id: string, reason: string): Promise<RegistrationRequest> {
-  return call(`/registration/v1/requests/${id}/reject`, {
-    method: "POST",
-    body: JSON.stringify({ reason }),
-  });
+export async function rejectRegistration(id: string, reason: string): Promise<RegistrationRequest> {
+  return unwrap((await client()).registration.rejectRequest(id, { reason }));
 }
