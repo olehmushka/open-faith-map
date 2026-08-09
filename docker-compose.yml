@@ -78,7 +78,7 @@ services:
           END \$\$;"
 
   oikumenea-app:
-    image: docker.io/olegamysk/oikumenea:0.0.1
+    image: docker.io/olegamysk/oikumenea:0.0.2
     depends_on:
       oikumenea-init-role:
         condition: service_completed_successfully

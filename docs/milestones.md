@@ -81,7 +81,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M2.2 · Reference-data seeding (`hermenea`) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified.** D-BulkImport (`architecture/decisions.md`, corrected), `modules/import.md` (corrected). Deploys go-oikumenea's own `hermenea` companion service for reference-data seeding — no OpenFaithMap code, corrects the original congregation-bulk-import-CLI premise. Real `docker compose up` proof: `geo-countries-iso3166` synced successfully, 250 rows confirmed in `oikumenea.geo_countries` — see prose below. |
 | M2.3 · Registration hardening (security + correctness) | ✅ | ✅ | ✅ | ✅ | ➖ | 🔶 | **Built, blocked on the live two-real-token proof — see prose.** D-PlatformModerator's target-scoped-capability pattern, implemented via go-oikumenea's `Authorize` + a new `assignment.read` grant. All three defects the 2026-08-09 audit found in M2's shipped code are fixed: the operator gate is now target-scoped (no longer discloses every submitter's PII to any congregation admin), `getRequest` is authorized (submitter or operator), and `approveRequest` is idempotent and resumable. **Blocks M2's Verified.** |
 | M2.4 · CI repair + deployment hygiene | ✅ | ✅ | ➖ | ⬜ | ➖ | ⬜ | **Designed (audit 2026-08-09).** CI's `web` job has failed on every run since M2.1 (it still expects the deleted `web/package.json`), so no milestone since has had a green gate. Also: the least-privilege database role D-SharedDatabase requires, `openfaithmap-api`'s host-port exposure, and `hermenea`'s hardcoded secrets. **Blocks every later milestone's Verified.** |
-| M2.5 · Discovery reachability spike | ➖ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Scoped (audit 2026-08-09).** A measurement, not a decision — hence `Decided ➖`. M1.1 found `religion` reads deny machine subjects; unverified and higher-stakes is whether they also deny *anonymous* subjects, which would break the public map itself, not just the cache refresh. Method and exit criterion are written. **Blocks M4's `designed` gate.** |
+| M2.5 · Discovery reachability spike | ➖ | ✅ | ➖ | ➖ | ➖ | 🔶 | **Measured, exit criterion met, upstream fix landed same-day (2026-08-09) — see prose.** A measurement, not a decision — hence `Decided ➖`. Both the machine-subject and anonymous-subject denials were live-verified true; [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33) fixed the machine-subject half (`0.0.2`, re-verified live), leaving anonymous access as the one still-open gap, by design (#33's own scope). **Blocked on M2.4's still-unconfirmed CI-on-`main` gate** (inherited, not this milestone's own). **Blocks M4's `designed` gate** regardless — the redesign this enables (cache-only public reads) still needs to be written, not just enabled. |
 | M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ⬜ | ⬜ | ➖ | ➖ | ⬜ | **Decided; one design question open (audit 2026-08-09).** D-Stack's Conjure-first rule and both consumer module docs require a generated typed client; `web/apps/admin/lib/registration.ts` is hand-written. Stand up the codegen pipeline before M3 adds a second one. `Designed ⬜` because how the generated package reaches two workspace-less apps with separate Docker build contexts isn't settled — see the detail section. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) Two audit corrections applied to that doc: `content.manage`'s definition (D-PlatformModerator) and the post/event sequencing contradiction. |
 | M4 · Public discovery site | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. Both the cache-refresh path and possibly the public read path rest on go-oikumenea behavior M2.5 has to measure first. |
@@ -575,6 +575,64 @@ afternoon to settle.
 read go-oikumenea's discovery and taxon endpoints today," plus a filed upstream issue for whichever
 answers are no. If anonymous reads turn out to be denied, M4's design needs reopening before it is
 built — that is the whole point of doing this first.
+
+> **As measured (2026-08-09).** Brought up a real `docker compose` stack
+> (`OIKUMENEA_SRC=../go-oikumenea docker compose up --build`), registered OpenFaithMap's real GCP
+> service principal via `scripts/bootstrap-service-principal` (fresh instance, so it had never been
+> registered — no prior M2.5 measurement could have skipped this step), and called
+> `GET /religion/v1/discovery/sites` and `GET /religion/v1/taxa/{id}` three ways. **Both unverified
+> assumptions confirmed, and the anonymous case is the worse of the two:**
+>
+> | Caller | Result |
+> |---|---|
+> | No `Authorization` header | `401 IdentityFederation:Unauthorized` — denied at authentication, before `RequireAnywhere` is even evaluated |
+> | Service principal, holding `religion.read` (instance-wide, freshly granted) | `403 Authorization:PermissionDenied {action: religion.read}` — `RequireAnywhere` denies the machine subject despite the grant, exactly as M1.1 inferred |
+> | Real person token (go-oikumenea's own local-dev bootstrap-admin identity — a genuine person-shaped subject, holding **no** `religion.read` grant of its own) | `200 {"sites":[]}` on `discovery/sites`; `404 Religion:TaxonNotFound` on a probed nonexistent taxon id — both correct, both reached real application logic |
+>
+> The person-token row is a useful control: it succeeded with **no explicit grant**, confirming
+> `RequireAnywhere` really does mean "any person passes, any machine fails," not "any grant passes."
+> That pins the service-principal row's 403 on subject-shape alone. **`checkNotExcluded`'s ancestor
+> walk needed no separate endpoint** — it's repeated `GetTaxon` calls
+> (`internal/registration/application/service.go`), so the `taxa/{id}` measurement covers it
+> directly. One correction to the method as originally scoped: item 1's "no `Authorization` header"
+> case had to be tested against the **correct** base path, `/religion/v1/...` — go-oikumenea's own
+> `religion.conjure.yml` declares `base-path: /religion/v1`, not `/religion` as
+> `architecture/overview.md`'s prose (now corrected) had it; the wrong path also returns 401 (a
+> global auth filter runs before route matching), which would have produced the right answer for
+> the wrong reason had the base path not been checked against the conjure source directly.
+>
+> **Exit criterion fully met.** Three-way measurement done and written into `discovery.md`,
+> `core-integration.md`, and `architecture/overview.md` (this session). Upstream feature request
+> filed: [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33) (requests
+> `RequireServiceOrPerson` on the read-only `religion` discovery/taxon endpoints; deliberately does
+> not ask upstream to solve genuine anonymous access, a separate and larger question).
+>
+> **Update: the upstream fix landed the same day, before this milestone's own row closed.**
+> `fedc094` ("fix(religion): gate instance-wide reads with RequireServiceOrPerson") replaced
+> `RequireAnywhere` with `RequireServiceOrPerson` on every `religion` read touchpoint, released as
+> `docker.io/olegamysk/oikumenea:0.0.2` — `docker-compose.yml`'s pin bumped from `0.0.1` to match.
+> Re-ran the identical three-way measurement against `0.0.2` rather than trusting the diff or the
+> closed-issue label:
+>
+> | Caller | `discovery/sites` | `taxa/{id}` |
+> |---|---|---|
+> | No `Authorization` header | `401` — unchanged, by design | `401` — unchanged |
+> | Service principal, `religion.read` | `200` (was `403`) | correct `404` (was `403`) |
+> | Real person token | `200` (unchanged) | correct `404` (unchanged) |
+>
+> The machine-subject row flips exactly as the issue requested; the anonymous row is untouched
+> exactly as the issue scoped it to be — both consistent with intent, not just "some status code
+> changed."
+>
+> **This milestone's own row still isn't `Verified`** — not because anything here is incomplete,
+> but because `development-process.md`'s Verified gate requires a confirmed green CI run on `main`,
+> and M2.4's own detail section records that no such run has happened yet ("nothing is pushed
+> yet"). M2.4 explicitly blocks every later milestone's `Verified` for exactly this reason.
+> `designed` gate for M4 stays reopened regardless of the CI question: anonymous reads are still
+> denied, so `openfaithmap-web` must still never call go-oikumenea directly for discovery — only
+> `discovery_site_cache`. What changed is that the service principal that would populate that cache
+> can now actually read go-oikumenea, so the redesign is buildable, not just aspirational. Writing
+> it into `discovery.md` and `web-facade.md` is real M4 work, not attempted here.
 
 ### M2.6 · TypeScript SDK for `openfaithmap-api`
 

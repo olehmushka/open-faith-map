@@ -116,13 +116,30 @@ grant today:
 Two grants this doc previously listed turned out not to work against a real instance (found while
 proving M1, see [milestones.md](../milestones.md) M1.1):
 
-- **`religion.read` is not usable by a service principal today.** Every `religion` module read
-  endpoint is `RequireAnywhere`-gated — a person-shaped PEP path that unconditionally denies a
-  machine subject, regardless of grants. Only the `connector`/`wiring` modules are
-  machine-reachable in the current go-oikumenea version. Discovery-cache refresh and taxon-ancestor
-  resolution for the D-Exclusions check therefore have **no machine-callable path yet** — an
-  upstream go-oikumenea feature request (make the relevant `religion` reads
-  `RequireServiceOrPerson`) is needed before M4 is built on an assumption that doesn't hold today.
+- **`religion.read` is now usable by a service principal — fixed upstream (2026-08-09).** Every
+  `religion` module read endpoint used to be `RequireAnywhere`-gated — a person-shaped PEP path
+  that unconditionally denied a machine subject, regardless of grants; only `connector`/`wiring`
+  were machine-reachable. **M2.5's live measurement confirmed the gap, filed
+  [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33), and it landed same-day**
+  (`fedc094`, released as `docker.io/olegamysk/oikumenea:0.0.2`, pinned in `docker-compose.yml`):
+  the `religion` read endpoints now dispatch through `RequireServiceOrPerson` instead of
+  `RequireAnywhere`, matching the pattern `connector` already used. Discovery-cache refresh and
+  taxon-ancestor resolution for the D-Exclusions check are unblocked — a service principal holding
+  `religion.read` can now call them directly.
+
+  Three real tokens re-verified live against `0.0.2`, on both `GET /religion/v1/discovery/sites`
+  and `GET /religion/v1/taxa/{id}` (the call `checkNotExcluded`'s ancestor walk repeats —
+  `internal/registration/application/service.go`):
+
+  | Caller | `discovery/sites` | `taxa/{id}` |
+  |---|---|---|
+  | No `Authorization` header (anonymous) | `401 IdentityFederation:Unauthorized` — **unchanged, deliberately out of scope for #33** | `401 IdentityFederation:Unauthorized` — unchanged |
+  | Service principal, holding `religion.read` (instance-wide) | `200 {"sites":[]}` — **was 403** | `404 Religion:TaxonNotFound` (correct — probed a nonexistent id) — **was 403** |
+  | Real person token (a registered, non-service identity) | `200 {"sites":[]}` | `404 Religion:TaxonNotFound` |
+
+  The anonymous row is untouched on purpose — #33 explicitly scoped out genuine anonymous access as
+  "a separate, larger design question." That gap is still open; see the open seams below and
+  [discovery.md](discovery.md).
 - **`audit.write` does not exist.** go-oikumenea's `audit` module has no write endpoint — writes
   happen in-process — confirmed live (`scripts/bootstrap-service-principal` rejects the grant with
   `PrincipalGrantInvalid: unknown permission code`). **Resolved (audit 2026-08-09):** D-Moderation
@@ -148,14 +165,19 @@ principal's.
 
 ## Open seams
 
-- **No machine-callable `religion` reads.** See the authorization-touchpoints correction above —
-  discovery-cache refresh and taxon-ancestor resolution have no service-principal path today. A
-  go-oikumenea feature request (`RequireServiceOrPerson` on the relevant reads) is a prerequisite
-  for M4. **Now owned by [milestones.md](../milestones.md)'s M2.5** (it had been unowned since M1.1
-  named it), which also asks the larger question M1.1 did not: `RequireAnywhere` denies subjects
-  with no person behind them, and an **anonymous** caller is such a subject — so
-  `architecture/overview.md`'s "unauthenticated public read" of
-  `GET /religion/discovery/sites` may be false, which would break the public map itself. Unmeasured.
+- **Machine-callable `religion` reads: fixed. Anonymous reads: still denied, and still open.**
+  M2.5 (2026-08-09) verified both were broken, filed
+  [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33), and the machine-subject
+  half landed same-day in `0.0.2` — the service principal can now refresh `discovery_site_cache`
+  for real. The anonymous half was deliberately out of #33's scope and remains true:
+  `architecture/overview.md`'s original "unauthenticated public read" of
+  `GET /religion/v1/discovery/sites` is still false as designed, which still breaks
+  `openfaithmap-web`'s current direct-call shape. **The fix is now concretely buildable, not just
+  theoretical:** `openfaithmap-web` reads only `discovery_site_cache`, never calls go-oikumenea
+  directly, and the service principal (now unblocked) is the only thing that ever calls
+  go-oikumenea's discovery/taxon reads. **M4's `designed` gate stays reopened** until that redesign
+  is actually written into `discovery.md` and `web-facade.md` — the ingredient it was blocked on is
+  now available, but the design itself isn't written yet.
 - **The D-Exclusions taxon check has no non-interactive caller.** Today it runs under the
   submitter's own token inside `registration`. Any future automated use — scheduled re-validation
   (`DS-OFM-6`), a bulk importer (`DS-OFM-10`), or `moderation`'s public

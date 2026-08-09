@@ -88,16 +88,24 @@ no host port published, reachable only over the compose-internal network.
 
 **Anonymous discovery** (a visitor searching the map): browser → `openfaithmap-web` →
 `openfaithmap-api` reads its own content cache **and** calls go-oikumenea's
-`GET /religion/discovery/sites` directly (unauthenticated public read, `religion.read`) → merged
-response rendered by `openfaithmap-web`. No user token exists anywhere in this path —
-`openfaithmap-web` has none to forward.
+`GET /religion/v1/discovery/sites` directly (~~unauthenticated public read~~ — **verified false,
+see below**) → merged response rendered by `openfaithmap-web`. No user token exists anywhere in
+this path — `openfaithmap-web` has none to forward, which is exactly why this path is broken.
 
-> ⚠️ **Unverified, and M4 depends on it.** M1.1 established that every `religion` module read is
-> `RequireAnywhere`-gated, a person-shaped PEP path that denies subjects with no person behind
-> them. An anonymous caller is also such a subject — so "unauthenticated public read" above may
-> simply be false, which would break the public map itself and not merely the cache-refresh job
-> M1.1 already flagged. Nobody has measured it. **M2.5** does, and blocks M4's `designed` gate on
-> the answer.
+> ❌ **Verified false (M2.5, 2026-08-09), and still false after the upstream fix.** Measured live: an
+> unauthenticated `GET /religion/v1/discovery/sites` returns `401
+> IdentityFederation:Unauthorized` — denied at authentication, before any authorization check even
+> runs. "Unauthenticated public read" above is false as written; this request path as designed does
+> not work today. Filed as [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33)
+> and fixed same-day for the **machine-subject** half (the service principal can now read this
+> endpoint, released as `docker.io/olegamysk/oikumenea:0.0.2`) — but #33 deliberately did not ask
+> upstream to support genuine anonymous access, so this row is unchanged. Full measurement, both
+> before and after the fix, in [core-integration.md](../modules/core-integration.md)'s
+> authorization-touchpoints table and [milestones.md](../milestones.md)'s M2.5 detail. **M4's
+> `designed` gate stays reopened** — the fix is not a small adjustment: `openfaithmap-web` must
+> never call go-oikumenea directly for discovery reads at all, only OpenFaithMap's own
+> `discovery_site_cache`, now concretely buildable since the service principal that populates it can
+> actually read go-oikumenea — a real redesign for M4 to pick up, not attempted here.
 
 **Authenticated write** (a congregation admin editing their site): browser (with session cookie) →
 `openfaithmap-admin` extracts the bearer token from the session → calls `openfaithmap-api` for
