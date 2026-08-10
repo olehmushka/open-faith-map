@@ -1,0 +1,150 @@
+{
+  "Metadata": {
+    "title": "OpenFaithMap Admin",
+    "description": "OpenFaithMap's admin/moderator console — registration wizard, operator-approval console, congregation-admin console, moderator console."
+  },
+  "LoginPage": {
+    "heading": "Sign in",
+    "googleButton": "Sign in with Google"
+  },
+  "WhoamiPage": {
+    "heading": "Who am I (via go-oikumenea)",
+    "description": "Resolved by go-oikumenea's <code>identityFederation.whoami()</code> from the forwarded Google ID token — this is the M1 proof that login and token passthrough work end-to-end.",
+    "registerLink": "Register a congregation (M2)",
+    "reviewLink": "Review registration requests (operator)",
+    "myCongregationLink": "My congregation",
+    "signOut": "Sign out"
+  },
+  "MyCongregationPage": {
+    "heading": "My congregation",
+    "noCongregation": "You don't have an approved congregation yet.",
+    "registerLink": "Register a congregation",
+    "unitStatus": "Unit status: {status}",
+    "manageSite": "Manage site",
+    "rosterHeading": "Roster",
+    "noMembers": "No members yet."
+  },
+  "RegisterPage": {
+    "heading": "Register your congregation",
+    "intro": "Submitted requests are reviewed by a registration operator before your congregation appears on the map.",
+    "errorTaxonExcluded": "That tradition is not eligible for registration on OpenFaithMap.",
+    "errorGeneric": "Something went wrong: {error}",
+    "traditionLabel": "Tradition",
+    "traditionPlaceholder": "Select a tradition…",
+    "congregationNameLabel": "Congregation name",
+    "countryLabel": "Country",
+    "countryPlaceholder": "Select a country…",
+    "cityLabel": "City",
+    "streetLabel": "Street",
+    "latitudeLabel": "Latitude",
+    "longitudeLabel": "Longitude",
+    "submit": "Submit for review"
+  },
+  "RegisterSubmittedPage": {
+    "heading": "Request submitted",
+    "pendingWithName": "Your registration for <strong>{name}</strong> is pending review. Status: {status}.",
+    "pendingGeneric": "Your registration has been submitted and is pending review.",
+    "backHome": "Back to home"
+  },
+  "RegistrationsPage": {
+    "heading": "Registration requests",
+    "jurisdictionUnitsHeading": "Jurisdiction units",
+    "jurisdictionSearchHint": "Search by name to find a unit id to paste into an approval below, or create a new one. A jurisdiction is optional — leave the approval field blank to keep the current flat-root behavior.",
+    "jurisdictionSearchPlaceholder": "Search jurisdiction units by name…",
+    "search": "Search",
+    "noMatches": "No matches.",
+    "newUnitCodePlaceholder": "New unit code",
+    "newUnitNamePlaceholder": "New unit name",
+    "parentUnitIdPlaceholder": "Parent unit id (blank = root)",
+    "createJurisdictionUnit": "Create jurisdiction unit",
+    "noRequests": "No requests.",
+    "rejectionReason": "Reason: {reason}",
+    "jurisdictionUnitIdPlaceholder": "Jurisdiction unit id (blank = root)",
+    "approve": "Approve",
+    "rejectionReasonPlaceholder": "Rejection reason",
+    "reject": "Reject"
+  },
+  "ReparentPage": {
+    "heading": "Re-parent congregations",
+    "intro": "Move an already-approved congregation onto a different jurisdiction unit. This is a resumable, two-step move on go-oikumenea's side (add the new parent, then remove the old one) — re-submitting the same target for a congregation with a job already in progress resumes it rather than starting over.",
+    "jurisdictionUnitsHeading": "Jurisdiction units",
+    "jurisdictionSearchPlaceholder": "Search jurisdiction units by name…",
+    "search": "Search",
+    "noMatches": "No matches.",
+    "newUnitCodePlaceholder": "New unit code",
+    "newUnitNamePlaceholder": "New unit name",
+    "parentUnitIdPlaceholder": "Parent unit id (blank = root)",
+    "createJurisdictionUnit": "Create jurisdiction unit",
+    "noApprovedCongregations": "No approved congregations.",
+    "unitLabel": "unit {unitId}",
+    "currentJurisdiction": "current jurisdiction: {value}",
+    "currentJurisdictionNone": "(none — direct child of root)",
+    "lastMove": "last move: {oldParent} → {newParent} — {status}",
+    "newParentUnitIdPlaceholder": "New parent unit id",
+    "resumeMove": "Resume move",
+    "reparentButton": "Re-parent"
+  },
+  "SitePage": {
+    "createHeading": "Create your site",
+    "createIntro": "Choose a slug — this is the public path your site will be reachable at. Slugs are first-come, first-served.",
+    "slugLabel": "Slug",
+    "createSubmit": "Create site",
+    "siteHeading": "Site: {slug}",
+    "managePages": "Manage pages",
+    "themeHeading": "Theme",
+    "accentColorLabel": "Accent color",
+    "fontPairingLabel": "Font pairing",
+    "headerLayoutLabel": "Header layout",
+    "saveTheme": "Save theme"
+  },
+  "DocumentsPage": {
+    "heading": "Pages",
+    "newPage": "New page",
+    "noPages": "No pages yet.",
+    "draftLabel": "DRAFT (not public)"
+  },
+  "NewDocumentPage": {
+    "heading": "New page",
+    "errorSlugTaken": "That slug is already taken for this locale.",
+    "errorEventMissingStart": "Events require a start date/time.",
+    "errorGeneric": "Something went wrong: {error}",
+    "kindLabel": "Kind",
+    "kindPage": "Page",
+    "kindPost": "Post",
+    "kindEvent": "Event",
+    "localeLabel": "Locale",
+    "slugLabel": "Slug",
+    "parentPageLabel": "Parent page (Page only, optional)",
+    "parentPageNone": "None (top level)",
+    "eventFieldsLegend": "Event fields (Event only)",
+    "eventStartsAtLabel": "Starts at (required for Event)",
+    "eventEndsAtLabel": "Ends at (optional)",
+    "eventRecurrenceLabel": "Recurrence rule (optional, RRULE)",
+    "translationGroupLabel": "Join translation group (optional)",
+    "translationGroupPlaceholder": "Leave blank to start a new document",
+    "submit": "Create document"
+  },
+  "DocumentEditorPage": {
+    "errorSlugTaken": "That slug is already taken for this locale.",
+    "errorBlockDataInvalid": "One of the blocks failed validation against its block type's schema.",
+    "errorGeneric": "Something went wrong: {error}",
+    "publish": "Publish",
+    "unlist": "Unlist",
+    "backToDraft": "Back to draft",
+    "detailsHeading": "Details",
+    "slugLabel": "Slug",
+    "parentPageLabel": "Parent page",
+    "parentPageNone": "None (top level)",
+    "saveDetails": "Save details",
+    "blocksHeading": "Blocks",
+    "blocksHint": "Full replace on save — reorder by editing the position numbers. Data is raw JSON, validated against the block type's schema.",
+    "saveBlocks": "Save blocks"
+  },
+  "LocaleSwitcher": {
+    "label": "Language",
+    "en": "English",
+    "uk": "Українська",
+    "es": "Español",
+    "pt": "Português"
+  }
+}

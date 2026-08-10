@@ -1,0 +1,40 @@
+{
+  "HomePage": {
+    "title": "OpenFaithMap",
+    "tagline": "Find a church near you."
+  },
+  "DiscoveryMap": {
+    "traditionLabel": "Tradition (taxon code)",
+    "traditionPlaceholder": "orthodox",
+    "languageLabel": "Service language (ISO 639-3)",
+    "languagePlaceholder": "ukr",
+    "search": "Search",
+    "searching": "Searching…",
+    "resultsCount": "{count, plural, one {# result} other {# results}}",
+    "viewCongregationPage": "View congregation page",
+    "noPublishedPage": "No published page yet.",
+    "loadingMap": "Loading map…"
+  },
+  "CongregationPage": {
+    "upcomingEvents": "Upcoming events",
+    "dateTbd": "Date TBD",
+    "news": "News"
+  },
+  "Blocks": {
+    "address": "Address:",
+    "phone": "Phone:",
+    "email": "Email:",
+    "hours": "Hours:",
+    "socialFallback": "Social",
+    "socialPost": "post",
+    "viewOnMap": "View on map",
+    "youtubeVideoDefaultTitle": "YouTube video"
+  },
+  "LocaleSwitcher": {
+    "label": "Language",
+    "en": "English",
+    "uk": "Українська",
+    "es": "Español",
+    "pt": "Português"
+  }
+}

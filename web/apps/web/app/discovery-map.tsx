@@ -5,13 +5,14 @@
 
 import "leaflet/dist/leaflet.css";
 
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 
 import { searchAction } from "./actions";
 import type { DiscoverySite } from "@/lib/discovery";
+import { Link } from "@/i18n/navigation";
 
 // A plain SVG pin div-icon, deliberately not Leaflet's default marker image — the default's icon
 // URLs resolve relative to leaflet's own asset layout and break under Next's bundler without extra
@@ -27,6 +28,7 @@ const DEFAULT_CENTER: [number, number] = [50.45, 30.52]; // Kyiv — D-Scope's U
 const DEFAULT_ZOOM = 6;
 
 export function DiscoveryMap({ initialSites }: { initialSites: DiscoverySite[] }) {
+  const t = useTranslations("DiscoveryMap");
   const [sites, setSites] = useState(initialSites);
   const [tradition, setTradition] = useState("");
   const [language, setLanguage] = useState("");
@@ -47,27 +49,27 @@ export function DiscoveryMap({ initialSites }: { initialSites: DiscoverySite[] }
     <div className="flex min-h-screen flex-col gap-4 p-4">
       <form onSubmit={runSearch} className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Tradition (taxon code)</span>
+          <span className="font-medium">{t("traditionLabel")}</span>
           <input
             value={tradition}
             onChange={(e) => setTradition(e.target.value)}
-            placeholder="orthodox"
+            placeholder={t("traditionPlaceholder")}
             className="rounded border px-3 py-2"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Service language (ISO 639-3)</span>
+          <span className="font-medium">{t("languageLabel")}</span>
           <input
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            placeholder="ukr"
+            placeholder={t("languagePlaceholder")}
             className="rounded border px-3 py-2"
           />
         </label>
         <button type="submit" disabled={isPending} className="rounded border px-4 py-2">
-          {isPending ? "Searching…" : "Search"}
+          {isPending ? t("searching") : t("search")}
         </button>
-        <span className="text-sm text-gray-500">{sites.length} results</span>
+        <span className="text-sm text-gray-500">{t("resultsCount", { count: sites.length })}</span>
       </form>
 
       <div className="h-[70vh] w-full overflow-hidden rounded border">
@@ -85,9 +87,9 @@ export function DiscoveryMap({ initialSites }: { initialSites: DiscoverySite[] }
                       app/congregations/[unitId]/page.tsx's header comment) — its presence is
                       still the right "has this congregation published a site at all" signal. */}
                   {s.contentSiteId ? (
-                    <Link href={`/congregations/${s.congregationUnitRid}`}>View congregation page</Link>
+                    <Link href={`/congregations/${s.congregationUnitRid}`}>{t("viewCongregationPage")}</Link>
                   ) : (
-                    <span>No published page yet.</span>
+                    <span>{t("noPublishedPage")}</span>
                   )}
                 </Popup>
               </Marker>

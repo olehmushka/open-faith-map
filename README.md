@@ -113,6 +113,30 @@ For the web tier, each app is independent (no npm workspace — D-AdminSurface):
 cd web/apps/web   && npm install && npm run dev   # or web/apps/admin
 ```
 
+### Testing locales
+
+Both apps are locale-prefixed (`en`/`uk`/`es`/`pt`, English default) via next-intl —
+`/` redirects to `/en`, and a language switcher in each app's header swaps locale while
+preserving the current path. `web/apps/web/messages/` and `web/apps/admin/messages/`
+hold the message catalogs; only `en.json` and the switcher's own language names are
+real translations today, the rest are English placeholders pending review (see each
+folder's `README.md`).
+
+Running an app standalone (above) is enough to check routing/switching and any
+backend-free page (e.g. openfaithmap-admin's `/en/login`, `/uk/login`, …) — pages that
+call `openfaithmap-api`/go-oikumenea will error without a live backend, same as
+without i18n. `openfaithmap-admin` also needs NextAuth's env vars just to boot:
+
+```sh
+cd web/apps/admin
+AUTH_SECRET=dev-only-change-me AUTH_TRUST_HOST=true AUTH_GOOGLE_ID=test npm run dev -- -p 3004
+```
+
+To exercise locale-aware pages that need real data — the discovery map, the
+registration wizard's tradition/country dropdowns, sign-in/sign-out staying on the
+current locale — use the full stack below and visit `/en`, `/uk`, `/es`, `/pt` on each
+app.
+
 To bring up the full stack — needs a sibling checkout of
 [go-oikumenea](https://github.com/olehmushka/go-oikumenea) for its migrations and `hermenea`'s
 Dockerfile (neither is published as a standalone artifact yet), a GCP service-account key for the
@@ -124,9 +148,11 @@ docker run --rm --network open-faith-map_default -v "$PWD":/src -w /src golang:1
   go run ./scripts/bootstrap-service-principal -subject <google-service-account-numeric-sub>
 ```
 
-Host ports: `3000`/`3001` openfaithmap-api · `3002` openfaithmap-web · `3003` oikumenea-console ·
-`3004` openfaithmap-admin · `9443`/`9444` hermenea. `oikumenea-app` deliberately publishes none
-(D-HeadlessTopology).
+Host ports: `3001` openfaithmap-api (management/health only — `curl -sk
+https://localhost:3001/status/liveness`; its app port 3000 is compose-internal only, reached solely
+by openfaithmap-web/openfaithmap-admin, same D-HeadlessTopology rule as oikumenea-app) · `3002`
+openfaithmap-web · `3003` oikumenea-console · `3004` openfaithmap-admin · `5432` postgres ·
+`9443`/`9444` hermenea. `oikumenea-app` publishes none at all (D-HeadlessTopology).
 
 ## Contributing
 
