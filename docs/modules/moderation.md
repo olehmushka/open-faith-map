@@ -7,11 +7,11 @@
 ## Purpose
 
 Owns reports, moderator decisions, and appeals across everything OpenFaithMap surfaces — a
-congregation's content, its claimed identity, or a vouching relationship — plus, eventually, the
-**taxon-level denomination-exclusion check** (D-Exclusions). **As of M2, that check's only real
-implementation lives in [registration.md](registration.md)** — this module (M5) doesn't exist in
-code yet, and M2 needed the check now; consolidate here when M5 lands. No equivalent exists in
-go-oikumenea.
+congregation's content, its claimed identity, or a vouching relationship — plus a standalone
+**taxon-level denomination-exclusion check** dry-run (`POST /exclusion-check`, D-Exclusions).
+`internal/registration`'s own inline check (added at M2, before this module existed) remains the
+one actually enforced at registration time — see this doc's Open seams for why the two are not yet
+consolidated. No equivalent exists in go-oikumenea.
 
 `openfaithmap.moderation_actions` is this platform's **ledger of record** for moderation decisions:
 append-only, `reject_mutation()`-guarded. It is *not* mirrored into go-oikumenea's audit trail —
@@ -30,7 +30,13 @@ audit found were resolved into decisions; one remains real work.
 |---|---|
 | **Who is a moderator?** `moderation.read`/`moderation.act` gate every endpoint here and four in [vouching.md](vouching.md), but were specified only as "held by a small, fixed set of accounts" — no table, no role, no mechanism. | **Resolved.** [D-PlatformModerator](../architecture/decisions.md): a go-oikumenea `platform-moderator` Role, granted `subtree` on the shared root unit, resolved by a target-scoped capability check. No OpenFaithMap roster table. `scripts/bootstrap-registration-org` gains the role at M5. |
 | **The audit mirror doesn't exist.** | **Resolved.** D-Moderation's Correction; see Purpose above and the withdrawn invariant below. |
-| **`queue_scope = 'jurisdiction'` has no ancestor chain to walk.** Under [D-FlatRoot](../architecture/decisions.md) every congregation is a direct child of one shared root, so `jurisdiction` and `platform` are the same set. | **Resolved.** [D-JurisdictionUnits](../architecture/decisions.md) (M4.1): real, operator-assigned jurisdiction units exist and existing congregations can be re-parented onto one. `jurisdiction` scope now has a real ancestor chain to walk for any congregation a jurisdiction was actually assigned to — still legitimately equal to `platform` for a congregation with none, by design (jurisdiction is optional, never inferred). |
+| **`queue_scope = 'jurisdiction'` has no ancestor chain to walk.** Under [D-FlatRoot](../architecture/decisions.md) every congregation is a direct child of one shared root, so `jurisdiction` and `platform` are the same set. | **Resolved.** [D-JurisdictionUnits](../architecture/decisions.md) (M4.1): real, operator-assigned jurisdiction units exist and existing congregations can be re-parented onto one. `jurisdiction` scope now has a real ancestor chain to walk for any congregation a jurisdiction was actually assigned to — still legitimately equal to `platform` for a congregation with none, by design (jurisdiction is optional, never inferred). Wiring that walk into `GET /reports?scope=` is itself deferred — see Open seams below. |
+
+**Built (2026-08-10).** `internal/moderation` (domain/adapters/application/transport),
+`api/moderation.conjure.yml`, `migrations/0007_moderation.sql`, and a moderator console +
+public report form in `web/apps/{admin,web}` — see [milestones.md](../milestones.md#m5--moderation)
+for the stage-board detail. Not yet Verified: needs a green CI run on `main` at the merge commit and
+a live two-real-token proof (a non-moderator refused, a `platform-moderator`-granted caller allowed).
 
 ## Entities & aggregates
 
@@ -162,12 +168,34 @@ submitter's token.
 
 - **Rate limiting on anonymous report filing** is parked at M7 (`DS-OFM-9`), but **this module is
   what ships the public endpoints** — `POST /reports` and `POST /exclusion-check` are both
-  unauthenticated. Shipping an unlimited public write endpoint and hardening it a milestone later
-  is a real sequencing risk; decide at M5 scoping whether basic limiting moves forward.
-- **`queue_scope = 'jurisdiction'` has a real ancestor chain since M4.1** — see Blocked dependencies
-  above. Not yet wired: an actual query implementation walking `Tenant.unitAncestors` to resolve
-  which jurisdiction a report's congregation belongs to — this module's own `GET /reports?scope=`
-  endpoint still needs that logic written, tracked separately from the dependency this row records.
+  unauthenticated. Decided at M5 scoping: stays deferred to M7 as originally planned — no basic
+  limiting added here.
+- **`queue_scope = 'jurisdiction'` still has no query implementation wired to it, and this is now a
+  deliberate scope cut, not just an unwired dependency.** M4.1 gave the ancestor chain a real target
+  to walk, but M5's only moderator role — `platform-moderator` (D-PlatformModerator) — is granted
+  `subtree` on the shared **root** unit, not scoped to any individual jurisdiction. There is no
+  moderator authority boundary a jurisdiction-scoped query would actually enforce yet, so every
+  report filed by this milestone's code lands in `PLATFORM` regardless of its target's jurisdiction
+  (`internal/moderation/application/service.go`'s `FileReport`). The `queue_scope` column, its enum
+  values, and `GET /reports?scope=`'s filter all exist and work mechanically — walking
+  `Tenant.unitAncestors` to actually classify a report by jurisdiction is real future work, gated on
+  a future milestone giving jurisdiction-scoped moderator authority a reason to exist.
+- **No real go-oikumenea-side or content-side effect is wired to an action's `action_kind` yet.**
+  `HIDE`/`SUSPEND`/`ARCHIVE`/`WARN_ADMIN`/`REVOKE_VOUCH` are recorded in `moderation_actions` as the
+  decision of record (D-Moderation's Correction), but none of them yet causes go-oikumenea to change
+  a unit's real state, or `content`/`discovery` to actually hide something from public view — this
+  module's own spec didn't detail that mechanism in enough depth to build blind, so it's recorded
+  here rather than guessed at.
+- **Appeal filing only supports `CONGREGATION`-kind actions.** Appealing a `SITE`/`DOCUMENT` action
+  would need resolving through `content`'s own site → congregation-unit mapping first (the same
+  shape as `discovery`'s `ContentResolver` interface-call cross-module dependency), which this PR
+  doesn't wire up — `FileAppeal` returns `Forbidden` for those rather than guessing a unit.
+- **Registration's own `checkNotExcluded` is untouched** — this module's `POST /exclusion-check` is
+  a new, standalone endpoint reusing `registration`'s `domain.ExcludedTaxonCodes` list directly
+  (import, not copy), but the two call sites remain independent. Consolidating them so
+  `registration.Submit` calls through this module's check instead of running its own copy is still
+  the "when M5 lands" aspiration this doc originally named — not done in this PR, to keep the change
+  scoped to moderation's own new surface.
 - **Automated exclusion enforcement beyond registration-time** (e.g., detecting a congregation that
   quietly re-affiliates with an excluded body after registration) has no design yet — today the
   check only runs once, at intake.

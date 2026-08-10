@@ -6,6 +6,16 @@ import { getTranslations } from "next-intl/server";
 
 import { Blocks } from "@/app/blocks";
 import { getPublicBlocks, getSite, listPublicDocuments } from "@/lib/content";
+import { fileReport, type FileReportInput } from "@/lib/moderation";
+import { redirect } from "@/i18n/navigation";
+
+const REPORT_REASON_CODES: FileReportInput["reasonCode"][] = [
+  "SPAM",
+  "INCORRECT_INFORMATION",
+  "INAPPROPRIATE_CONTENT",
+  "DUPLICATE",
+  "OTHER",
+];
 
 // Same force-dynamic reasoning as app/page.tsx — content changes independently of any build.
 export const dynamic = "force-dynamic";
@@ -18,13 +28,26 @@ export const dynamic = "force-dynamic";
 // Upcoming events list.
 export default async function CongregationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string; unitId: string }>;
+  searchParams: Promise<{ reported?: string }>;
 }) {
-  const { unitId } = await params;
+  const { locale, unitId } = await params;
+  const { reported } = await searchParams;
   const t = await getTranslations("CongregationPage");
   const site = await getSite(unitId).catch(() => null);
   if (!site) notFound();
+
+  // M5, D-AdminSurface: this app never holds a session, so the report is filed anonymously — the
+  // caller identity is never asked (ModerationPublicService.fileReport, docs/modules/moderation.md).
+  async function report(formData: FormData) {
+    "use server";
+    const reasonCode = String(formData.get("reasonCode")) as FileReportInput["reasonCode"];
+    const detail = String(formData.get("detail") ?? "").trim() || undefined;
+    await fileReport({ targetKind: "CONGREGATION", targetRef: unitId, reasonCode, detail });
+    redirect({ href: `/congregations/${unitId}?reported=1`, locale });
+  }
 
   const [pages, posts, events] = await Promise.all([
     listPublicDocuments(site.id, "PAGE"),
@@ -66,6 +89,34 @@ export default async function CongregationPage({
           ))}
         </section>
       )}
+
+      <section className="flex flex-col gap-3 border-t pt-8">
+        <h2 className="text-xl font-semibold">{t("reportHeading")}</h2>
+        {reported === "1" ? (
+          <p className="text-sm">{t("reportThanks")}</p>
+        ) : (
+          <form action={report} className="flex flex-col gap-2">
+            <select name="reasonCode" required className="rounded border px-2 py-1 text-sm" defaultValue="">
+              <option value="" disabled>
+                {t("reportReasonPlaceholder")}
+              </option>
+              {REPORT_REASON_CODES.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+            <textarea
+              name="detail"
+              placeholder={t("reportDetailPlaceholder")}
+              className="rounded border px-2 py-1 text-sm"
+            />
+            <button type="submit" className="self-start rounded border px-3 py-1 text-sm">
+              {t("reportSubmit")}
+            </button>
+          </form>
+        )}
+      </section>
     </main>
   );
 }

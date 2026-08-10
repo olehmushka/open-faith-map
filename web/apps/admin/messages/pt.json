@@ -146,5 +146,20 @@
     "uk": "Українська",
     "es": "Español",
     "pt": "Português"
+  },
+  "ModerationQueuePage": {
+    "heading": "Moderation queue",
+    "noReports": "No open reports.",
+    "filedAt": "Filed {date}",
+    "reasonPlaceholder": "Reason for this action",
+    "takeAction": "Take action"
+  },
+  "AppealsPage": {
+    "heading": "Appeals",
+    "noAppeals": "No open appeals.",
+    "filedAt": "Filed {date}",
+    "notePlaceholder": "Decision note (optional)",
+    "uphold": "Uphold",
+    "overturn": "Overturn"
   }
 }

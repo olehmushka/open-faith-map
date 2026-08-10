@@ -83,7 +83,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M3 · Content / site-builder backend | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-10).** `modules/content.md` — sites/documents(pages)/blocks/block-type catalog, `internal/content`, `migrations/0004_content.sql`, a site-editor UI in `web/apps/admin`. U5 (slug collisions) and U6 (RID vs uuid) both resolved. Proven live end-to-end: create→write→schema-validate→publish, public-read filtering (draft hidden, published visible, no auth), against a real stack. Found and fixed two real bugs no static check caught: a `httprouter` startup panic from two routes sharing a wildcard slot under different parameter names, and `congregation-admin`'s role missing `assignment.read` (same defect class M2.3 already fixed once, for a different role). CI-green acceptance criterion now met — see prose. |
 | M4 · Public discovery site | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-10).** `modules/discovery.md` — cache schema + facade over go-oikumenea's `religion` discovery search, redesigned per M2.5's finding: lazy cache-only public reads, no scheduled refresh job, `DS-OFM-13`'s FK resolved. Also ships `content`'s `POST`/`EVENT` kinds (deferred from M3) and the public map/congregation-page UI. Found and got fixed same-day a real upstream RLS bug ([go-oikumenea#34](https://github.com/olehmushka/go-oikumenea/issues/34)); live end-to-end proof against `oikumenea:0.0.3` with real data. |
 | M4.1 · Jurisdiction units | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** D-JurisdictionUnits (supersedes D-FlatRoot's simplification). Real, operator-assigned jurisdiction units; existing congregations can be re-parented onto one. Proven live end-to-end against a real `docker compose` stack — see prose. **`Verified` needs a green CI run on `main` at the merge commit** (M2.4's gate), not yet attempted here. |
-| M5 · Moderation | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. Two dependencies resolved into decisions (D-PlatformModerator for the moderator roster, D-Moderation's Correction for the audit trail); one still open (M4.1's jurisdiction units). |
+| M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are now resolved (D-PlatformModerator, D-Moderation's Correction, and M4.1 landing cleared the third). **`Verified` needs a green CI run on `main` at the merge commit and a live two-real-token proof**, not yet attempted here. |
 | M6 · Vouching | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both now have a real mechanism (D-PlatformModerator), which they lacked before the 2026-08-09 audit. |
 | M7 · Hardening / real-user feedback | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Idea.** Named and sequenced here; no `D-<Name>` block or module doc yet — first real milestone to pass through the full pipeline once M1–M6 have shipped code and real congregations are using the platform. Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. |
 
@@ -1031,6 +1031,80 @@ milestone specified against mechanisms that did not exist:
 both public and unauthenticated. `DS-OFM-9` parks this at M7, but this milestone is what actually
 ships the public endpoints — decide whether that is acceptable or whether basic limiting moves
 forward into M5.
+
+> **As implemented (2026-08-10).** Full stack, mirroring `internal/content`'s exact
+> domain/adapters/application/transport shape: `api/moderation.conjure.yml` (two services, same
+> public/header-auth split `content`/`discovery` already use — `ModerationPublicService` for
+> `POST /reports` and `POST /exclusion-check`, `ModerationService` for the queue/action/appeal
+> surface), `internal/moderation/{domain,adapters,application,transport}`,
+> `migrations/0007_moderation.sql`, and a moderator console (`/admin/moderation`,
+> `/admin/moderation/appeals`) plus a public report form on the congregation page
+> (`web/apps/web/app/[locale]/congregations/[unitId]`).
+>
+> **`platform-moderator`'s permission set, resolved:** `unit.lifecycle` (its PDP marker — not
+> `religionorg.manage`, which would make it indistinguishable from `registration-operator`/
+> `congregation-admin`) plus `assignment.read` (root unit, same self-reach fix M2.3 already applied
+> twice). Recorded as an addendum to D-PlatformModerator
+> (`architecture/decisions.md`) rather than a new `D-<Name>` block. `scripts/bootstrap-registration-org`
+> now seeds the role and prints its first root-unit assignment alongside `registration-operator`'s.
+>
+> **`reject_mutation()` implemented for real, for the first time in this repo** — ported
+> schema-qualified from go-oikumenea's own migration pattern, guarding `moderation_actions`
+> unconditionally. That surfaced a real design conflict before it shipped: the Conjure contract
+> describes `ModerationAction.reversedByActionId` as if set on the *original* row once reversed —
+> which would need an `UPDATE`, exactly what the guard forbids. Resolved by pointing the stored
+> column the other way: a `REVERSE` row's own `reverses_action_id` (insert-time-only, backward) is
+> the real fact; `reversedByActionId` on the original is derived at read time by looking forward for
+> a row that reverses it (`adapters.Store.hydrateReversedBy`) — same fact, no forbidden write.
+>
+> **`CheckExclusion` runs under the server's own service-principal token**
+> (`coreintegration.NewServiceClient`), reusing the same `religion.read` grant M2.5/M4 already
+> proved reachable by a machine subject — the caller of the public endpoint is anonymous and has no
+> token of its own to forward.
+>
+> **Scope cuts, all recorded in [moderation.md](modules/moderation.md)'s open seams, not silently
+> dropped:** rate limiting stays at M7 per this section's own "still open" question, now decided;
+> `queue_scope = 'jurisdiction'` has no query implementation yet (no moderator role is scoped
+> narrower than the root unit for it to enforce); no action kind yet causes a real go-oikumenea- or
+> content-side effect; appeal filing supports `CONGREGATION`-kind actions only;
+> `registration`'s own exclusion check stays independent of this module's new one (reuses its
+> `ExcludedTaxonCodes` list directly, not a copy).
+>
+> First real unit tests for this module's pure business rules (`domain.ValidateReasonCode`,
+> `CanReverse`, `CanDecideAppeal`) — `go build ./... && go test ./...` and both apps'
+> `npm run lint && npm run build` all pass clean.
+>
+> **Live-verified against a real `docker compose` stack** (`OIKUMENEA_SRC=../go-oikumenea docker
+> compose up --build`), and this pass found and fixed a real bug the way M2's own curl proof once
+> did: a `POST /reports` with `reasonCode: "DOCTRINAL_CONCERN"` fell through to a raw Postgres
+> `CHECK`-constraint `500`, not the intended `Moderation:DoctrinalReasonNotAllowed` `400` — because
+> `ReasonCode.Value()` (the accessor every other module already uses for an incoming enum) collapses
+> *any* unrecognized string to `"UNKNOWN"` before `domain.ValidateReasonCode` ever saw the real one.
+> Fixed by reading `.String()` instead for this one field (preserves the raw wire value), and by
+> adding the `Moderation:DoctrinalReasonNotAllowed` error type that was missing from the Conjure
+> contract entirely — confirmed live before and after. Also proven live: two anonymous writes with
+> no `Authorization` header at all (`POST /reports`, `POST /exclusion-check`, both `200`);
+> `GET /reports` with no token `403`; a real `POST /actions` → `POST /actions/{id}/reverse` →
+> confirmed the original row's `reversedByActionId` is correctly derived (not stored) by reading it
+> back; a second `reverse` call on the same action correctly `400`s with `Moderation:
+> ActionNotReversible`; and, directly against Postgres, both a raw `UPDATE` and a raw `DELETE` on
+> `moderation_actions` genuinely fail with `restrict_violation` — `reject_mutation()` really is
+> unconditional, not just documented as such — plus the `moderation_actions_reverses_idx` unique
+> index independently rejects a second `REVERSE` row for the same original, defense-in-depth behind
+> the application's own check.
+>
+> **Not achievable headlessly, same limitation every prior milestone (M2, M2.1, M2.3, M4.1) already
+> named:** the real two-*different*-people proof (a non-moderator refused, a separately-granted
+> `platform-moderator` allowed) needs a real browser Google OAuth round trip — go-oikumenea's
+> local-dev HS256 bootstrap issuer trusts exactly one subject (`local-admin`, the pre-provisioned
+> bootstrap-admin), and that identity is *already* flagged instance-admin in this stack (a real,
+> confirmed finding: `IsInstanceAdmin: true` bypasses every unit-scoped `Authorize` check in
+> go-oikumenea's own PDP, `internal/authorization/domain/pdp.go` — so it cannot serve as a "before
+> the grant" negative control no matter what `platform-moderator` is or isn't granted). A second,
+> genuinely non-admin person (`scripts/bootstrap-admin-person -email moderator-test@example.com`)
+> was created for this purpose but has no way to authenticate outside a real browser session. `Verified`
+> stays `⬜` until that real-browser proof and a green CI run on `main` at the merge commit are both
+> done (see the stage board below).
 
 ### M6 · Vouching
 

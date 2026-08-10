@@ -8,9 +8,10 @@
 //
 // Deliberately narrower than web/apps/admin's own facade (lib/openfaithmap/index.ts): this app
 // holds no session, ever (D-AdminSurface), so OpenFaithMapClientOptions has NO token field at
-// all — not optional, absent — and only the two genuinely anonymous services are exposed
-// (DiscoveryPublicService, ContentPublicService). There is structurally no way to forward a
-// bearer token from this app, by construction, not by convention.
+// all — not optional, absent — and only the genuinely anonymous services are exposed
+// (DiscoveryPublicService, ContentPublicService, ModerationPublicService — M5's report-filing
+// entry point on the public congregation page). There is structurally no way to forward a bearer
+// token from this app, by construction, not by convention.
 //
 // Generated IN PLACE here, not shared with web/apps/admin's copy — no workspace, no file:
 // dependency to reach across (each app's Dockerfile build context is isolated to its own
@@ -20,6 +21,7 @@ import { DefaultHttpApiBridge, type IHttpApiBridge, type IUserAgent } from "conj
 
 import { ContentPublicService } from "./generated/content";
 import { DiscoveryPublicService } from "./generated/discovery";
+import { ModerationPublicService } from "./generated/moderation";
 
 export * from "./generated";
 
@@ -38,10 +40,11 @@ export interface OpenFaithMapClientOptions {
   userAgent?: IUserAgent;
 }
 
-/** The two anonymous services this app may ever call. Returned by {@link createOpenFaithMapClient}. */
+/** The anonymous services this app may ever call. Returned by {@link createOpenFaithMapClient}. */
 export interface OpenFaithMapClient {
   readonly discoveryPublic: DiscoveryPublicService;
   readonly contentPublic: ContentPublicService;
+  readonly moderationPublic: ModerationPublicService;
   /** The underlying conjure HTTP bridge, for advanced use. */
   readonly bridge: IHttpApiBridge;
 }
@@ -69,6 +72,7 @@ export function createOpenFaithMapClient(
   return {
     discoveryPublic: new DiscoveryPublicService(bridge),
     contentPublic: new ContentPublicService(bridge),
+    moderationPublic: new ModerationPublicService(bridge),
     bridge,
   };
 }
