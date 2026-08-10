@@ -1001,6 +1001,11 @@ congregation admin retains exactly the authority they had before the migration.
 > the HTTP-level proof above exercised directly — but the actual page has not been loaded in a
 > browser. `Verified` also needs a green CI run on `main` at the merge commit (M2.4's gate), not
 > attempted here.
+>
+> **Update (2026-08-10): the CI-green half is now confirmed.** This milestone's merge commit,
+> `d6bf833` (pushed directly to `main`, no PR), produced a green run —
+> [31387868674](https://github.com/olehmushka/open-faith-map/actions/runs/31387868674). `Verified`
+> stays `⬜` — the real browser-driven admin UI proof above is the one remaining blocker.
 
 ### M5 · Moderation
 
@@ -1105,6 +1110,11 @@ forward into M5.
 > was created for this purpose but has no way to authenticate outside a real browser session. `Verified`
 > stays `⬜` until that real-browser proof and a green CI run on `main` at the merge commit are both
 > done (see the stage board below).
+>
+> **Update (2026-08-10): the CI-green half is now confirmed.** This milestone's merge commit,
+> `d6b40f1` (PR #17), produced a green run —
+> [31411640524](https://github.com/olehmushka/open-faith-map/actions/runs/31411640524). `Verified`
+> stays `⬜` — the real two-different-people browser proof above is the one remaining blocker.
 
 ### M6 · Vouching
 
@@ -1193,6 +1203,11 @@ which they lacked any mechanism for before the 2026-08-09 audit.
 > of this milestone's live checks above necessarily ran under that one instance-admin identity.
 > `Verified` stays `⬜` until that real-browser proof and a green CI run on `main` at the merge
 > commit are both done (see the stage board above).
+>
+> **Update (2026-08-10): the CI-green half is now confirmed.** This milestone's merge commit,
+> `48d324a` (PR #18), produced a green run —
+> [31421038134](https://github.com/olehmushka/open-faith-map/actions/runs/31421038134). `Verified`
+> stays `⬜` — the real two-different-people browser proof above is the one remaining blocker.
 
 ### M7 · Hardening / real-user feedback (idea stage)
 
