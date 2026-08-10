@@ -19,6 +19,7 @@ import { ContentPublicService, ContentService } from "./generated/content";
 import { DiscoveryPublicService, DiscoveryService } from "./generated/discovery";
 import { ModerationPublicService, ModerationService } from "./generated/moderation";
 import { RegistrationService } from "./generated/registration";
+import { VouchingService } from "./generated/vouching";
 
 export * from "./generated";
 
@@ -49,6 +50,7 @@ export interface OpenFaithMapClient {
   readonly discoveryPublic: DiscoveryPublicService;
   readonly moderation: ModerationService;
   readonly moderationPublic: ModerationPublicService;
+  readonly vouching: VouchingService;
   /** The underlying conjure HTTP bridge, for advanced use. */
   readonly bridge: IHttpApiBridge;
 }
@@ -83,6 +85,7 @@ export function createOpenFaithMapClient(
     discoveryPublic: new DiscoveryPublicService(bridge),
     moderation: new ModerationService(bridge),
     moderationPublic: new ModerationPublicService(bridge),
+    vouching: new VouchingService(bridge),
     bridge,
   };
 }

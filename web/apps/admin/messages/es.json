@@ -161,5 +161,31 @@
     "notePlaceholder": "Decision note (optional)",
     "uphold": "Uphold",
     "overturn": "Overturn"
+  },
+  "VouchingConsolePage": {
+    "heading": "Vouching",
+    "guarantorHeading": "Guarantor status",
+    "guarantorPersonIdPlaceholder": "Guarantor person ID",
+    "lookup": "Look up",
+    "status": "Status",
+    "revokedAt": "Revoked {date}",
+    "reasonPlaceholder": "Reason for revocation",
+    "revoke": "Revoke",
+    "vouchesHeading": "Vouches",
+    "claimantPlaceholder": "Claimant person ID",
+    "congregationPlaceholder": "Congregation unit ID",
+    "noVouches": "No vouches found.",
+    "vouchLine": "{guarantor} vouched for {claimant}",
+    "congregationLine": "Congregation: {unit}",
+    "filedAt": "Filed {date}"
+  },
+  "NewVouchPage": {
+    "heading": "Vouch for someone",
+    "intro": "Vouch that a person genuinely represents a congregation you administer.",
+    "claimantLabel": "Claimant person ID",
+    "congregationLabel": "Congregation unit ID (the claim)",
+    "guarantorCongregationLabel": "Your own congregation unit ID",
+    "statementLabel": "Statement (optional)",
+    "submit": "Submit vouch"
   }
 }
