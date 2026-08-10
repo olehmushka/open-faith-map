@@ -99,7 +99,7 @@ func (s *Service) ApproveRequest(ctx context.Context, authHeader bearertoken.Tok
 	if err != nil {
 		return genregistration.RegistrationRequest{}, mapUpstreamErr(err)
 	}
-	req, err := s.appService.Approve(ctx, string(authHeader), personID, requestIdArg, requestArg.UnitCode)
+	req, err := s.appService.Approve(ctx, string(authHeader), personID, requestIdArg, requestArg.UnitCode, requestArg.JurisdictionUnitId)
 	if err != nil {
 		return genregistration.RegistrationRequest{}, mapErr(err, requestIdArg, string(domain.StatusPending))
 	}
@@ -116,6 +116,48 @@ func (s *Service) RejectRequest(ctx context.Context, authHeader bearertoken.Toke
 		return genregistration.RegistrationRequest{}, mapErr(err, requestIdArg, string(domain.StatusPending))
 	}
 	return toAPI(req), nil
+}
+
+func (s *Service) ReparentRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg genregistration.ReparentRegistrationRequest) (genregistration.ReparentingJob, error) {
+	personID, err := s.whoami(ctx, authHeader)
+	if err != nil {
+		return genregistration.ReparentingJob{}, mapUpstreamErr(err)
+	}
+	job, err := s.appService.Reparent(ctx, string(authHeader), personID, requestIdArg, requestArg.NewParentUnitId)
+	if err != nil {
+		return genregistration.ReparentingJob{}, mapErr(err, requestIdArg, string(domain.StatusApproved))
+	}
+	return toAPIReparentJob(job), nil
+}
+
+func (s *Service) GetReparentStatus(ctx context.Context, authHeader bearertoken.Token, requestIdArg string) (*genregistration.ReparentingJob, error) {
+	if _, err := s.whoami(ctx, authHeader); err != nil {
+		return nil, mapUpstreamErr(err)
+	}
+	job, err := s.appService.GetReparentStatus(ctx, requestIdArg)
+	if err != nil {
+		return nil, mapErr(err, requestIdArg, "")
+	}
+	if job == nil {
+		return nil, nil
+	}
+	out := toAPIReparentJob(*job)
+	return &out, nil
+}
+
+func toAPIReparentJob(j domain.ReparentingJob) genregistration.ReparentingJob {
+	return genregistration.ReparentingJob{
+		Id:                    j.ID,
+		RegistrationRequestId: j.RegistrationRequestID,
+		CongregationUnitId:    j.CongregationUnitID,
+		OldParentUnitId:       j.OldParentUnitID,
+		NewParentUnitId:       j.NewParentUnitID,
+		Status:                genregistration.New_ReparentStatus(genregistration.ReparentStatus_Value(j.Status)),
+		PerformedByPersonId:   j.PerformedByPersonID,
+		Error:                 j.Error,
+		CreatedAt:             datetime.DateTime(j.CreatedAt),
+		UpdatedAt:             datetime.DateTime(j.UpdatedAt),
+	}
 }
 
 func toDomainSubmit(r genregistration.SubmitRegistrationRequest) domain.SubmitInput {
@@ -158,6 +200,7 @@ func toAPI(r domain.Request) genregistration.RegistrationRequest {
 		DecidedByPersonId:   r.DecidedByPersonID,
 		DecidedAt:           decidedAt,
 		CreatedUnitId:       r.CreatedUnitID,
+		JurisdictionUnitId:  r.JurisdictionUnitID,
 		CreatedAt:           datetime.DateTime(r.CreatedAt),
 		UpdatedAt:           datetime.DateTime(r.UpdatedAt),
 	}

@@ -2,6 +2,8 @@ import { IApproveRegistrationRequest } from "./approveRegistrationRequest";
 import { IRegistrationRequest } from "./registrationRequest";
 import { IRegistrationRequestPage } from "./registrationRequestPage";
 import { IRejectRegistrationRequest } from "./rejectRegistrationRequest";
+import { IReparentRegistrationRequest } from "./reparentRegistrationRequest";
+import { IReparentingJob } from "./reparentingJob";
 import { ISubmitRegistrationRequest } from "./submitRegistrationRequest";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -32,6 +34,13 @@ export interface IRegistrationService {
     approveRequest(requestId: string, request: IApproveRegistrationRequest): Promise<IRegistrationRequest>;
     /** Reject a PENDING request with a reason. No go-oikumenea writes. */
     rejectRequest(requestId: string, request: IRejectRegistrationRequest): Promise<IRegistrationRequest>;
+    /**
+     * Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own forwarded token for every go-oikumenea write. Returns Registration:RequestNotApproved if the request was never approved.
+     *
+     */
+    reparentRequest(requestId: string, request: IReparentRegistrationRequest): Promise<IReparentingJob>;
+    /** Read the most recent re-parenting job for this request, if one has ever been started. */
+    getReparentStatus(requestId: string): Promise<IReparentingJob | null>;
 }
 
 export class RegistrationService implements IRegistrationService {
@@ -127,6 +136,45 @@ export class RegistrationService implements IRegistrationService {
             "POST",
             "/registration/v1/requests/{requestId}/reject",
             request,
+            __undefined,
+            __undefined,
+            [
+                requestId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own forwarded token for every go-oikumenea write. Returns Registration:RequestNotApproved if the request was never approved.
+     *
+     */
+    public reparentRequest(requestId: string, request: IReparentRegistrationRequest): Promise<IReparentingJob> {
+        return this.bridge.call<IReparentingJob>(
+            "RegistrationService",
+            "reparentRequest",
+            "POST",
+            "/registration/v1/requests/{requestId}/reparent",
+            request,
+            __undefined,
+            __undefined,
+            [
+                requestId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Read the most recent re-parenting job for this request, if one has ever been started. */
+    public getReparentStatus(requestId: string): Promise<IReparentingJob | null> {
+        return this.bridge.call<IReparentingJob | null>(
+            "RegistrationService",
+            "getReparentStatus",
+            "GET",
+            "/registration/v1/requests/{requestId}/reparent",
+            __undefined,
             __undefined,
             __undefined,
             [

@@ -68,3 +68,70 @@ func (e *RegistrationStatus) UnmarshalText(data []byte) error {
 	}
 	return nil
 }
+
+// The state machine for re-parenting an already-APPROVED request's congregation unit onto a different jurisdiction unit (M4.1). addEdge+removeEdge on go-oikumenea's canonical graph is two non-transactional calls, not one atomic move — this tracks which one durably landed so a retry resumes rather than repeats. Add-before-remove by design: the congregation briefly has two canonical parents mid-migration rather than momentarily zero, so no subtree-scoped grant (registration-operator, platform-moderator) loses reach to it during the move.
+type ReparentStatus struct {
+	val ReparentStatus_Value
+}
+
+type ReparentStatus_Value string
+
+const (
+	ReparentStatus_PENDING          ReparentStatus_Value = "PENDING"
+	ReparentStatus_NEW_EDGE_ADDED   ReparentStatus_Value = "NEW_EDGE_ADDED"
+	ReparentStatus_OLD_EDGE_REMOVED ReparentStatus_Value = "OLD_EDGE_REMOVED"
+	ReparentStatus_VERIFIED         ReparentStatus_Value = "VERIFIED"
+	ReparentStatus_FAILED           ReparentStatus_Value = "FAILED"
+	ReparentStatus_UNKNOWN          ReparentStatus_Value = "UNKNOWN"
+)
+
+// ReparentStatus_Values returns all known variants of ReparentStatus.
+func ReparentStatus_Values() []ReparentStatus_Value {
+	return []ReparentStatus_Value{ReparentStatus_PENDING, ReparentStatus_NEW_EDGE_ADDED, ReparentStatus_OLD_EDGE_REMOVED, ReparentStatus_VERIFIED, ReparentStatus_FAILED}
+}
+
+func New_ReparentStatus(value ReparentStatus_Value) ReparentStatus {
+	return ReparentStatus{val: value}
+}
+
+// IsUnknown returns false for all known variants of ReparentStatus and true otherwise.
+func (e ReparentStatus) IsUnknown() bool {
+	switch e.val {
+	case ReparentStatus_PENDING, ReparentStatus_NEW_EDGE_ADDED, ReparentStatus_OLD_EDGE_REMOVED, ReparentStatus_VERIFIED, ReparentStatus_FAILED:
+		return false
+	}
+	return true
+}
+
+func (e ReparentStatus) Value() ReparentStatus_Value {
+	if e.IsUnknown() {
+		return ReparentStatus_UNKNOWN
+	}
+	return e.val
+}
+
+func (e ReparentStatus) String() string {
+	return string(e.val)
+}
+
+func (e ReparentStatus) MarshalText() ([]byte, error) {
+	return []byte(e.val), nil
+}
+
+func (e *ReparentStatus) UnmarshalText(data []byte) error {
+	switch v := strings.ToUpper(string(data)); v {
+	default:
+		*e = New_ReparentStatus(ReparentStatus_Value(v))
+	case "PENDING":
+		*e = New_ReparentStatus(ReparentStatus_PENDING)
+	case "NEW_EDGE_ADDED":
+		*e = New_ReparentStatus(ReparentStatus_NEW_EDGE_ADDED)
+	case "OLD_EDGE_REMOVED":
+		*e = New_ReparentStatus(ReparentStatus_OLD_EDGE_REMOVED)
+	case "VERIFIED":
+		*e = New_ReparentStatus(ReparentStatus_VERIFIED)
+	case "FAILED":
+		*e = New_ReparentStatus(ReparentStatus_FAILED)
+	}
+	return nil
+}

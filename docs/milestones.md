@@ -82,7 +82,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ✅ | ➖ | ➖ | ✅ | ✅ | **Verified (2026-08-10).** D-Stack's Conjure-first rule and both consumer module docs required a generated typed client; `web/apps/admin/lib/registration.ts` was hand-written and had already drifted (missing the `PROVISIONING` status M2.3 added). `U4` resolved: generated in place into `web/apps/admin/lib/openfaithmap/generated`, not a separate package — see D-Stack. Proven live: removing a field from `api/registration.conjure.yml` and regenerating breaks `web/apps/admin`'s build with a real compile error, the milestone's own acceptance criterion. Merged as PR #12; [run 31341045908](https://github.com/olehmushka/open-faith-map/actions/runs/31341045908) confirms CI green on `main` at that merge commit. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-10).** `modules/content.md` — sites/documents(pages)/blocks/block-type catalog, `internal/content`, `migrations/0004_content.sql`, a site-editor UI in `web/apps/admin`. U5 (slug collisions) and U6 (RID vs uuid) both resolved. Proven live end-to-end: create→write→schema-validate→publish, public-read filtering (draft hidden, published visible, no auth), against a real stack. Found and fixed two real bugs no static check caught: a `httprouter` startup panic from two routes sharing a wildcard slot under different parameter names, and `congregation-admin`'s role missing `assignment.read` (same defect class M2.3 already fixed once, for a different role). CI-green acceptance criterion now met — see prose. |
 | M4 · Public discovery site | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-10).** `modules/discovery.md` — cache schema + facade over go-oikumenea's `religion` discovery search, redesigned per M2.5's finding: lazy cache-only public reads, no scheduled refresh job, `DS-OFM-13`'s FK resolved. Also ships `content`'s `POST`/`EVENT` kinds (deferred from M3) and the public map/congregation-page UI. Found and got fixed same-day a real upstream RLS bug ([go-oikumenea#34](https://github.com/olehmushka/go-oikumenea/issues/34)); live end-to-end proof against `oikumenea:0.0.3` with real data. |
-| M4.1 · Jurisdiction units | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | **Decided (audit 2026-08-09).** D-FlatRoot. Replaces the flat single-root org with real jurisdiction units and re-parents existing congregations. **Blocks M5's `designed` gate** — moderation's `jurisdiction` queue scope and D-Exclusions' org-level backstop both need an ancestor chain that does not exist today. |
+| M4.1 · Jurisdiction units | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** D-JurisdictionUnits (supersedes D-FlatRoot's simplification). Real, operator-assigned jurisdiction units; existing congregations can be re-parented onto one. Proven live end-to-end against a real `docker compose` stack — see prose. **`Verified` needs a green CI run on `main` at the merge commit** (M2.4's gate), not yet attempted here. |
 | M5 · Moderation | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. Two dependencies resolved into decisions (D-PlatformModerator for the moderator roster, D-Moderation's Correction for the audit trail); one still open (M4.1's jurisdiction units). |
 | M6 · Vouching | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both now have a real mechanism (D-PlatformModerator), which they lacked before the 2026-08-09 audit. |
 | M7 · Hardening / real-user feedback | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Idea.** Named and sequenced here; no `D-<Name>` block or module doc yet — first real milestone to pass through the full pipeline once M1–M6 have shipped code and real congregations are using the platform. Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. |
@@ -919,6 +919,88 @@ attach a `religion_org_policies` row to).
 **Exit criterion:** a congregation's ancestor walk returns at least one unit between it and the
 root, moderation can express a jurisdiction-scoped query against it, and every pre-existing
 congregation admin retains exactly the authority they had before the migration.
+
+> **As implemented (2026-08-10).** All four items landed; full detail and rationale in
+> [D-JurisdictionUnits](architecture/decisions.md).
+>
+> **Item 3's unknown, resolved before scoping the rest, as instructed.** go-oikumenea has no
+> dedicated reparent endpoint for religion `Unit`s — verified directly against the sibling
+> `go-oikumenea` checkout, not inferred. Re-parenting is achievable by composing the generic
+> `tenant` module's `addEdge`/`removeEdge` on the `canonical` graph instead: two non-transactional
+> calls, not one atomic move. No upstream request needed; this changed the design (a resumable job,
+> not a single call) rather than blocking the milestone.
+>
+> **Item 1's product decision:** jurisdiction is denomination-aware but explicitly not one canonical
+> hierarchy per tradition — Catholic polity fits a clean diocese tree, but Orthodox jurisdiction is
+> often multiple and parallel even within one country/tradition, and many Protestant congregations
+> have none at all. Operator-assigned, variable and optional depth, never inferred from `taxonId`.
+> See D-JurisdictionUnits for the full reasoning.
+>
+> **Exit criterion revised, not silently met:** "at least one unit between it and root" assumed
+> every congregation gets a jurisdiction, which turned out to conflict with item 1's own product
+> decision (jurisdiction is genuinely optional). Revised to "at least one unit **when a jurisdiction
+> applies**" — a congregation with none remains a direct child of root, and `jurisdiction`/`platform`
+> moderation queue scopes coincide for it, by design.
+>
+> **Item 2 (extend registration):** operator assigns jurisdiction at **approval time**
+> (`ApproveRegistrationRequest.jurisdictionUnitId`, optional) — the public `/register` wizard is
+> unchanged, per an explicit product decision that self-service jurisdiction selection wasn't worth
+> the added submitter-facing complexity this early. `internal/registration`'s `ensureUnit` targets
+> the chosen unit instead of the configured root; the choice is persisted in the same
+> `MarkProvisioning` write M2.3 already made resumable, so a `PROVISIONING` retry reuses the
+> original choice regardless of what a later call carries.
+>
+> **Item 3 (re-parent existing congregations):** `POST/GET /requests/{id}/reparent`, a resumable
+> `PENDING → NEW_EDGE_ADDED → OLD_EDGE_REMOVED → VERIFIED` state machine
+> (`jurisdiction_reparenting_jobs`, `migrations/0006_registration_jurisdiction.sql`) mirroring
+> M2.3's `PROVISIONING` precedent. **Add-before-remove, not remove-then-add** — live-confirmed
+> `tenant_unit_edges` is `UNIQUE(graph_id, parent_id, child_id)`, not `UNIQUE(graph_id, child_id)`,
+> so a unit can hold two simultaneous `canonical` parents; remove-then-add would open a real window
+> where a `subtree`-scoped grant (registration-operator, platform-moderator) loses reach to the
+> congregation mid-move. Triggered one congregation at a time from a new admin page
+> (`/admin/registrations/reparent`), not a batch script, per this milestone's own framing of item 3
+> as the central risk.
+>
+> **Item 4 (D-Exclusions backstop):** `scripts/bootstrap-exclusion-backstop` seeds a placeholder
+> unit for each of the three named exclusions and attaches `excludes_child_creation` — live-verified
+> that a subsequent `createChildOrg` beneath one is rejected with `Religion:ChildCreationExcluded`.
+>
+> **Nine live-verification checklist items, all confirmed against a real `docker compose` stack
+> before any product code was written** (not inferred from source alone): `AddEdge`/`RemoveEdge`
+> work on a real religion `Unit` in `canonical`; a unit tolerates two simultaneous `canonical`
+> parents; the omitted-`graph` default really is `command`, not `canonical` (confirmed empirically —
+> an explicit-`canonical` `AddEdge` right after an omitted-graph call still succeeded, meaning the
+> first call landed elsewhere); a duplicate edge fails with `Tenant:UnitInvalid` ("edge already
+> exists"), not a dedicated conflict type; a `subtree`-scoped grant and a `unit`-scoped grant both
+> survive a real add-then-remove unchanged; `registration-operator` genuinely lacked `unit.read`/
+> `unit.edges.manage` before this milestone's bootstrap change (confirmed via direct DB read of its
+> permission set); `createChildOrg` with the seeded `jurisdiction` `orgKindId` is accepted;
+> `AddOrgPolicy(excludes_child_creation)` genuinely blocks a subsequent `createChildOrg` beneath that
+> unit.
+>
+> **Full end-to-end proof, driven through real HTTP calls to `openfaithmap-api`** (M2's own
+> curl-proof pattern, same shape as M2/M3/M4's live verification): submit → approve with a
+> jurisdiction assigned → confirmed the created unit's real go-oikumenea parent is the jurisdiction,
+> not root → re-parent that same congregation onto a second jurisdiction → job reached `VERIFIED` →
+> confirmed the real parent moved and the old jurisdiction is no longer an ancestor → confirmed the
+> submitter's grant on the congregation is byte-identical before and after → re-called `reparent`
+> with the same target and confirmed it resumes/no-ops to `VERIFIED` rather than erroring or
+> repeating work.
+>
+> **One real bug found only by running the real flow, not caught by `go build`/`go vet`:**
+> `transport.toAPI` never mapped `JurisdictionUnitID` from the domain type into the generated
+> Conjure response struct — `approveRequest` silently returned `jurisdictionUnitId: null` even
+> though the write itself correctly targeted the chosen unit. Caught by the end-to-end proof
+> asserting the field round-tripped, not by any static check; fixed in `transport/service.go`.
+>
+> **Not yet run:** the real browser-driven admin UI flow (searching/creating a jurisdiction unit and
+> approving through `/admin/registrations`, re-parenting through
+> `/admin/registrations/reparent`) — same category of limitation M1/M1.2/M2.1 already carry (needs a
+> real Google OAuth round-trip). The admin UI's server-rendered forms were proven to lint, type-check,
+> and build clean, and call exactly the same `lib/registration.ts`/`lib/jurisdiction.ts` functions
+> the HTTP-level proof above exercised directly — but the actual page has not been loaded in a
+> browser. `Verified` also needs a green CI run on `main` at the merge commit (M2.4's gate), not
+> attempted here.
 
 ### M5 · Moderation
 

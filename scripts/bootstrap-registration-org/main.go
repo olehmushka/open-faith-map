@@ -125,6 +125,13 @@ func main() {
 			"membership.update",
 			"position.create",
 			"position.update",
+			// unit.read + unit.edges.manage: M4.1, for browsing/creating jurisdiction units
+			// (Tenant.ListUnits/UnitAncestors) and re-parenting a congregation's unit onto one
+			// (Tenant.AddEdge/RemoveEdge on the canonical graph). unit.edges.manage is the broad
+			// fallback, not a per-graph code — go-oikumenea's own D-EdgePerms only seeds dedicated
+			// unit.edges.<graph>.manage permissions for command/operational, not canonical.
+			"unit.read",
+			"unit.edges.manage",
 		},
 	})
 	if err != nil {

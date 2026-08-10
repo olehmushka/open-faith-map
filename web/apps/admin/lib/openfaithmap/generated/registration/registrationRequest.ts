@@ -28,6 +28,11 @@ export interface IRegistrationRequest {
      *
      */
     'createdUnitId'?: string | null;
+    /**
+     * The go-oikumenea unit RID the operator chose as this congregation's parent at approval time (D-JurisdictionUnits, M4.1) — a jurisdiction unit, or unset to fall back to the single shared root. A historical fact, not a live mirror of the current graph: if the congregation is later re-parented (reparentRequest), this field is NOT updated — ReparentingJob.newParentUnitId is the current source of truth for where it actually is.
+     *
+     */
+    'jurisdictionUnitId'?: string | null;
     'createdAt': string;
     'updatedAt': string;
 }

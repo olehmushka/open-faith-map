@@ -283,6 +283,13 @@ services:
       # client in Google Cloud Console (external step, same treatment M1.2 gave oikumenea-console).
       AUTH_GOOGLE_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
       AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET}"
+      # M4.1, D-JurisdictionUnits: the JurisdictionPicker calls go-oikumenea's Tenant/Religion
+      # services directly (no new openfaithmap-api endpoint for browsing/creating jurisdiction
+      # units), so it needs the same root unit id openfaithmap-api's own Config.RootUnitID carries —
+      # scripts/bootstrap-registration-org's output, duplicated here rather than fetched from the
+      # backend (there is no config-echo endpoint, and adding one for a single id felt like more new
+      # API surface than the value justified).
+      REGISTRATION_ROOT_UNIT_ID: "${REGISTRATION_ROOT_UNIT_ID}"
 
   # oikumenea-console (M1.2, D-InstanceAdminConsole) — go-oikumenea's own published admin console,
   # reused unmodified. Super-admin-only: manages the religion_taxa catalog, tenant/org structure

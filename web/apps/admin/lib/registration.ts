@@ -17,15 +17,18 @@ import type {
   IApproveRegistrationRequest,
   IRegistrationRequest,
   IRegistrationRequestPage,
+  IReparentingJob,
   ISubmitRegistrationRequest,
   RegistrationStatus,
+  ReparentStatus,
 } from "./openfaithmap/generated/registration";
 
 export type RegistrationRequest = IRegistrationRequest;
 export type RegistrationRequestPage = IRegistrationRequestPage;
 export type SubmitRegistrationInput = ISubmitRegistrationRequest;
 export type Coordinate = IRegistrationRequest["coordinate"];
-export type { RegistrationStatus };
+export type ReparentingJob = IReparentingJob;
+export type { RegistrationStatus, ReparentStatus };
 
 export class RegistrationApiError extends Error {
   constructor(
@@ -78,11 +81,24 @@ export async function getRegistration(id: string): Promise<RegistrationRequest> 
   return unwrap((await client()).registration.getRequest(id));
 }
 
-export async function approveRegistration(id: string, unitCode?: string): Promise<RegistrationRequest> {
-  const request: IApproveRegistrationRequest = { unitCode };
+export async function approveRegistration(
+  id: string,
+  unitCode?: string,
+  jurisdictionUnitId?: string,
+): Promise<RegistrationRequest> {
+  const request: IApproveRegistrationRequest = { unitCode, jurisdictionUnitId };
   return unwrap((await client()).registration.approveRequest(id, request));
 }
 
 export async function rejectRegistration(id: string, reason: string): Promise<RegistrationRequest> {
   return unwrap((await client()).registration.rejectRequest(id, { reason }));
+}
+
+/** Starts or resumes re-parenting an APPROVED request's congregation unit (M4.1, D-JurisdictionUnits). */
+export async function reparentRegistration(id: string, newParentUnitId: string): Promise<ReparentingJob> {
+  return unwrap((await client()).registration.reparentRequest(id, { newParentUnitId }));
+}
+
+export async function getReparentStatus(id: string): Promise<ReparentingJob | null> {
+  return unwrap((await client()).registration.getReparentStatus(id));
 }

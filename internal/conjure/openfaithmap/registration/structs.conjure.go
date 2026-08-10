@@ -11,6 +11,8 @@ import (
 type ApproveRegistrationRequest struct {
 	// Short, unique go-oikumenea unit code. Defaults to a slug derived from congregationName + a short random suffix if omitted.
 	UnitCode *string `json:"unitCode,omitempty"`
+	// The go-oikumenea unit RID to create the congregation under (D-JurisdictionUnits, M4.1) — operator-chosen, never inferred from taxonId. Omitted = the current flat-root behavior, unchanged: the congregation is created directly under the configured root unit. On a resumed PROVISIONING retry, the ORIGINAL choice persisted at first approval is reused regardless of what this field carries on the retry call, exactly like unitCode's existing once-PROVISIONING-ignore-further-input discipline.
+	JurisdictionUnitId *string `json:"jurisdictionUnitId,omitempty"`
 }
 
 func (o ApproveRegistrationRequest) MarshalYAML() (interface{}, error) {
@@ -74,9 +76,11 @@ type RegistrationRequest struct {
 	DecidedByPersonId *string            `json:"decidedByPersonId,omitempty"`
 	DecidedAt         *datetime.DateTime `json:"decidedAt,omitempty"`
 	// The go-oikumenea unit RID createChildOrg produced. Set as soon as status = PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays set through APPROVED.
-	CreatedUnitId *string           `json:"createdUnitId,omitempty"`
-	CreatedAt     datetime.DateTime `json:"createdAt"`
-	UpdatedAt     datetime.DateTime `json:"updatedAt"`
+	CreatedUnitId *string `json:"createdUnitId,omitempty"`
+	// The go-oikumenea unit RID the operator chose as this congregation's parent at approval time (D-JurisdictionUnits, M4.1) — a jurisdiction unit, or unset to fall back to the single shared root. A historical fact, not a live mirror of the current graph: if the congregation is later re-parented (reparentRequest), this field is NOT updated — ReparentingJob.newParentUnitId is the current source of truth for where it actually is.
+	JurisdictionUnitId *string           `json:"jurisdictionUnitId,omitempty"`
+	CreatedAt          datetime.DateTime `json:"createdAt"`
+	UpdatedAt          datetime.DateTime `json:"updatedAt"`
 }
 
 func (o RegistrationRequest) MarshalYAML() (interface{}, error) {
@@ -150,6 +154,59 @@ func (o RejectRegistrationRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *RejectRegistrationRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type ReparentRegistrationRequest struct {
+	// The jurisdiction (or root) unit to move this congregation's unit under.
+	NewParentUnitId string `json:"newParentUnitId"`
+}
+
+func (o ReparentRegistrationRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ReparentRegistrationRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Tracks one re-parenting attempt for an APPROVED request's congregation unit. At most one non-FAILED job may exist per congregation unit at a time (enforced by the store).
+type ReparentingJob struct {
+	// OpenFaithMap-local RID (openfaithmap.registration.reparentingJob).
+	Id                    string         `json:"id"`
+	RegistrationRequestId string         `json:"registrationRequestId"`
+	CongregationUnitId    string         `json:"congregationUnitId"`
+	OldParentUnitId       string         `json:"oldParentUnitId"`
+	NewParentUnitId       string         `json:"newParentUnitId"`
+	Status                ReparentStatus `json:"status"`
+	PerformedByPersonId   string         `json:"performedByPersonId"`
+	// Set only when status = FAILED.
+	Error     *string           `json:"error,omitempty"`
+	CreatedAt datetime.DateTime `json:"createdAt"`
+	UpdatedAt datetime.DateTime `json:"updatedAt"`
+}
+
+func (o ReparentingJob) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ReparentingJob) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

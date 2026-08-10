@@ -24,6 +24,8 @@ func mapErr(err error, requestID, status string) error {
 		return genregistration.NewTaxonExcluded("")
 	case errors.Is(err, domain.ErrTaxonNotFound):
 		return genregistration.NewTaxonNotFound("")
+	case errors.Is(err, domain.ErrNotApproved):
+		return genregistration.NewRequestNotApproved(requestID, status)
 	default:
 		return err
 	}

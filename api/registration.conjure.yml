@@ -19,6 +19,20 @@ types:
           - PROVISIONING
           - APPROVED
           - REJECTED
+      ReparentStatus:
+        docs: >
+          The state machine for re-parenting an already-APPROVED request's congregation unit onto a
+          different jurisdiction unit (M4.1). addEdge+removeEdge on go-oikumenea's canonical graph is
+          two non-transactional calls, not one atomic move — this tracks which one durably landed so
+          a retry resumes rather than repeats. Add-before-remove by design: the congregation briefly
+          has two canonical parents mid-migration rather than momentarily zero, so no subtree-scoped
+          grant (registration-operator, platform-moderator) loses reach to it during the move.
+        values:
+          - PENDING
+          - NEW_EDGE_ADDED
+          - OLD_EDGE_REMOVED
+          - VERIFIED
+          - FAILED
       Coordinate:
         docs: WGS84 latitude/longitude for the congregation's site.
         fields:
@@ -59,6 +73,33 @@ types:
               The go-oikumenea unit RID createChildOrg produced. Set as soon as status = PROVISIONING
               (the one approval step that cannot be re-derived on a retry), and stays set through
               APPROVED.
+          jurisdictionUnitId:
+            type: optional<string>
+            docs: >
+              The go-oikumenea unit RID the operator chose as this congregation's parent at approval
+              time (D-JurisdictionUnits, M4.1) — a jurisdiction unit, or unset to fall back to the
+              single shared root. A historical fact, not a live mirror of the current graph: if the
+              congregation is later re-parented (reparentRequest), this field is NOT updated —
+              ReparentingJob.newParentUnitId is the current source of truth for where it actually is.
+          createdAt: datetime
+          updatedAt: datetime
+      ReparentingJob:
+        docs: >
+          Tracks one re-parenting attempt for an APPROVED request's congregation unit. At most one
+          non-FAILED job may exist per congregation unit at a time (enforced by the store).
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local RID (openfaithmap.registration.reparentingJob).
+          registrationRequestId: string
+          congregationUnitId: string
+          oldParentUnitId: string
+          newParentUnitId: string
+          status: ReparentStatus
+          performedByPersonId: string
+          error:
+            type: optional<string>
+            docs: Set only when status = FAILED.
           createdAt: datetime
           updatedAt: datetime
       SubmitRegistrationRequest:
@@ -79,9 +120,23 @@ types:
             docs: >
               Short, unique go-oikumenea unit code. Defaults to a slug derived from
               congregationName + a short random suffix if omitted.
+          jurisdictionUnitId:
+            type: optional<string>
+            docs: >
+              The go-oikumenea unit RID to create the congregation under (D-JurisdictionUnits,
+              M4.1) — operator-chosen, never inferred from taxonId. Omitted = the current flat-root
+              behavior, unchanged: the congregation is created directly under the configured root
+              unit. On a resumed PROVISIONING retry, the ORIGINAL choice persisted at first approval
+              is reused regardless of what this field carries on the retry call, exactly like
+              unitCode's existing once-PROVISIONING-ignore-further-input discipline.
       RejectRegistrationRequest:
         fields:
           reason: string
+      ReparentRegistrationRequest:
+        fields:
+          newParentUnitId:
+            type: string
+            docs: The jurisdiction (or root) unit to move this congregation's unit under.
       RegistrationRequestPage:
         fields:
           requests: list<RegistrationRequest>
@@ -112,6 +167,15 @@ types:
         code: INVALID_ARGUMENT
         safe-args:
           taxonId: string
+      RequestNotApproved:
+        docs: >
+          reparentRequest was called on a request that isn't APPROVED — there is no created unit to
+          move.
+        namespace: Registration
+        code: INVALID_ARGUMENT
+        safe-args:
+          requestId: string
+          status: string
 
 services:
   RegistrationService:
@@ -182,3 +246,27 @@ services:
             param-type: path
           request: RejectRegistrationRequest
         returns: RegistrationRequest
+      reparentRequest:
+        http: POST /requests/{requestId}/reparent
+        docs: >
+          Start or resume re-parenting an APPROVED request's congregation unit onto a different
+          jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the
+          same requestId resumes the existing job from whichever ReparentStatus step last durably
+          landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check
+          as approveRequest/listRequests), using the caller's own forwarded token for every
+          go-oikumenea write. Returns Registration:RequestNotApproved if the request was never
+          approved.
+        args:
+          requestId:
+            type: string
+            param-type: path
+          request: ReparentRegistrationRequest
+        returns: ReparentingJob
+      getReparentStatus:
+        http: GET /requests/{requestId}/reparent
+        docs: Read the most recent re-parenting job for this request, if one has ever been started.
+        args:
+          requestId:
+            type: string
+            param-type: path
+        returns: optional<ReparentingJob>

@@ -19,6 +19,7 @@ import (
 	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/location"
 	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/membership"
 	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/religion"
+	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/tenant"
 	"github.com/olehmushka/open-faith-map/internal/coreintegration"
 	"github.com/olehmushka/open-faith-map/internal/registration/adapters"
 	"github.com/olehmushka/open-faith-map/internal/registration/domain"
@@ -172,7 +173,7 @@ func (s *Service) Get(ctx context.Context, token, callerPersonID, id string) (do
 // checks for an existing primary site first (createSite has no duplicate-conflict to catch), and
 // ensurePosition/ensureFilled/ensureGrant treat go-oikumenea's own conflict errors for a repeat call
 // as success.
-func (s *Service) Approve(ctx context.Context, token, decidedByPersonID, id string, unitCodeOverride *string) (domain.Request, error) {
+func (s *Service) Approve(ctx context.Context, token, decidedByPersonID, id string, unitCodeOverride, jurisdictionUnitID *string) (domain.Request, error) {
 	req, err := s.store.Get(ctx, id)
 	if err != nil {
 		return domain.Request{}, err
@@ -186,7 +187,7 @@ func (s *Service) Approve(ctx context.Context, token, decidedByPersonID, id stri
 		return domain.Request{}, err
 	}
 
-	unitID, err := s.ensureUnit(ctx, c, decidedByPersonID, req, unitCodeOverride)
+	unitID, err := s.ensureUnit(ctx, c, decidedByPersonID, req, unitCodeOverride, jurisdictionUnitID)
 	if err != nil {
 		return domain.Request{}, err
 	}
@@ -208,8 +209,12 @@ func (s *Service) Approve(ctx context.Context, token, decidedByPersonID, id stri
 }
 
 // ensureUnit returns req's go-oikumenea unit, reusing the persisted created_unit_id on a resumed
-// PROVISIONING request rather than calling createChildOrg a second time.
-func (s *Service) ensureUnit(ctx context.Context, c *oikumenea.Client, decidedByPersonID string, req domain.Request, unitCodeOverride *string) (string, error) {
+// PROVISIONING request rather than calling createChildOrg a second time. jurisdictionUnitID is the
+// operator's parent choice (M4.1, D-JurisdictionUnits) — nil falls back to the configured root unit,
+// the original flat-root behavior. On a resumed retry this parameter is ignored entirely: the
+// ORIGINAL choice, persisted by MarkProvisioning on the first pass, is what already produced
+// req.CreatedUnitID, so there is nothing left to decide.
+func (s *Service) ensureUnit(ctx context.Context, c *oikumenea.Client, decidedByPersonID string, req domain.Request, unitCodeOverride, jurisdictionUnitID *string) (string, error) {
 	if req.Status == domain.StatusProvisioning && req.CreatedUnitID != nil {
 		return *req.CreatedUnitID, nil
 	}
@@ -218,7 +223,11 @@ func (s *Service) ensureUnit(ctx context.Context, c *oikumenea.Client, decidedBy
 	if unitCodeOverride != nil && *unitCodeOverride != "" {
 		unitCode = *unitCodeOverride
 	}
-	profile, err := c.Religion.CreateChildOrg(ctx, s.cfg.RootUnitID, religion.CreateChildOrgRequest{
+	parentUnitID := s.cfg.RootUnitID
+	if jurisdictionUnitID != nil && *jurisdictionUnitID != "" {
+		parentUnitID = *jurisdictionUnitID
+	}
+	profile, err := c.Religion.CreateChildOrg(ctx, parentUnitID, religion.CreateChildOrgRequest{
 		Code:           unitCode,
 		Name:           req.CongregationName,
 		PrimaryTaxonId: &req.TaxonID,
@@ -226,7 +235,7 @@ func (s *Service) ensureUnit(ctx context.Context, c *oikumenea.Client, decidedBy
 	if err != nil {
 		return "", fmt.Errorf("createChildOrg: %w", err)
 	}
-	if _, err := s.store.MarkProvisioning(ctx, req.ID, decidedByPersonID, profile.UnitId); err != nil {
+	if _, err := s.store.MarkProvisioning(ctx, req.ID, decidedByPersonID, profile.UnitId, jurisdictionUnitID); err != nil {
 		return "", fmt.Errorf("markProvisioning: %w", err)
 	}
 	return profile.UnitId, nil
@@ -345,6 +354,150 @@ func (s *Service) Reject(ctx context.Context, decidedByPersonID, id, reason stri
 		return domain.Request{}, domain.ErrNotPending
 	}
 	return s.store.Reject(ctx, id, decidedByPersonID, reason)
+}
+
+// GetReparentStatus returns the most recent re-parenting job for id, or nil if none has ever been
+// started.
+func (s *Service) GetReparentStatus(ctx context.Context, id string) (*domain.ReparentingJob, error) {
+	if _, err := s.store.Get(ctx, id); err != nil {
+		return nil, err
+	}
+	return s.store.GetLatestReparentJob(ctx, id)
+}
+
+// Reparent starts or resumes moving an APPROVED request's congregation unit onto newParentUnitID
+// (M4.1, D-JurisdictionUnits) using the caller's own forwarded token — same D-Facade discipline as
+// Approve. go-oikumenea has no single atomic "move" call for a religion Unit (verified live: only
+// the generic tenant module's addEdge/removeEdge exist), so this is a resumable state machine,
+// re-entrant on requestId: a repeat call with the request already mid-job resumes from whichever
+// ReparentStatus step last durably landed, driven by runReparentSteps below.
+//
+// Add-before-remove by design (D-JurisdictionUnits): the congregation briefly has two canonical
+// parents mid-migration rather than momentarily zero, so a subtree-scoped grant (registration-
+// operator, platform-moderator) never loses reach to it during the move — live-verified against a
+// real instance, not just reasoned about. Grant preservation itself (a unit-scoped grant on the
+// congregation surviving the move unchanged) is a structural property of go-oikumenea's edge model,
+// also live-verified once as a repo-wide fact rather than re-checked per job: edge mutations never
+// touch authz_role_assignments at all.
+func (s *Service) Reparent(ctx context.Context, token, performedByPersonID, id, newParentUnitID string) (domain.ReparentingJob, error) {
+	req, err := s.store.Get(ctx, id)
+	if err != nil {
+		return domain.ReparentingJob{}, err
+	}
+	if req.Status != domain.StatusApproved || req.CreatedUnitID == nil {
+		return domain.ReparentingJob{}, domain.ErrNotApproved
+	}
+	congregationUnitID := *req.CreatedUnitID
+
+	job, err := s.store.GetLiveReparentJob(ctx, congregationUnitID)
+	if err != nil {
+		return domain.ReparentingJob{}, fmt.Errorf("getLiveReparentJob: %w", err)
+	}
+	if job == nil {
+		oldParentUnitID, err := s.currentParent(ctx, req)
+		if err != nil {
+			return domain.ReparentingJob{}, fmt.Errorf("resolve current parent: %w", err)
+		}
+		created, err := s.store.CreateReparentJob(ctx, req.ID, congregationUnitID, oldParentUnitID, newParentUnitID, performedByPersonID)
+		if err != nil {
+			return domain.ReparentingJob{}, fmt.Errorf("createReparentJob: %w", err)
+		}
+		job = &created
+	} else if job.NewParentUnitID != newParentUnitID {
+		return domain.ReparentingJob{}, fmt.Errorf("unit %s already has a live reparent job targeting %s — resolve it before starting a move to %s", congregationUnitID, job.NewParentUnitID, newParentUnitID)
+	}
+
+	c, err := s.client(token)
+	if err != nil {
+		return domain.ReparentingJob{}, err
+	}
+	return s.runReparentSteps(ctx, c, *job)
+}
+
+// currentParent resolves congregationUnitID's actual current parent: the most recent VERIFIED
+// reparent job's target if one exists (this store IS the record of every successful move this
+// service has ever performed), else the jurisdiction chosen at approval time, else the configured
+// root unit.
+func (s *Service) currentParent(ctx context.Context, req domain.Request) (string, error) {
+	latest, err := s.store.GetLatestReparentJob(ctx, req.ID)
+	if err != nil {
+		return "", err
+	}
+	if latest != nil && latest.Status == domain.ReparentVerified {
+		return latest.NewParentUnitID, nil
+	}
+	if req.JurisdictionUnitID != nil && *req.JurisdictionUnitID != "" {
+		return *req.JurisdictionUnitID, nil
+	}
+	return s.cfg.RootUnitID, nil
+}
+
+// runReparentSteps drives job through whichever steps haven't durably landed yet. Each step
+// persists its own completion before the next runs, so a crash between any two steps resumes
+// exactly here on the next call rather than repeating or skipping work.
+func (s *Service) runReparentSteps(ctx context.Context, c *oikumenea.Client, job domain.ReparentingJob) (domain.ReparentingJob, error) {
+	canonical := "canonical"
+
+	if job.Status == domain.ReparentPending {
+		if _, err := c.Tenant.AddEdge(ctx, job.CongregationUnitID, tenant.AddEdgeRequest{
+			ParentId: job.NewParentUnitID,
+			Graph:    &canonical,
+		}); err != nil && !isEdgeAlreadyExists(err) {
+			return s.store.FailReparentJob(ctx, job.ID, fmt.Sprintf("addEdge(new parent): %v", err))
+		}
+		updated, err := s.store.AdvanceReparentJob(ctx, job.ID, domain.ReparentNewEdgeAdded)
+		if err != nil {
+			return domain.ReparentingJob{}, err
+		}
+		job = updated
+	}
+
+	if job.Status == domain.ReparentNewEdgeAdded {
+		// RemoveEdge on an already-absent edge is a documented no-op in go-oikumenea (idempotent by
+		// design), so a resumed retry re-calling this needs no special-case error handling.
+		if err := c.Tenant.RemoveEdge(ctx, job.CongregationUnitID, job.OldParentUnitID, &canonical); err != nil {
+			return s.store.FailReparentJob(ctx, job.ID, fmt.Sprintf("removeEdge(old parent): %v", err))
+		}
+		updated, err := s.store.AdvanceReparentJob(ctx, job.ID, domain.ReparentOldEdgeRemoved)
+		if err != nil {
+			return domain.ReparentingJob{}, err
+		}
+		job = updated
+	}
+
+	if job.Status == domain.ReparentOldEdgeRemoved {
+		ancestors, err := c.Tenant.UnitAncestors(ctx, job.CongregationUnitID, &canonical)
+		if err != nil {
+			return s.store.FailReparentJob(ctx, job.ID, fmt.Sprintf("unitAncestors (verify): %v", err))
+		}
+		if !ancestorsInclude(ancestors, job.NewParentUnitID) {
+			return s.store.FailReparentJob(ctx, job.ID, fmt.Sprintf("verify: %s not found in %s's ancestors after re-parenting", job.NewParentUnitID, job.CongregationUnitID))
+		}
+		updated, err := s.store.AdvanceReparentJob(ctx, job.ID, domain.ReparentVerified)
+		if err != nil {
+			return domain.ReparentingJob{}, err
+		}
+		job = updated
+	}
+
+	return job, nil
+}
+
+// isEdgeAlreadyExists reports whether err is AddEdge's specific "this exact (graph, parent, child)
+// edge already exists" rejection — live-verified as Tenant:UnitInvalid with that reason text, not a
+// dedicated conflict type — vs. some other UnitInvalid cause that should genuinely fail the job
+// (e.g. a missing unit). A resumed retry hitting this specific case is success, not a failure.
+func isEdgeAlreadyExists(err error) bool {
+	return tenant.IsUnitInvalid(err) && strings.Contains(err.Error(), "already exists")
+}
+
+func ancestorsInclude(l tenant.UnitRefList, unitID string) bool {
+	for _, u := range l.Units {
+		if u.Id == unitID {
+			return true
+		}
+	}
+	return false
 }
 
 // churchSiteTypeID finds go-oikumenea's seeded "church" religion_site_types row (D-Scope: Christian

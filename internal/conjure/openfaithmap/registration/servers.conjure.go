@@ -28,6 +28,10 @@ type RegistrationService interface {
 	ApproveRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg ApproveRegistrationRequest) (RegistrationRequest, error)
 	// Reject a PENDING request with a reason. No go-oikumenea writes.
 	RejectRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg RejectRegistrationRequest) (RegistrationRequest, error)
+	// Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own forwarded token for every go-oikumenea write. Returns Registration:RequestNotApproved if the request was never approved.
+	ReparentRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg ReparentRegistrationRequest) (ReparentingJob, error)
+	// Read the most recent re-parenting job for this request, if one has ever been started.
+	GetReparentStatus(ctx context.Context, authHeader bearertoken.Token, requestIdArg string) (*ReparentingJob, error)
 }
 
 // RegisterRoutesRegistrationService registers handlers for the RegistrationService endpoints with a witchcraft wrouter.
@@ -51,6 +55,12 @@ func RegisterRoutesRegistrationService(router wrouter.Router, impl RegistrationS
 	}
 	if err := resource.Post("RejectRequest", "/registration/v1/requests/{requestId}/reject", httpserver.NewJSONHandler(handler.HandleRejectRequest, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add rejectRequest route")
+	}
+	if err := resource.Post("ReparentRequest", "/registration/v1/requests/{requestId}/reparent", httpserver.NewJSONHandler(handler.HandleReparentRequest, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add reparentRequest route")
+	}
+	if err := resource.Get("GetReparentStatus", "/registration/v1/requests/{requestId}/reparent", httpserver.NewJSONHandler(handler.HandleGetReparentStatus, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getReparentStatus route")
 	}
 	return nil
 }
@@ -173,6 +183,56 @@ func (r *registrationServiceHandler) HandleRejectRequest(rw http.ResponseWriter,
 	respArg, err := r.impl.RejectRequest(req.Context(), bearertoken.Token(authHeader), requestIdArg, requestArg)
 	if err != nil {
 		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (r *registrationServiceHandler) HandleReparentRequest(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	requestIdArg, ok := pathParams["requestId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"requestId\" not present")
+	}
+	var requestArg ReparentRegistrationRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := r.impl.ReparentRequest(req.Context(), bearertoken.Token(authHeader), requestIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (r *registrationServiceHandler) HandleGetReparentStatus(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	requestIdArg, ok := pathParams["requestId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"requestId\" not present")
+	}
+	respArg, err := r.impl.GetReparentStatus(req.Context(), bearertoken.Token(authHeader), requestIdArg)
+	if err != nil {
+		return err
+	}
+	if respArg == nil {
+		rw.WriteHeader(http.StatusNoContent)
+		return nil
 	}
 	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
 	return codecs.JSON.Encode(rw, respArg)

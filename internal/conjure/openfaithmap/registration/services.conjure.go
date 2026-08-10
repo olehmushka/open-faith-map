@@ -25,6 +25,10 @@ type RegistrationServiceClient interface {
 	ApproveRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg ApproveRegistrationRequest) (RegistrationRequest, error)
 	// Reject a PENDING request with a reason. No go-oikumenea writes.
 	RejectRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg RejectRegistrationRequest) (RegistrationRequest, error)
+	// Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own forwarded token for every go-oikumenea write. Returns Registration:RequestNotApproved if the request was never approved.
+	ReparentRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg ReparentRegistrationRequest) (ReparentingJob, error)
+	// Read the most recent re-parenting job for this request, if one has ever been started.
+	GetReparentStatus(ctx context.Context, authHeader bearertoken.Token, requestIdArg string) (*ReparentingJob, error)
 }
 
 type registrationServiceClient struct {
@@ -134,6 +138,38 @@ func (c *registrationServiceClient) RejectRequest(ctx context.Context, authHeade
 	return *returnVal, nil
 }
 
+func (c *registrationServiceClient) ReparentRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg ReparentRegistrationRequest) (ReparentingJob, error) {
+	var returnVal *ReparentingJob
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ReparentRequest"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/registration/v1/requests/%s/reparent", url.PathEscape(fmt.Sprint(requestIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(ReparentingJob), werror.WrapWithContextParams(ctx, err, "reparentRequest failed")
+	}
+	if returnVal == nil {
+		return *new(ReparentingJob), werror.ErrorWithContextParams(ctx, "reparentRequest response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *registrationServiceClient) GetReparentStatus(ctx context.Context, authHeader bearertoken.Token, requestIdArg string) (*ReparentingJob, error) {
+	var returnVal *ReparentingJob
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetReparentStatus"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/registration/v1/requests/%s/reparent", url.PathEscape(fmt.Sprint(requestIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "getReparentStatus failed")
+	}
+	return returnVal, nil
+}
+
 // Congregation-registration requests: submit (any authenticated person), list/approve/reject (a registration operator — verified live against go-oikumenea's PDP, not a locally-cached role). See docs/modules/registration.md.
 type RegistrationServiceClientWithAuth interface {
 	// Submit a new registration request as the caller. Runs the D-Exclusions taxon check (walking the taxon's ancestors via go-oikumenea's religion.read) before persisting — returns Registration:TaxonExcluded if the tradition (or an ancestor) is on the named exclusion list, Registration:TaxonNotFound if taxonId doesn't resolve.
@@ -146,6 +182,10 @@ type RegistrationServiceClientWithAuth interface {
 	ApproveRequest(ctx context.Context, requestIdArg string, requestArg ApproveRegistrationRequest) (RegistrationRequest, error)
 	// Reject a PENDING request with a reason. No go-oikumenea writes.
 	RejectRequest(ctx context.Context, requestIdArg string, requestArg RejectRegistrationRequest) (RegistrationRequest, error)
+	// Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own forwarded token for every go-oikumenea write. Returns Registration:RequestNotApproved if the request was never approved.
+	ReparentRequest(ctx context.Context, requestIdArg string, requestArg ReparentRegistrationRequest) (ReparentingJob, error)
+	// Read the most recent re-parenting job for this request, if one has ever been started.
+	GetReparentStatus(ctx context.Context, requestIdArg string) (*ReparentingJob, error)
 }
 
 func NewRegistrationServiceClientWithAuth(client RegistrationServiceClient, authHeader bearertoken.Token) RegistrationServiceClientWithAuth {
@@ -175,6 +215,14 @@ func (c *registrationServiceClientWithAuth) ApproveRequest(ctx context.Context, 
 
 func (c *registrationServiceClientWithAuth) RejectRequest(ctx context.Context, requestIdArg string, requestArg RejectRegistrationRequest) (RegistrationRequest, error) {
 	return c.client.RejectRequest(ctx, c.authHeader, requestIdArg, requestArg)
+}
+
+func (c *registrationServiceClientWithAuth) ReparentRequest(ctx context.Context, requestIdArg string, requestArg ReparentRegistrationRequest) (ReparentingJob, error) {
+	return c.client.ReparentRequest(ctx, c.authHeader, requestIdArg, requestArg)
+}
+
+func (c *registrationServiceClientWithAuth) GetReparentStatus(ctx context.Context, requestIdArg string) (*ReparentingJob, error) {
+	return c.client.GetReparentStatus(ctx, c.authHeader, requestIdArg)
 }
 
 func NewRegistrationServiceClientWithTokenProvider(client RegistrationServiceClient, tokenProvider httpclient.TokenProvider) RegistrationServiceClientWithAuth {
@@ -224,4 +272,20 @@ func (c *registrationServiceClientWithTokenProvider) RejectRequest(ctx context.C
 		return *new(RegistrationRequest), err
 	}
 	return c.client.RejectRequest(ctx, bearertoken.Token(token), requestIdArg, requestArg)
+}
+
+func (c *registrationServiceClientWithTokenProvider) ReparentRequest(ctx context.Context, requestIdArg string, requestArg ReparentRegistrationRequest) (ReparentingJob, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ReparentingJob), err
+	}
+	return c.client.ReparentRequest(ctx, bearertoken.Token(token), requestIdArg, requestArg)
+}
+
+func (c *registrationServiceClientWithTokenProvider) GetReparentStatus(ctx context.Context, requestIdArg string) (*ReparentingJob, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.GetReparentStatus(ctx, bearertoken.Token(token), requestIdArg)
 }

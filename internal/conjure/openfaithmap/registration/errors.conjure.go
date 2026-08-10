@@ -15,6 +15,157 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+type requestNotApproved struct {
+	RequestId string `json:"requestId"`
+	Status    string `json:"status"`
+}
+
+func (o requestNotApproved) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *requestNotApproved) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewRequestNotApproved returns new instance of RequestNotApproved error.
+func NewRequestNotApproved(requestIdArg string, statusArg string) *RequestNotApproved {
+	return &RequestNotApproved{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), requestNotApproved: requestNotApproved{RequestId: requestIdArg, Status: statusArg}}
+}
+
+// WrapWithRequestNotApproved returns new instance of RequestNotApproved error wrapping an existing error.
+func WrapWithRequestNotApproved(err error, requestIdArg string, statusArg string) *RequestNotApproved {
+	return &RequestNotApproved{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, requestNotApproved: requestNotApproved{RequestId: requestIdArg, Status: statusArg}}
+}
+
+// RequestNotApproved is an error type.
+// reparentRequest was called on a request that isn't APPROVED — there is no created unit to move.
+type RequestNotApproved struct {
+	errorInstanceID uuid.UUID
+	requestNotApproved
+	cause error
+	stack werror.StackTrace
+}
+
+// IsRequestNotApproved returns true if err is an instance of RequestNotApproved.
+func IsRequestNotApproved(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*RequestNotApproved)
+	return ok
+}
+
+func (e *RequestNotApproved) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Registration:RequestNotApproved (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *RequestNotApproved) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *RequestNotApproved) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *RequestNotApproved) Message() string {
+	return "INVALID_ARGUMENT Registration:RequestNotApproved"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *RequestNotApproved) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *RequestNotApproved) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *RequestNotApproved) Name() string {
+	return "Registration:RequestNotApproved"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *RequestNotApproved) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *RequestNotApproved) Parameters() map[string]interface{} {
+	return map[string]interface{}{"requestId": e.RequestId, "status": e.Status}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *RequestNotApproved) safeParams() map[string]interface{} {
+	return map[string]interface{}{"requestId": e.RequestId, "status": e.Status, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *RequestNotApproved) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *RequestNotApproved) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *RequestNotApproved) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e RequestNotApproved) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.requestNotApproved)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Registration:RequestNotApproved", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *RequestNotApproved) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters requestNotApproved
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.requestNotApproved = parameters
+	return nil
+}
+
 type requestNotFound struct {
 	RequestId string `json:"requestId"`
 }
@@ -615,6 +766,7 @@ func (e *TaxonNotFound) UnmarshalJSON(data []byte) error {
 }
 
 func init() {
+	conjureerrors.RegisterErrorType("Registration:RequestNotApproved", reflect.TypeOf(RequestNotApproved{}))
 	conjureerrors.RegisterErrorType("Registration:RequestNotFound", reflect.TypeOf(RequestNotFound{}))
 	conjureerrors.RegisterErrorType("Registration:RequestNotPending", reflect.TypeOf(RequestNotPending{}))
 	conjureerrors.RegisterErrorType("Registration:TaxonExcluded", reflect.TypeOf(TaxonExcluded{}))

@@ -30,7 +30,7 @@ audit found were resolved into decisions; one remains real work.
 |---|---|
 | **Who is a moderator?** `moderation.read`/`moderation.act` gate every endpoint here and four in [vouching.md](vouching.md), but were specified only as "held by a small, fixed set of accounts" — no table, no role, no mechanism. | **Resolved.** [D-PlatformModerator](../architecture/decisions.md): a go-oikumenea `platform-moderator` Role, granted `subtree` on the shared root unit, resolved by a target-scoped capability check. No OpenFaithMap roster table. `scripts/bootstrap-registration-org` gains the role at M5. |
 | **The audit mirror doesn't exist.** | **Resolved.** D-Moderation's Correction; see Purpose above and the withdrawn invariant below. |
-| **`queue_scope = 'jurisdiction'` has no ancestor chain to walk.** Under [D-FlatRoot](../architecture/decisions.md) every congregation is a direct child of one shared root, so `jurisdiction` and `platform` are the same set. | **Open — blocks M5.** [milestones.md](../milestones.md)'s **M4.1** introduces real jurisdiction units and re-parents existing congregations. Keep the enum value in this design; it becomes meaningful when M4.1 lands. |
+| **`queue_scope = 'jurisdiction'` has no ancestor chain to walk.** Under [D-FlatRoot](../architecture/decisions.md) every congregation is a direct child of one shared root, so `jurisdiction` and `platform` are the same set. | **Resolved.** [D-JurisdictionUnits](../architecture/decisions.md) (M4.1): real, operator-assigned jurisdiction units exist and existing congregations can be re-parented onto one. `jurisdiction` scope now has a real ancestor chain to walk for any congregation a jurisdiction was actually assigned to — still legitimately equal to `platform` for a congregation with none, by design (jurisdiction is optional, never inferred). |
 
 ## Entities & aggregates
 
@@ -164,7 +164,10 @@ submitter's token.
   what ships the public endpoints** — `POST /reports` and `POST /exclusion-check` are both
   unauthenticated. Shipping an unlimited public write endpoint and hardening it a milestone later
   is a real sequencing risk; decide at M5 scoping whether basic limiting moves forward.
-- **`queue_scope = 'jurisdiction'` is inert until M4.1** — see Blocked dependencies above.
+- **`queue_scope = 'jurisdiction'` has a real ancestor chain since M4.1** — see Blocked dependencies
+  above. Not yet wired: an actual query implementation walking `Tenant.unitAncestors` to resolve
+  which jurisdiction a report's congregation belongs to — this module's own `GET /reports?scope=`
+  endpoint still needs that logic written, tracked separately from the dependency this row records.
 - **Automated exclusion enforcement beyond registration-time** (e.g., detecting a congregation that
   quietly re-affiliates with an excluded body after registration) has no design yet — today the
   check only runs once, at intake.

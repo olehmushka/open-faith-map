@@ -46,8 +46,41 @@ type Request struct {
 	DecidedByPersonID   *string
 	DecidedAt           *time.Time
 	CreatedUnitID       *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	// JurisdictionUnitID is the operator's choice at approval time (M4.1, D-JurisdictionUnits) —
+	// unset falls back to the configured root unit. A historical fact, not a live mirror: if the
+	// congregation is later re-parented, this is NOT updated — the most recent VERIFIED
+	// ReparentingJob's NewParentUnitID is the current source of truth for where it actually is.
+	JurisdictionUnitID *string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+// ReparentStatus is the state machine for moving an APPROVED request's congregation unit onto a
+// different parent unit — see ReparentingJob.
+type ReparentStatus string
+
+const (
+	ReparentPending        ReparentStatus = "PENDING"
+	ReparentNewEdgeAdded   ReparentStatus = "NEW_EDGE_ADDED"
+	ReparentOldEdgeRemoved ReparentStatus = "OLD_EDGE_REMOVED"
+	ReparentVerified       ReparentStatus = "VERIFIED"
+	ReparentFailed         ReparentStatus = "FAILED"
+)
+
+// ReparentingJob tracks one re-parenting attempt for an APPROVED request's congregation unit
+// (M4.1). addEdge+removeEdge on go-oikumenea's canonical graph is two non-transactional calls, not
+// one atomic move — this persists which one durably landed so a retry resumes rather than repeats.
+type ReparentingJob struct {
+	ID                    string
+	RegistrationRequestID string
+	CongregationUnitID    string
+	OldParentUnitID       string
+	NewParentUnitID       string
+	Status                ReparentStatus
+	PerformedByPersonID   string
+	Error                 *string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 // SubmitInput is the caller-supplied shape for a new request (everything Request derives itself —
@@ -70,6 +103,7 @@ var (
 	ErrNotPending    = errors.New("registration request is not pending")
 	ErrExcluded      = errors.New("taxon is on the named exclusion list")
 	ErrTaxonNotFound = errors.New("taxon not found")
+	ErrNotApproved   = errors.New("registration request is not approved")
 )
 
 // ExcludedTaxonCodes is D-Exclusions' named, permanent denomination exclusion list

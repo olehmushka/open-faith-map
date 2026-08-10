@@ -23,7 +23,8 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-SharedDatabase](#d-shareddatabase--one-postgres-instance-two-schemas) | One Postgres instance, two schemas (`oikumenea` / `openfaithmap`) — not two database instances |
 | [D-GoogleDirect](#d-googledirect--google-is-the-sole-identity-provider-no-keycloak) | Google is the sole IdP for every human and machine subject — no Keycloak, no shared realm |
 | [D-OAuthClients](#d-oauthclients--one-google-oauth-client-today-one-per-surface-as-the-target) | One shared Google OAuth client across `openfaithmap-admin` and `oikumenea-console` today; per-surface clients are the target state |
-| [D-FlatRoot](#d-flatroot--one-flat-root-organization-now-real-jurisdiction-units-before-m5) | Every congregation is a direct child of one flat root org today; real jurisdiction units land before M5 |
+| [D-FlatRoot](#d-flatroot--one-flat-root-organization-now-real-jurisdiction-units-before-m5) | Every congregation was a direct child of one flat root org through M4 — superseded by D-JurisdictionUnits at M4.1 |
+| [D-JurisdictionUnits](#d-jurisdictionunits--denomination-aware-non-uniform-jurisdiction-layer-operator-assigned) | Jurisdiction is an ordinary, operator-assigned Unit — denomination-aware but not one canonical hierarchy per tradition, variable and optional depth |
 | [D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit) | Platform-moderator authority is a go-oikumenea Role on the shared root unit, checked target-scoped — not an OpenFaithMap roster table |
 
 ---
@@ -107,12 +108,14 @@ for a single already-registered body (`religion_org_policies.excludes_child_crea
    `religion_org_policies` with policy kind `excludes_child_creation`, which makes go-oikumenea
    itself refuse `POST /units/{id}/child-orgs` beneath it — defense in depth, not the primary
    control.
-   **Designed, not real today.** Under
-   [D-FlatRoot](#d-flatroot--one-flat-root-organization-now-real-jurisdiction-units-before-m5)
-   there are no per-body root units to attach a policy to — every congregation is a direct child of
-   one shared root. This layer becomes implementable at M4.1, when real jurisdiction units land.
-   Until then the taxon-level gate is the *only* enforcement, so the documented defense-in-depth is
-   one layer, not two.
+   **Real as of M4.1.** `scripts/bootstrap-exclusion-backstop` seeds a placeholder `Unit` beneath
+   the shared root for each of the three named bodies and attaches `excludes_child_creation` —
+   live-verified that a subsequent `createChildOrg` beneath one is rejected with
+   `Religion:ChildCreationExcluded`. See
+   [D-JurisdictionUnits](#d-jurisdictionunits--denomination-aware-non-uniform-jurisdiction-layer-operator-assigned).
+   Before M4.1 this was designed-not-real (no per-body root units existed under
+   [D-FlatRoot](#d-flatroot--one-flat-root-organization-now-real-jurisdiction-units-before-m5)), so
+   the taxon-level gate was the *only* enforcement — now both layers are real.
 
 **Why.** The taxon-level check is the *product* decision and belongs where OpenFaithMap's scope is
 decided, not inside a general-purpose directory core that intentionally hard-codes no faith
@@ -697,6 +700,90 @@ report to the small platform-wide roster.
   cannot pass its `designed` gate while that dependency is open.
 - D-Exclusions' org-level backstop stays documented as **designed-not-real** until per-body root
   units exist.
+
+> **Superseded by M4.1.** [D-JurisdictionUnits](#d-jurisdictionunits--denomination-aware-non-uniform-jurisdiction-layer-operator-assigned) records what actually got built: real jurisdiction
+> units exist, the org-level backstop is real, and every consequence listed above is closed. This
+> block stays as the historical record of the M2–M4 simplification and why it had to change.
+
+---
+
+### D-JurisdictionUnits — Denomination-aware, non-uniform jurisdiction layer, operator-assigned
+
+**Decision.** A jurisdiction is an ordinary go-oikumenea `Unit`, created via the same
+`createChildOrg` every congregation already uses, tagged with the seeded `jurisdiction`/`diocese`/
+`deanery`/… `orgKindId` family (purely descriptive — "never branched on in code," matching this
+decision's own requirement below). A registration operator assigns a congregation's jurisdiction
+(or re-parents an existing one) at **approval/re-parent time** — never inferred from `taxonId`, and
+the public `/register` wizard is unchanged. Depth and shape are entirely operator-judgment: zero,
+one, or several jurisdiction units may sit between root and a congregation, and multiple sibling
+jurisdiction units may coexist under the same country with no assumption of exactly one canonical
+jurisdiction per denomination.
+
+**Why not a per-denomination canonical tree.** Explicitly rejected. Catholic polity has a clean,
+near-universal diocese/national-conference hierarchy that *could* be modeled generically — but
+Orthodox jurisdiction is often multiple and parallel even within one country and one broad
+tradition (more than one patriarchate/synod claiming overlapping territory), and many Protestant
+congregations are independent with no jurisdiction at all. A single "true" hierarchy encoded in
+schema would be doctrinally false for exactly the traditions where it matters most. This is a
+product decision, not an oversight — see this doc's own instruction (milestones.md's M4.1) that the
+jurisdiction model "needs its own D-block... not just a schema."
+
+**Exit criterion revised.** milestones.md's M4.1 originally read "a congregation's ancestor walk
+returns at least one unit between it and the root" for *every* congregation — written before this
+decision settled jurisdiction as genuinely optional. Revised to: **at least one unit when a
+jurisdiction applies**. A congregation with no real denomination-specific jurisdiction remains a
+direct child of root, exactly as under the old flat-root design, and moderation's `jurisdiction` and
+`platform` queue scopes coincide for that specific congregation — by design, not as a gap.
+
+**Mechanism — nothing new upstream, live-verified against a real instance:**
+- **Creation:** `Religion.createChildOrg(parentUnitId, {code, name, orgKindId})` — already accepts
+  any existing unit as parent; no upstream change needed.
+- **Re-parenting an existing congregation:** go-oikumenea has **no dedicated reparent endpoint** for
+  religion `Unit`s (only `reparentTaxon`, for the unrelated taxonomy tree). Composed instead from the
+  generic `tenant` module's `Tenant.addEdge`/`removeEdge` on the `canonical` graph — two
+  non-transactional calls, the same "sequential, not atomic" shape `createChildOrg`'s own multi-step
+  approval flow already has (M2.3). **Add-before-remove, not remove-then-add**: `tenant_unit_edges`
+  is `UNIQUE(graph_id, parent_id, child_id)`, not `UNIQUE(graph_id, child_id)` — a unit can hold two
+  simultaneous parents in the same graph, live-confirmed. Since `subtree`-scoped reach depends on an
+  incrementally-maintained ancestor closure, remove-then-add would open a real window (not just a
+  crash-resume edge case) where every root-scoped grant (registration-operator, platform-moderator)
+  loses reach to the congregation mid-move. Add-then-remove never has that window.
+- **Idempotent resume**, mirroring M2.3's `PROVISIONING`/`created_unit_id` precedent: a
+  `jurisdiction_reparenting_jobs` row tracks `PENDING → NEW_EDGE_ADDED → OLD_EDGE_REMOVED →
+  VERIFIED`, persisting each durable fact before the next step runs. `AddEdge`'s duplicate-edge
+  conflict surfaces as `Tenant:UnitInvalid` with reason "edge already exists" (not a dedicated
+  conflict type — checked by substring, live-verified) and is treated as success on resume;
+  `RemoveEdge` on an already-absent edge is a documented go-oikumenea no-op, needing no special
+  handling at all.
+- **`graph` must always be passed explicitly as `"canonical"`.** Live-confirmed: the tenant module's
+  own default when `graph` is omitted is `"command"`, an unrelated graph — an omitted `graph` would
+  silently operate on the wrong graph, not error.
+- **Grant preservation is structural, live-verified, not per-job re-checked:** edge mutations never
+  touch `authz_role_assignments`. A `unit`-scoped grant on the moved congregation and a
+  `subtree`-scoped grant reaching it from root were both confirmed byte-identical/still-reaching
+  before and after a real add-then-remove against a live instance.
+- **The picker browses/creates jurisdiction units by calling go-oikumenea directly** from
+  `openfaithmap-admin` (`Tenant.listUnits`/`unitAncestors`, `Religion.createChildOrg`) — no new
+  `openfaithmap-api` endpoint for browsing. Only the two things coupled to OpenFaithMap's own
+  resumable state (the operator's jurisdiction *choice*, and the re-parenting job) go through
+  `RegistrationService`.
+
+**Consequences.**
+- `registration_requests.jurisdiction_unit_id` (nullable) records the operator's approval-time
+  choice — a historical fact, not a live mirror; a later re-parent does not update it (the most
+  recent `VERIFIED` `ReparentingJob.newParentUnitId` is the current source of truth for where a
+  congregation actually is).
+- `registration-operator`'s role gains `unit.read` and the **broad** `unit.edges.manage` — D-EdgePerms
+  (go-oikumenea) only seeds dedicated `unit.edges.<graph>.manage` for `command`/`operational`, not
+  `canonical`, so the broad fallback is the only option here, not a scoping shortcut.
+- D-Exclusions' org-level backstop is now real: `scripts/bootstrap-exclusion-backstop` seeds a
+  placeholder unit per excluded body and attaches `excludes_child_creation` — live-verified that a
+  subsequent `createChildOrg` under one is rejected with `Religion:ChildCreationExcluded`.
+- Moderation's `jurisdiction` queue scope is unblocked — `moderation.md`'s blocked-dependency row
+  resolved.
+- No local cache of "known jurisdiction units," unlike `discovery_site_cache`: this is a low-traffic,
+  operator-only admin control, not a public-latency-sensitive path, so a second driftable mirror of
+  go-oikumenea's own graph would cost more than it buys (D-Facade).
 
 ---
 

@@ -51,18 +51,30 @@ operator (the seeded person, to start).
 - **Registration request** — a prospective admin's submission: tradition (a go-oikumenea
   `religion_taxa` RID), congregation name, address/coordinates, and its lifecycle status
   (`PENDING` → `APPROVED` | `REJECTED`). OpenFaithMap-local; go-oikumenea has no equivalent.
+- **Reparenting job** (M4.1) — one attempt at moving an already-`APPROVED` request's congregation
+  unit onto a different jurisdiction unit: `PENDING → NEW_EDGE_ADDED → OLD_EDGE_REMOVED → VERIFIED`,
+  or `FAILED` with an error. OpenFaithMap-local; go-oikumenea has no equivalent (its own graph state
+  is the thing being moved, not tracked as a job).
 
 ## Data model
 
 Conventions per [conventions.md](../architecture/conventions.md). No cross-database FKs — every
 go-oikumenea RID here (`taxon_id`, `country_id`, `submitted_by_person_id`,
-`decided_by_person_id`, `created_unit_id`) is an opaque TEXT foreign value.
+`decided_by_person_id`, `created_unit_id`, `jurisdiction_unit_id`, and the reparenting job's unit
+ids) is an opaque TEXT foreign value.
 
-**`registration_requests`** (`migrations/0001_registration.sql`) — id (uuid), submitter/taxon/
-country RIDs, the submitted address fields + `latitude`/`longitude`, `status`, and the decision
-fields (`decided_by_person_id`, `decided_at`, `rejection_reason`, `created_unit_id`) — a CHECK
-constraint enforces each status's required fields are present (e.g. `APPROVED` always carries
-`created_unit_id`).
+**`registration_requests`** (`migrations/0001_registration.sql`, extended by
+`0006_registration_jurisdiction.sql`) — id (uuid), submitter/taxon/country RIDs, the submitted
+address fields + `latitude`/`longitude`, `status`, the decision fields (`decided_by_person_id`,
+`decided_at`, `rejection_reason`, `created_unit_id`), and `jurisdiction_unit_id` (nullable — the
+operator's approval-time choice; not updated by a later re-parent) — a CHECK constraint enforces
+each status's required fields are present (e.g. `APPROVED` always carries `created_unit_id`).
+
+**`jurisdiction_reparenting_jobs`** (`migrations/0006_registration_jurisdiction.sql`) — id (uuid),
+`registration_request_id` FK (`ON DELETE SET NULL`), `congregation_unit_id`/`old_parent_unit_id`/
+`new_parent_unit_id`, `status`, `performed_by_person_id`, `error` (set only when `FAILED`). A partial
+unique index on `congregation_unit_id WHERE status <> 'FAILED'` allows at most one live job per unit
+at a time.
 
 ## Conjure API surface
 
@@ -73,8 +85,10 @@ constraint enforces each status's required fields are present (e.g. `APPROVED` a
 | `POST /requests` | Submit a request as the caller (their own resolved go-oikumenea person RID — never client-supplied, always asked of go-oikumenea's own `whoami`). Runs the D-Exclusions check first. | Authenticated |
 | `GET /requests` | List — every request for an operator (a target-scoped `Authorize` check against the root unit, D-PlatformModerator), else just the caller's own | Authenticated |
 | `GET /requests/{id}` | Read one request | Submitter or operator (same target-scoped check) |
-| `POST /requests/{id}/approve` | Approve a `PENDING` request: `createChildOrg` under the shared root unit, a location + site, a filled Position, and a `unit`-scoped grant of `congregation-admin` to the submitter — all with the **caller's own forwarded token** | go-oikumenea's PDP decides for real (`religionorg.manage`/`site.manage`/`assignment.grant` on the root unit) |
+| `POST /requests/{id}/approve` | Approve a `PENDING` request: `createChildOrg` under `jurisdictionUnitId` (or the shared root unit if omitted — M4.1, D-JurisdictionUnits), a location + site, a filled Position, and a `unit`-scoped grant of `congregation-admin` to the submitter — all with the **caller's own forwarded token** | go-oikumenea's PDP decides for real (`religionorg.manage`/`site.manage`/`assignment.grant` on the target unit) |
 | `POST /requests/{id}/reject` | Reject with a reason. No go-oikumenea writes. | Authenticated |
+| `POST /requests/{id}/reparent` | Start or resume moving an `APPROVED` request's congregation unit onto `newParentUnitId` — a resumable `addEdge`-then-`removeEdge` on the `canonical` graph, add-before-remove (D-JurisdictionUnits) | Same target-scoped operator check as `approveRequest`/`listRequests` |
+| `GET /requests/{id}/reparent` | Read the most recent reparenting job for the request, if any | Same as `getRequest` |
 
 ## Known defects (audit 2026-08-09)
 
@@ -178,13 +192,15 @@ is why `scripts/bootstrap-registration-org` grants it to `registration-operator`
 - **No sqlc for this module's queries** — `internal/registration/adapters/store.go` is hand-written
   pgx, deviating from D-Stack's "pgx + sqlc" convention. A deliberate simplification for this
   module's small, single-table surface; revisit if the query count grows.
-- **Single shared root organization.** Every congregation is a child of one flat OpenFaithMap org
-  (not one root per denomination/jurisdiction). **Resolved** into
-  [D-FlatRoot](../architecture/decisions.md), which accepts it for now and requires real
-  jurisdiction units before M5 ([milestones.md](../milestones.md)'s M4.1) — moderation's
-  `jurisdiction` queue scope and D-Exclusions' org-level backstop both need an ancestor chain that
-  does not exist under a flat root. M4.1 also changes this module: a submission gains a jurisdiction
-  selection, and `approveRequest` targets that unit instead of the single root.
+- **Single shared root organization — resolved at M4.1.** Every congregation was a child of one flat
+  OpenFaithMap org (not one root per denomination/jurisdiction); see
+  [D-FlatRoot](../architecture/decisions.md) for the M2 simplification and
+  [D-JurisdictionUnits](../architecture/decisions.md) for what replaced it. `approveRequest` now
+  accepts an optional `jurisdictionUnitId`, operator-chosen **at approval time** (never a submission
+  field — the public `/register` wizard is unchanged) — omitted falls back to the original flat-root
+  behavior unchanged. A new `reparentRequest`/`getReparentStatus` pair moves an already-`APPROVED`
+  congregation onto a different jurisdiction, as a resumable job (`jurisdiction_reparenting_jobs`),
+  since go-oikumenea has no single atomic "move" call for a religion `Unit`.
 - **No submitter-facing status list beyond `listRequests`'s own-submissions fallback** — a
   submitter sees their requests via the same list endpoint an operator uses; no dedicated
   "my submissions" UX polish yet.
