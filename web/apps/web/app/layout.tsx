@@ -3,8 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "OpenFaithMap",
-  description:
-    "A free, open-source, Christian church-discovery-and-presence platform — placeholder scaffold.",
+  description: "A free, open-source, Christian church-discovery-and-presence platform.",
 };
 
 export default function RootLayout({

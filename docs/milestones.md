@@ -81,7 +81,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M2.5 · Discovery reachability spike | ➖ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified (2026-08-10).** A measurement, not a decision — hence `Decided ➖`. Both the machine-subject and anonymous-subject denials were live-verified true; [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33) fixed the machine-subject half (`0.0.2`, re-verified live), leaving anonymous access as the one still-open gap, by design (#33's own scope). Its own exit criterion (measure + file the upstream issue) is fully met, and the inherited CI-on-`main` blocker is resolved — [run 31335009849](https://github.com/olehmushka/open-faith-map/actions/runs/31335009849), this milestone's own merge, is green. **Still blocks M4's `designed` gate** — that's a separate, un-inherited block: the redesign this enables (cache-only public reads) is buildable now but still needs to be written, not just enabled. |
 | M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ✅ | ➖ | ➖ | ✅ | ✅ | **Verified (2026-08-10).** D-Stack's Conjure-first rule and both consumer module docs required a generated typed client; `web/apps/admin/lib/registration.ts` was hand-written and had already drifted (missing the `PROVISIONING` status M2.3 added). `U4` resolved: generated in place into `web/apps/admin/lib/openfaithmap/generated`, not a separate package — see D-Stack. Proven live: removing a field from `api/registration.conjure.yml` and regenerating breaks `web/apps/admin`'s build with a real compile error, the milestone's own acceptance criterion. Merged as PR #12; [run 31341045908](https://github.com/olehmushka/open-faith-map/actions/runs/31341045908) confirms CI green on `main` at that merge commit. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-10).** `modules/content.md` — sites/documents(pages)/blocks/block-type catalog, `internal/content`, `migrations/0004_content.sql`, a site-editor UI in `web/apps/admin`. U5 (slug collisions) and U6 (RID vs uuid) both resolved. Proven live end-to-end: create→write→schema-validate→publish, public-read filtering (draft hidden, published visible, no auth), against a real stack. Found and fixed two real bugs no static check caught: a `httprouter` startup panic from two routes sharing a wildcard slot under different parameter names, and `congregation-admin`'s role missing `assignment.read` (same defect class M2.3 already fixed once, for a different role). CI-green acceptance criterion now met — see prose. |
-| M4 · Public discovery site | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. Both the cache-refresh path and possibly the public read path rest on go-oikumenea behavior M2.5 has to measure first. |
+| M4 · Public discovery site | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-10).** `modules/discovery.md` — cache schema + facade over go-oikumenea's `religion` discovery search, redesigned per M2.5's finding: lazy cache-only public reads, no scheduled refresh job, `DS-OFM-13`'s FK resolved. Also ships `content`'s `POST`/`EVENT` kinds (deferred from M3) and the public map/congregation-page UI. Found and got fixed same-day a real upstream RLS bug ([go-oikumenea#34](https://github.com/olehmushka/go-oikumenea/issues/34)); live end-to-end proof against `oikumenea:0.0.3` with real data. |
 | M4.1 · Jurisdiction units | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | **Decided (audit 2026-08-09).** D-FlatRoot. Replaces the flat single-root org with real jurisdiction units and re-parents existing congregations. **Blocks M5's `designed` gate** — moderation's `jurisdiction` queue scope and D-Exclusions' org-level backstop both need an ancestor chain that does not exist today. |
 | M5 · Moderation | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. Two dependencies resolved into decisions (D-PlatformModerator for the moderator roster, D-Moderation's Correction for the audit trail); one still open (M4.1's jurisdiction units). |
 | M6 · Vouching | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both now have a real mechanism (D-PlatformModerator), which they lacked before the 2026-08-09 audit. |
@@ -809,14 +809,80 @@ site rendering in [web-facade.md](modules/web-facade.md). Also ships `content`'s
 document kinds, deferred here from M3 (see M3's detail and content.md's open seams) — this is the
 milestone where a public site exists to surface them.
 
-**Its `designed` gate is reopened.** Two load-bearing assumptions are unverified:
+**`designed` gate closed (2026-08-10).** The two load-bearing assumptions the 2026-08-09 audit
+flagged as unverified are both now resolved by M2.5's live measurement:
 
-1. **The cache refresh has no callable path.** It is specified as a background job on the service
-   principal, and M1.1 proved `religion` reads deny machine subjects. Until M2.5's upstream request
-   is accepted, there is no mechanism — the fallback (refresh under some real person's token) would
-   violate core-integration.md's no-on-behalf-of invariant and is not an option.
-2. **The public read path may not exist either.** See M2.5. If anonymous callers are also denied,
-   this milestone needs a different design entirely, not an adjustment.
+1. **The cache refresh path — fixed upstream.** M2.5 confirmed `religion` reads deny machine
+   subjects (`RequireAnywhere`); the filed upstream request
+   ([go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33)) landed the same day
+   (`oikumenea:0.0.2`, `RequireServiceOrPerson`), so the service principal genuinely can call
+   `GET /religion/v1/discovery/sites` and `GET /religion/v1/taxa/{id}` now — no on-behalf-of
+   workaround needed.
+2. **The public read path is permanently denied — by design, not an open question.** M2.5 confirmed
+   an anonymous caller gets `401` even after `0.0.2`, deliberately out of #33's scope. The redesign
+   this forces — `openfaithmap-web` reads only `discovery_site_cache`, refreshed lazily by the
+   service principal on a cache miss, no scheduled job (`DS-OFM-2` resolved for MVP) — is now
+   written into [discovery.md](modules/discovery.md) and [web-facade.md](modules/web-facade.md).
+   `DS-OFM-13` (the `discovery_site_cache.content_site_id` cross-module FK) is also resolved: a
+   real in-schema FK, `ON DELETE SET NULL`, following M3's own same-schema-FK precedent.
+
+> **As implemented (2026-08-10).** `internal/discovery` mirrors `content`'s hexagonal shape and its
+> public/authenticated service split: `DiscoveryPublicService` (`GET /discovery/v1/search`, no
+> auth) and `DiscoveryService` (`POST /discovery/v1/refresh`, header auth, reusing
+> `registration-operator`'s target-scoped root-unit check — no new go-oikumenea permission, same
+> reuse precedent M3 set for `content.manage`). `migrations/0005_discovery.sql` adds
+> `discovery_site_cache` per the redesign's schema. `content`'s `POST`/`EVENT` kinds turned out to
+> need only a small change — the schema and `CreateDocumentInput`'s event fields were already in
+> place from M3, so enabling them was one gate replaced
+> (`Content:KindNotSupported` → `Content:EventMissingStart`, requiring `eventStartsAt` only for
+> `EVENT`) plus wiring the two new request fields through transport/adapters.
+> `openfaithmap-web` gained its first-ever backend calls: a token-free SDK client (structurally
+> incapable of forwarding a bearer — no `token` field exists on its client options at all, a
+> stronger guarantee than an unused optional field), a Leaflet/OpenStreetMap map/search home page,
+> and a per-congregation page rendering the MVP block catalog. `scripts/gen-ts-client.sh` now
+> generates into both `web/apps/admin` and `web/apps/web`'s own `lib/openfaithmap/generated` trees
+> from one Conjure IR extraction, each app keeping its own full copy (no workspace, per M2.6/D-Stack
+> precedent) — `make sdk-verify` checks both.
+>
+> **Four real bugs found only by bringing up a live stack, none caught by `go build`/`go vet`/
+> `godelw verify`/`next build`:**
+> 1. `docker-compose.yml`'s new service-principal credential mount used a bare relative path
+>    (`${GOOGLE_APPLICATION_CREDENTIALS}:/app/var/service-account.json:ro`) — Compose treats a
+>    source with no leading `./`/`/`/`~` as a *named volume* reference, not a bind mount, and
+>    `docker compose ps` failed outright with "undefined volume" before any container started.
+>    Fixed by prefixing `./`.
+> 2. `openfaithmap-web`'s home page has no `auth()`/`cookies()` call (it never has a session), so
+>    Next.js tried to **statically prerender** it at `next build` time, before
+>    `OPENFAITHMAP_API_BASE_URL` is even set — `next build` failed reaching for the env var. Both
+>    new data-reading routes now declare `export const dynamic = "force-dynamic"`, which is also
+>    the semantically correct choice for a live discovery cache, not just a build-time workaround.
+> 3. **A real upstream go-oikumenea bug**, one layer beneath #33's already-fixed PEP check: RLS on
+>    `religion_sites` can't recognize an instance-wide (`org_id IS NULL`) principal grant —
+>    `authz_principal_org_in_reach` requires an exact `org_id` match, and `NULL = <uuid>` is never
+>    `true` in SQL. `GET /discovery/v1/search` succeeded at the API layer but silently returned
+>    `{"sites":[]}` for a real, visible site. Filed as
+>    [go-oikumenea#34](https://github.com/olehmushka/go-oikumenea/issues/34) (full root cause in
+>    [discovery.md](modules/discovery.md)'s own update) and **fixed upstream the same day**,
+>    released as `oikumenea:0.0.3` — `docker-compose.yml`'s pin bumped to match, re-verified live.
+> 4. Leaflet touches `window` at module-evaluation time, crashing `openfaithmap-web`'s home page's
+>    SSR outright (`ReferenceError: window is not defined`, HTTP 500) — invisible to `next build`'s
+>    static-page check, only surfaced by loading the real page. Fixed by loading `DiscoveryMap`
+>    through `next/dynamic({ ssr: false })` via a small client-component wrapper, since `ssr: false`
+>    isn't usable directly from `page.tsx`'s Server Component.
+>
+> **Fully live-verified against a real `docker compose` stack** (real go-oikumenea `0.0.3`, real
+> service principal, real `content_sites`/`religion_sites`/`content_documents` data from earlier
+> milestones' testing) — not just the API boundary, the actual pages: `./godelw verify --skip-test`
+> (0 issues), `go build`/`vet`/`test` clean, both web apps' `lint`/`build` clean, `make sdk-verify`
+> confirms no drift across both generated-SDK copies. `GET /discovery/v1/search` proven end-to-end
+> — cache starts empty, a query triggers a real service-principal call to go-oikumenea, the real
+> site comes back (correct `latitude`/`longitude`/`contentSiteId`, the last resolved via
+> `internal/discovery`'s cross-module `ContentResolver` call to `content`), `discovery_site_cache`
+> confirmed populated in Postgres directly, and a repeat query serves from cache. `GET /` (the
+> Leaflet map) and `GET /congregations/{unitId}` (the per-congregation page) were both fetched over
+> real HTTP and confirmed to render the real data — the congregation page's server-rendered HTML
+> contains the exact published blocks (`<h1>Welcome</h1><p>This is the home page.</p>`) sourced
+> from a real `content_blocks` row. `Verified` flips in the stage board above.
 
 Do not pass this milestone's `designed` gate again until M2.5 has answered both.
 

@@ -62,7 +62,7 @@ type CreateSiteInput struct {
 	Slug                string
 }
 
-// Document is a Page, Post, or Event — M3 only ever writes kind=page (KindNotSupported otherwise).
+// Document is a Page, Post, or Event.
 type Document struct {
 	ID                   string
 	SiteID               string
@@ -81,11 +81,14 @@ type Document struct {
 }
 
 type CreateDocumentInput struct {
-	Kind               DocumentKind
-	TranslationGroupID *string
-	Locale             string
-	ParentDocumentID   *string
-	Slug               string
+	Kind                 DocumentKind
+	TranslationGroupID   *string
+	Locale               string
+	ParentDocumentID     *string
+	Slug                 string
+	EventStartsAt        *time.Time
+	EventEndsAt          *time.Time
+	EventRecurrenceRRule *string
 }
 
 type UpdateDocumentInput struct {
@@ -126,7 +129,7 @@ var (
 	ErrSiteNotFound      = errors.New("content site not found")
 	ErrDocumentNotFound  = errors.New("content document not found")
 	ErrForbidden         = errors.New("caller does not hold religionorg.manage on this site's congregation unit")
-	ErrKindNotSupported  = errors.New("document kind not supported yet")
+	ErrEventMissingStart = errors.New("kind=EVENT requires eventStartsAt to be set")
 	ErrParentTooDeep     = errors.New("parent document chain exceeds 3 levels")
 	ErrInvalidTransition = errors.New("invalid document state transition")
 	ErrBlockTypeNotFound = errors.New("block type not found or retired")

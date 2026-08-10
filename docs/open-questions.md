@@ -11,12 +11,12 @@ from the module doc it was raised in.
   go-oikumenea authority probe. Accepted for now (see
   [conventions.md](architecture/conventions.md)); revisit if OpenFaithMap's own data ever needs a
   second line of defense the way go-oikumenea's does.
-- **DS-OFM-2 — Discovery cache refresh cadence.** Scheduled polling via the service principal vs. a
-  future go-oikumenea webhook for religion-site changes — go-oikumenea has no outbound webhook
-  today. **Downstream of a larger question:** scheduled polling via the service principal is not
-  currently possible at all (M1.1 item 2), and it is unverified whether *anonymous* reads work
-  either — see M2.5. Cadence is only worth deciding once that reports. See
-  [discovery.md](modules/discovery.md#open-seams).
+- **DS-OFM-2 — Discovery cache refresh cadence — resolved for MVP (M4, 2026-08-10): lazy-only, no
+  scheduled job.** `GET /search` refreshes `discovery_site_cache` purely as a side effect of a
+  cache miss, via the now-unblocked service principal (M2.5, `oikumenea:0.0.2`). A future
+  proactive refresh — a timer, or a go-oikumenea webhook once one exists — remains a real option,
+  deliberately not designed speculatively; revisit only if real traffic shows lazy refresh leaves
+  results stale in practice. See [discovery.md](modules/discovery.md#open-seams).
 - **DS-OFM-3 — Location-scoped role assignments** (e.g. a "campus admin" scoped below a
   congregation unit). go-oikumenea's own religion module doc reserves this as its `DS-50`;
   OpenFaithMap has no workaround until it's picked up upstream. See
@@ -64,14 +64,6 @@ from the module doc it was raised in.
   Correction drops the single-ledger goal because go-oikumenea's audit module has no write endpoint.
   If one ever ships upstream, backfilling becomes a real option — recorded so the intent isn't lost,
   not as a commitment. See [moderation.md](modules/moderation.md).
-- **DS-OFM-13 — Cross-module foreign keys inside `openfaithmap-api` are undecided.**
-  `discovery_site_cache.content_site_id` is a real FK into `content_sites`.
-  [conventions.md](architecture/conventions.md) covers cross-*service* references (opaque TEXT, no
-  FK) and Go-level module boundaries (interface calls, domain events), but says nothing about a
-  foreign key between two modules' tables in one schema. Either it's fine (one schema, one
-  deployable, one migration set) or the cache should hold an opaque local id like it does for every
-  go-oikumenea reference. Settle before M3/M4 add more. See
-  [discovery.md](modules/discovery.md#open-seams).
 - **DS-OFM-15 — `Impersonation` is specified nowhere and contradicts a binding invariant.** The
   [glossary](glossary.md) defines it (a moderator logging in as a congregation admin for support
   debugging, time-limited and banner-visible) and nothing else in the doc set mentions it: no

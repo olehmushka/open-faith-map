@@ -43,8 +43,8 @@ func mapErr(err error, c errCtx) error {
 		return gencontent.NewDocumentNotFound(c.DocumentID)
 	case errors.Is(err, domain.ErrForbidden):
 		return gencontent.NewForbidden()
-	case errors.Is(err, domain.ErrKindNotSupported):
-		return gencontent.NewKindNotSupported(c.Kind)
+	case errors.Is(err, domain.ErrEventMissingStart):
+		return gencontent.NewEventMissingStart()
 	case errors.Is(err, domain.ErrParentTooDeep):
 		return gencontent.NewParentTooDeep(c.ParentDocumentID)
 	case errors.Is(err, domain.ErrInvalidTransition):

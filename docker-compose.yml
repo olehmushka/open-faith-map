@@ -78,7 +78,10 @@ services:
           END \$\$;"
 
   oikumenea-app:
-    image: docker.io/olegamysk/oikumenea:0.0.2
+    # 0.0.3 fixes go-oikumenea#34: RLS on religion_sites (and siblings) couldn't recognize an
+    # instance-wide (org_id IS NULL) principal grant, silently zeroing discovery search results
+    # for a service principal even after #33's PEP-layer fix. Re-verify live after bumping.
+    image: docker.io/olegamysk/oikumenea:0.0.3
     depends_on:
       oikumenea-init-role:
         condition: service_completed_successfully
@@ -220,16 +223,35 @@ services:
       # RIDs, not committed elsewhere — set per environment.
       REGISTRATION_ROOT_UNIT_ID: "${REGISTRATION_ROOT_UNIT_ID}"
       REGISTRATION_CONGREGATION_ADMIN_ROLE_ID: "${REGISTRATION_CONGREGATION_ADMIN_ROLE_ID}"
+      # M4, discovery: the service principal's own credentials — first production use of
+      # coreintegration.NewServiceClient (M1 built it, only an integration test called it until
+      # now). Same GOOGLE_APPLICATION_CREDENTIALS convention scripts/bootstrap-service-principal
+      # already uses on the host (.env.example); this container needs its own copy mounted in to
+      # mint Google ID tokens for GET /search's cache-miss fallback.
+      GOOGLE_APPLICATION_CREDENTIALS: "/app/var/service-account.json"
+    volumes:
+      # The leading "./" is load-bearing: Compose treats a bare relative path as a named-volume
+      # reference, not a bind mount, and fails with "undefined volume" otherwise — found by
+      # actually running `docker compose ps`, not by review.
+      - "./${GOOGLE_APPLICATION_CREDENTIALS}:/app/var/service-account.json:ro"
 
-  # openfaithmap-web (M2.1, D-AdminSurface) — the anonymous public surface. Holds no session, no
-  # Auth.js, no credential of any kind (docs/modules/web-facade.md). Reads no env vars today — it
-  # serves only the static placeholder home page; OIKUMENEA_BASE_URL/OPENFAITHMAP_API_BASE_URL get
-  # added here once a real data-reading public page exists (M4).
+  # openfaithmap-web (M2.1, D-AdminSurface; M4 adds its first real data-reading pages) — the
+  # anonymous public surface. Holds no session, no Auth.js, no credential of any kind
+  # (docs/modules/web-facade.md) — every call below is unauthenticated, no bearer token attached.
   openfaithmap-web:
     build:
       context: ./web/apps/web
+    depends_on:
+      openfaithmap-api:
+        condition: service_started
     ports:
       - "3002:3000"
+    environment:
+      # openfaithmap-api (M4: discovery + content public reads) — reached over the compose
+      # network, self-signed cert in local dev (D-HeadlessTopology). Never oikumenea-app directly
+      # — this app has no token to forward and every religion read 401s an anonymous caller (M2.5).
+      OPENFAITHMAP_API_BASE_URL: "https://openfaithmap-api:3000"
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
 
   # openfaithmap-admin (M2.1, D-AdminSurface) — the only surface that ever holds a session: the
   # registration wizard, operator-approval console, congregation-admin console, moderator console

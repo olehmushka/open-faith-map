@@ -9,6 +9,7 @@ package transport
 
 import (
 	"context"
+	"time"
 
 	gencontent "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/content"
 	"github.com/olehmushka/open-faith-map/internal/content/application"
@@ -97,12 +98,24 @@ func (s *Service) CreateDocument(ctx context.Context, authHeader bearertoken.Tok
 	if err != nil {
 		return gencontent.Document{}, mapUpstreamErr(err)
 	}
+	var eventStartsAt, eventEndsAt *time.Time
+	if requestArg.EventStartsAt != nil {
+		t := time.Time(*requestArg.EventStartsAt)
+		eventStartsAt = &t
+	}
+	if requestArg.EventEndsAt != nil {
+		t := time.Time(*requestArg.EventEndsAt)
+		eventEndsAt = &t
+	}
 	doc, err := s.appService.CreateDocument(ctx, string(authHeader), personID, siteIdArg, domain.CreateDocumentInput{
-		Kind:               domain.DocumentKind(requestArg.Kind.Value()),
-		TranslationGroupID: requestArg.TranslationGroupId,
-		Locale:             requestArg.Locale,
-		ParentDocumentID:   requestArg.ParentDocumentId,
-		Slug:               requestArg.Slug,
+		Kind:                 domain.DocumentKind(requestArg.Kind.Value()),
+		TranslationGroupID:   requestArg.TranslationGroupId,
+		Locale:               requestArg.Locale,
+		ParentDocumentID:     requestArg.ParentDocumentId,
+		Slug:                 requestArg.Slug,
+		EventStartsAt:        eventStartsAt,
+		EventEndsAt:          eventEndsAt,
+		EventRecurrenceRRule: requestArg.EventRecurrenceRrule,
 	})
 	if err != nil {
 		return gencontent.Document{}, mapErr(err, errCtx{SiteID: siteIdArg, Kind: string(requestArg.Kind.Value()), ParentDocumentID: derefOr(requestArg.ParentDocumentId, "")})

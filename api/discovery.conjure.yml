@@ -1,0 +1,109 @@
+# Discovery module API (M4). docs/modules/discovery.md. A read-through cache + facade over
+# go-oikumenea's religion discovery search (D-Facade) — OpenFaithMap owns no location index of its
+# own. discovery_site_cache is disposable: rebuildable from go-oikumenea + content at any time.
+#
+# TWO services, same reasoning as content.conjure.yml (Conjure's auth is a fixed per-service
+# choice, not runtime-conditional): openfaithmap-web holds no session at all (D-AdminSurface), so
+# it can only ever call DiscoveryPublicService; DiscoveryService (the manual refresh tool) is
+# openfaithmap-admin only.
+#
+# search never calls go-oikumenea on behalf of the (tokenless) public caller — on a cache miss, the
+# server's own service principal (coreintegration.NewServiceClient) refreshes the cache in-request,
+# never a forwarded caller token, since there isn't one. See discovery.md's redesign section.
+#
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: openfaithmap.discovery
+    objects:
+      DiscoverySite:
+        fields:
+          id: string
+          religionSiteRid:
+            type: string
+            docs: The go-oikumenea religion_sites RID this row projects (opaque foreign value).
+          congregationUnitRid: string
+          contentSiteId:
+            type: optional<string>
+            docs: Set once the congregation has published a site (content module) — nullable.
+          latitude:
+            type: optional<double>
+            docs: Already public_precision-coarsened by go-oikumenea; null when precision is hidden.
+          longitude: optional<double>
+          traditionTaxonId: optional<string>
+          serviceLanguages: list<string>
+          serviceDays:
+            type: list<integer>
+            docs: 0=Sunday .. 6=Saturday, matching go-oikumenea's ServiceSchedule.dayOfWeek.
+          refreshedAt: datetime
+      SearchResult:
+        fields:
+          sites: list<DiscoverySite>
+      RefreshRegionRequest:
+        fields:
+          minLat: double
+          minLng: double
+          maxLat: double
+          maxLng: double
+      RefreshResult:
+        fields:
+          refreshedCount: integer
+
+    errors:
+      Forbidden:
+        docs: The caller does not hold the registration-operator's target-scoped grant on the root unit.
+        namespace: Discovery
+        code: PERMISSION_DENIED
+        safe-args: {}
+
+services:
+  DiscoveryPublicService:
+    name: Discovery Public Service
+    package: openfaithmap.discovery
+    base-path: /discovery/v1
+    docs: >
+      Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never
+      widens what go-oikumenea would already return publicly. See docs/modules/discovery.md.
+    endpoints:
+      search:
+        http: GET /search
+        args:
+          lat:
+            type: optional<double>
+            param-type: query
+          lng:
+            type: optional<double>
+            param-type: query
+          radiusM:
+            type: optional<double>
+            param-type: query
+          tradition:
+            type: optional<string>
+            param-type: query
+            docs: A religion taxon code — matches go-oikumenea's taxonomy closure.
+          language:
+            type: optional<string>
+            param-type: query
+          dayOfWeek:
+            type: optional<integer>
+            param-type: query
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Fuzzy match on the congregation's name.
+        returns: SearchResult
+
+  DiscoveryService:
+    name: Discovery Service
+    package: openfaithmap.discovery
+    base-path: /discovery/v1
+    default-auth: header
+    docs: >
+      Operator tooling only — forcing a manual cache rebuild for a region. Not part of the public
+      product surface; the public map never calls this.
+    endpoints:
+      refresh:
+        http: POST /refresh
+        args:
+          request: RefreshRegionRequest
+        returns: RefreshResult

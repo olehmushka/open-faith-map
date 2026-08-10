@@ -10,15 +10,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	gencontent "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/content"
+	gendiscovery "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/discovery"
 	genregistration "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/registration"
 	contentadapters "github.com/olehmushka/open-faith-map/internal/content/adapters"
 	contentapplication "github.com/olehmushka/open-faith-map/internal/content/application"
+	contentdomain "github.com/olehmushka/open-faith-map/internal/content/domain"
 	contenttransport "github.com/olehmushka/open-faith-map/internal/content/transport"
+	"github.com/olehmushka/open-faith-map/internal/coreintegration"
+	discoveryadapters "github.com/olehmushka/open-faith-map/internal/discovery/adapters"
+	discoveryapplication "github.com/olehmushka/open-faith-map/internal/discovery/application"
+	discoverytransport "github.com/olehmushka/open-faith-map/internal/discovery/transport"
 	"github.com/olehmushka/open-faith-map/internal/platform/config"
 	regadapters "github.com/olehmushka/open-faith-map/internal/registration/adapters"
 	regapplication "github.com/olehmushka/open-faith-map/internal/registration/application"
@@ -26,6 +33,25 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
+
+// contentSiteResolver adapts contentapplication.Service's public read onto discovery's own
+// ContentResolver interface — an interface-call cross-module dependency (conventions.md), even
+// though the underlying discovery_site_cache.content_site_id column is a real in-schema FK
+// (DS-OFM-13, docs/modules/discovery.md).
+type contentSiteResolver struct {
+	content *contentapplication.Service
+}
+
+func (r *contentSiteResolver) GetSiteByUnit(ctx context.Context, congregationUnitRID string) (string, bool, error) {
+	site, err := r.content.GetSite(ctx, congregationUnitRID)
+	if errors.Is(err, contentdomain.ErrSiteNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return site.ID, true, nil
+}
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -111,6 +137,38 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	if err := gencontent.RegisterRoutesContentPublicService(info.Router, contentPublicTransportSvc); err != nil {
 		pool.Close()
 		return nil, werror.WrapWithContextParams(ctx, err, "register content public routes")
+	}
+
+	// M4: the service principal's own credentials — first production use of
+	// coreintegration.NewServiceClient (M1 built it, only an integration test called it until now).
+	// GOOGLE_APPLICATION_CREDENTIALS is the standard convention already used by
+	// scripts/bootstrap-service-principal (.env.example); audience matches that script's own
+	// registration ("openfaithmap-api", also what client_integration_test.go proves against).
+	discoveryStore := discoveryadapters.NewStore(pool)
+	discoveryAppSvc := discoveryapplication.NewService(discoveryStore, &contentSiteResolver{content: contentAppSvc}, discoveryapplication.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+		RootUnitID:                  rootUnitID,
+		ServicePrincipal: coreintegration.Config{
+			BaseURL:            oikumeneaBaseURL,
+			CredentialsFile:    requireEnv("GOOGLE_APPLICATION_CREDENTIALS"),
+			Audience:           "openfaithmap-api",
+			InsecureSkipVerify: insecureSkipVerify,
+		},
+	})
+	discoveryTransportSvc := discoverytransport.NewService(discoveryAppSvc, discoverytransport.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+	})
+	discoveryPublicTransportSvc := discoverytransport.NewPublicService(discoveryAppSvc)
+
+	if err := gendiscovery.RegisterRoutesDiscoveryService(info.Router, discoveryTransportSvc); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "register discovery routes")
+	}
+	if err := gendiscovery.RegisterRoutesDiscoveryPublicService(info.Router, discoveryPublicTransportSvc); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "register discovery public routes")
 	}
 
 	return pool.Close, nil

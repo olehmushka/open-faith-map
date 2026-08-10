@@ -23,10 +23,12 @@ const documentColumns = `
 func (s *Store) InsertDocument(ctx context.Context, siteID string, in domain.CreateDocumentInput) (domain.Document, error) {
 	row := s.pool.QueryRow(ctx, `
 		INSERT INTO openfaithmap.content_documents
-			(site_id, kind, translation_group_id, locale, parent_document_id, slug)
-		VALUES ($1, $2, COALESCE($3::uuid, gen_random_uuid()), $4, $5, $6)
+			(site_id, kind, translation_group_id, locale, parent_document_id, slug,
+			 event_starts_at, event_ends_at, event_recurrence_rrule)
+		VALUES ($1, $2, COALESCE($3::uuid, gen_random_uuid()), $4, $5, $6, $7, $8, $9)
 		RETURNING `+documentColumns,
 		siteID, string(in.Kind), in.TranslationGroupID, in.Locale, in.ParentDocumentID, in.Slug,
+		in.EventStartsAt, in.EventEndsAt, in.EventRecurrenceRRule,
 	)
 	doc, err := scanDocument(row)
 	var pgErr *pgconn.PgError
@@ -109,7 +111,7 @@ func (s *Store) ListPublicDocuments(ctx context.Context, siteID string, kind, lo
 		WHERE site_id = $1 AND deleted_at IS NULL AND state IN ('PUBLISHED', 'UNLISTED')
 		  AND ($2::text IS NULL OR kind = $2)
 		  AND ($3::text IS NULL OR locale = $3)
-		ORDER BY created_at DESC`,
+		ORDER BY CASE WHEN kind = 'EVENT' THEN event_starts_at END ASC NULLS LAST, created_at DESC`,
 		siteID, kind, locale,
 	)
 	if err != nil {
