@@ -164,13 +164,17 @@ func (o *BlockTypePage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type CreateDocumentRequest struct {
-	// M3 only accepts PAGE — POST/EVENT return Content:KindNotSupported until M4.
+	// EVENT requires eventStartsAt to be set (Content:EventMissingStart otherwise).
 	Kind DocumentKind `json:"kind"`
 	// Omit to start a new translation group; set to join an existing one as another locale variant.
 	TranslationGroupId *string `json:"translationGroupId,omitempty"`
 	Locale             string  `json:"locale"`
 	ParentDocumentId   *string `json:"parentDocumentId,omitempty"`
 	Slug               string  `json:"slug"`
+	// EVENT only. Required when kind is EVENT; ignored for PAGE/POST.
+	EventStartsAt        *datetime.DateTime `json:"eventStartsAt,omitempty"`
+	EventEndsAt          *datetime.DateTime `json:"eventEndsAt,omitempty"`
+	EventRecurrenceRrule *string            `json:"eventRecurrenceRrule,omitempty"`
 }
 
 func (o CreateDocumentRequest) MarshalYAML() (interface{}, error) {

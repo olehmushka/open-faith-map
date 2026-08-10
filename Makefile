@@ -49,7 +49,7 @@ clean: ## Remove build/dist outputs
 # ---------------------------------------------------------------------------------------------------
 
 .PHONY: sdk
-sdk: ## Regenerate the TypeScript SDK (web/apps/admin/lib/openfaithmap/generated) from api/*.conjure.yml
+sdk: ## Regenerate the TypeScript SDK (web/apps/{admin,web}/lib/openfaithmap/generated) from api/*.conjure.yml
 	./scripts/gen-ts-client.sh
 
 .PHONY: sdk-verify

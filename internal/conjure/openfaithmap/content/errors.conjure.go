@@ -614,6 +614,154 @@ func (e *DuplicateBlockPosition) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type eventMissingStart struct{}
+
+func (o eventMissingStart) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *eventMissingStart) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewEventMissingStart returns new instance of EventMissingStart error.
+func NewEventMissingStart() *EventMissingStart {
+	return &EventMissingStart{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), eventMissingStart: eventMissingStart{}}
+}
+
+// WrapWithEventMissingStart returns new instance of EventMissingStart error wrapping an existing error.
+func WrapWithEventMissingStart(err error) *EventMissingStart {
+	return &EventMissingStart{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, eventMissingStart: eventMissingStart{}}
+}
+
+// EventMissingStart is an error type.
+// kind=EVENT requires eventStartsAt to be set.
+type EventMissingStart struct {
+	errorInstanceID uuid.UUID
+	eventMissingStart
+	cause error
+	stack werror.StackTrace
+}
+
+// IsEventMissingStart returns true if err is an instance of EventMissingStart.
+func IsEventMissingStart(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*EventMissingStart)
+	return ok
+}
+
+func (e *EventMissingStart) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:EventMissingStart (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *EventMissingStart) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *EventMissingStart) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *EventMissingStart) Message() string {
+	return "INVALID_ARGUMENT Content:EventMissingStart"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *EventMissingStart) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *EventMissingStart) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *EventMissingStart) Name() string {
+	return "Content:EventMissingStart"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *EventMissingStart) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *EventMissingStart) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *EventMissingStart) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *EventMissingStart) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *EventMissingStart) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *EventMissingStart) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e EventMissingStart) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.eventMissingStart)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:EventMissingStart", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *EventMissingStart) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters eventMissingStart
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.eventMissingStart = parameters
+	return nil
+}
+
 type forbidden struct{}
 
 func (o forbidden) MarshalYAML() (interface{}, error) {
@@ -910,156 +1058,6 @@ func (e *InvalidTransition) UnmarshalJSON(data []byte) error {
 	}
 	e.errorInstanceID = serializableError.ErrorInstanceID
 	e.invalidTransition = parameters
-	return nil
-}
-
-type kindNotSupported struct {
-	Kind string `json:"kind"`
-}
-
-func (o kindNotSupported) MarshalYAML() (interface{}, error) {
-	jsonBytes, err := safejson.Marshal(o)
-	if err != nil {
-		return nil, err
-	}
-	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
-}
-
-func (o *kindNotSupported) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
-	if err != nil {
-		return err
-	}
-	return safejson.Unmarshal(jsonBytes, *&o)
-}
-
-// NewKindNotSupported returns new instance of KindNotSupported error.
-func NewKindNotSupported(kindArg string) *KindNotSupported {
-	return &KindNotSupported{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), kindNotSupported: kindNotSupported{Kind: kindArg}}
-}
-
-// WrapWithKindNotSupported returns new instance of KindNotSupported error wrapping an existing error.
-func WrapWithKindNotSupported(err error, kindArg string) *KindNotSupported {
-	return &KindNotSupported{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, kindNotSupported: kindNotSupported{Kind: kindArg}}
-}
-
-// KindNotSupported is an error type.
-// M3 ships kind=PAGE only; POST/EVENT land at M4.
-type KindNotSupported struct {
-	errorInstanceID uuid.UUID
-	kindNotSupported
-	cause error
-	stack werror.StackTrace
-}
-
-// IsKindNotSupported returns true if err is an instance of KindNotSupported.
-func IsKindNotSupported(err error) bool {
-	if err == nil {
-		return false
-	}
-	_, ok := errors.GetConjureError(err).(*KindNotSupported)
-	return ok
-}
-
-func (e *KindNotSupported) Error() string {
-	return fmt.Sprintf("INVALID_ARGUMENT Content:KindNotSupported (%s)", e.errorInstanceID)
-}
-
-// Cause returns the underlying cause of the error, or nil if none.
-// Note that cause is not serialized and sent over the wire.
-func (e *KindNotSupported) Cause() error {
-	return e.cause
-}
-
-// StackTrace returns the StackTrace for the error, or nil if none.
-// Note that stack traces are not serialized and sent over the wire.
-func (e *KindNotSupported) StackTrace() werror.StackTrace {
-	return e.stack
-}
-
-// Message returns the message body for the error.
-func (e *KindNotSupported) Message() string {
-	return "INVALID_ARGUMENT Content:KindNotSupported"
-}
-
-// Format implements fmt.Formatter, a requirement of werror.Werror.
-func (e *KindNotSupported) Format(state fmt.State, verb rune) {
-	werror.Format(e, e.safeParams(), state, verb)
-}
-
-// Code returns an enum describing error category.
-func (e *KindNotSupported) Code() errors.ErrorCode {
-	return errors.InvalidArgument
-}
-
-// Name returns an error name identifying error type.
-func (e *KindNotSupported) Name() string {
-	return "Content:KindNotSupported"
-}
-
-// InstanceID returns unique identifier of this particular error instance.
-func (e *KindNotSupported) InstanceID() uuid.UUID {
-	return e.errorInstanceID
-}
-
-// Parameters returns a set of named parameters detailing this particular error instance.
-func (e *KindNotSupported) Parameters() map[string]interface{} {
-	return map[string]interface{}{"kind": e.Kind}
-}
-
-// safeParams returns a set of named safe parameters detailing this particular error instance.
-func (e *KindNotSupported) safeParams() map[string]interface{} {
-	return map[string]interface{}{"kind": e.Kind, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
-}
-
-// SafeParams returns a set of named safe parameters detailing this particular error instance and
-// any underlying causes.
-func (e *KindNotSupported) SafeParams() map[string]interface{} {
-	safeParams, _ := werror.ParamsFromError(e.cause)
-	for k, v := range e.safeParams() {
-		if _, exists := safeParams[k]; !exists {
-			safeParams[k] = v
-		}
-	}
-	return safeParams
-}
-
-// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
-func (e *KindNotSupported) unsafeParams() map[string]interface{} {
-	return map[string]interface{}{}
-}
-
-// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
-// any underlying causes.
-func (e *KindNotSupported) UnsafeParams() map[string]interface{} {
-	_, unsafeParams := werror.ParamsFromError(e.cause)
-	for k, v := range e.unsafeParams() {
-		if _, exists := unsafeParams[k]; !exists {
-			unsafeParams[k] = v
-		}
-	}
-	return unsafeParams
-}
-
-func (e KindNotSupported) MarshalJSON() ([]byte, error) {
-	parameters, err := safejson.Marshal(e.kindNotSupported)
-	if err != nil {
-		return nil, err
-	}
-	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:KindNotSupported", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
-}
-
-func (e *KindNotSupported) UnmarshalJSON(data []byte) error {
-	var serializableError errors.SerializableError
-	if err := safejson.Unmarshal(data, &serializableError); err != nil {
-		return err
-	}
-	var parameters kindNotSupported
-	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
-		return err
-	}
-	e.errorInstanceID = serializableError.ErrorInstanceID
-	e.kindNotSupported = parameters
 	return nil
 }
 
@@ -1517,9 +1515,9 @@ func init() {
 	conjureerrors.RegisterErrorType("Content:BlockTypeNotFound", reflect.TypeOf(BlockTypeNotFound{}))
 	conjureerrors.RegisterErrorType("Content:DocumentNotFound", reflect.TypeOf(DocumentNotFound{}))
 	conjureerrors.RegisterErrorType("Content:DuplicateBlockPosition", reflect.TypeOf(DuplicateBlockPosition{}))
+	conjureerrors.RegisterErrorType("Content:EventMissingStart", reflect.TypeOf(EventMissingStart{}))
 	conjureerrors.RegisterErrorType("Content:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("Content:InvalidTransition", reflect.TypeOf(InvalidTransition{}))
-	conjureerrors.RegisterErrorType("Content:KindNotSupported", reflect.TypeOf(KindNotSupported{}))
 	conjureerrors.RegisterErrorType("Content:ParentTooDeep", reflect.TypeOf(ParentTooDeep{}))
 	conjureerrors.RegisterErrorType("Content:SiteNotFound", reflect.TypeOf(SiteNotFound{}))
 	conjureerrors.RegisterErrorType("Content:SlugTaken", reflect.TypeOf(SlugTaken{}))

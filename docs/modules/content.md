@@ -207,11 +207,13 @@ exist first.
 
 ## Open seams
 
-- **Post and Event are designed but not MVP.** M3 ships `PAGE` only (`createDocument` rejects
-  `POST`/`EVENT` with `Content:KindNotSupported`); `post`/`event` land at **M4**, once the public
-  site has something to link them from. *(Audit 2026-08-09: this doc and milestones.md's M3
-  previously disagreed — M3's entry said "this milestone's own later iteration," this doc said the
-  discovery milestone. M4 is the answer, and both now say so.)*
+- **Post and Event — enabled at M4 (2026-08-10).** `createDocument` accepts all three kinds now;
+  the schema (`event_starts_at`/`event_ends_at`/`event_recurrence_rrule`) was already in place from
+  M3, so this was a small change: `Content:KindNotSupported` is gone (genuinely unreachable once
+  every `DocumentKind` value is accepted), replaced by `Content:EventMissingStart` — `EVENT`
+  requires `eventStartsAt`; `PAGE`/`POST` are unaffected. Public listing
+  (`listPublicDocuments`) orders `EVENT` by `event_starts_at ASC` (soonest-upcoming first) and
+  everything else by `created_at DESC` (reverse-chronological feed), same query, no new endpoint.
 - **`content_sites.slug` collisions — resolved at M3.** Admin-chosen slug, probed for uniqueness at
   write time (`INSERT ... ON CONFLICT`-shaped: insert first, catch the unique-violation, translate
   to a typed `Content:SlugTaken` error — race-safe, never check-then-insert). No silent suffixing,

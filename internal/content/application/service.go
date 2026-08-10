@@ -91,8 +91,8 @@ func (s *Service) CreateDocument(ctx context.Context, token, callerPersonID, sit
 	if err := s.requireManage(ctx, token, callerPersonID, site.CongregationUnitRID); err != nil {
 		return domain.Document{}, err
 	}
-	if in.Kind != domain.KindPage {
-		return domain.Document{}, domain.ErrKindNotSupported
+	if in.Kind == domain.KindEvent && in.EventStartsAt == nil {
+		return domain.Document{}, domain.ErrEventMissingStart
 	}
 	if in.ParentDocumentID != nil {
 		if err := s.checkParentDepth(ctx, *in.ParentDocumentID); err != nil {

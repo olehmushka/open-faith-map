@@ -20,6 +20,12 @@ congregation-admin console, the registration wizard, the moderator console — l
   `content_documents` in `published`/`unlisted` state), and the registration *entry point* (a page
   explaining how to register and linking out to `openfaithmap-admin`, where the actual wizard runs
   since submitting requires being logged in). Fully unauthenticated; SEO-relevant, server-rendered.
+  - **Discovery map/search (M4)** — the home page: a Leaflet/OpenStreetMap map plus filter controls
+    (tradition/language/day-of-week), backed entirely by `discovery`'s `GET /discovery/v1/search`
+    (see [discovery.md](discovery.md)'s redesign). Never calls go-oikumenea directly.
+  - **Per-congregation page (M4)** — one route per published `content_sites` row, rendering its
+    pages/posts/events via `content`'s public reads (`getSite`/`listPublicDocuments`/
+    `getPublicBlocks`) — the same generated client, same no-token pattern as discovery.
 - **Public report filing** — anyone can file a moderation report or run the exclusion pre-check
   without logging in (see [moderation.md](moderation.md)) — these stay here, not in
   `openfaithmap-admin`, because they don't require a session either.
@@ -34,25 +40,24 @@ can hold a credential. Anything that needs to know who's logged in belongs in
 
 ## Dependencies
 
-- **Calls:** go-oikumenea's generated TypeScript SDK directly for public, unauthenticated reads
-  (e.g. `GET /religion/discovery/sites`); `openfaithmap-api`'s own generated TypeScript SDK for
-  public content reads (the discovery cache). Every call is unauthenticated — no token exists in
-  this app to forward. Never a raw `fetch` against either service's REST surface — always the typed
-  client.
-  > **Audit notes (2026-08-09, (b) updated 2026-08-10).** (a) This app makes **no** backend calls
-  > today — it serves a static placeholder home page and reads no env vars; the first real
-  > data-reading page lands at M4. (b) **M2.6** stood up `openfaithmap-api`'s TypeScript codegen
-  > pipeline and generated a client for `registration` (see
-  > [web-admin.md](web-admin.md#dependencies)) — but `registration` is `openfaithmap-admin`'s
-  > module, never called from here (this app holds no session, D-AdminSurface). The `discovery`/
-  > `content` contract this bullet actually needs doesn't exist yet; M2.6 stands up the *pipeline*,
-  > not this module's own SDK, which is real M3/M4 work. (c) Whether the unauthenticated
-  > go-oikumenea read above is *possible at all* is now **verified false** — see
-  > [core-integration.md](core-integration.md)'s authorization-touchpoints table and
-  > [milestones.md](../milestones.md)'s M2.5: an anonymous caller gets `401
-  > IdentityFederation:Unauthorized`. This bullet, and much of M4, needs the redesign M2.5's own
-  > notes describe (read only `openfaithmap-api`'s own cache, never go-oikumenea directly) — not
-  > attempted here.
+- **Calls:** `openfaithmap-api`'s own generated TypeScript client only — `discovery`'s
+  `DiscoveryPublicService` (`search`) and `content`'s `ContentPublicService`
+  (`getSite`/`listPublicDocuments`/`getPublicBlocks`). **Never go-oikumenea, directly or
+  indirectly** — this app has no token to forward (D-AdminSurface) and every `religion` read
+  genuinely 401s an anonymous caller (M2.5). Every call is unauthenticated on the wire — no bearer
+  token is ever attached, since this app never holds one — via its own token-free
+  `createOpenFaithMapClient` wiring (`web/apps/web/lib/openfaithmap/index.ts`, generated the same
+  way as `openfaithmap-admin`'s but with no `auth()` call anywhere). Never a raw `fetch` against
+  either service's REST surface — always the typed client.
+  > **History.** M2.5 (2026-08-09/10) verified false the original assumption that this app could
+  > call go-oikumenea's discovery endpoint directly, even unauthenticated: every `religion` read
+  > returns `401 IdentityFederation:Unauthorized` to a caller with no token, deliberately and
+  > permanently (go-oikumenea#33 scoped genuine anonymous access out of its fix). M2.6 had already
+  > stood up the TypeScript codegen *pipeline* (for `registration`, `openfaithmap-admin`'s module,
+  > never called from here) without yet generating this app's own client. **M4 (2026-08-10)**
+  > resolved both: `discovery`'s redesign (cache-only, [discovery.md](discovery.md)) gives this app
+  > something safe to call, and this is the first milestone where `openfaithmap-web` makes any
+  > backend call at all.
 - **Called by:** nothing — it is one of two public ingress points (the other is
   [`openfaithmap-admin`](web-admin.md#dependencies)). It publishes its own host port, independent of
   `openfaithmap-admin`'s.

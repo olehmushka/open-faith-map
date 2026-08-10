@@ -1,6 +1,6 @@
-# Content module API (M3). docs/modules/content.md. OpenFaithMap's own schema — a congregation's
-# website: pages made of typed, schema-validated blocks. M3 ships kind=PAGE only; POST/EVENT are
-# schema-ready but rejected at the application layer until M4 (see content.md's open seams).
+# Content module API (M3, POST/EVENT enabled at M4). docs/modules/content.md. OpenFaithMap's own
+# schema — a congregation's website: pages, posts, and events, each made of typed, schema-validated
+# blocks.
 #
 # content.manage is a target-scoped capability check (Authorize with Action: "religionorg.manage",
 # UnitId: the SITE's own congregation unit — never a shared root), not a go-oikumenea permission
@@ -83,13 +83,18 @@ types:
         fields:
           kind:
             type: DocumentKind
-            docs: M3 only accepts PAGE — POST/EVENT return Content:KindNotSupported until M4.
+            docs: EVENT requires eventStartsAt to be set (Content:EventMissingStart otherwise).
           translationGroupId:
             type: optional<string>
             docs: Omit to start a new translation group; set to join an existing one as another locale variant.
           locale: string
           parentDocumentId: optional<string>
           slug: string
+          eventStartsAt:
+            type: optional<datetime>
+            docs: EVENT only. Required when kind is EVENT; ignored for PAGE/POST.
+          eventEndsAt: optional<datetime>
+          eventRecurrenceRrule: optional<string>
       UpdateDocumentRequest:
         fields:
           slug: optional<string>
@@ -164,12 +169,11 @@ types:
         namespace: Content
         code: PERMISSION_DENIED
         safe-args: {}
-      KindNotSupported:
-        docs: M3 ships kind=PAGE only; POST/EVENT land at M4.
+      EventMissingStart:
+        docs: kind=EVENT requires eventStartsAt to be set.
         namespace: Content
         code: INVALID_ARGUMENT
-        safe-args:
-          kind: string
+        safe-args: {}
       ParentTooDeep:
         namespace: Content
         code: INVALID_ARGUMENT
