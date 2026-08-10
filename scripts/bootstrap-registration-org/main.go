@@ -8,10 +8,15 @@
 // religionorg.manage, site.manage, schedule.manage, assignment.grant/revoke, person.create/update,
 // membership.create/update, position.create/update — plus assignment.read, needed since M2.3 so this
 // role's own holder can pass go-oikumenea's Authorize check, which itself requires the caller already
-// hold assignment.read reaching the target unit, no self-exemption by design), and a
-// "congregation-admin" Role (granted to a submitter on THEIR OWN new unit at approval time by
-// internal/registration — created here, not there, because role.create is instance-scope and a
-// registration-operator does not hold it).
+// hold assignment.read reaching the target unit, no self-exemption by design), a "congregation-admin"
+// Role (granted to a submitter on THEIR OWN new unit at approval time by internal/registration —
+// created here, not there, because role.create is instance-scope and a registration-operator does
+// not hold it), and (M5) a "platform-moderator" Role (D-PlatformModerator): unit.lifecycle +
+// assignment.read, subtree-scoped on the same shared root unit — a deliberately separate role from
+// registration-operator, not a reuse, so the two stay distinguishable at the PDP even though both
+// are granted on the same unit (docs/architecture/decisions.md's D-PlatformModerator explains why:
+// approving registrations and adjudicating reports are different jobs with different escalation
+// paths).
 //
 // It prints the root unit ID and role IDs, and the exact SQL to run next: go-oikumenea has no
 // API-reachable way to grant the FIRST unit-scoped role assignment on a brand-new unit — not even
@@ -55,6 +60,7 @@ const (
 
 	operatorRoleCode          = "registration-operator"
 	congregationAdminRoleCode = "congregation-admin"
+	platformModeratorRoleCode = "platform-moderator"
 )
 
 func main() {
@@ -62,12 +68,16 @@ func main() {
 	orgCode := flag.String("org-code", "openfaithmap", "the single shared root organization's code")
 	orgName := flag.String("org-name", "OpenFaithMap", "the single shared root organization's display name")
 	operatorPersonCode := flag.String("operator-person-code", "", "person.code of the person to grant the registration-operator role to (required — see scripts/bootstrap-admin-person)")
+	moderatorPersonCode := flag.String("moderator-person-code", "", "person.code of the person to grant the platform-moderator role to (M5 — defaults to -operator-person-code, a local-dev simplification; D-PlatformModerator's two roles stay separate regardless of who holds them)")
 	insecure := flag.Bool("insecure-skip-verify", true, "skip TLS verification (self-signed local-dev cert)")
 	flag.Parse()
 
 	if *operatorPersonCode == "" {
 		fmt.Fprintln(os.Stderr, "missing required -operator-person-code")
 		os.Exit(2)
+	}
+	if *moderatorPersonCode == "" {
+		*moderatorPersonCode = *operatorPersonCode
 	}
 
 	ctx := context.Background()
@@ -101,6 +111,16 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("operator person: id=%s code=%s\n", operatorPersonID, *operatorPersonCode)
+
+	moderatorPersonID := operatorPersonID
+	if *moderatorPersonCode != *operatorPersonCode {
+		moderatorPersonID, err = findPersonByCode(ctx, c, *moderatorPersonCode)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "find moderator person:", err)
+			os.Exit(1)
+		}
+	}
+	fmt.Printf("moderator person: id=%s code=%s\n", moderatorPersonID, *moderatorPersonCode)
 
 	rootUnitID, err := createOrReuseRootOrg(ctx, c, *orgCode, *orgName)
 	if err != nil {
@@ -174,20 +194,48 @@ func main() {
 	}
 	fmt.Printf("role: id=%s code=%s (granted per-congregation at approval time, not by this script)\n", adminRole.Id, adminRole.Code)
 
+	moderatorRole, err := createOrReuseRole(ctx, c, authorization.CreateRoleRequest{
+		Code: platformModeratorRoleCode,
+		Name: "Platform moderator",
+		Permissions: []string{
+			// unit.lifecycle: platform-moderator's own PDP marker permission
+			// (internal/moderation/application/authorize.go's moderatePermission) — deliberately NOT
+			// religionorg.manage (registration-operator/congregation-admin's permission), so the two
+			// roles stay distinguishable at go-oikumenea's PDP even though both are granted on this
+			// same root unit (D-PlatformModerator).
+			"unit.lifecycle",
+			// assignment.read: same reason registration-operator/congregation-admin both needed it
+			// (M2.3/M3) — Authorize requires the CALLER to already hold assignment.read reaching the
+			// target unit, no self-exemption by design. Without this, a platform-moderator holding
+			// unit.lifecycle on the root unit still gets PermissionDenied from its own moderation
+			// checks.
+			"assignment.read",
+		},
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "create platform-moderator role:", err)
+		os.Exit(1)
+	}
+	fmt.Printf("role: id=%s code=%s\n", moderatorRole.Id, moderatorRole.Code)
+
 	fmt.Println()
 	fmt.Println("done — go-oikumenea has no API path to grant the first assignment on a brand-new")
 	fmt.Println("unit (see this file's header comment). Run this SQL directly against the shared")
-	fmt.Println("Postgres instance (oikumenea schema) to finish bootstrapping the operator's authority")
-	fmt.Println("(idempotent: ON CONFLICT DO NOTHING, keyed on the same active-uniqueness index the")
-	fmt.Println("table itself enforces):")
+	fmt.Println("Postgres instance (oikumenea schema) to finish bootstrapping the operator's and")
+	fmt.Println("moderator's authority (idempotent: ON CONFLICT DO NOTHING, keyed on the same")
+	fmt.Println("active-uniqueness index the table itself enforces):")
 	fmt.Println()
 	fmt.Printf(`INSERT INTO oikumenea.authz_role_assignments
   (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by)
-SELECT '%s', '%s', '%s', 'subtree', g.id, NULL
-FROM oikumenea.tenant_graphs g WHERE g.code = 'canonical'
+SELECT v.subject_person_id, v.role_id, v.target_unit_id, 'subtree', g.id, NULL
+FROM (VALUES
+  ('%s'::text, '%s'::text, '%s'::text),
+  ('%s'::text, '%s'::text, '%s'::text)
+) AS v(subject_person_id, role_id, target_unit_id)
+CROSS JOIN oikumenea.tenant_graphs g WHERE g.code = 'canonical'
 ON CONFLICT (subject_person_id, role_id, target_unit_id, scope, graph_id) WHERE revoked_at IS NULL DO NOTHING;
 UPDATE oikumenea.authz_epoch SET epoch = epoch + 1 WHERE singleton;
-`, operatorPersonID, operatorRole.Id, rootUnitID)
+`, operatorPersonID, operatorRole.Id, rootUnitID, moderatorPersonID, moderatorRole.Id, rootUnitID)
 }
 
 func mintBootstrapAdminToken() (string, error) {

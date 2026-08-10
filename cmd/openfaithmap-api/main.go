@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	gencontent "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/content"
 	gendiscovery "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/discovery"
+	genmoderation "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/moderation"
 	genregistration "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/registration"
 	contentadapters "github.com/olehmushka/open-faith-map/internal/content/adapters"
 	contentapplication "github.com/olehmushka/open-faith-map/internal/content/application"
@@ -26,6 +27,9 @@ import (
 	discoveryadapters "github.com/olehmushka/open-faith-map/internal/discovery/adapters"
 	discoveryapplication "github.com/olehmushka/open-faith-map/internal/discovery/application"
 	discoverytransport "github.com/olehmushka/open-faith-map/internal/discovery/transport"
+	moderationadapters "github.com/olehmushka/open-faith-map/internal/moderation/adapters"
+	moderationapplication "github.com/olehmushka/open-faith-map/internal/moderation/application"
+	moderationtransport "github.com/olehmushka/open-faith-map/internal/moderation/transport"
 	"github.com/olehmushka/open-faith-map/internal/platform/config"
 	regadapters "github.com/olehmushka/open-faith-map/internal/registration/adapters"
 	regapplication "github.com/olehmushka/open-faith-map/internal/registration/application"
@@ -169,6 +173,36 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	if err := gendiscovery.RegisterRoutesDiscoveryPublicService(info.Router, discoveryPublicTransportSvc); err != nil {
 		pool.Close()
 		return nil, werror.WrapWithContextParams(ctx, err, "register discovery public routes")
+	}
+
+	// M5: platform-moderator's own root-unit-scoped Authorize check (application/authorize.go)
+	// reuses RootUnitID; CheckExclusion reuses the same service-principal credentials discovery's
+	// cache refresh already wires — the caller of POST /exclusion-check is anonymous, same reason.
+	moderationStore := moderationadapters.NewStore(pool)
+	moderationAppSvc := moderationapplication.NewService(moderationStore, moderationapplication.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+		RootUnitID:                  rootUnitID,
+		ServicePrincipal: coreintegration.Config{
+			BaseURL:            oikumeneaBaseURL,
+			CredentialsFile:    requireEnv("GOOGLE_APPLICATION_CREDENTIALS"),
+			Audience:           "openfaithmap-api",
+			InsecureSkipVerify: insecureSkipVerify,
+		},
+	})
+	moderationTransportSvc := moderationtransport.NewService(moderationAppSvc, moderationtransport.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+	})
+	moderationPublicTransportSvc := moderationtransport.NewPublicService(moderationAppSvc)
+
+	if err := genmoderation.RegisterRoutesModerationService(info.Router, moderationTransportSvc); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "register moderation routes")
+	}
+	if err := genmoderation.RegisterRoutesModerationPublicService(info.Router, moderationPublicTransportSvc); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "register moderation public routes")
 	}
 
 	return pool.Close, nil

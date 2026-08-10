@@ -838,3 +838,21 @@ invariant). Two roles keep that separable.
 - A moderator's authority is visible in go-oikumenea's own audit trail and manageable from
   `oikumenea-console` — a real benefit of not owning the roster, and partial compensation for
   D-Moderation's now-corrected two-ledger reality.
+
+> **Addendum (M5 scoping, 2026-08-10): `platform-moderator`'s permission set.** go-oikumenea's
+> permission catalog is closed and code-defined
+> (`go-oikumenea/internal/authorization/domain/permissions.go` — a write of an unknown code is
+> rejected server-side), so M5 cannot mint a new `moderation.*` permission; it must reuse an
+> existing one as the PDP marker for "holds platform-moderator standing," the same way
+> `registration`/`content`/`discovery` all reuse `religionorg.manage` for their own gates.
+> `platform-moderator` is granted **`unit.lifecycle`** (not `religionorg.manage` again — that would
+> make it indistinguishable from `registration-operator`/`congregation-admin` at the PDP, defeating
+> this decision's own "why not reuse registration-operator" reasoning) plus **`assignment.read`**
+> (root unit, `subtree` scope — the same self-reach requirement M2.3 already fixed for
+> `registration-operator`, since `Authorize` has no self-exemption). `unit.lifecycle` is the closest
+> existing semantic fit — moderation's own `suspend`/`archive` action kinds parallel a unit's
+> lifecycle state — and is not already held by either other role, so `platform-moderator` stays
+> genuinely distinguishable. `internal/moderation/application/authorize.go`'s `moderatePermission`
+> is the implementation; `moderation.read` and `moderation.act` both resolve to this one check —
+> there is no second go-oikumenea permission distinguishing read from act, matching how
+> `content`/`discovery` already collapse their own read/manage distinctions to one PDP call.

@@ -1,0 +1,346 @@
+# Moderation module API (M5). docs/modules/moderation.md. Owns reports, moderator actions, and
+# appeals across everything OpenFaithMap surfaces, plus a standalone D-Exclusions taxon-check
+# dry-run. openfaithmap.moderation_actions is this platform's ledger of record for moderation
+# decisions — append-only, reject_mutation()-guarded — not mirrored into go-oikumenea's audit trail
+# (D-Moderation's Correction: audit.write does not exist).
+#
+# TWO services, same reasoning as content.conjure.yml/discovery.conjure.yml (Conjure's auth is a
+# fixed per-service choice, not runtime-conditional): filing a report and running the exclusion
+# check are both anonymous by design (ModerationPublicService, no default-auth); the moderator
+# queue/action/appeal surface requires a forwarded bearer token (ModerationService,
+# default-auth: header) and is authorized live against go-oikumenea's PDP — does the caller hold
+# platform-moderator's grant on the shared root unit (D-PlatformModerator)? No OpenFaithMap-owned
+# moderator roster.
+#
+# checkExclusion runs under the server's own service-principal token
+# (coreintegration.NewServiceClient), never a forwarded caller token, since the public caller here
+# is anonymous and has none — mirrors discovery's cache-refresh precedent for the same reason.
+# Rate limiting on the two public endpoints is deliberately deferred to M7 (DS-OFM-9).
+#
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: openfaithmap.moderation
+    objects:
+      TargetKind:
+        docs: What a report or action targets.
+        values:
+          - SITE
+          - DOCUMENT
+          - CONGREGATION
+          - VOUCHING_EDGE
+      ReasonCode:
+        docs: >
+          Catalog-typed report reason. OTHER accepts free text via Report.detail. Deliberately has
+          no DOCTRINAL_CONCERN value (docs/modules/moderation.md's invariant: doctrinal disputes are
+          not adjudicated — they are filed under OTHER and moderators decline to act on doctrinal
+          grounds alone).
+        values:
+          - SPAM
+          - INCORRECT_INFORMATION
+          - INAPPROPRIATE_CONTENT
+          - DUPLICATE
+          - OTHER
+      QueueScope:
+        values:
+          - PLATFORM
+          - CONGREGATION
+          - JURISDICTION
+      ReportStatus:
+        values:
+          - OPEN
+          - ACTIONED
+          - DISMISSED
+      ActionKind:
+        values:
+          - HIDE
+          - SUSPEND
+          - ARCHIVE
+          - WARN_ADMIN
+          - REVOKE_VOUCH
+          - REVERSE
+      AppealStatus:
+        values:
+          - OPEN
+          - UPHELD
+          - OVERTURNED
+      AppealDecision:
+        values:
+          - UPHELD
+          - OVERTURNED
+
+      Report:
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local RID (openfaithmap.moderation.report).
+          targetKind: TargetKind
+          targetRef:
+            type: string
+            docs: The RID of the reported thing — a local content_* RID, or a go-oikumenea unit RID for CONGREGATION.
+          reasonCode: ReasonCode
+          detail: optional<string>
+          reporterPersonId:
+            type: optional<string>
+            docs: Unset when the reporter was anonymous.
+          queueScope: QueueScope
+          status: ReportStatus
+          createdAt: datetime
+          updatedAt: datetime
+
+      ModerationAction:
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local RID (openfaithmap.moderation.action).
+          reportId:
+            type: optional<string>
+            docs: Unset for a proactive action taken with no prior report.
+          actionKind: ActionKind
+          targetKind: TargetKind
+          targetRef: string
+          actorPersonId:
+            type: string
+            docs: The moderator who took this action (a go-oikumenea Person RID).
+          reason: string
+          reversedByActionId:
+            type: optional<string>
+            docs: Set on the original row once a REVERSE action targets it.
+          createdAt: datetime
+
+      Appeal:
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local RID (openfaithmap.moderation.appeal).
+          actionId: string
+          congregationAdminPersonId: string
+          statement: string
+          assignedModeratorPersonId:
+            type: optional<string>
+            docs: Never equal to the original action's actorPersonId.
+          status: AppealStatus
+          createdAt: datetime
+          updatedAt: datetime
+
+      FileReportRequest:
+        fields:
+          targetKind: TargetKind
+          targetRef: string
+          reasonCode: ReasonCode
+          detail: optional<string>
+
+      TakeActionOnReportRequest:
+        docs: Target is derived from the report itself, never re-specified by the caller.
+        fields:
+          actionKind: ActionKind
+          reason: string
+
+      TakeActionRequest:
+        docs: A proactive action with no prior report — the caller names the target directly.
+        fields:
+          actionKind: ActionKind
+          targetKind: TargetKind
+          targetRef: string
+          reason: string
+
+      ReverseActionRequest:
+        fields:
+          reason: string
+
+      FileAppealRequest:
+        fields:
+          statement: string
+
+      DecideAppealRequest:
+        fields:
+          decision: AppealDecision
+          note: optional<string>
+
+      ExclusionCheckRequest:
+        fields:
+          taxonId: string
+
+      ExclusionCheckResult:
+        fields:
+          excluded: boolean
+          excludedTaxonCode:
+            type: optional<string>
+            docs: The named D-Exclusions taxon code that matched, set only when excluded = true.
+
+      ReportPage:
+        fields:
+          reports: list<Report>
+          nextPageToken: optional<string>
+
+      AppealPage:
+        fields:
+          appeals: list<Appeal>
+          nextPageToken: optional<string>
+
+    errors:
+      ReportNotFound:
+        namespace: Moderation
+        code: NOT_FOUND
+        safe-args:
+          reportId: string
+      ActionNotFound:
+        namespace: Moderation
+        code: NOT_FOUND
+        safe-args:
+          actionId: string
+      AppealNotFound:
+        namespace: Moderation
+        code: NOT_FOUND
+        safe-args:
+          appealId: string
+      Forbidden:
+        docs: The caller does not hold platform-moderator's target-scoped grant on the root unit.
+        namespace: Moderation
+        code: PERMISSION_DENIED
+        safe-args: {}
+      ActionNotReversible:
+        docs: The action's reversal grace window has passed, or it was already reversed.
+        namespace: Moderation
+        code: INVALID_ARGUMENT
+        safe-args:
+          actionId: string
+      AppealActorConflict:
+        docs: An appeal may not be decided by the moderator who took the original action.
+        namespace: Moderation
+        code: INVALID_ARGUMENT
+        safe-args:
+          appealId: string
+      TaxonNotFound:
+        namespace: Moderation
+        code: INVALID_ARGUMENT
+        safe-args:
+          taxonId: string
+      DoctrinalReasonNotAllowed:
+        docs: >
+          Doctrinal disputes are not adjudicated (docs/modules/moderation.md's invariant) — file
+          under OTHER with free text instead.
+        namespace: Moderation
+        code: INVALID_ARGUMENT
+        safe-args: {}
+
+services:
+  ModerationPublicService:
+    name: Moderation Public Service
+    package: openfaithmap.moderation
+    base-path: /moderation/v1
+    docs: >
+      Anonymous public surface (openfaithmap-web holds no session — D-AdminSurface): file a report
+      against any target, and run the D-Exclusions taxon check ahead of registration as a
+      standalone dry-run. See docs/modules/moderation.md.
+    endpoints:
+      fileReport:
+        http: POST /reports
+        docs: File a report. reporterPersonId is unset — this endpoint never asks for identity.
+        args:
+          request: FileReportRequest
+        returns: Report
+      checkExclusion:
+        http: POST /exclusion-check
+        docs: >
+          Dry-run the D-Exclusions taxon check via the server's own service-principal token — the
+          caller here is anonymous and has no token of its own to forward. Re-run at registration
+          time itself (internal/registration), never cached from a prior visit here.
+        args:
+          request: ExclusionCheckRequest
+        returns: ExclusionCheckResult
+
+  ModerationService:
+    name: Moderation Service
+    package: openfaithmap.moderation
+    base-path: /moderation/v1
+    default-auth: header
+    docs: >
+      Moderator queue, actions, and appeals. moderation.read/moderation.act
+      (docs/modules/moderation.md) both resolve to one live PDP check: does the caller hold
+      platform-moderator's grant on the shared root unit (D-PlatformModerator)? No
+      OpenFaithMap-owned moderator roster — verified live against go-oikumenea, same discipline
+      registration/content/discovery already follow (D-Facade).
+    endpoints:
+      listReports:
+        http: GET /reports
+        docs: List reports in the given queue scope (default PLATFORM). Requires platform-moderator standing.
+        args:
+          scope:
+            type: optional<QueueScope>
+            param-type: query
+          status:
+            type: optional<ReportStatus>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: ReportPage
+      takeActionOnReport:
+        http: POST /reports/{reportId}/actions
+        docs: >
+          Take an action against a report's target. The moderation_actions row is written before
+          any local effect is applied (D-Moderation's Correction replacement invariant). Marks the
+          report ACTIONED.
+        args:
+          reportId:
+            type: string
+            param-type: path
+          request: TakeActionOnReportRequest
+        returns: ModerationAction
+      takeAction:
+        http: POST /actions
+        docs: Take a proactive action with no prior report (e.g. enforcing D-Exclusions directly).
+        args:
+          request: TakeActionRequest
+        returns: ModerationAction
+      reverseAction:
+        http: POST /actions/{actionId}/reverse
+        docs: >
+          Reverse a prior action within its grace window. Writes a new, append-only REVERSE row and
+          sets reversedByActionId on the original — the original row is never edited or deleted.
+        args:
+          actionId:
+            type: string
+            param-type: path
+          request: ReverseActionRequest
+        returns: ModerationAction
+      fileAppeal:
+        http: POST /actions/{actionId}/appeals
+        docs: >
+          File an appeal against an action, as the affected congregation admin (verified live via a
+          go-oikumenea authority check on the target unit, not a platform-moderator check).
+        args:
+          actionId:
+            type: string
+            param-type: path
+          request: FileAppealRequest
+        returns: Appeal
+      listAppeals:
+        http: GET /appeals
+        docs: List appeals. Requires platform-moderator standing.
+        args:
+          status:
+            type: optional<AppealStatus>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: AppealPage
+      decideAppeal:
+        http: POST /appeals/{appealId}/decide
+        docs: >
+          Decide an appeal. Rejects with Moderation:AppealActorConflict if the caller is the
+          original action's actor — enforced at write time, never left to moderator discipline.
+        args:
+          appealId:
+            type: string
+            param-type: path
+          request: DecideAppealRequest
+        returns: Appeal

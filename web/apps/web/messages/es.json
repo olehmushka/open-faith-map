@@ -18,7 +18,12 @@
   "CongregationPage": {
     "upcomingEvents": "Upcoming events",
     "dateTbd": "Date TBD",
-    "news": "News"
+    "news": "News",
+    "reportHeading": "Report a problem with this listing",
+    "reportThanks": "Thanks — your report has been filed for review.",
+    "reportReasonPlaceholder": "Reason for this report",
+    "reportDetailPlaceholder": "Additional detail (optional)",
+    "reportSubmit": "Submit report"
   },
   "Blocks": {
     "address": "Address:",
