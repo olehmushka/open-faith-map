@@ -14,6 +14,7 @@ require (
 	github.com/palantir/pkg/uuid v1.3.0
 	github.com/palantir/witchcraft-go-error v1.46.0
 	github.com/palantir/witchcraft-go-server/v2 v2.101.0
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/api v0.292.0
 )

@@ -151,6 +151,14 @@ func main() {
 			"religionorg.manage",
 			"site.manage",
 			"schedule.manage",
+			// assignment.read: M3, mirroring M2.3's identical fix for registration-operator above.
+			// Authorize (the target-scoped PDP check internal/content's requireManage — and
+			// registration's own IsOperator — both call) requires the CALLER to already hold
+			// assignment.read reaching the target unit, no self-exemption by design. Without this, a
+			// congregation admin holding religionorg.manage on their own unit still gets
+			// PermissionDenied from every content.manage check, the exact bug class M2.3 found and
+			// fixed once already — this is that same fix, applied to the role M2.3 didn't touch.
+			"assignment.read",
 		},
 	})
 	if err != nil {

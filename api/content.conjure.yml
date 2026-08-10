@@ -1,0 +1,331 @@
+# Content module API (M3). docs/modules/content.md. OpenFaithMap's own schema — a congregation's
+# website: pages made of typed, schema-validated blocks. M3 ships kind=PAGE only; POST/EVENT are
+# schema-ready but rejected at the application layer until M4 (see content.md's open seams).
+#
+# content.manage is a target-scoped capability check (Authorize with Action: "religionorg.manage",
+# UnitId: the SITE's own congregation unit — never a shared root), not a go-oikumenea permission
+# code of its own — see D-PlatformModerator and content.md's authorization-touchpoints section.
+#
+# TWO services share this file's types because Conjure's auth is a fixed per-service choice
+# (header/cookie), not a runtime-conditional one — there is no way for one endpoint to require a
+# token only when the caller happens to send one. openfaithmap-web holds no session at all
+# (D-AdminSurface), so it can only ever call ContentPublicService; ContentService is
+# openfaithmap-admin only.
+#
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: openfaithmap.content
+    objects:
+      DocumentKind:
+        values:
+          - PAGE
+          - POST
+          - EVENT
+      DocumentState:
+        values:
+          - DRAFT
+          - PUBLISHED
+          - UNLISTED
+      DocumentTransitionAction:
+        values:
+          - PUBLISH
+          - UNLIST
+          - REVERT_TO_DRAFT
+      BlockTypeStatus:
+        values:
+          - ACTIVE
+          - RETIRED
+
+      Site:
+        fields:
+          id: string
+          congregationUnitId:
+            type: string
+            docs: The go-oikumenea Unit RID this site belongs to (opaque foreign value).
+          slug: string
+          theme:
+            type: any
+            docs: Accent color, font pairing, header layout — data, never a per-tenant code fork.
+          createdAt: datetime
+          updatedAt: datetime
+      CreateSiteRequest:
+        fields:
+          congregationUnitId: string
+          slug:
+            type: string
+            docs: Admin-chosen, probed for uniqueness at write time (U5) — Content:SlugTaken on collision.
+      UpdateSiteThemeRequest:
+        fields:
+          theme: any
+
+      Document:
+        fields:
+          id: string
+          siteId: string
+          kind: DocumentKind
+          translationGroupId:
+            type: string
+            docs: Shared across every locale variant of one conceptual document.
+          locale: string
+          parentDocumentId:
+            type: optional<string>
+            docs: Pages only, up to 3 levels deep (app-enforced, not a DB constraint).
+          slug: string
+          state: DocumentState
+          publishedAt: optional<datetime>
+          eventStartsAt: optional<datetime>
+          eventEndsAt: optional<datetime>
+          eventRecurrenceRrule: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      CreateDocumentRequest:
+        fields:
+          kind:
+            type: DocumentKind
+            docs: M3 only accepts PAGE — POST/EVENT return Content:KindNotSupported until M4.
+          translationGroupId:
+            type: optional<string>
+            docs: Omit to start a new translation group; set to join an existing one as another locale variant.
+          locale: string
+          parentDocumentId: optional<string>
+          slug: string
+      UpdateDocumentRequest:
+        fields:
+          slug: optional<string>
+          parentDocumentId:
+            type: optional<string>
+            docs: Set a new parent. Omit (with clearParent false) to leave the parent unchanged.
+          clearParent:
+            type: boolean
+            docs: Set true (with parentDocumentId omitted) to move the page to top level.
+      TransitionDocumentRequest:
+        fields:
+          action: DocumentTransitionAction
+      DocumentPage:
+        fields:
+          documents: list<Document>
+
+      Block:
+        fields:
+          id: string
+          documentId: string
+          blockTypeCode: string
+          position: integer
+          data: any
+          createdAt: datetime
+          updatedAt: datetime
+      BlockInput:
+        fields:
+          blockTypeCode: string
+          position: integer
+          data: any
+      PutBlocksRequest:
+        fields:
+          blocks: list<BlockInput>
+      BlockList:
+        fields:
+          blocks: list<Block>
+
+      BlockType:
+        fields:
+          id: string
+          code: string
+          name: string
+          jsonSchema: any
+          status: BlockTypeStatus
+          sortOrder: integer
+      BlockTypePage:
+        fields:
+          blockTypes: list<BlockType>
+
+    errors:
+      SiteNotFound:
+        namespace: Content
+        code: NOT_FOUND
+        safe-args:
+          siteId: string
+      SlugTaken:
+        docs: >
+          U5's resolution: admin-chosen slug, probed for uniqueness at write time — no silent
+          suffixing. scope is "site" (globally unique) or "document" (unique within site+kind+locale).
+        namespace: Content
+        code: CONFLICT
+        safe-args:
+          slug: string
+          scope: string
+      DocumentNotFound:
+        namespace: Content
+        code: NOT_FOUND
+        safe-args:
+          documentId: string
+      Forbidden:
+        docs: The caller does not hold religionorg.manage on this site's congregation unit.
+        namespace: Content
+        code: PERMISSION_DENIED
+        safe-args: {}
+      KindNotSupported:
+        docs: M3 ships kind=PAGE only; POST/EVENT land at M4.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          kind: string
+      ParentTooDeep:
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          parentDocumentId: string
+      InvalidTransition:
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          documentId: string
+          fromState: string
+          action: string
+      BlockTypeNotFound:
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          blockTypeCode: string
+      BlockDataInvalid:
+        docs: block.data failed json_schema validation for its block type.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          blockTypeCode: string
+          position: integer
+      DuplicateBlockPosition:
+        docs: Two blocks in the same putBlocks call shared a position — rejected up front, no re-derivation.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          position: integer
+
+services:
+  ContentService:
+    name: Content Service
+    package: openfaithmap.content
+    base-path: /content/v1
+    default-auth: header
+    docs: >
+      Congregation site authoring: sites, documents (pages), blocks. Every write, and every read
+      that must see draft state, is content.manage-gated — a live, target-scoped Authorize call
+      against the site's own congregation unit (see file header). See docs/modules/content.md.
+    endpoints:
+      createSite:
+        http: POST /sites
+        args:
+          request: CreateSiteRequest
+        returns: Site
+      updateSiteTheme:
+        http: PUT /sites/{siteId}/theme
+        args:
+          siteId:
+            type: string
+            param-type: path
+          request: UpdateSiteThemeRequest
+        returns: Site
+      listDocuments:
+        http: GET /sites/{siteId}/documents
+        docs: Admin read — returns documents in every state.
+        args:
+          siteId:
+            type: string
+            param-type: path
+          kind:
+            type: optional<string>
+            param-type: query
+          locale:
+            type: optional<string>
+            param-type: query
+          state:
+            type: optional<string>
+            param-type: query
+        returns: DocumentPage
+      createDocument:
+        http: POST /sites/{siteId}/documents
+        args:
+          siteId:
+            type: string
+            param-type: path
+          request: CreateDocumentRequest
+        returns: Document
+      updateDocument:
+        http: PUT /documents/{documentId}
+        args:
+          documentId:
+            type: string
+            param-type: path
+          request: UpdateDocumentRequest
+        returns: Document
+      transitionDocument:
+        http: POST /documents/{documentId}/transition
+        args:
+          documentId:
+            type: string
+            param-type: path
+          request: TransitionDocumentRequest
+        returns: Document
+      getBlocks:
+        http: GET /documents/{documentId}/blocks
+        docs: Admin read — works regardless of document state.
+        args:
+          documentId:
+            type: string
+            param-type: path
+        returns: BlockList
+      putBlocks:
+        http: PUT /documents/{documentId}/blocks
+        docs: Full replace, validated against each referenced block type's json_schema.
+        args:
+          documentId:
+            type: string
+            param-type: path
+          request: PutBlocksRequest
+        returns: BlockList
+
+  ContentPublicService:
+    name: Content Public Service
+    package: openfaithmap.content
+    base-path: /content/v1/public
+    docs: >
+      Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to
+      published/unlisted; never discloses draft documents or their blocks.
+    endpoints:
+      getSite:
+        # Deliberately NOT /sites/{congregationUnitId} — that shares this service's /sites/{siteId}/...
+        # wildcard tree position under a differently-named parameter, which witchcraft's underlying
+        # httprouter rejects at startup (two routes cannot share a wildcard slot with different
+        # parameter names, regardless of what follows). Found by actually booting the server, not by
+        # review — content.md's original sketch had the same latent conflict.
+        http: GET /units/{congregationUnitId}/site
+        args:
+          congregationUnitId:
+            type: string
+            param-type: path
+        returns: Site
+      listPublicDocuments:
+        http: GET /sites/{siteId}/documents
+        args:
+          siteId:
+            type: string
+            param-type: path
+          kind:
+            type: optional<string>
+            param-type: query
+          locale:
+            type: optional<string>
+            param-type: query
+        returns: DocumentPage
+      getPublicBlocks:
+        http: GET /documents/{documentId}/blocks
+        docs: Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two.
+        args:
+          documentId:
+            type: string
+            param-type: path
+        returns: BlockList
+      listBlockTypes:
+        http: GET /block-types
+        docs: Active block types only.
+        returns: BlockTypePage

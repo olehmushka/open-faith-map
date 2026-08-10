@@ -19,7 +19,7 @@ import type {
   IRegistrationRequestPage,
   ISubmitRegistrationRequest,
   RegistrationStatus,
-} from "./openfaithmap/generated";
+} from "./openfaithmap/generated/registration";
 
 export type RegistrationRequest = IRegistrationRequest;
 export type RegistrationRequestPage = IRegistrationRequestPage;
