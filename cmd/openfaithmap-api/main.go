@@ -19,6 +19,7 @@ import (
 	gendiscovery "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/discovery"
 	genmoderation "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/moderation"
 	genregistration "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/registration"
+	genvouching "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/vouching"
 	contentadapters "github.com/olehmushka/open-faith-map/internal/content/adapters"
 	contentapplication "github.com/olehmushka/open-faith-map/internal/content/application"
 	contentdomain "github.com/olehmushka/open-faith-map/internal/content/domain"
@@ -29,11 +30,15 @@ import (
 	discoverytransport "github.com/olehmushka/open-faith-map/internal/discovery/transport"
 	moderationadapters "github.com/olehmushka/open-faith-map/internal/moderation/adapters"
 	moderationapplication "github.com/olehmushka/open-faith-map/internal/moderation/application"
+	moderationdomain "github.com/olehmushka/open-faith-map/internal/moderation/domain"
 	moderationtransport "github.com/olehmushka/open-faith-map/internal/moderation/transport"
 	"github.com/olehmushka/open-faith-map/internal/platform/config"
 	regadapters "github.com/olehmushka/open-faith-map/internal/registration/adapters"
 	regapplication "github.com/olehmushka/open-faith-map/internal/registration/application"
 	regtransport "github.com/olehmushka/open-faith-map/internal/registration/transport"
+	vouchingadapters "github.com/olehmushka/open-faith-map/internal/vouching/adapters"
+	vouchingapplication "github.com/olehmushka/open-faith-map/internal/vouching/application"
+	vouchingtransport "github.com/olehmushka/open-faith-map/internal/vouching/transport"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
@@ -55,6 +60,31 @@ func (r *contentSiteResolver) GetSiteByUnit(ctx context.Context, congregationUni
 		return "", false, err
 	}
 	return site.ID, true, nil
+}
+
+// moderationVouchReporter adapts moderationapplication.Service's FileReport onto vouching's own
+// ModerationReporter interface — the same in-process interface-call cross-module dependency shape
+// as contentSiteResolver above. Translates vouching's own GuarantorRevokedEvent vocabulary into
+// moderation's FileReportInput here, at the composition root, so internal/vouching's application
+// package never imports internal/moderation's domain or application packages directly (M6's own
+// decision, docs/modules/vouching.md: revocation queues moderator review, it never invalidates
+// anything automatically). Uses moderation's OTHER reason code with a descriptive detail string
+// rather than a new GUARANTOR_REVOKED enum value, to avoid touching M5's already-migrated CHECK
+// constraint and generated SDKs for this one caller.
+type moderationVouchReporter struct {
+	moderation *moderationapplication.Service
+}
+
+func (r *moderationVouchReporter) ReportGuarantorRevoked(ctx context.Context, event vouchingapplication.GuarantorRevokedEvent) error {
+	detail := fmt.Sprintf("guarantor_revoked: guarantor=%s claimant=%s congregation=%s reason=%s",
+		event.GuarantorPersonRID, event.ClaimantPersonRID, event.CongregationUnitID, event.RevokedReason)
+	_, err := r.moderation.FileReport(ctx, moderationdomain.FileReportInput{
+		TargetKind: moderationdomain.TargetVouchingEdge,
+		TargetRef:  event.VouchID,
+		ReasonCode: moderationdomain.ReasonOther,
+		Detail:     &detail,
+	})
+	return err
 }
 
 func main() {
@@ -203,6 +233,28 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	if err := genmoderation.RegisterRoutesModerationPublicService(info.Router, moderationPublicTransportSvc); err != nil {
 		pool.Close()
 		return nil, werror.WrapWithContextParams(ctx, err, "register moderation public routes")
+	}
+
+	// M6: vouching has no genuinely-anonymous endpoint (unlike content/discovery/moderation), so it
+	// gets a single authenticated service, and no ServicePrincipal config at all. Its
+	// moderation.read/moderation.act gates reuse the same RootUnitID as moderation's own
+	// requireModerate; RevokeGuarantor's moderation-report fan-out is wired through
+	// moderationVouchReporter above, an in-process call into the moderationAppSvc already
+	// constructed for the moderation module.
+	vouchingStore := vouchingadapters.NewStore(pool)
+	vouchingAppSvc := vouchingapplication.NewService(vouchingStore, &moderationVouchReporter{moderation: moderationAppSvc}, vouchingapplication.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+		RootUnitID:                  rootUnitID,
+	})
+	vouchingTransportSvc := vouchingtransport.NewService(vouchingAppSvc, vouchingtransport.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+	})
+
+	if err := genvouching.RegisterRoutesVouchingService(info.Router, vouchingTransportSvc); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "register vouching routes")
 	}
 
 	return pool.Close, nil

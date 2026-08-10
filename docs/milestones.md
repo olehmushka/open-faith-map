@@ -84,7 +84,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M4 · Public discovery site | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-10).** `modules/discovery.md` — cache schema + facade over go-oikumenea's `religion` discovery search, redesigned per M2.5's finding: lazy cache-only public reads, no scheduled refresh job, `DS-OFM-13`'s FK resolved. Also ships `content`'s `POST`/`EVENT` kinds (deferred from M3) and the public map/congregation-page UI. Found and got fixed same-day a real upstream RLS bug ([go-oikumenea#34](https://github.com/olehmushka/go-oikumenea/issues/34)); live end-to-end proof against `oikumenea:0.0.3` with real data. |
 | M4.1 · Jurisdiction units | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** D-JurisdictionUnits (supersedes D-FlatRoot's simplification). Real, operator-assigned jurisdiction units; existing congregations can be re-parented onto one. Proven live end-to-end against a real `docker compose` stack — see prose. **`Verified` needs a green CI run on `main` at the merge commit** (M2.4's gate), not yet attempted here. |
 | M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are now resolved (D-PlatformModerator, D-Moderation's Correction, and M4.1 landing cleared the third). **`Verified` needs a green CI run on `main` at the merge commit and a live two-real-token proof**, not yet attempted here. |
-| M6 · Vouching | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both now have a real mechanism (D-PlatformModerator), which they lacked before the 2026-08-09 audit. |
+| M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. **`Verified` needs a green CI run on `main` at the merge commit and a real two-browser-session proof (a guarantor-with-standing vs. a guarantor-with-none, and a moderator vs. a non-moderator)**, not yet attempted here — see prose. |
 | M7 · Hardening / real-user feedback | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Idea.** Named and sequenced here; no `D-<Name>` block or module doc yet — first real milestone to pass through the full pipeline once M1–M6 have shipped code and real congregations are using the platform. Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. |
 
 ## Per-milestone detail
@@ -1117,6 +1117,82 @@ Builds `vouching` per [vouching.md](modules/vouching.md). Its two authorization 
 "`content.manage`-equivalent authority on **some** congregation" gate on `POST /vouches` — both
 resolve through [D-PlatformModerator](architecture/decisions.md)'s target-scoped-capability pattern,
 which they lacked any mechanism for before the 2026-08-09 audit.
+
+> **As implemented (2026-08-10).** Full stack, mirroring `internal/moderation`'s exact
+> domain/adapters/application/transport shape: `api/vouching.conjure.yml` (one authenticated
+> `VouchingService` — unlike content/discovery/moderation, vouching has no genuinely-anonymous
+> endpoint at all, so there is no public/private service split here), `internal/vouching/{domain,
+> adapters,application,transport}`, `migrations/0008_vouching.sql` (`vouching_edges`, append-only,
+> `reject_mutation()`-guarded, reusing the function `0007_moderation.sql` already created;
+> `vouching_guarantor_status`, a mutable one-row-per-guarantor overlay), and admin UI
+> (`/admin/vouching` — a moderator console for guarantor lookup/revoke and a vouches browser;
+> `/admin/vouching/new` — the guarantor-facing "vouch for someone" form).
+>
+> **The "some congregation" gate resolved as a new request field, not a fixed target.**
+> `CreateVouchRequest.guarantorCongregationUnitId` is the unit the *caller* proves their own
+> `religionorg.manage` standing on — deliberately independent of `congregationUnitId` (the claim),
+> per this doc's own "no relationship requirement between guarantor and claim." Implemented as
+> `requireCongregationStanding`, a byte-for-byte duplicate of moderation's
+> `requireCongregationAdmin` — confirmed live in `cmd/openfaithmap-api/main.go` that this repo's real
+> convention is each module holding its own copy of this check (content's `requireManage` and
+> moderation's own equivalent are already independent copies), not importing another module's
+> `application` package.
+>
+> **The moderation-report fan-out is an in-process interface call, not a new `GUARANTOR_REVOKED`
+> reason code.** `RevokeGuarantor` writes the revoked-status row first (load-bearing — "cannot vouch
+> while revoked" must take effect immediately), then best-effort fans out one
+> `moderation_reports` row per the guarantor's prior vouches via a `ModerationReporter` interface
+> vouching owns; `cmd/openfaithmap-api/main.go`'s `moderationVouchReporter` adapter translates each
+> event into moderation's existing `ReasonCode.OTHER` + a descriptive `detail` string, calling
+> `moderationapplication.Service.FileReport` directly (same in-process cross-module shape as
+> discovery's `ContentResolver`) — `internal/vouching/application` itself never imports moderation's
+> domain or application packages. Avoids touching M5's already-migrated `ReasonCode` `CHECK`
+> constraint, Conjure contract, and generated SDKs for this one caller.
+>
+> **One deliberate, scoped case deviation, confined to a single function.** The DB `CHECK` on
+> `vouching_guarantor_status.status` is lowercase (`'trusted'`/`'revoked'`, this doc's own literal
+> SQL text), while the Conjure `GuarantorStatus` enum stays uppercase, matching every other Conjure
+> enum in this repo. The shim lives only in `transport/convert.go`'s `toAPIGuarantorStatusValue` —
+> no other module needs it.
+>
+> **`GetGuarantorStatus` synthesizes `TRUSTED` for a person with no row**, never a not-found error —
+> the column's own `DEFAULT 'trusted'` already means that; proven live (see below) rather than just
+> reasoned about.
+>
+> **No claimant-facing "request a vouch" page was built.** This doc names the eventual real caller
+> as "the web-admin.md congregation-claim flow" — confirmed absent from this codebase by direct
+> search, not assumed. Building a claimant-facing entry point against a flow that doesn't exist yet
+> would be scope creep beyond what this milestone specifies; the guarantor-facing form
+> (`/admin/vouching/new`) needs no such dependency, since the guarantor is always an existing,
+> already-admin caller.
+>
+> **Live-verified against a real `docker compose` stack** (`OIKUMENEA_SRC=../go-oikumenea docker
+> compose up --build`), through real HTTP calls (not just the API boundary): `createVouch` performed
+> a real go-oikumenea `Authorize` call and returned a real vouch row; `getGuarantorStatus` for a
+> never-seen person RID returned synthesized `{"status":"TRUSTED"}` with no `updatedAt`;
+> `listVouches` filtered correctly by claimant+congregation; `revokeGuarantor` wrote the status row
+> and, confirmed directly in Postgres, exactly one `moderation_reports` row
+> (`target_kind='VOUCHING_EDGE'`, `reason_code='OTHER'`, `detail` naming `guarantor_revoked` and the
+> real guarantor/claimant/congregation RIDs) per affected vouch; a subsequent `createVouch` from the
+> now-revoked guarantor correctly returned `Vouching:GuarantorRevoked`; a raw `UPDATE` and `DELETE`
+> against `vouching_edges` directly in Postgres both failed with `restrict_violation` —
+> `reject_mutation()` really is unconditional; and a request with no `Authorization` header at all
+> was rejected before reaching the handler. `go build ./... && go test ./...`,
+> `./godelw verify` (0 issues), both web apps' `npm run lint && npm run build`, and `make sdk-verify`
+> (no generated-SDK drift) all pass clean. `/admin/vouching` and `/admin/vouching/new` were confirmed,
+> over real HTTP, to redirect an unauthenticated visitor to `/login` exactly like every other admin
+> page.
+>
+> **Not achievable headlessly, same limitation every prior milestone (M2, M2.1, M2.3, M4.1, M5)
+> already named:** the real two-*different*-people proof (a guarantor with standing over one
+> congregation vouching for a claim on an unrelated one vs. a guarantor with no standing anywhere;
+> a `platform-moderator` account vs. a non-moderator) needs two real, separately-authenticated
+> browser Google OAuth sessions — go-oikumenea's local-dev HS256 bootstrap issuer trusts exactly one
+> subject (`local-admin`), already flagged instance-admin, which bypasses every unit-scoped
+> `Authorize` check and so cannot serve as either a positive or a negative control on its own. All
+> of this milestone's live checks above necessarily ran under that one instance-admin identity.
+> `Verified` stays `⬜` until that real-browser proof and a green CI run on `main` at the merge
+> commit are both done (see the stage board above).
 
 ### M7 · Hardening / real-user feedback (idea stage)
 

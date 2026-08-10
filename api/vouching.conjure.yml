@@ -1,0 +1,164 @@
+# Vouching module API (M6). docs/modules/vouching.md, D-Vouching. A lightweight web-of-trust
+# mechanism: an already-verified congregation admin (guarantor) can vouch that a new admin
+# (claimant) genuinely represents the congregation they claim. A vouch RAISES TRUST, NEVER GRANTS
+# AUTHORITY — real authority still comes only from a go-oikumenea role assignment. Entirely
+# OpenFaithMap-owned; go-oikumenea has no equivalent concept.
+#
+# ONE service, all four endpoints authenticated (default-auth: header) — unlike
+# content/discovery/moderation.conjure.yml, vouching has no genuinely-anonymous surface: even
+# filing a vouch requires the caller to already be a real, logged-in congregation admin.
+#
+# Authorization (both gates resolve through D-PlatformModerator's target-scoped-capability
+# pattern, same mechanism moderation.conjure.yml already uses):
+#   - createVouch: the caller must hold write authority (religionorg.manage) over SOME
+#     congregation unit of their own — proven live against go-oikumenea, never cached
+#     (core-integration.md's invariant). Deliberately NOT scoped to the claim's own congregation:
+#     vouching.md is explicit that "there is no relationship requirement between guarantor and
+#     claim" — a known pastor in another city can vouch. That is what CreateVouchRequest's own
+#     guarantorCongregationUnitId field names: the unit the CALLER proves standing on, independent
+#     of congregationUnitId (the claim being vouched for). The caller must also not currently hold
+#     REVOKED guarantor status, checked at write time, live, every call.
+#   - listVouches / revokeGuarantor / getGuarantorStatus: moderation.read/moderation.act
+#     (docs/modules/moderation.md) — does the caller hold platform-moderator's grant on the shared
+#     root unit? No OpenFaithMap-owned moderator roster, same discipline every other module follows.
+#
+# Revoking a guarantor never silently invalidates their past vouches (vouching.md's invariant) — it
+# only queues moderator review, by filing one openfaithmap.moderation_reports row per affected vouch
+# (target_kind = VOUCHING_EDGE, reason_code = OTHER, detail names guarantor_revoked) via an
+# in-process call into internal/moderation, wired at the composition root
+# (cmd/openfaithmap-api/main.go) — see that file's moderationVouchReporter adapter.
+#
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: openfaithmap.vouching
+    objects:
+      GuarantorStatus:
+        docs: >
+          Whether a guarantor is currently trusted. The absence of any vouching_guarantor_status
+          row for a person means TRUSTED (the table's own DEFAULT) — getGuarantorStatus synthesizes
+          that value rather than returning a not-found error.
+        values:
+          - TRUSTED
+          - REVOKED
+
+      Vouch:
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local uuid (openfaithmap.vouching_edges.id).
+          guarantorPersonId:
+            type: string
+            docs: The go-oikumenea Person RID of the admin who vouched.
+          claimantPersonId:
+            type: string
+            docs: The go-oikumenea Person RID of the person being vouched for.
+          congregationUnitId:
+            type: string
+            docs: The go-oikumenea Unit RID of the congregation the claim is about.
+          statement: optional<string>
+          createdAt: datetime
+
+      GuarantorStatusRecord:
+        fields:
+          guarantorPersonId: string
+          status: GuarantorStatus
+          revokedAt: optional<datetime>
+          revokedReason: optional<string>
+          revokedByPersonId: optional<string>
+          updatedAt:
+            type: optional<datetime>
+            docs: Unset when this record was synthesized (no underlying row exists yet).
+
+      CreateVouchRequest:
+        fields:
+          claimantPersonId: string
+          congregationUnitId: string
+          guarantorCongregationUnitId:
+            type: string
+            docs: >
+              The unit the CALLER (guarantor) proves their own religionorg.manage standing on —
+              deliberately independent of congregationUnitId, the claim being vouched for. See this
+              file's header comment.
+          statement: optional<string>
+
+      RevokeGuarantorRequest:
+        fields:
+          reason: string
+
+      VouchPage:
+        fields:
+          vouches: list<Vouch>
+          nextPageToken: optional<string>
+
+    errors:
+      Forbidden:
+        docs: >
+          The caller does not meet createVouch's target-scoped congregation-standing check, or does
+          not hold platform-moderator's grant on the root unit for a moderator-only endpoint.
+        namespace: Vouching
+        code: PERMISSION_DENIED
+        safe-args: {}
+      GuarantorRevoked:
+        docs: The caller currently holds REVOKED guarantor status and may not file a new vouch.
+        namespace: Vouching
+        code: INVALID_ARGUMENT
+        safe-args:
+          guarantorPersonId: string
+
+services:
+  VouchingService:
+    name: Vouching Service
+    package: openfaithmap.vouching
+    base-path: /vouching/v1
+    default-auth: header
+    docs: >
+      Filing and reviewing vouches, and managing guarantor standing. See docs/modules/vouching.md.
+    endpoints:
+      createVouch:
+        http: POST /vouches
+        docs: >
+          File a vouch as the caller (the guarantor). Rejects with Vouching:Forbidden if the caller
+          lacks religionorg.manage on guarantorCongregationUnitId, and with
+          Vouching:GuarantorRevoked if the caller currently holds REVOKED status — both checked
+          live, never cached.
+        args:
+          request: CreateVouchRequest
+        returns: Vouch
+      listVouches:
+        http: GET /vouches
+        docs: List vouches for a claim. Requires platform-moderator standing.
+        args:
+          claimant:
+            type: optional<string>
+            param-type: query
+          congregation:
+            type: optional<string>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: VouchPage
+      revokeGuarantor:
+        http: POST /guarantors/{personRid}/revoke
+        docs: >
+          Revoke a guarantor. Requires platform-moderator standing. Never invalidates the
+          guarantor's past vouches automatically — instead files one moderation report per affected
+          vouch for moderator review (vouching.md's invariant).
+        args:
+          personRid:
+            type: string
+            param-type: path
+          request: RevokeGuarantorRequest
+        returns: GuarantorStatusRecord
+      getGuarantorStatus:
+        http: GET /guarantors/{personRid}/status
+        docs: Read a guarantor's current status. Requires platform-moderator standing.
+        args:
+          personRid:
+            type: string
+            param-type: path
+        returns: GuarantorStatusRecord
