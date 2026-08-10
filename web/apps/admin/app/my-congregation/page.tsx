@@ -47,6 +47,9 @@ export default async function MyCongregationPage() {
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 px-6 py-12">
       <h1 className="text-2xl font-semibold">{mine[0].congregationName}</h1>
       <p className="text-sm">Unit status: {unit.state}</p>
+      <Link href={`/admin/sites/${unitId}`} className="underline">
+        Manage site
+      </Link>
 
       <section>
         <h2 className="text-lg font-medium">Roster</h2>

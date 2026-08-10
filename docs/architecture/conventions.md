@@ -7,11 +7,14 @@ of choices specific to OpenFaithMap.
 
 ## Inherited unchanged from go-oikumenea
 
-- Composed URN **RID** primary keys via `new_rid()` (or its OpenFaithMap-local equivalent —
-  see below), `TIMESTAMPTZ` UTC everywhere, soft-delete (`deleted_at`), a `set_updated_at()`
-  trigger, `TEXT` + `CHECK` for fixed enums (never native Postgres enums), a `reject_mutation()`
-  guard on append-only tables (moderation actions, vouching edges).
-  See go-oikumenea's own `docs/architecture/conventions.md` for the exact SQL patterns.
+- `TIMESTAMPTZ` UTC everywhere, soft-delete (`deleted_at`), a `set_updated_at()` trigger, `TEXT` +
+  `CHECK` for fixed enums (never native Postgres enums), a `reject_mutation()` guard on
+  append-only tables (moderation actions, vouching edges). See go-oikumenea's own
+  `docs/architecture/conventions.md` for the exact SQL patterns.
+  *(Corrected at M3, 2026-08-10 — see the RID entry below: the composed-URN-`TEXT` "RID" primary
+  key this bullet used to describe is a documented-but-unshipped go-oikumenea redesign, not what
+  the actually-deployed schema does. Plain `uuid` PKs are inherited unchanged; the URN scheme is
+  not.)*
 - Hexagonal layering per module: `transport → application → domain → adapters`, domain owns its
   interfaces, imports no framework.
 - Cross-module queries inside `openfaithmap-api` are direct interface calls; cross-module
@@ -43,17 +46,27 @@ of choices specific to OpenFaithMap.
   instance boundary. `openfaithmap-api` connects as a least-privilege role scoped to the
   `openfaithmap` schema (M2.4, D-SharedDatabase) — the boundary is now enforced at the database
   level, not just by convention.
-- **RID slot allocation.** OpenFaithMap mints its own RIDs for its own entities
-  (`content_pages`, `moderation_reports`, `vouching_edges`, …) — never in go-oikumenea's RID
-  space. Where OpenFaithMap's tables reference a go-oikumenea entity (a congregation `Unit`, a
-  `Person`), the column stores go-oikumenea's **RID as an opaque `TEXT` foreign value** — never a
-  local foreign key, even though the referenced row now lives one schema away rather than one
-  database away. There is no cross-schema FK integrity; OpenFaithMap treats a dangling reference as
-  "the unit/person no longer exists" and handles it at read time (soft 404, not a crash).
-  *(Note: `registration_requests` uses a `uuid` PK, not a composed URN RID — a deviation from the
-  inherited convention above, undocumented until the 2026-08-09 audit. Decide at M3 whether new
-  modules follow `registration`'s uuid precedent or go-oikumenea's RID convention, and make them
-  consistent.)*
+- **Primary keys are plain `uuid` (`gen_random_uuid()`), not composed URN RIDs — decided at M3,
+  2026-08-10, correcting a premise this bullet held until then.** The prior text described
+  OpenFaithMap minting "RIDs" in go-oikumenea's composed-URN-`TEXT` style
+  (`urn:oikumenea:<service>:<env>:<entity_type>:<uuid>`, via a `new_rid()` function) and flagged
+  `registration_requests`'s plain `uuid` PK as an undocumented deviation from it. Checked directly
+  against go-oikumenea's actually-deployed migrations (`migrations/0003_person_membership.sql` and
+  every other table in that repo's checked-out `main` branch): every PK is a plain `uuid PRIMARY
+  KEY DEFAULT oikumenea.new_id(app,service,kind)` — a bit-packed UUID, not a URN-`TEXT` string; no
+  `new_rid()` function exists anywhere in those migrations. The composed-URN scheme is a
+  documented-but-unshipped future go-oikumenea redesign (referenced in that repo's own longer-term
+  planning docs), not its current convention. **`registration_requests` was never a deviation** —
+  it already matched go-oikumenea's real schema. `content_*` (M3) and every module after it use the
+  same plain `uuid` PK, for consistency with what go-oikumenea actually does today, not with a
+  redesign it hasn't shipped. Revisit if/when go-oikumenea itself ships composed-URN RIDs.
+
+  Separately, **opaque foreign values are unchanged**: where OpenFaithMap's tables reference a
+  go-oikumenea entity (a congregation `Unit`, a `Person`), the column stores go-oikumenea's own PK
+  as an opaque `TEXT` foreign value — never a local foreign key, even though the referenced row now
+  lives one schema away rather than one database away. There is no cross-schema FK integrity;
+  OpenFaithMap treats a dangling reference as "the unit/person no longer exists" and handles it at
+  read time (soft 404, not a crash).
 - **Authorization for OpenFaithMap-owned tables is a target-scoped capability check** against
   go-oikumenea's PDP — "does this caller hold *this authority* over *this unit*" — never an
   untargeted "holds P anywhere" check, and never a successful read treated as proof of write

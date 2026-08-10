@@ -43,8 +43,6 @@ Real choices with no obvious default, parked on purpose. Each needs someone to p
 
 | # | The decision | Owner |
 |---|---|---|
-| U5 | `content_sites.slug` collisions — two self-registered "St. Mary's" collide on a globally-`UNIQUE` column, and unlike `registration`'s unit codes there is no disambiguation story. | [M3](#m3--content--site-builder-backend) · [content.md](modules/content.md) |
-| U6 | `registration_requests` uses a `uuid` PK where conventions specify composed URN RIDs. Do `content_*` follow the precedent or the convention? Pick before four modules do two things. | `DS-OFM-11` |
 | U7 | Cross-module foreign keys inside `openfaithmap-api` (`discovery_site_cache.content_site_id` → `content_sites`) are neither permitted nor forbidden by conventions.md. | `DS-OFM-13` |
 
 ### Group 3 — contradictions and orphans needing a call
@@ -81,8 +79,8 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M2.3 · Registration hardening (security + correctness) | ✅ | ✅ | ✅ | ✅ | ➖ | 🔶 | **Built, blocked on the live two-real-token proof — see prose.** D-PlatformModerator's target-scoped-capability pattern, implemented via go-oikumenea's `Authorize` + a new `assignment.read` grant. All three defects the 2026-08-09 audit found in M2's shipped code are fixed: the operator gate is now target-scoped (no longer discloses every submitter's PII to any congregation admin), `getRequest` is authorized (submitter or operator), and `approveRequest` is idempotent and resumable. **Blocks M2's Verified.** |
 | M2.4 · CI repair + deployment hygiene | ✅ | ✅ | ➖ | ⬜ | ➖ | ✅ | **Verified (2026-08-10).** All five items landed (PR #9) and CI has run green on `main` repeatedly since — [run 31331332615](https://github.com/olehmushka/open-faith-map/actions/runs/31331332615) (the merge commit itself) through at least [run 31335009849](https://github.com/olehmushka/open-faith-map/actions/runs/31335009849) (M2.5's merge). Item 1's own acceptance criterion ("a green CI run on `main`, with both apps' lint and build visible as separate matrix legs") is met for real, not just reasoned about — the thing this milestone existed to fix is confirmed fixed. |
 | M2.5 · Discovery reachability spike | ➖ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified (2026-08-10).** A measurement, not a decision — hence `Decided ➖`. Both the machine-subject and anonymous-subject denials were live-verified true; [go-oikumenea#33](https://github.com/olehmushka/go-oikumenea/issues/33) fixed the machine-subject half (`0.0.2`, re-verified live), leaving anonymous access as the one still-open gap, by design (#33's own scope). Its own exit criterion (measure + file the upstream issue) is fully met, and the inherited CI-on-`main` blocker is resolved — [run 31335009849](https://github.com/olehmushka/open-faith-map/actions/runs/31335009849), this milestone's own merge, is green. **Still blocks M4's `designed` gate** — that's a separate, un-inherited block: the redesign this enables (cache-only public reads) is buildable now but still needs to be written, not just enabled. |
-| M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ✅ | ➖ | ➖ | ✅ | 🔶 | **Built (2026-08-10) — see prose.** D-Stack's Conjure-first rule and both consumer module docs required a generated typed client; `web/apps/admin/lib/registration.ts` was hand-written and had already drifted (missing the `PROVISIONING` status M2.3 added). `U4` resolved: generated in place into `web/apps/admin/lib/openfaithmap/generated`, not a separate package — see D-Stack. Proven live: removing a field from `api/registration.conjure.yml` and regenerating breaks `web/apps/admin`'s build with a real compile error, the milestone's own acceptance criterion. `Verified` stays `🔶`, blocked on a green CI run on `main` at this milestone's own merge commit — not yet merged. |
-| M3 · Content / site-builder backend | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Designed.** `modules/content.md` — full entity model, Conjure sketch. (M2's `registration_requests` table was actually OpenFaithMap's first schema — see `modules/registration.md` — this doc's "first genuinely new schema" framing predates that finding.) Two audit corrections applied to that doc: `content.manage`'s definition (D-PlatformModerator) and the post/event sequencing contradiction. |
+| M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ✅ | ➖ | ➖ | ✅ | ✅ | **Verified (2026-08-10).** D-Stack's Conjure-first rule and both consumer module docs required a generated typed client; `web/apps/admin/lib/registration.ts` was hand-written and had already drifted (missing the `PROVISIONING` status M2.3 added). `U4` resolved: generated in place into `web/apps/admin/lib/openfaithmap/generated`, not a separate package — see D-Stack. Proven live: removing a field from `api/registration.conjure.yml` and regenerating breaks `web/apps/admin`'s build with a real compile error, the milestone's own acceptance criterion. Merged as PR #12; [run 31341045908](https://github.com/olehmushka/open-faith-map/actions/runs/31341045908) confirms CI green on `main` at that merge commit. |
+| M3 · Content / site-builder backend | ✅ | ✅ | ✅ | ✅ | ✅ | 🔶 | **Built (2026-08-10) — see prose.** `modules/content.md` — sites/documents(pages)/blocks/block-type catalog, `internal/content`, `migrations/0004_content.sql`, a site-editor UI in `web/apps/admin`. U5 (slug collisions) and U6 (RID vs uuid) both resolved. Proven live end-to-end: create→write→schema-validate→publish, public-read filtering (draft hidden, published visible, no auth), against a real stack. Found and fixed two real bugs no static check caught: a `httprouter` startup panic from two routes sharing a wildcard slot under different parameter names, and `congregation-admin`'s role missing `assignment.read` (same defect class M2.3 already fixed once, for a different role). `Verified` stays `🔶`, blocked on a green CI run on `main` at this milestone's own merge commit. |
 | M4 · Public discovery site | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/discovery.md` — cache schema + facade contract over go-oikumenea's `religion` discovery search. Both the cache-refresh path and possibly the public read path rest on go-oikumenea behavior M2.5 has to measure first. |
 | M4.1 · Jurisdiction units | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | **Decided (audit 2026-08-09).** D-FlatRoot. Replaces the flat single-root org with real jurisdiction units and re-parents existing congregations. **Blocks M5's `designed` gate** — moderation's `jurisdiction` queue scope and D-Exclusions' org-level backstop both need an ancestor chain that does not exist today. |
 | M5 · Moderation | ✅ | 🔶 | ⬜ | ⬜ | ⬜ | ⬜ | **Designed, but its `designed` gate is reopened (audit 2026-08-09).** `modules/moderation.md` — reports/actions/appeals + the D-Exclusions taxon check. Two dependencies resolved into decisions (D-PlatformModerator for the moderator roster, D-Moderation's Correction for the audit trail); one still open (M4.1's jurisdiction units). |
@@ -697,8 +695,9 @@ Stand up the pipeline go-oikumenea already has (its `scripts/gen-ts-client.sh` +
 > generated client and its façade have no framework dependency). `approveRequest` performed a real
 > go-oikumenea `createChildOrg` and returned a real `createdUnitId`; the reject path set a real
 > `rejectionReason`; a lookup on a nonexistent id returned the correct
-> `404 Registration:RequestNotFound`. **Not yet run:** a confirmed green CI run on `main` at this
-> milestone's own merge commit — `Verified` stays `🔶` until that lands, per M2.4's own gate.
+> `404 Registration:RequestNotFound`. **Update (2026-08-10): merged as PR #12** — [run
+> 31341045908](https://github.com/olehmushka/open-faith-map/actions/runs/31341045908) confirms CI
+> green on `main` at that merge commit, so `Verified` flips in the stage board above.
 
 ### M3 · Content / site-builder backend
 
@@ -724,6 +723,65 @@ Two audit corrections to [content.md](modules/content.md) apply to this mileston
   D-FlatRoot self-service registration two congregations named "St. Mary's" collide, and unlike
   `slugCode`'s unit codes there is no disambiguation story. Pick one (suffix, per-country
   namespacing, or admin-chosen with a uniqueness probe) when writing the migration.
+
+> **As implemented (2026-08-10).** Full stack: `api/content.conjure.yml`, `internal/content/{domain,
+> application,adapters,transport}` (mirroring `internal/registration`'s exact hexagonal shape),
+> `migrations/0004_content.sql`, and a site-editor UI (`web/apps/admin/app/admin/sites/[unitId]/...`)
+> using the M2.6 generated-client pattern (`lib/content.ts` mirrors `lib/registration.ts`).
+>
+> **U5 and U6 both resolved, not deferred.** U5 (slug collisions): admin-chosen slug, probed
+> race-safely at write time (insert first, catch the unique-violation, translate to
+> `Content:SlugTaken` — never check-then-insert), content.md's own recommended option. U6 (RID vs
+> uuid): checked go-oikumenea's *actually-deployed* migrations directly — every table uses a plain
+> `uuid` PK, not the composed-URN scheme `conventions.md` described; that scheme is a
+> documented-but-unshipped go-oikumenea redesign. `registration_requests`'s uuid PK was never a
+> deviation, and `content_*` follows the same real precedent. `conventions.md` corrected
+> accordingly.
+>
+> **`content.manage` resolved as a reuse, not a new permission:** go-oikumenea's existing
+> `religionorg.manage`, already granted to `congregation-admin` on their own unit. One real
+> consequence, live-verified: a registration operator's subtree grant on the shared root also
+> satisfies `content.manage` for every congregation, not just ones tied to their own approvals —
+> see content.md's authorization-touchpoints section. Acceptable for now (operators are a small,
+> trusted set), flagged as an open seam for later.
+>
+> **Conjure has no per-endpoint anonymous auth — verified against the compiler's own `AuthType`
+> definition (Header/Cookie only, no None), not just inferred.** `openfaithmap-web` holds no session
+> at all, so content.md's original "content.manage for draft / none for public" single-endpoint
+> shape doesn't compile to anything buildable. Split into two services in one `.conjure.yml`:
+> `ContentService` (`default-auth: header`) and `ContentPublicService` (no auth declared at all —
+> confirmed the generated Go interface has no `bearertoken.Token` parameter whatsoever, not just an
+> optional one).
+>
+> **Two real bugs found only by actually booting the server and calling it live, neither caught by
+> `go build`, `go vet`, or `./godelw verify`:**
+> 1. A `httprouter` startup panic: `ContentPublicService`'s original `GET /sites/{congregationUnitId}`
+>    shared a wildcard tree position with `GET /sites/{siteId}/documents` under a differently-named
+>    parameter — httprouter requires the same wildcard name at a shared position, full stop, and
+>    panics at route-registration time otherwise. This flaw was already latent in content.md's
+>    original single-service sketch, not introduced by the service split; moved `getSite` to
+>    `GET /units/{congregationUnitId}/site` instead.
+> 2. `congregation-admin`'s role (`scripts/bootstrap-registration-org`) was missing `assignment.read`
+>    — the exact same defect class M2.3 found and fixed for `registration-operator`, just never
+>    applied to the other role. Without it, `Authorize` returns `PermissionDenied` for every real
+>    congregation admin regardless of holding `religionorg.manage`. Fixed there; the script's
+>    existing idempotent-reconciliation path (`reconcilePermissions`) backfills it onto an
+>    already-bootstrapped instance safely — confirmed live ("added missing permissions, now: [...
+>    assignment.read]").
+>
+> **Live-verified end-to-end** against a real `docker compose` stack, driven through the generated
+> TypeScript client (not curl — proving the M2.6 codegen pattern extends cleanly to a second
+> module): `createSite` → `createDocument(PAGE)` → `putBlocks` (one intentionally-invalid block
+> confirmed rejected with `Content:BlockDataInvalid`, then a valid set saved) → anonymous
+> `getSite`/`listPublicDocuments` (correctly empty pre-publish) → `transitionDocument(PUBLISH)` →
+> anonymous reads now return the published document and its blocks → a second, still-draft document
+> correctly returns `Content:DocumentNotFound` to an anonymous `getPublicBlocks` call → anonymous
+> `listBlockTypes` returns all 13 seeded types. **Not attempted:** a true cross-tenant
+> `Content:Forbidden` proof — needs a second real identity, the same limitation M2.3's own
+> acceptance criteria already named as not achievable headlessly.
+>
+> **Not yet run:** a confirmed green CI run on `main` at this milestone's own merge commit —
+> `Verified` stays `🔶` until that lands, per M2.4's own gate.
 
 ### M4 · Public discovery site
 

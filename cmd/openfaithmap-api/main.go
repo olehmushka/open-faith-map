@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Command openfaithmap-api is the composition root for OpenFaithMap's backend
-// (docs/architecture/overview.md). `serve` boots the witchcraft server. M2 adds the first real
-// module, registration (docs/modules/registration.md) — content/moderation/vouching still land as
-// each reaches its own "backend" gate, see docs/development-process.md.
+// (docs/architecture/overview.md). `serve` boots the witchcraft server. M2 added the first real
+// module, registration (docs/modules/registration.md); M3 adds content (docs/modules/content.md) —
+// moderation/vouching still land as each reaches its own "backend" gate, see
+// docs/development-process.md.
 package main
 
 import (
@@ -13,7 +14,11 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	gencontent "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/content"
 	genregistration "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/registration"
+	contentadapters "github.com/olehmushka/open-faith-map/internal/content/adapters"
+	contentapplication "github.com/olehmushka/open-faith-map/internal/content/application"
+	contenttransport "github.com/olehmushka/open-faith-map/internal/content/transport"
 	"github.com/olehmushka/open-faith-map/internal/platform/config"
 	regadapters "github.com/olehmushka/open-faith-map/internal/registration/adapters"
 	regapplication "github.com/olehmushka/open-faith-map/internal/registration/application"
@@ -86,6 +91,26 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	if err := genregistration.RegisterRoutesRegistrationService(info.Router, transportSvc); err != nil {
 		pool.Close()
 		return nil, werror.WrapWithContextParams(ctx, err, "register registration routes")
+	}
+
+	contentStore := contentadapters.NewStore(pool)
+	contentAppSvc := contentapplication.NewService(contentStore, contentapplication.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+	})
+	contentTransportSvc := contenttransport.NewService(contentAppSvc, contenttransport.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+	})
+	contentPublicTransportSvc := contenttransport.NewPublicService(contentAppSvc)
+
+	if err := gencontent.RegisterRoutesContentService(info.Router, contentTransportSvc); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "register content routes")
+	}
+	if err := gencontent.RegisterRoutesContentPublicService(info.Router, contentPublicTransportSvc); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "register content public routes")
 	}
 
 	return pool.Close, nil
