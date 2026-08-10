@@ -53,7 +53,6 @@ block a milestone; they mislead whoever reads them next, which is worse.
 | # | The problem | Where |
 |---|---|---|
 | U9 | **`Impersonation` is an orphan and contradicts a binding invariant.** It is defined in the glossary — a moderator logging in as a congregation admin — and appears **nowhere else**: no `D-` block, no endpoint in moderation.md's API surface, no milestone. It also directly contradicts [core-integration.md](modules/core-integration.md)'s **no-on-behalf-of** invariant, which forbids OpenFaithMap ever acting as a specific person. Either write a decision explaining how it can exist (go-oikumenea would have to mint the impersonated session, not OpenFaithMap), or delete the term. **Do not build it from the glossary entry alone.** | `DS-OFM-15` · [glossary.md](glossary.md) |
-| U10 | **M5 ships public unauthenticated write endpoints one milestone before M7 hardens them.** `POST /reports` and `POST /exclusion-check` are both anonymous by design; rate limiting is parked at M7. Decide at M5 scoping whether basic limiting moves forward. | `DS-OFM-9` · [moderation.md](modules/moderation.md) |
 | U11 | **`churchSiteTypeID` fails silently.** If go-oikumenea's seeded `church` site type is ever renamed, `approveRequest` attaches every congregation to whatever the first site type happens to be, with no error. Prefer failing loudly. | [registration.md](modules/registration.md) |
 | U12 | **Config bypasses the install-config convention.** `internal/platform/config` exists to hold openfaithmap-api's settings and is empty; `cmd/openfaithmap-api` reads five real settings straight from the environment via `requireEnv` — no schema, no validation, no ECV path for the secrets among them. | [conventions.md](architecture/conventions.md) |
 | U13 | **Per-surface OAuth clients and WireGuard have no milestone**, because there is no deployment milestone at all. Both are recorded as prerequisites for any non-local-dev deployment; whoever creates that milestone inherits them. | `DS-OFM-14` |
@@ -85,7 +84,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M4.1 · Jurisdiction units | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** D-JurisdictionUnits (supersedes D-FlatRoot's simplification). Real, operator-assigned jurisdiction units; existing congregations can be re-parented onto one. Proven live end-to-end against a real `docker compose` stack — see prose. **`Verified` needs a green CI run on `main` at the merge commit** (M2.4's gate), not yet attempted here. |
 | M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are now resolved (D-PlatformModerator, D-Moderation's Correction, and M4.1 landing cleared the third). **`Verified` needs a green CI run on `main` at the merge commit and a live two-real-token proof**, not yet attempted here. |
 | M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. **`Verified` needs a green CI run on `main` at the merge commit and a real two-browser-session proof (a guarantor-with-standing vs. a guarantor-with-none, and a moderator vs. a non-moderator)**, not yet attempted here — see prose. |
-| M7 · Hardening / real-user feedback | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Idea.** Named and sequenced here; no `D-<Name>` block or module doc yet — first real milestone to pass through the full pipeline once M1–M6 have shipped code and real congregations are using the platform. Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. |
+| M7 · Hardening / real-user feedback | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Decided + Designed (2026-08-10).** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. |
 
 ## Per-milestone detail
 
@@ -1209,10 +1208,58 @@ which they lacked any mechanism for before the 2026-08-09 audit.
 > [31421038134](https://github.com/olehmushka/open-faith-map/actions/runs/31421038134). `Verified`
 > stays `⬜` — the real two-different-people browser proof above is the one remaining blocker.
 
-### M7 · Hardening / real-user feedback (idea stage)
+### M7 · Hardening / real-user feedback
 
-**Depends on:** M1–M6 all live with real congregations using the platform daily. Not yet decided
-or designed — named here as the expected next milestone once real usage surfaces real problems
-(rate limiting, moderation-queue UX, observability), matching the "real-user hardening" spirit of
-the original FaithMap roadmap's own post-MVP stage, expressed here as a normal numbered milestone
-rather than a separately-tracked stage.
+**Depends on:** M5 (the milestone that actually shipped the two anonymous write endpoints this
+one protects). **Blocks:** nothing. **Leaves deployable:** yes — no schema-breaking change; one
+expand-only migration adds two composite indexes.
+
+**Decided + Designed (2026-08-10) — corrects this milestone's own prior framing.** The original
+text above assumed nothing about M7 could be scoped "until real usage surfaces real problems." That
+premise holds for the *numeric tuning* of a rate limiter and for whether more moderation-queue
+filters are ever needed — both stay explicitly provisional. It does not hold for the two concerns
+actually decided and designed here: rate-limiting a known anonymous-write surface, and fixing an
+already-diagnosed pagination defect. Both were found by direct code inspection, not by user
+behavior, so there was nothing to wait for.
+
+[D-Hardening](architecture/decisions.md) covers rate limiting and observability;
+[modules/hardening.md](modules/hardening.md) covers all three concerns to the full template,
+including the moderation-queue pagination fix design. Scope, in brief:
+
+**In scope (first cut):**
+1. In-process, per-`(client IP, endpoint)` token-bucket rate limiting on
+   `ModerationPublicService`'s `POST /reports` and `POST /exclusion-check` — the only two
+   genuinely anonymous *write* endpoints in the whole API (registration and vouching both require
+   `default-auth: header` on every endpoint, correcting `DS-OFM-9`'s "anonymous report/
+   registration endpoints" phrasing — registration has no anonymous endpoint at all).
+2. A small, fixed set of app-defined metrics (`reports_filed`, `exclusion_checks_run`,
+   `rate_limit_rejections`) on top of witchcraft's already-auto-wired logging/metrics stack — no
+   new infrastructure, no Prometheus/OpenTelemetry/scrape endpoint.
+3. The moderation-queue pagination defect: `ListReports`/`ListAppeals` have declared
+   `pageToken`/`nextPageToken` on the wire since M5, but the transport layer silently drops an
+   incoming `pageToken` and never sets `nextPageToken` — always `LIMIT`-only. Fixed with real
+   keyset pagination (see `hardening.md`'s Data model).
+
+**Explicitly out of scope**, recorded as Open seams rather than silently dropped: read-side rate
+limiting on content/discovery's public GETs, multi-replica rate-limit coordination, new
+moderation-queue filters beyond the existing `scope`/`status`, and the rate-limit thresholds'
+actual numeric tuning.
+
+**Exit criterion**, to be proven once Backend/Migrated/UI land in a later ticket, against a real
+`docker compose up --build` stack:
+
+1. A scripted burst past the configured limit against `POST /reports` (or `/exclusion-check`)
+   receives a real `429` with a `Retry-After` header once the bucket empties; a request from a
+   second, distinct source IP in the same window is *not* rejected — proving the limiter is scoped
+   per key, not globally tripped.
+2. `reports_filed`, `exclusion_checks_run`, and `rate_limit_rejections` all show up incrementing in
+   the metrics log stream after driving real traffic through each path.
+3. Seed more than one page's worth of reports; a small-`pageSize` `GET /reports` call returns
+   exactly `pageSize` rows and a non-null `nextPageToken`; the follow-up call with that token
+   returns the next distinct rows with no overlap/gaps against the known-inserted set; a tampered
+   `pageToken` is rejected `400`, not silently treated as page 1; the admin console's moderation
+   queue page loads a second page through a new "Load more" control against the real stack, not
+   just curl.
+4. `go build ./... && go test ./...`, `./godelw verify`, both web apps' `npm run lint && npm run
+   build`, and `make sdk-verify` all pass clean.
+5. A green CI run on `main` at the merge commit.

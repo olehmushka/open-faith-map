@@ -166,10 +166,15 @@ submitter's token.
 
 ## Open seams
 
-- **Rate limiting on anonymous report filing** is parked at M7 (`DS-OFM-9`), but **this module is
-  what ships the public endpoints** — `POST /reports` and `POST /exclusion-check` are both
-  unauthenticated. Decided at M5 scoping: stays deferred to M7 as originally planned — no basic
-  limiting added here.
+- **Rate limiting on anonymous report filing — resolved (M7 scoping, 2026-08-10).** `POST /reports`
+  and `POST /exclusion-check` are both unauthenticated, and this module is what ships them. See
+  [D-Hardening](../architecture/decisions.md) and [hardening.md](hardening.md) for the mechanism
+  (in-process per-IP token bucket) — not built in this module, wired on top of its routes.
+- **The moderation-queue pagination defect — resolved (M7 scoping, 2026-08-10).** `ListReports`/
+  `ListAppeals` declare `pageToken`/`nextPageToken` on the wire but the transport layer silently
+  drops an incoming `pageToken` and never sets `nextPageToken` (`adapters/report_store.go`'s own
+  doc comment already admits the `LIMIT`-only shape). Fix design lives in
+  [hardening.md](hardening.md), not here.
 - **`queue_scope = 'jurisdiction'` still has no query implementation wired to it, and this is now a
   deliberate scope cut, not just an unwired dependency.** M4.1 gave the ancestor chain a real target
   to walk, but M5's only moderator role — `platform-moderator` (D-PlatformModerator) — is granted

@@ -26,6 +26,7 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-FlatRoot](#d-flatroot--one-flat-root-organization-now-real-jurisdiction-units-before-m5) | Every congregation was a direct child of one flat root org through M4 — superseded by D-JurisdictionUnits at M4.1 |
 | [D-JurisdictionUnits](#d-jurisdictionunits--denomination-aware-non-uniform-jurisdiction-layer-operator-assigned) | Jurisdiction is an ordinary, operator-assigned Unit — denomination-aware but not one canonical hierarchy per tradition, variable and optional depth |
 | [D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit) | Platform-moderator authority is a go-oikumenea Role on the shared root unit, checked target-scoped — not an OpenFaithMap roster table |
+| [D-Hardening](#d-hardening--in-process-rate-limiting-on-anonymous-writes-reused-witchcraft-observability) | In-process per-IP rate limiting on moderation's two anonymous write endpoints; observability reuses witchcraft's already-wired stack, no new infrastructure |
 
 ---
 
@@ -856,3 +857,126 @@ invariant). Two roles keep that separable.
 > is the implementation; `moderation.read` and `moderation.act` both resolve to this one check —
 > there is no second go-oikumenea permission distinguishing read from act, matching how
 > `content`/`discovery` already collapse their own read/manage distinctions to one PDP call.
+
+---
+
+### D-Hardening — In-process rate limiting on anonymous writes, reused witchcraft observability
+
+**Decision.** Two mechanisms, both entirely OpenFaithMap-side:
+
+1. **Rate limiting.** `openfaithmap-api`'s two genuinely anonymous *write* endpoints —
+   `ModerationPublicService`'s `POST /reports` and `POST /exclusion-check`
+   (`api/moderation.conjure.yml`) — get an in-process token-bucket limiter, keyed per
+   `(client IP, endpoint)`, attached as `wrouter.RouteMiddleware` scoped to exactly
+   `RegisterRoutesModerationPublicService`'s own route registration in
+   `cmd/openfaithmap-api/main.go`'s `initServer` — not a router-wide wrapper, and nothing else
+   registered on `info.Router` (registration, content, discovery, vouching, or
+   `ModerationService`'s authenticated queue/action/appeal surface) is touched. On limit exceeded,
+   the middleware returns a raw `429 Too Many Requests` with a `Retry-After` header **before the
+   request ever reaches the generated Conjure handler** — see Consequences for why this can't be a
+   Conjure-typed error the way every other error in this API is. `ContentPublicService`'s 4 public
+   GETs and `DiscoveryPublicService`'s `GET /search` are **not** rate-limited in this pass (see
+   [modules/hardening.md](../modules/hardening.md)'s scope boundary).
+2. **Observability.** No new logging/metrics infrastructure. witchcraft's already-auto-wired
+   `svc1log`/`req2log`/`trc1log`/`metric1log` stack (zero app configuration today,
+   `witchcraft.NewServer()`) already gives every request structured logs and a trace ID for free.
+   This decision adds a small, fixed set of app-defined counters via the same already-wired
+   `palantir/pkg/metrics` registry (`metrics.FromContext(ctx).Counter(name).Inc(1)`, no new
+   dependency): `openfaithmap.moderation.reports_filed`,
+   `openfaithmap.moderation.exclusion_checks_run`, `openfaithmap.moderation.rate_limit_rejections`
+   — nothing bigger.
+
+**D-Facade check.** go-oikumenea's own `decisions.md` has no rate-limiting or client-throttling
+decision — and more load-bearing than a bare absence, go-oikumenea is headless with no public port
+at all (D-CoreDependency's D-HeadlessTopology sense). Every anonymous caller lands on
+`openfaithmap-api`'s own public Conjure services; if those then call go-oikumenea, it's under the
+server's own service-principal credential, never the anonymous caller's identity. go-oikumenea
+therefore has no anonymous caller of its own to protect — this is unambiguously OpenFaithMap's own
+concern, not something to check upstream for first. Observability's D-Facade answer is different in
+kind: the underlying infrastructure (witchcraft, the same version D-Stack pins both projects to) is
+already shared by construction; the only real work here is a handful of OpenFaithMap-specific
+counters go-oikumenea has no visibility into.
+
+**Why.** A coarse, cheap, in-process mechanism closes the actual gap (an anonymous, unauthenticated
+`POST` with no cost to the caller) without new infrastructure, matching this repo's own
+facade-first/MVP conventions (D-Stack, D-Facade's "err toward reuse" pattern already applied at
+DS-OFM-2 and DS-OFM-4). `golang.org/x/time/rate`'s token bucket is already present in `go.sum`
+(pulled in transitively; not currently a direct `require` in `go.mod`) — promoting it to a direct
+dependency is a one-line `go.mod` change, not a new dependency risk.
+
+**Why not a reverse proxy / API gateway (nginx, Envoy) doing the rate limiting instead.** Rejected.
+No such component exists anywhere in `docker-compose.yml` today, and `openfaithmap-api`'s own app
+port (3000) isn't even published to the host (M2.4, the same "no public port unless it needs one"
+discipline D-HeadlessTopology names elsewhere) — adding a whole new infra tier for one narrow
+protection need would be new operational surface this repo has deliberately avoided everywhere
+else.
+
+**Why not per-user/per-account limiting instead of per-IP.** Rejected outright for these two
+endpoints specifically — both are anonymous by design (no token, no person RID; `fileReport`'s own
+docs say "reporterPersonId is unset — this endpoint never asks for identity"), so there is no
+"user" to key on. Per-IP is the only signal available. **Known, accepted limitation, not solved
+here:** a shared IP (NAT, a church's shared office connection, CGNAT) can throttle innocent
+co-tenants alongside a real abuser, and a distributed abuser defeats per-IP limiting entirely —
+named rather than engineered around, the same way DS-OFM-4 accepted "no threshold" for vouching
+until real abuse data justifies more.
+
+**Why not CAPTCHA or another behavioral/heuristic anti-abuse mechanism.** Rejected as heavier than
+a first cut needs — a coarse token bucket is the standard cheap baseline; CAPTCHA changes the
+anonymous reporting flow's UX friction, a real product decision deferred until real abuse patterns
+are observed, matching DS-OFM-4's own "tighten only if real abuse patterns appear" precedent.
+
+**Why not Prometheus/OpenTelemetry/Grafana, or a `/metrics` scrape endpoint, now.** Rejected —
+there is no scrape target or dashboard consumer anywhere in this repo today, so shipping an
+exporter would be infrastructure with nothing reading it, the same speculative-building pattern
+DS-OFM-2 already rejected for a discovery-cache refresh timer. witchcraft's built-in structured
+logs already make "was a report filed, was a rate limit hit" answerable via the metrics log
+stream — sufficient for this milestone's exit criterion.
+
+**Why not a distinct structured audit log for rate-limit rejections**, separate from
+`moderation_actions`. Rejected — D-Moderation's Correction already established
+`openfaithmap.moderation_actions` as this platform's one ledger of record for moderation
+*decisions*; a rate-limit rejection involves no moderator or report, so it doesn't belong there.
+It's request-level telemetry, which the metrics counter above already covers.
+
+**Mechanism.**
+- **Algorithm:** `golang.org/x/time/rate`'s token bucket, promoted from an indirect
+  (`go.sum`-only) dependency to a direct `require` in `go.mod`.
+- **Key:** `(client IP, endpoint)` — two independent buckets per caller, so `POST /reports` traffic
+  can't starve `POST /exclusion-check`'s budget or vice versa. Client IP is read directly from the
+  connection (`r.RemoteAddr`), not a forwarded-for header — there is no reverse proxy in front of
+  `openfaithmap-api` today, so this is the real client IP. **If a reverse proxy or CDN is ever
+  added in front of this service, this must change to trust a specific forwarded-for header from a
+  known hop, never blindly** — flagged here so it isn't silently wrong later.
+- **Attachment point:** `wrouter.RouteMiddleware(rateLimitMiddleware)` passed as an extra
+  `routerParams` argument to `genmoderation.RegisterRoutesModerationPublicService(info.Router,
+  moderationPublicTransportSvc, wrouter.RouteMiddleware(rateLimitMiddleware))` — the generated
+  registration function already accepts a variadic `...wrouter.RouteParam`
+  (`internal/conjure/openfaithmap/moderation/servers.conjure.go`), and `wrouter.RouteMiddleware`
+  is a real, already-vendored `RouteParam` constructor — no generated-code change needed.
+- **On limit exceeded:** raw `429` + `Retry-After: <seconds>` header + a small JSON body
+  (`{"errorCode":"RATE_LIMITED","message":"..."}`), written directly by the middleware before the
+  request reaches the generated handler. **This departs from the Conjure-error-body convention**
+  every other error in this API follows (`api/moderation.conjure.yml`'s `errors:` block — all
+  `NOT_FOUND`/`PERMISSION_DENIED`/`INVALID_ARGUMENT`) — Conjure's error-code system has no code
+  that maps to HTTP 429, so a genuinely Conjure-typed 429 isn't expressible in this stack today;
+  the middleware intentionally sits outside that system rather than forcing a wrong status code
+  through it.
+- **Limits (provisional, not data-tuned):** e.g. `rate.NewLimiter(rate.Every(time.Minute/5), 5)`
+  per key — roughly 5 requests/minute sustained, burst of 5. Explicitly a placeholder to retune
+  once real traffic exists.
+- **State:** an in-process map, no external store — acceptable because `openfaithmap-api` runs as
+  a single replica; resets on restart; does not coordinate across replicas (Open Seam if that ever
+  changes).
+
+**Consequences.**
+- `go.mod` gains `golang.org/x/time` as a direct `require`.
+- `cmd/openfaithmap-api/main.go`'s `initServer` gains one new middleware value, wired only onto
+  `RegisterRoutesModerationPublicService`'s call — every other `RegisterRoutes*` call is untouched.
+- The 429 response from these two endpoints is documented in `hardening.md` and
+  `api/moderation.conjure.yml`'s own comments as a deliberate, permanent exception to this repo's
+  Conjure-error-body convention — not a gap to "eventually fix."
+- `modules/moderation.md`'s Open Seam "Rate limiting on anonymous report filing is parked at M7"
+  is resolved by this block; `DS-OFM-9` (open-questions.md) and `milestones.md`'s `U10` are both
+  closed out.
+- Read-side rate limiting (content/discovery public GETs) and multi-replica coordination remain
+  open — recorded in `hardening.md`'s Open Seams, not silently dropped.

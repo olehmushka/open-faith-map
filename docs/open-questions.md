@@ -38,14 +38,6 @@ from the module doc it was raised in.
   "block this whole tradition" behavior, it becomes a real go-oikumenea feature request rather than
   something each consumer reimplements. See
   [core-integration.md](modules/core-integration.md#open-seams).
-- **DS-OFM-9 — M7 (hardening) is unscoped.** Rate limiting on anonymous report/registration
-  endpoints, moderation-queue UX at real volume, and observability are all named but not designed —
-  first real work item once M1–M6 are live. See [milestones.md](milestones.md#m7--hardening--real-user-feedback-idea-stage).
-  **Note the sequencing risk:** M5 is what actually ships the public, unauthenticated
-  `POST /reports` and `POST /exclusion-check` endpoints, a milestone before the hardening that
-  protects them. Three other items people might expect here (CI, least-privilege DB role,
-  `openfaithmap-api`'s host ports) moved forward into **M2.4** at the 2026-08-09 audit, because they
-  gate every intervening milestone's Verified rather than being end-state polish.
 - **DS-OFM-10 — A future scraped-church-data importer has no name, schema, or design.** M2.2's
   original congregation-bulk-import scenario is real (importing an existing directory of churches
   from a legacy system or scraped source) but is not `hermenea` — that name belongs to
