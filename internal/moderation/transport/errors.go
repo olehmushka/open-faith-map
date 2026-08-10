@@ -39,6 +39,11 @@ func mapErr(err error, c errCtx) error {
 		return genmoderation.NewTaxonNotFound(c.TaxonID)
 	case errors.Is(err, domain.ErrDoctrinalReasonNotAllowed):
 		return genmoderation.NewDoctrinalReasonNotAllowed()
+	case errors.Is(err, domain.ErrInvalidPageToken):
+		// Defense in depth — ListReports/ListAppeals already return this directly at decode time
+		// (transport/service.go), before any store call, but route it through mapErr too in case a
+		// future call path produces it deeper in the stack.
+		return genmoderation.NewInvalidPageToken()
 	default:
 		return err
 	}

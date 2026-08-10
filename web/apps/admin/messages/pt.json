@@ -152,7 +152,9 @@
     "noReports": "No open reports.",
     "filedAt": "Filed {date}",
     "reasonPlaceholder": "Reason for this action",
-    "takeAction": "Take action"
+    "takeAction": "Take action",
+    "loadMore": "Load more",
+    "loading": "Loading…"
   },
   "AppealsPage": {
     "heading": "Appeals",
@@ -160,7 +162,9 @@
     "filedAt": "Filed {date}",
     "notePlaceholder": "Decision note (optional)",
     "uphold": "Uphold",
-    "overturn": "Overturn"
+    "overturn": "Overturn",
+    "loadMore": "Load more",
+    "loading": "Loading…"
   },
   "VouchingConsolePage": {
     "heading": "Vouching",

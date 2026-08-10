@@ -70,11 +70,14 @@ func (s *Service) FileReport(ctx context.Context, in domain.FileReportInput) (do
 	return s.store.InsertReport(ctx, in, domain.ScopePlatform)
 }
 
-func (s *Service) ListReports(ctx context.Context, token, callerPersonID string, scope *domain.QueueScope, status *domain.ReportStatus, pageSize int) ([]domain.Report, error) {
+// ListReports queries pageSize+1 rows from the store — the standard keyset-pagination trick that
+// lets transport.Service tell whether a next page exists (and encode its cursor) without a second
+// round trip, by trimming the extra row before returning to the caller.
+func (s *Service) ListReports(ctx context.Context, token, callerPersonID string, scope *domain.QueueScope, status *domain.ReportStatus, pageSize int, after *domain.PageCursor) ([]domain.Report, error) {
 	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
 		return nil, err
 	}
-	return s.store.ListReports(ctx, scope, status, pageSize)
+	return s.store.ListReports(ctx, scope, status, pageSize+1, after)
 }
 
 // ---- actions ----
@@ -176,11 +179,12 @@ func (s *Service) FileAppeal(ctx context.Context, token, callerPersonID, actionI
 	return s.store.InsertAppeal(ctx, action.ID, callerPersonID, statement)
 }
 
-func (s *Service) ListAppeals(ctx context.Context, token, callerPersonID string, status *domain.AppealStatus, pageSize int) ([]domain.Appeal, error) {
+// ListAppeals queries pageSize+1 rows from the store — see ListReports's doc comment for why.
+func (s *Service) ListAppeals(ctx context.Context, token, callerPersonID string, status *domain.AppealStatus, pageSize int, after *domain.PageCursor) ([]domain.Appeal, error) {
 	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
 		return nil, err
 	}
-	return s.store.ListAppeals(ctx, status, pageSize)
+	return s.store.ListAppeals(ctx, status, pageSize+1, after)
 }
 
 // DecideAppeal answers ModerationService.decideAppeal. Rejects with domain.ErrAppealActorConflict if

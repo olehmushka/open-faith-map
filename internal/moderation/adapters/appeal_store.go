@@ -6,6 +6,9 @@ package adapters
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/olehmushka/open-faith-map/internal/moderation/domain"
@@ -32,17 +35,27 @@ func (s *Store) GetAppealByID(ctx context.Context, id string) (domain.Appeal, er
 	return appeal, err
 }
 
-// ListAppeals has no real cursor pagination — same LIMIT-only precedent as ListReports.
-func (s *Store) ListAppeals(ctx context.Context, status *domain.AppealStatus, pageSize int) ([]domain.Appeal, error) {
-	var rows pgx.Rows
-	var err error
+// ListAppeals uses real keyset pagination as of M7 — same predicate-list approach as
+// report_store.go's ListReports, queries pageSize+1 rows so the caller can detect a next page.
+func (s *Store) ListAppeals(ctx context.Context, status *domain.AppealStatus, pageSize int, after *domain.PageCursor) ([]domain.Appeal, error) {
+	var where []string
+	var args []any
 	if status != nil {
-		rows, err = s.pool.Query(ctx, `SELECT `+appealColumns+` FROM openfaithmap.moderation_appeals
-			WHERE status = $1 ORDER BY created_at DESC LIMIT $2`, string(*status), pageSize)
-	} else {
-		rows, err = s.pool.Query(ctx, `SELECT `+appealColumns+` FROM openfaithmap.moderation_appeals
-			ORDER BY created_at DESC LIMIT $1`, pageSize)
+		args = append(args, string(*status))
+		where = append(where, fmt.Sprintf("status = $%d", len(args)))
 	}
+	if after != nil {
+		args = append(args, after.CreatedAt, after.ID)
+		where = append(where, fmt.Sprintf("(created_at, id) < ($%d, $%d)", len(args)-1, len(args)))
+	}
+	args = append(args, pageSize)
+	query := `SELECT ` + appealColumns + ` FROM openfaithmap.moderation_appeals`
+	if len(where) > 0 {
+		query += ` WHERE ` + strings.Join(where, " AND ")
+	}
+	query += ` ORDER BY created_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args))
+
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

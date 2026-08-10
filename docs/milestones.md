@@ -84,7 +84,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M4.1 · Jurisdiction units | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** D-JurisdictionUnits (supersedes D-FlatRoot's simplification). Real, operator-assigned jurisdiction units; existing congregations can be re-parented onto one. Proven live end-to-end against a real `docker compose` stack — see prose. **`Verified` needs a green CI run on `main` at the merge commit** (M2.4's gate), not yet attempted here. |
 | M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are now resolved (D-PlatformModerator, D-Moderation's Correction, and M4.1 landing cleared the third). **`Verified` needs a green CI run on `main` at the merge commit and a live two-real-token proof**, not yet attempted here. |
 | M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. **`Verified` needs a green CI run on `main` at the merge commit and a real two-browser-session proof (a guarantor-with-standing vs. a guarantor-with-none, and a moderator vs. a non-moderator)**, not yet attempted here — see prose. |
-| M7 · Hardening / real-user feedback | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | **Decided + Designed (2026-08-10).** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. |
+| M7 · Hardening / real-user feedback | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-11), not yet Verified.** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. **`Verified` needs a green CI run on `main` at the merge commit and a live authenticated-moderator round trip (a real browser Google OAuth session or a granted moderator token)**, not yet attempted here — see prose. |
 
 ## Per-milestone detail
 
@@ -1263,3 +1263,34 @@ actual numeric tuning.
 4. `go build ./... && go test ./...`, `./godelw verify`, both web apps' `npm run lint && npm run
    build`, and `make sdk-verify` all pass clean.
 5. A green CI run on `main` at the merge commit.
+
+> **As implemented (2026-08-11).** One correction to `hardening.md`'s original text, found while
+> wiring the fix: it named "the existing `Moderation:InvalidArgument` Conjure error" for a tampered
+> `pageToken`, but no such generic error exists in `api/moderation.conjure.yml` — every existing
+> `INVALID_ARGUMENT`-coded error in this module is a specific named one
+> (`ActionNotReversible`/`AppealActorConflict`/`TaxonNotFound`/`DoctrinalReasonNotAllowed`), never a
+> catch-all. Added `Moderation:InvalidPageToken` instead, matching that convention;
+> `modules/hardening.md` corrected to match.
+>
+> Exit criteria 1, 2, and 4 above are live-verified against a real `docker compose up --build`
+> stack, not just reasoned about: a burst of 5 requests against `POST /reports` from one client IP
+> succeeded, the 6th got a real `429` with `Retry-After: 12` and the documented
+> `{"errorCode":"RATE_LIMITED",...}` body, and a second, distinct-IP container in the same window
+> was unaffected — proven with two long-lived containers on the compose network holding fixed,
+> confirmed-distinct IPs, not the ambiguous signal a `docker run --rm` loop gives (Docker can reuse
+> a just-freed IP across rapid, sequential ephemeral containers). `reports_filed` and
+> `rate_limit_rejections` both showed up incrementing in the real metrics log stream afterward. The
+> new `migrations/0009_hardening.sql` applied cleanly against real Postgres in the same run. All
+> four gate commands in criterion 4 pass clean.
+>
+> **Criterion 3 (the authenticated pagination round-trip) and the admin console's "Load more" click
+> are not yet run** — same wall M2.3/M4.1/M5/M6 all hit before this milestone: `ListReports`/
+> `ListAppeals` require a real person token holding platform-moderator standing, which needs a real
+> browser Google OAuth session (or a headlessly-granted moderator token neither exists yet nor was
+> set up here) — this environment has neither. The cursor logic itself is unit-tested directly
+> (`internal/moderation/transport/cursor_test.go`: encode/decode round-trip, and every tamper
+> shape — truncated base64, non-JSON bytes, wrong fields, empty values — rejected with
+> `Moderation:InvalidPageToken`), and the underlying SQL is standard keyset pagination applied via
+> the same migration already proven against real Postgres above; what's unverified is specifically
+> the HTTP-layer round-trip through a real authenticated session. **`Verified` stays `⬜` until
+> criterion 3, criterion 5 (CI), and the browser click-through are done.**

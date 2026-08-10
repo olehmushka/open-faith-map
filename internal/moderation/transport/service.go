@@ -16,6 +16,11 @@ import (
 // defaultPageSize matches registration/content's own unspecified-pageSize fallback.
 const defaultPageSize = 50
 
+// maxPageSize (M7, docs/modules/hardening.md) is a provisional ceiling — a 4x margin over
+// defaultPageSize, generous for a moderator paging a backlog by hand in the admin console (the only
+// real caller today; no bulk-export use case). Not data-tuned, same as the rate-limit thresholds.
+const maxPageSize = 200
+
 type Config struct {
 	OikumeneaBaseURL            string
 	OikumeneaInsecureSkipVerify bool
@@ -51,6 +56,9 @@ func pageSizeOrDefault(p *int) int {
 	if p == nil || *p <= 0 {
 		return defaultPageSize
 	}
+	if *p > maxPageSize {
+		return maxPageSize
+	}
 	return *p
 }
 
@@ -69,11 +77,27 @@ func (s *Service) ListReports(ctx context.Context, authHeader bearertoken.Token,
 		v := domain.ReportStatus(statusArg.Value())
 		status = &v
 	}
-	reports, err := s.appService.ListReports(ctx, string(authHeader), personID, scope, status, pageSizeOrDefault(pageSizeArg))
+	var after *domain.PageCursor
+	if pageTokenArg != nil {
+		c, err := decodeCursor(*pageTokenArg)
+		if err != nil {
+			return genmoderation.ReportPage{}, genmoderation.NewInvalidPageToken()
+		}
+		after = &c
+	}
+	pageSize := pageSizeOrDefault(pageSizeArg)
+	reports, err := s.appService.ListReports(ctx, string(authHeader), personID, scope, status, pageSize, after)
 	if err != nil {
 		return genmoderation.ReportPage{}, mapErr(err, errCtx{})
 	}
-	return genmoderation.ReportPage{Reports: toAPIReports(reports)}, nil
+	var nextToken *string
+	if len(reports) > pageSize {
+		last := reports[pageSize-1]
+		t := encodeCursor(domain.PageCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		nextToken = &t
+		reports = reports[:pageSize]
+	}
+	return genmoderation.ReportPage{Reports: toAPIReports(reports), NextPageToken: nextToken}, nil
 }
 
 func (s *Service) TakeActionOnReport(ctx context.Context, authHeader bearertoken.Token, reportIdArg string, requestArg genmoderation.TakeActionOnReportRequest) (genmoderation.ModerationAction, error) {
@@ -135,11 +159,27 @@ func (s *Service) ListAppeals(ctx context.Context, authHeader bearertoken.Token,
 		v := domain.AppealStatus(statusArg.Value())
 		status = &v
 	}
-	appeals, err := s.appService.ListAppeals(ctx, string(authHeader), personID, status, pageSizeOrDefault(pageSizeArg))
+	var after *domain.PageCursor
+	if pageTokenArg != nil {
+		c, err := decodeCursor(*pageTokenArg)
+		if err != nil {
+			return genmoderation.AppealPage{}, genmoderation.NewInvalidPageToken()
+		}
+		after = &c
+	}
+	pageSize := pageSizeOrDefault(pageSizeArg)
+	appeals, err := s.appService.ListAppeals(ctx, string(authHeader), personID, status, pageSize, after)
 	if err != nil {
 		return genmoderation.AppealPage{}, mapErr(err, errCtx{})
 	}
-	return genmoderation.AppealPage{Appeals: toAPIAppeals(appeals)}, nil
+	var nextToken *string
+	if len(appeals) > pageSize {
+		last := appeals[pageSize-1]
+		t := encodeCursor(domain.PageCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		nextToken = &t
+		appeals = appeals[:pageSize]
+	}
+	return genmoderation.AppealPage{Appeals: toAPIAppeals(appeals), NextPageToken: nextToken}, nil
 }
 
 func (s *Service) DecideAppeal(ctx context.Context, authHeader bearertoken.Token, appealIdArg string, requestArg genmoderation.DecideAppealRequest) (genmoderation.Appeal, error) {

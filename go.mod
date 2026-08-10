@@ -9,6 +9,7 @@ require (
 	github.com/palantir/conjure-go-runtime/v2 v2.99.0
 	github.com/palantir/pkg/bearertoken v1.2.0
 	github.com/palantir/pkg/datetime v1.4.0
+	github.com/palantir/pkg/metrics v1.9.0
 	github.com/palantir/pkg/safejson v1.2.0
 	github.com/palantir/pkg/safeyaml v1.2.0
 	github.com/palantir/pkg/uuid v1.3.0
@@ -16,6 +17,7 @@ require (
 	github.com/palantir/witchcraft-go-server/v2 v2.101.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	golang.org/x/oauth2 v0.36.0
+	golang.org/x/time v0.15.0
 	google.golang.org/api v0.292.0
 )
 
@@ -40,7 +42,6 @@ require (
 	github.com/palantir/go-metrics v1.1.1 // indirect
 	github.com/palantir/pkg v1.1.0 // indirect
 	github.com/palantir/pkg/bytesbuffers v1.3.0 // indirect
-	github.com/palantir/pkg/metrics v1.9.0 // indirect
 	github.com/palantir/pkg/refreshable v1.6.0 // indirect
 	github.com/palantir/pkg/refreshable/v2 v2.3.0 // indirect
 	github.com/palantir/pkg/retry v1.3.0 // indirect

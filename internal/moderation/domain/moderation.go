@@ -157,4 +157,13 @@ var (
 	ErrActionNotReversible       = errors.New("action's reversal grace window has passed, or it was already reversed")
 	ErrAppealActorConflict       = errors.New("an appeal may not be decided by the moderator who took the original action")
 	ErrTaxonNotFound             = errors.New("taxon not found")
+	ErrInvalidPageToken          = errors.New("pageToken is malformed or tampered")
 )
+
+// PageCursor is the decoded shape of an opaque pageToken (M7, docs/modules/hardening.md) —
+// encodes the (createdAt, id) of the last row in the previous page for keyset pagination.
+// The wire encoding (base64/JSON) is a transport-only concern; domain only knows these two fields.
+type PageCursor struct {
+	CreatedAt time.Time
+	ID        string
+}

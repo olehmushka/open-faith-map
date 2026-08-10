@@ -69,8 +69,13 @@ async function unwrap<T>(promise: Promise<T>): Promise<T> {
   }
 }
 
-export async function listReports(scope?: QueueScope, status?: ReportStatus): Promise<ReportPage> {
-  return unwrap((await client()).moderation.listReports(scope, status));
+export async function listReports(
+  scope?: QueueScope,
+  status?: ReportStatus,
+  pageSize?: number,
+  pageToken?: string,
+): Promise<ReportPage> {
+  return unwrap((await client()).moderation.listReports(scope, status, pageSize, pageToken));
 }
 
 export async function takeActionOnReport(reportId: string, actionKind: ActionKind, reason: string): Promise<ModerationAction> {
@@ -81,8 +86,8 @@ export async function reverseAction(actionId: string, reason: string): Promise<M
   return unwrap((await client()).moderation.reverseAction(actionId, { reason }));
 }
 
-export async function listAppeals(status?: AppealStatus): Promise<AppealPage> {
-  return unwrap((await client()).moderation.listAppeals(status));
+export async function listAppeals(status?: AppealStatus, pageSize?: number, pageToken?: string): Promise<AppealPage> {
+  return unwrap((await client()).moderation.listAppeals(status, pageSize, pageToken));
 }
 
 export async function decideAppeal(appealId: string, decision: AppealDecision, note?: string): Promise<Appeal> {

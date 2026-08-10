@@ -14,6 +14,7 @@ export * from "./exclusionCheckResult";
 export * from "./fileAppealRequest";
 export * from "./fileReportRequest";
 export * from "./forbidden";
+export * from "./invalidPageToken";
 export * from "./moderationAction";
 export * from "./moderationPublicService";
 export * from "./moderationService";

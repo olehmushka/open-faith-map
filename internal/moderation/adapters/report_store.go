@@ -10,6 +10,9 @@ package adapters
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -45,28 +48,32 @@ func (s *Store) GetReportByID(ctx context.Context, id string) (domain.Report, er
 	return report, err
 }
 
-// ListReports has no real cursor pagination (registration's ListRequests precedent — LIMIT-only,
-// no OFFSET/keyset — nextPageToken always unset in the response).
-func (s *Store) ListReports(ctx context.Context, scope *domain.QueueScope, status *domain.ReportStatus, pageSize int) ([]domain.Report, error) {
-	var rows pgx.Rows
-	var err error
-	switch {
-	case scope != nil && status != nil:
-		rows, err = s.pool.Query(ctx, `SELECT `+reportColumns+` FROM openfaithmap.moderation_reports
-			WHERE deleted_at IS NULL AND queue_scope = $1 AND status = $2 ORDER BY created_at DESC LIMIT $3`,
-			string(*scope), string(*status), pageSize)
-	case scope != nil:
-		rows, err = s.pool.Query(ctx, `SELECT `+reportColumns+` FROM openfaithmap.moderation_reports
-			WHERE deleted_at IS NULL AND queue_scope = $1 ORDER BY created_at DESC LIMIT $2`,
-			string(*scope), pageSize)
-	case status != nil:
-		rows, err = s.pool.Query(ctx, `SELECT `+reportColumns+` FROM openfaithmap.moderation_reports
-			WHERE deleted_at IS NULL AND status = $1 ORDER BY created_at DESC LIMIT $2`,
-			string(*status), pageSize)
-	default:
-		rows, err = s.pool.Query(ctx, `SELECT `+reportColumns+` FROM openfaithmap.moderation_reports
-			WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT $1`, pageSize)
+// ListReports uses real keyset pagination as of M7 (docs/modules/hardening.md): the caller passes
+// after, the decoded cursor of the last row of the previous page, and this queries pageSize+1 rows
+// so the caller can tell whether a next page exists without a second round trip. The WHERE clause
+// is assembled from a predicate list rather than branching on every (scope, status, after)
+// combination — doubling the prior four-branch switch to eight for cursor presence stopped being
+// readable.
+func (s *Store) ListReports(ctx context.Context, scope *domain.QueueScope, status *domain.ReportStatus, pageSize int, after *domain.PageCursor) ([]domain.Report, error) {
+	where := []string{"deleted_at IS NULL"}
+	var args []any
+	if scope != nil {
+		args = append(args, string(*scope))
+		where = append(where, fmt.Sprintf("queue_scope = $%d", len(args)))
 	}
+	if status != nil {
+		args = append(args, string(*status))
+		where = append(where, fmt.Sprintf("status = $%d", len(args)))
+	}
+	if after != nil {
+		args = append(args, after.CreatedAt, after.ID)
+		where = append(where, fmt.Sprintf("(created_at, id) < ($%d, $%d)", len(args)-1, len(args)))
+	}
+	args = append(args, pageSize)
+	query := `SELECT ` + reportColumns + ` FROM openfaithmap.moderation_reports WHERE ` +
+		strings.Join(where, " AND ") + ` ORDER BY created_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args))
+
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

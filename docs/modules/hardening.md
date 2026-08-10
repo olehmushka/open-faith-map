@@ -88,8 +88,12 @@ No new fields for pagination — `ReportPage`/`AppealPage`'s `nextPageToken` and
 `ListAppeals`' `pageToken` already exist on the wire from M5. This work makes them actually
 function, plus enforces a `maxPageSize` clamp that doesn't exist today (`pageSizeOrDefault` in
 `internal/moderation/transport/service.go` currently only guards `nil`/`<=0`, with no upper bound).
-A malformed/tampered `pageToken` is rejected with the existing `Moderation:InvalidArgument`
-Conjure error — no new error type needed.
+A malformed/tampered `pageToken` is rejected with `Moderation:InvalidPageToken` — a new named
+error, not the generic `Moderation:InvalidArgument` this doc originally assumed existed. Verified
+against the actual contract while implementing: `api/moderation.conjure.yml`'s `errors:` block has
+only specific named `INVALID_ARGUMENT`-coded errors (`ActionNotReversible`, `AppealActorConflict`,
+`TaxonNotFound`, `DoctrinalReasonNotAllowed`), no generic catch-all — `InvalidPageToken` matches
+that convention (see milestones.md's M7 "As implemented" note).
 
 ## Dependencies
 
@@ -112,7 +116,7 @@ It only changes what a given authorized call returns.
 
 - Rate-limit state is single-process and ephemeral — a restart clears every bucket; this is a
   known, accepted limitation (Data model), not a bug.
-- A malformed or tampered `pageToken` always returns `400 Moderation:InvalidArgument` — it is never
+- A malformed or tampered `pageToken` always returns `400 Moderation:InvalidPageToken` — it is never
   silently reinterpreted as "start from page 1," which would just be a different flavor of the
   silent-failure class this fix exists to close.
 - Rate limiting never touches `ModerationService`'s authenticated surface, or any other module's

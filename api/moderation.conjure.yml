@@ -15,7 +15,13 @@
 # checkExclusion runs under the server's own service-principal token
 # (coreintegration.NewServiceClient), never a forwarded caller token, since the public caller here
 # is anonymous and has none — mirrors discovery's cache-refresh precedent for the same reason.
-# Rate limiting on the two public endpoints is deliberately deferred to M7 (DS-OFM-9).
+# Rate limiting on the two public endpoints lands at M7 (D-Hardening) — an in-process,
+# per-(client IP, endpoint) token-bucket limiter wired outside this contract (no Conjure code maps
+# to HTTP 429), so it does not appear here.
+#
+# listReports/listAppeals' pageToken/pageSize are real as of M7 — a keyset cursor encoding
+# (createdAt, id) of the last row seen, opaque to the caller. A malformed/tampered pageToken is
+# rejected with Moderation:InvalidPageToken, never silently reinterpreted as "start from page 1."
 #
 # Generated Go lands in internal/conjure and is never hand-edited.
 types:
@@ -220,6 +226,13 @@ types:
         docs: >
           Doctrinal disputes are not adjudicated (docs/modules/moderation.md's invariant) — file
           under OTHER with free text instead.
+        namespace: Moderation
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      InvalidPageToken:
+        docs: >
+          The pageToken query argument is malformed or tampered — never silently reinterpreted as
+          "start from page 1" (M7, docs/modules/hardening.md's invariant).
         namespace: Moderation
         code: INVALID_ARGUMENT
         safe-args: {}

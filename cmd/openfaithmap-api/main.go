@@ -41,6 +41,7 @@ import (
 	vouchingtransport "github.com/olehmushka/open-faith-map/internal/vouching/transport"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
+	"github.com/palantir/witchcraft-go-server/v2/wrouter"
 )
 
 // contentSiteResolver adapts contentapplication.Service's public read onto discovery's own
@@ -230,7 +231,14 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 		pool.Close()
 		return nil, werror.WrapWithContextParams(ctx, err, "register moderation routes")
 	}
-	if err := genmoderation.RegisterRoutesModerationPublicService(info.Router, moderationPublicTransportSvc); err != nil {
+	// M7: an in-process, per-(client IP, endpoint) rate limiter wired onto exactly this call — the
+	// only two genuinely anonymous write endpoints in the whole API (D-Hardening). Every other
+	// RegisterRoutes* call in this file, including ModerationService above, is untouched.
+	moderationRateLimiter := moderationtransport.NewRateLimiter()
+	if err := genmoderation.RegisterRoutesModerationPublicService(
+		info.Router, moderationPublicTransportSvc,
+		wrouter.RouteMiddleware(moderationRateLimiter.Middleware),
+	); err != nil {
 		pool.Close()
 		return nil, werror.WrapWithContextParams(ctx, err, "register moderation public routes")
 	}

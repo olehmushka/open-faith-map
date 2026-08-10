@@ -14,6 +14,7 @@ import (
 	genmoderation "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/moderation"
 	"github.com/olehmushka/open-faith-map/internal/moderation/application"
 	"github.com/olehmushka/open-faith-map/internal/moderation/domain"
+	"github.com/palantir/pkg/metrics"
 )
 
 // PublicService implements the generated ModerationPublicService — genuinely anonymous, no
@@ -45,6 +46,11 @@ func (s *PublicService) FileReport(ctx context.Context, requestArg genmoderation
 	if err != nil {
 		return genmoderation.Report{}, mapErr(err, errCtx{})
 	}
+	// Counted here, transport, not application.Service.FileReport — that method is also called
+	// internally by vouching's revocation fan-out, bypassing this genuinely-anonymous-public
+	// endpoint entirely (M7, docs/modules/hardening.md: reports_filed means "a public report was
+	// filed via this endpoint," not "the domain operation ran").
+	metrics.FromContext(ctx).Counter("openfaithmap.moderation.reports_filed").Inc(1)
 	return toAPIReport(report), nil
 }
 
@@ -53,6 +59,7 @@ func (s *PublicService) CheckExclusion(ctx context.Context, requestArg genmodera
 	if err != nil {
 		return genmoderation.ExclusionCheckResult{}, mapErr(err, errCtx{TaxonID: requestArg.TaxonId})
 	}
+	metrics.FromContext(ctx).Counter("openfaithmap.moderation.exclusion_checks_run").Inc(1)
 	result := genmoderation.ExclusionCheckResult{Excluded: excluded}
 	if excluded {
 		result.ExcludedTaxonCode = &code
