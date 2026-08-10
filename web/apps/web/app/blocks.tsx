@@ -5,14 +5,19 @@
 // public per-congregation page. A plain server component — no interactivity needed to read a
 // published page. Unknown block types (a future catalog addition this renderer hasn't caught up
 // with yet) fall through to a harmless no-op rather than crashing the page.
+import { getTranslations } from "next-intl/server";
+
 import type { Block } from "@/lib/content";
 
-export function Blocks({ blocks }: { blocks: Block[] }) {
+type BlocksT = Awaited<ReturnType<typeof getTranslations>>;
+
+export async function Blocks({ blocks }: { blocks: Block[] }) {
+  const t = await getTranslations("Blocks");
   return (
     <div className="flex flex-col gap-4">
       {[...blocks]
         .sort((a, b) => a.position - b.position)
-        .map((b) => <BlockView key={b.id} blockTypeCode={b.blockTypeCode} data={b.data} />)}
+        .map((b) => <BlockView key={b.id} blockTypeCode={b.blockTypeCode} data={b.data} t={t} />)}
     </div>
   );
 }
@@ -24,7 +29,15 @@ interface NestedBlock {
   data: unknown;
 }
 
-function BlockView({ blockTypeCode, data: rawData }: { blockTypeCode: string; data: unknown }) {
+function BlockView({
+  blockTypeCode,
+  data: rawData,
+  t,
+}: {
+  blockTypeCode: string;
+  data: unknown;
+  t: BlocksT;
+}) {
   const data = (rawData ?? {}) as Record<string, unknown>;
   switch (blockTypeCode) {
     case "heading": {
@@ -58,14 +71,14 @@ function BlockView({ blockTypeCode, data: rawData }: { blockTypeCode: string; da
         <iframe
           className="aspect-video w-full rounded"
           src={`https://www.youtube.com/embed/${String(data.videoId ?? "")}`}
-          title={String(data.title ?? "YouTube video")}
+          title={String(data.title ?? t("youtubeVideoDefaultTitle"))}
           allowFullScreen
         />
       );
     case "social_embed":
       return (
         <a href={String(data.url ?? "")} target="_blank" rel="noreferrer" className="underline">
-          {String(data.platform ?? "Social")} post
+          {String(data.platform ?? t("socialFallback"))} {t("socialPost")}
         </a>
       );
     case "button":
@@ -84,10 +97,10 @@ function BlockView({ blockTypeCode, data: rawData }: { blockTypeCode: string; da
     case "contact_info":
       return (
         <dl className="flex flex-col gap-1 text-sm">
-          {data.address ? <div><dt className="inline font-medium">Address: </dt><dd className="inline">{String(data.address)}</dd></div> : null}
-          {data.phone ? <div><dt className="inline font-medium">Phone: </dt><dd className="inline">{String(data.phone)}</dd></div> : null}
-          {data.email ? <div><dt className="inline font-medium">Email: </dt><dd className="inline">{String(data.email)}</dd></div> : null}
-          {data.hours ? <div><dt className="inline font-medium">Hours: </dt><dd className="inline">{String(data.hours)}</dd></div> : null}
+          {data.address ? <div><dt className="inline font-medium">{t("address")} </dt><dd className="inline">{String(data.address)}</dd></div> : null}
+          {data.phone ? <div><dt className="inline font-medium">{t("phone")} </dt><dd className="inline">{String(data.phone)}</dd></div> : null}
+          {data.email ? <div><dt className="inline font-medium">{t("email")} </dt><dd className="inline">{String(data.email)}</dd></div> : null}
+          {data.hours ? <div><dt className="inline font-medium">{t("hours")} </dt><dd className="inline">{String(data.hours)}</dd></div> : null}
         </dl>
       );
     case "map_embed":
@@ -98,7 +111,7 @@ function BlockView({ blockTypeCode, data: rawData }: { blockTypeCode: string; da
           rel="noreferrer"
           className="underline"
         >
-          View on map
+          {t("viewOnMap")}
         </a>
       );
     case "divider":
@@ -131,7 +144,7 @@ function BlockView({ blockTypeCode, data: rawData }: { blockTypeCode: string; da
           {columns.map((col, i) => (
             <div key={i} className="flex-1">
               {(col.blocks ?? []).map((nb, j) => (
-                <BlockView key={j} blockTypeCode={nb.blockTypeCode} data={nb.data} />
+                <BlockView key={j} blockTypeCode={nb.blockTypeCode} data={nb.data} t={t} />
               ))}
             </div>
           ))}
