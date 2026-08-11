@@ -4,6 +4,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 
 import type { IAppeal, IAppealPage } from "@/lib/openfaithmap/generated/moderation";
 
@@ -24,7 +25,6 @@ export function AppealList({
   decide: (formData: FormData) => void;
   labels: {
     noAppeals: string;
-    filedAt: (date: string) => string;
     notePlaceholder: string;
     uphold: string;
     overturn: string;
@@ -32,6 +32,7 @@ export function AppealList({
     loading: string;
   };
 }) {
+  const t = useTranslations("AppealsPage");
   const [appeals, setAppeals] = useState(initialAppeals);
   const [nextPageToken, setNextPageToken] = useState(initialNextPageToken ?? null);
   const [isPending, startTransition] = useTransition();
@@ -56,7 +57,7 @@ export function AppealList({
         {appeals.map((a) => (
           <li key={a.id} className="rounded border p-4">
             <p className="text-sm">{a.statement}</p>
-            <p className="text-sm text-gray-500">{labels.filedAt(a.createdAt)}</p>
+            <p className="text-sm text-gray-500">{t("filedAt", { date: a.createdAt })}</p>
 
             <form action={decide} className="mt-3 flex flex-wrap gap-2">
               <input type="hidden" name="appealId" value={a.id} />

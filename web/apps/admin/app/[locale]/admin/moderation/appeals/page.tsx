@@ -41,7 +41,6 @@ export default async function AppealsPage({ params }: { params: Promise<{ locale
         decide={decide}
         labels={{
           noAppeals: t("noAppeals"),
-          filedAt: (date) => t("filedAt", { date }),
           notePlaceholder: t("notePlaceholder"),
           uphold: t("uphold"),
           overturn: t("overturn"),

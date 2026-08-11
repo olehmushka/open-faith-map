@@ -82,20 +82,6 @@ a newly claimed/verified congregation without a manual moderator check for every
 guarantor is currently trusted. A revoked guarantor triggers moderator review of every vouch they
 made.
 
-**Impersonation.** A moderator mechanism to log in as a congregation admin for debugging support
-requests. Time-limited, banner-visible in the UI, double-logged (both the moderator's action and
-the impersonated session).
-
-> ⚠️ **Orphan term — decide or delete (audit 2026-08-09).** Impersonation appears in this glossary
-> and nowhere else in the doc set: no `D-` block, no endpoint in
-> [moderation.md](modules/moderation.md)'s API surface, no milestone. It also contradicts
-> [core-integration.md](modules/core-integration.md)'s **no-on-behalf-of** invariant head-on, which
-> forbids OpenFaithMap ever acting as a specific person. Any real version would have to be
-> go-oikumenea minting the impersonated session — a feature it does not have — not OpenFaithMap
-> forging one. **Do not build it from this entry alone.** Tracked as `DS-OFM-15` in
-> [open-questions.md](open-questions.md) and as `U9` in
-> [milestones.md](milestones.md#unresolved-unknowns--read-this-before-building-anything).
-
 ---
 
 ## Discovery (facade — reads go-oikumenea's location + religion + search modules)

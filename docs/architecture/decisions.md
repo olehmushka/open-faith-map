@@ -261,6 +261,16 @@ for something else.
   `moderation_actions` into it becomes a real option — tracked as `DS-OFM-12` in
   [open-questions.md](../open-questions.md), not a commitment.
 
+**Impersonation — decided against (2026-08-11).** `glossary.md` once defined "Impersonation" (a
+moderator logging in as a congregation admin for support debugging) with no `D-` block, no endpoint
+in this module's API surface, and no milestone — an orphan term that also contradicted
+[core-integration.md](../modules/core-integration.md)'s **no-on-behalf-of** invariant (OpenFaithMap
+never presents a credential to act as a specific person). The 2026-08-09 audit flagged it as
+"decide or delete" (`DS-OFM-15`, `U9`); decided: **delete**. A real version would require
+go-oikumenea itself to mint the impersonated session — a feature it does not have — not
+OpenFaithMap forging one; nothing in this codebase implements it, and there is no plan to build it.
+The glossary entry is removed rather than left as a defined-but-unbuilt term.
+
 ---
 
 ### D-Vouching — Web-of-trust guarantor verification
