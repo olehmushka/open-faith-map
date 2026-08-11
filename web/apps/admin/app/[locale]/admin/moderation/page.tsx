@@ -45,7 +45,6 @@ export default async function ModerationQueuePage({ params }: { params: Promise<
         takeAction={takeAction}
         labels={{
           noReports: t("noReports"),
-          filedAt: (date) => t("filedAt", { date }),
           reasonPlaceholder: t("reasonPlaceholder"),
           takeAction: t("takeAction"),
           loadMore: t("loadMore"),

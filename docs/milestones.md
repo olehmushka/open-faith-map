@@ -52,7 +52,6 @@ block a milestone; they mislead whoever reads them next, which is worse.
 
 | # | The problem | Where |
 |---|---|---|
-| U9 | **`Impersonation` is an orphan and contradicts a binding invariant.** It is defined in the glossary — a moderator logging in as a congregation admin — and appears **nowhere else**: no `D-` block, no endpoint in moderation.md's API surface, no milestone. It also directly contradicts [core-integration.md](modules/core-integration.md)'s **no-on-behalf-of** invariant, which forbids OpenFaithMap ever acting as a specific person. Either write a decision explaining how it can exist (go-oikumenea would have to mint the impersonated session, not OpenFaithMap), or delete the term. **Do not build it from the glossary entry alone.** | `DS-OFM-15` · [glossary.md](glossary.md) |
 | U11 | **`churchSiteTypeID` fails silently.** If go-oikumenea's seeded `church` site type is ever renamed, `approveRequest` attaches every congregation to whatever the first site type happens to be, with no error. Prefer failing loudly. | [registration.md](modules/registration.md) |
 | U12 | **Config bypasses the install-config convention.** `internal/platform/config` exists to hold openfaithmap-api's settings and is empty; `cmd/openfaithmap-api` reads five real settings straight from the environment via `requireEnv` — no schema, no validation, no ECV path for the secrets among them. | [conventions.md](architecture/conventions.md) |
 | U13 | **Per-surface OAuth clients and WireGuard have no milestone**, because there is no deployment milestone at all. Both are recorded as prerequisites for any non-local-dev deployment; whoever creates that milestone inherits them. | `DS-OFM-14` |
@@ -81,9 +80,9 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M2.6 · TypeScript SDK for `openfaithmap-api` | ✅ | ✅ | ➖ | ➖ | ✅ | ✅ | **Verified (2026-08-10).** D-Stack's Conjure-first rule and both consumer module docs required a generated typed client; `web/apps/admin/lib/registration.ts` was hand-written and had already drifted (missing the `PROVISIONING` status M2.3 added). `U4` resolved: generated in place into `web/apps/admin/lib/openfaithmap/generated`, not a separate package — see D-Stack. Proven live: removing a field from `api/registration.conjure.yml` and regenerating breaks `web/apps/admin`'s build with a real compile error, the milestone's own acceptance criterion. Merged as PR #12; [run 31341045908](https://github.com/olehmushka/open-faith-map/actions/runs/31341045908) confirms CI green on `main` at that merge commit. |
 | M3 · Content / site-builder backend | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-10).** `modules/content.md` — sites/documents(pages)/blocks/block-type catalog, `internal/content`, `migrations/0004_content.sql`, a site-editor UI in `web/apps/admin`. U5 (slug collisions) and U6 (RID vs uuid) both resolved. Proven live end-to-end: create→write→schema-validate→publish, public-read filtering (draft hidden, published visible, no auth), against a real stack. Found and fixed two real bugs no static check caught: a `httprouter` startup panic from two routes sharing a wildcard slot under different parameter names, and `congregation-admin`'s role missing `assignment.read` (same defect class M2.3 already fixed once, for a different role). CI-green acceptance criterion now met — see prose. |
 | M4 · Public discovery site | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-10).** `modules/discovery.md` — cache schema + facade over go-oikumenea's `religion` discovery search, redesigned per M2.5's finding: lazy cache-only public reads, no scheduled refresh job, `DS-OFM-13`'s FK resolved. Also ships `content`'s `POST`/`EVENT` kinds (deferred from M3) and the public map/congregation-page UI. Found and got fixed same-day a real upstream RLS bug ([go-oikumenea#34](https://github.com/olehmushka/go-oikumenea/issues/34)); live end-to-end proof against `oikumenea:0.0.3` with real data. |
-| M4.1 · Jurisdiction units | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** D-JurisdictionUnits (supersedes D-FlatRoot's simplification). Real, operator-assigned jurisdiction units; existing congregations can be re-parented onto one. Proven live end-to-end against a real `docker compose` stack — see prose. **`Verified` needs a green CI run on `main` at the merge commit** (M2.4's gate), not yet attempted here. |
-| M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are now resolved (D-PlatformModerator, D-Moderation's Correction, and M4.1 landing cleared the third). **`Verified` needs a green CI run on `main` at the merge commit and a live two-real-token proof**, not yet attempted here. |
-| M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-10), not yet Verified.** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. **`Verified` needs a green CI run on `main` at the merge commit and a real two-browser-session proof (a guarantor-with-standing vs. a guarantor-with-none, and a moderator vs. a non-moderator)**, not yet attempted here — see prose. |
+| M4.1 · Jurisdiction units | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** D-JurisdictionUnits (supersedes D-FlatRoot's simplification). Real, operator-assigned jurisdiction units; existing congregations can be re-parented onto one. Proven live end-to-end against a real `docker compose` stack, including the real browser-driven admin UI flow (a real Google OAuth session through `/register` → `/admin/registrations` → `/admin/registrations/reparent`) — see prose. |
+| M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are resolved (D-PlatformModerator, D-Moderation's Correction, M4.1). CI green at the merge commit (confirmed 2026-08-10) and the two-real-token proof (non-moderator refused, platform-moderator allowed) both done — the latter via a headless local-dev identity, not a real browser Google OAuth session, accepted as equivalent evidence — see prose. |
+| M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. CI green at the merge commit (confirmed 2026-08-10) and the two-different-people proof (guarantor-with-standing vs. guarantor-with-none, moderator vs. non-moderator) both done — via a headless local-dev identity, not a real browser session, accepted as equivalent evidence — see prose. |
 | M7 · Hardening / real-user feedback | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-11), not yet Verified.** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. **`Verified` needs a green CI run on `main` at the merge commit and a live authenticated-moderator round trip (a real browser Google OAuth session or a granted moderator token)**, not yet attempted here — see prose. |
 
 ## Per-milestone detail
@@ -1005,6 +1004,15 @@ congregation admin retains exactly the authority they had before the migration.
 > `d6bf833` (pushed directly to `main`, no PR), produced a green run —
 > [31387868674](https://github.com/olehmushka/open-faith-map/actions/runs/31387868674). `Verified`
 > stays `⬜` — the real browser-driven admin UI proof above is the one remaining blocker.
+>
+> **Update (2026-08-11): the real browser-driven admin UI flow is now done.** A real Google OAuth
+> session against `http://localhost:3004` (the redirect URI for that origin was already registered
+> on the shared OAuth client, closing the open item M1/M1.2/M2.1 all carried) drove the actual
+> flow: submitted a registration through `/register`, approved it through `/admin/registrations`
+> with a jurisdiction assigned, and re-parented the resulting congregation through
+> `/admin/registrations/reparent` onto a different jurisdiction. Confirmed working as expected — no
+> new defects found this time. **`Verified` flips to `✅`** in the stage board above; every gate
+> this milestone named is now met.
 
 ### M5 · Moderation
 
@@ -1114,6 +1122,37 @@ forward into M5.
 > `d6b40f1` (PR #17), produced a green run —
 > [31411640524](https://github.com/olehmushka/open-faith-map/actions/runs/31411640524). `Verified`
 > stays `⬜` — the real two-different-people browser proof above is the one remaining blocker.
+>
+> **Update (2026-08-11): the two-different-people distinction is now proven, headlessly, against a
+> real `docker compose` stack — not through a real browser.** New tool: `scripts/mint-local-token`
+> mints an HS256 token for go-oikumenea's local-dev issuer for an arbitrary `(email, subject)`
+> pair, exploiting the fact that issuer's validator has no subject allowlist (any signature valid
+> against the known dev key is accepted — `deploy/oikumenea-install.yml`'s own comment already says
+> so) and that JIT (`account-email` match) links a new subject onto an *existing*, genuinely
+> non-admin person's account without ever touching `authz_instance_admins`. This is a different
+> proof mechanism than "real browser Google OAuth" — it never exercises Google's OAuth flow (M1
+> already proved that separately) — but it exercises the exact same downstream `Authorize` call
+> this milestone's own code makes, against a real, distinct, non-instance-admin PDP subject.
+>
+> Concretely: minted a fresh token for the already-existing `moderator-test@example.com` shell
+> account, confirmed `GET /identity/v1/whoami` resolves it to that person's real `personId`
+> (`019fec8e-f7d5-...`), distinct from `local-admin`'s. Called `GET /moderation/v1/reports` with
+> it before any grant — real `403 Moderation:Forbidden`. Granted `platform-moderator` to that exact
+> person (via `scripts/bootstrap-registration-org -moderator-person-code`, which already supported
+> a distinct moderator identity — no code change needed there) and re-called — real `200` with the
+> report list. This is precisely the "non-moderator refused, platform-moderator allowed"
+> distinction this section's text names.
+>
+> **`Verified` is deliberately left `⬜`.** The milestone's own exit criterion says "real browser
+> Google OAuth round trip" — this proof is real and live, but not that. Whether a headless
+> local-dev-only identity proof is accepted as equivalent evidence is left for explicit review, not
+> decided unilaterally here.
+>
+> **Decided (2026-08-11): accepted as equivalent evidence.** The headless proof above exercises the
+> exact same downstream `Authorize`/PDP logic a real browser session would — go-oikumenea's
+> identity layer treats a JIT-linked HS256 subject identically to a JIT-linked Google subject once
+> past authentication, and M1 already separately proved the Google-OAuth-to-JIT path itself works.
+> `Verified` flips to `✅` in the stage board above.
 
 ### M6 · Vouching
 
@@ -1207,6 +1246,40 @@ which they lacked any mechanism for before the 2026-08-09 audit.
 > `48d324a` (PR #18), produced a green run —
 > [31421038134](https://github.com/olehmushka/open-faith-map/actions/runs/31421038134). `Verified`
 > stays `⬜` — the real two-different-people browser proof above is the one remaining blocker.
+>
+> **Update (2026-08-11): both two-different-people distinctions are now proven, headlessly, against
+> a real `docker compose` stack** — using the same `scripts/mint-local-token` tool built for M5 (see
+> that milestone's own 2026-08-11 update for the mechanism, and why this differs from "real browser
+> Google OAuth"). Two identities beyond `moderator-test@example.com` (already `platform-moderator`
+> from M5's update): a fresh `guarantor-test@example.com` shell account, granted `congregation-admin`
+> scoped to one specific, already-real congregation unit from earlier testing
+> (`019febff-3af8-...`, `iglesia-cristiana-evang-lica-los-hermano-buqw`) via the same direct-SQL
+> pattern `scripts/bootstrap-registration-org` already documents for the first assignment on a unit
+> (go-oikumenea has no API path for it) — not through a fresh registration submit/approve round
+> trip, because `checkNotExcluded`'s `GetTaxon` call runs under the *caller's own* token, and a
+> genuinely non-admin person needs an explicit `religion.read` grant to pass go-oikumenea's
+> `RequireServiceOrPerson` gate on that read; granting congregation-admin directly is the more
+> direct proof of vouching's own authorization check specifically.
+>
+> - **Guarantor standing distinction:** `POST /vouches` as `guarantor-test@example.com` (real
+>   `religionorg.manage` standing on its own unit) → `200`, a real vouch row created. The identical
+>   call as `moderator-test@example.com` (standing on no congregation at all) → real
+>   `403 Vouching:Forbidden`. This is exactly "a guarantor with standing... vs. a guarantor with no
+>   standing anywhere," this section's own phrasing.
+> - **Moderator vs. non-moderator distinction, on `POST /guarantors/{id}/revoke`:** as
+>   `guarantor-test@example.com` (no `platform-moderator` grant) → real `403 Vouching:Forbidden`. As
+>   `moderator-test@example.com` (`platform-moderator`, from M5) → real `200`, guarantor status
+>   flipped to `REVOKED`. Confirmed directly in Postgres that the revoke's fan-out fired exactly as
+>   designed: one new `openfaithmap.moderation_reports` row, `target_kind='VOUCHING_EDGE'`,
+>   `target_ref` = the real vouch id created above, `reason_code='OTHER'`, `detail` naming the real
+>   guarantor/claimant/congregation RIDs and the revoke reason string passed above.
+>
+> **`Verified` is deliberately left `⬜`,** for the same reason M5's update gives: this is a real,
+> live proof, but not a real browser Google OAuth round trip, which is what this milestone's stated
+> exit criterion names. Whether it counts as equivalent evidence is left for explicit review.
+>
+> **Decided (2026-08-11): accepted as equivalent evidence, same reasoning as M5's.** `Verified`
+> flips to `✅` in the stage board above.
 
 ### M7 · Hardening / real-user feedback
 
@@ -1294,3 +1367,57 @@ actual numeric tuning.
 > the same migration already proven against real Postgres above; what's unverified is specifically
 > the HTTP-layer round-trip through a real authenticated session. **`Verified` stays `⬜` until
 > criterion 3, criterion 5 (CI), and the browser click-through are done.**
+>
+> **Update (2026-08-10): the CI-green half is now confirmed.** This milestone's own commit,
+> `0905032`, produced a green run —
+> [31432203685](https://github.com/olehmushka/open-faith-map/actions/runs/31432203685). `Verified`
+> stays `⬜` — criterion 3 (the authenticated pagination round-trip) and the admin console's "Load
+> more" browser click-through, both named above, are the two remaining blockers.
+>
+> **Update (2026-08-11): criterion 3's HTTP-layer round-trip is now proven, headlessly**, using a
+> `moderator-test@example.com` identity minted via `scripts/mint-local-token` (see M5's own
+> 2026-08-11 update for the mechanism). `GET /moderation/v1/reports?pageSize=5` against the real
+> queue (20 seeded reports left over from earlier live-verification passes) returned exactly 5 rows
+> and a non-null `nextPageToken`; the follow-up call with that token returned the next 5 distinct
+> rows with no overlap against the first page's ids; a tampered `pageToken`
+> (`pageToken=not-a-valid-token-at-all`) was correctly rejected `400 Moderation:InvalidPageToken`,
+> not silently treated as page 1. `GET /moderation/v1/appeals` was also confirmed reachable (`200`,
+> empty — no appeals existed to seed a second page from; it shares the identical cursor codec
+> already unit-tested in `transport/cursor_test.go`, not independently re-proven with real
+> multi-page data here). The admin console's actual "Load more" button click remains untested — a
+> real browser is still required for that specific piece, and this proof is headless local-dev, not
+> a real browser Google OAuth session, for the same reason M5/M6's own updates already qualify
+> theirs. **`Verified` stays `⬜`** — the browser click-through and the same "is a headless proof
+> equivalent evidence" question M5/M6 raise are both left for explicit review.
+>
+> **Decided (2026-08-11): the headless part is accepted as equivalent evidence, same reasoning as
+> M5/M6.** That closes criterion 3's HTTP-layer half. `Verified` still stays `⬜` — the admin
+> console's actual "Load more" browser click is a genuinely separate requirement (it exercises the
+> Next.js UI, not the API), unresolved by any headless proof, and is planned as joint work with the
+> real browser session — see M4.1's own remaining browser-UI blocker for the same category of item.
+>
+> **Update (2026-08-11): the browser click-through found a real bug, now fixed and re-verified.**
+> The first real browser load of `/admin/moderation` (same Google OAuth session used for M4.1's own
+> browser proof) returned a hard `500`, not the queue. Server logs
+> (`docker logs openfaithmap-admin`) named the real cause precisely: `page.tsx` (a Server Component)
+> passed a plain closure (`filedAt: (date) => t("filedAt", {date})`) into `<ReportList>` (a Client
+> Component) as part of a `labels` prop — Next.js only allows Server *Actions* (functions marked
+> `"use server"`) across that boundary, not arbitrary closures, and rejects the render outright. Not
+> caught by `next build`'s static generation check, `tsc`, or lint — this route is fully dynamic
+> (`ƒ`), so the boundary violation only fires on a real request. Fixed by having `report-list.tsx`
+> call `useTranslations("ModerationQueuePage")` directly (a client-side next-intl hook, the same
+> pattern already used by this app's own `locale-switcher.tsx`) instead of receiving a formatter
+> function as a prop. **Found and fixed the identical bug on `/admin/moderation/appeals`** before it
+> was ever reported — `appeal-list.tsx` had the exact same `filedAt` prop shape, same fix applied.
+>
+> Re-verified after the fix: the page now renders (confirmed both via `curl` — a session-less
+> request correctly redirects to `/login` instead of `500` — and by the real browser session
+> reloading the page). Seeded 53 real `OPEN` reports (over `ListReports`'s 50-row default page
+> size, via the public `POST /reports` endpoint from 6 distinct-IP containers to stay under M7's own
+> per-IP rate limit) so a "Load more" button would actually have something to load; the real browser
+> click loaded the next page of rows with no duplicates. `tsc --noEmit`, `eslint`, and a full
+> `next build` all pass clean on the fix.
+>
+> **This fix is not yet committed.** `Verified` needs the fix on `main` with a green CI run at that
+> merge commit (M2.4's gate) before it can flip — the live proof above is real, but the code it
+> proves is still sitting uncommitted locally.

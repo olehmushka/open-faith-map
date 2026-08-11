@@ -4,6 +4,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 
 import type { ActionKind } from "@/lib/moderation";
 import type { IReport, IReportPage } from "@/lib/openfaithmap/generated/moderation";
@@ -28,13 +29,13 @@ export function ReportList({
   takeAction: (formData: FormData) => void;
   labels: {
     noReports: string;
-    filedAt: (date: string) => string;
     reasonPlaceholder: string;
     takeAction: string;
     loadMore: string;
     loading: string;
   };
 }) {
+  const t = useTranslations("ModerationQueuePage");
   const [reports, setReports] = useState(initialReports);
   const [nextPageToken, setNextPageToken] = useState(initialNextPageToken ?? null);
   const [isPending, startTransition] = useTransition();
@@ -65,7 +66,7 @@ export function ReportList({
               <span className="text-sm">{r.reasonCode}</span>
             </div>
             {r.detail && <p className="text-sm">{r.detail}</p>}
-            <p className="text-sm text-gray-500">{labels.filedAt(r.createdAt)}</p>
+            <p className="text-sm text-gray-500">{t("filedAt", { date: r.createdAt })}</p>
 
             <form action={takeAction} className="mt-3 flex flex-wrap gap-2">
               <input type="hidden" name="reportId" value={r.id} />
