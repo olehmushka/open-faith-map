@@ -1,0 +1,366 @@
+# Congregation-import module API. docs/modules/congregationimport.md, D-CongregationImport
+# (architecture/decisions.md). Resolves DS-OFM-10. Stages congregations scraped/ingested from
+# external sources (open government data, OpenStreetMap, denomination-locator HTML) for a
+# registration operator to review, edit, approve, or reject.
+#
+# Approval performs the real go-oikumenea writes (createChildOrg, a site over a new location) using
+# the OPERATOR'S OWN forwarded bearer token — never the service principal; go-oikumenea's PDP
+# decides for real, same as every other write in this project. Deliberately does NOT grant
+# congregation-admin to anyone: there is no real submitter to grant it to. See D-CongregationImport
+# for the full "why this isn't an on-behalf-of write" reasoning.
+#
+# One authenticated service — like vouching, this module has no genuinely-anonymous endpoint (a
+# connector run is always operator-triggered).
+#
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: openfaithmap.congregationimport
+    objects:
+      CandidateStatus:
+        values:
+          - STAGED
+          - NEEDS_TAXON_REVIEW
+          - NEEDS_GEOCODE
+          - POSSIBLE_DUPLICATE
+          - APPROVED
+          - PROVISIONING
+          - PROVISIONED
+          - REJECTED
+          - REJECTED_EXCLUDED
+      RunStatus:
+        values:
+          - RUNNING
+          - SUCCEEDED
+          - FAILED
+      ImportRun:
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local RID (openfaithmap.congregationimport.run).
+          sourceCode: string
+          status: RunStatus
+          triggeredByPersonId: string
+          cursorAtStart: optional<string>
+          cursorAtEnd: optional<string>
+          recordsFetched: integer
+          candidatesCreated: integer
+          candidatesUpdated: integer
+          candidatesAutoRejected:
+            type: integer
+            docs: Candidates this run rejected automatically via the D-Exclusions check.
+          error:
+            type: optional<string>
+            docs: Set only when status = FAILED.
+          startedAt: datetime
+          finishedAt: optional<datetime>
+      Candidate:
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local RID (openfaithmap.congregationimport.candidate).
+          importRunId: optional<string>
+          sourceCode: string
+          sourceRecordId:
+            type: string
+            docs: The source's own natural key — the idempotency anchor for re-scrapes.
+          name: string
+          taxonHint:
+            type: optional<string>
+            docs: Free-text denomination/tradition hint as scraped, before alias resolution.
+          taxonId:
+            type: optional<string>
+            docs: The resolved go-oikumenea religion_taxa RID, once matched.
+          jurisdictionHint:
+            type: optional<string>
+            docs: >
+              Free-text hint naming the parish's superior jurisdiction (diocese/eparchy/synod), as
+              scraped — only meaningful for denominations with a real institutional hierarchy
+              (Catholic, Orthodox, Lutheran, Anglican/Episcopal).
+          suggestedJurisdictionUnitId:
+            type: optional<string>
+            docs: >
+              An alias-matched suggestion for the go-oikumenea jurisdiction Unit RID — ADVISORY
+              ONLY. D-JurisdictionUnits: jurisdiction is operator-assigned at approval time, never
+              inferred. Never applied automatically; the operator must still pass jurisdictionUnitId
+              on ApproveCandidateRequest explicitly, even when this matches it.
+          countryId: optional<string>
+          adminArea1: optional<string>
+          locality: optional<string>
+          street: optional<string>
+          houseNumber: optional<string>
+          postalCode: optional<string>
+          latitude: optional<double>
+          longitude: optional<double>
+          geocodePrecision: optional<string>
+          status: CandidateStatus
+          possibleDuplicateOfCandidateId: optional<string>
+          possibleDuplicateOfUnitId: optional<string>
+          rejectionReason: optional<string>
+          reviewedByPersonId: optional<string>
+          reviewedAt: optional<datetime>
+          createdUnitId:
+            type: optional<string>
+            docs: >
+              The go-oikumenea unit RID createChildOrg produced. Set as soon as status =
+              PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays
+              set through PROVISIONED.
+          createdAt: datetime
+          updatedAt: datetime
+      EditCandidateRequest:
+        fields:
+          name: optional<string>
+          taxonId: optional<string>
+          countryId: optional<string>
+          adminArea1: optional<string>
+          locality: optional<string>
+          street: optional<string>
+          houseNumber: optional<string>
+          postalCode: optional<string>
+          latitude: optional<double>
+          longitude: optional<double>
+      ApproveCandidateRequest:
+        fields:
+          jurisdictionUnitId:
+            type: optional<string>
+            docs: >
+              The go-oikumenea unit RID to create the congregation under (D-JurisdictionUnits
+              precedent) — operator-chosen, never inferred. Omitted = the configured root unit.
+      RejectCandidateRequest:
+        fields:
+          reason: string
+      RunConnectorRequest:
+        fields:
+          sourceCode: string
+      CandidatePage:
+        fields:
+          candidates: list<Candidate>
+          nextPageToken: optional<string>
+      RunPage:
+        fields:
+          runs: list<ImportRun>
+          nextPageToken: optional<string>
+      TaxonAlias:
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local RID (openfaithmap.congregationimport.taxon-alias).
+          sourceCode:
+            type: optional<string>
+            docs: Omitted means this alias applies across every source.
+          aliasText: string
+          taxonId:
+            type: string
+            docs: The go-oikumenea religion_taxa RID this alias resolves to.
+          createdByPersonId: string
+          createdAt: datetime
+          updatedAt: datetime
+      JurisdictionAlias:
+        fields:
+          id:
+            type: string
+            docs: OpenFaithMap-local RID (openfaithmap.congregationimport.jurisdiction-alias).
+          sourceCode:
+            type: optional<string>
+            docs: Omitted means this alias applies across every source.
+          aliasText: string
+          jurisdictionUnitId:
+            type: string
+            docs: The go-oikumenea jurisdiction Unit RID this alias resolves to (D-JurisdictionUnits).
+          createdByPersonId: string
+          createdAt: datetime
+          updatedAt: datetime
+      CreateTaxonAliasRequest:
+        fields:
+          sourceCode:
+            type: optional<string>
+            docs: Omit to apply this alias across every source.
+          aliasText: string
+          taxonId: string
+      CreateJurisdictionAliasRequest:
+        fields:
+          sourceCode:
+            type: optional<string>
+            docs: Omit to apply this alias across every source.
+          aliasText: string
+          jurisdictionUnitId: string
+      TaxonAliasList:
+        fields:
+          aliases: list<TaxonAlias>
+      JurisdictionAliasList:
+        fields:
+          aliases: list<JurisdictionAlias>
+    errors:
+      CandidateNotFound:
+        namespace: CongregationImport
+        code: NOT_FOUND
+        safe-args:
+          candidateId: string
+      RunNotFound:
+        namespace: CongregationImport
+        code: NOT_FOUND
+        safe-args:
+          runId: string
+      Forbidden:
+        docs: The caller does not hold religionorg.manage on the configured root unit.
+        namespace: CongregationImport
+        code: PERMISSION_DENIED
+      NotEditable:
+        docs: The candidate is not in an editable (pre-approval) status.
+        namespace: CongregationImport
+        code: INVALID_ARGUMENT
+        safe-args:
+          candidateId: string
+          status: string
+      NotApprovable:
+        docs: >
+          The candidate cannot be approved — already REJECTED/REJECTED_EXCLUDED, or missing a
+          resolved taxon/coordinates/country the write needs.
+        namespace: CongregationImport
+        code: INVALID_ARGUMENT
+        safe-args:
+          candidateId: string
+      InvalidPageToken:
+        docs: >
+          pageToken is malformed or tampered — mirrors Moderation:InvalidPageToken's identical M7
+          precedent. Never silently reinterpreted as "start from page 1".
+        namespace: CongregationImport
+        code: INVALID_ARGUMENT
+      AliasConflict:
+        docs: An alias with this (sourceCode, aliasText) already exists.
+        namespace: CongregationImport
+        code: CONFLICT
+        safe-args:
+          aliasText: string
+
+services:
+  CongregationImportService:
+    name: Congregation Import Service
+    package: openfaithmap.congregationimport
+    base-path: /congregation-import/v1
+    default-auth: header
+    docs: >
+      Operator-triggered connector runs and the resulting candidate review queue. See
+      docs/modules/congregationimport.md.
+    endpoints:
+      runConnector:
+        http: POST /runs
+        docs: >
+          Trigger sourceCode's connector. Fetches/normalizes/D-Exclusions-checks/dedup-checks and
+          stages results as it goes — never buffers a whole run in memory. Operator-only.
+        args:
+          request: RunConnectorRequest
+        returns: ImportRun
+      listRuns:
+        http: GET /runs
+        docs: List connector runs, most recent first, optionally filtered by source.
+        args:
+          sourceCode:
+            type: optional<string>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: RunPage
+      getRun:
+        http: GET /runs/{runId}
+        args:
+          runId:
+            type: string
+            param-type: path
+        returns: ImportRun
+      listCandidates:
+        http: GET /candidates
+        docs: List staged candidates, most recent first, optionally filtered by status.
+        args:
+          status:
+            type: optional<string>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: CandidatePage
+      getCandidate:
+        http: GET /candidates/{candidateId}
+        args:
+          candidateId:
+            type: string
+            param-type: path
+        returns: Candidate
+      editCandidate:
+        http: POST /candidates/{candidateId}/edit
+        docs: >
+          Correct a staged candidate's fields before approval — scraped data is noisy by nature.
+          Only non-omitted fields are applied. Operator-only.
+        args:
+          candidateId:
+            type: string
+            param-type: path
+          request: EditCandidateRequest
+        returns: Candidate
+      approveCandidate:
+        http: POST /candidates/{candidateId}/approve
+        docs: >
+          Approve a candidate: performs the real go-oikumenea writes (createChildOrg, a site over a
+          new location) using the caller's own forwarded token. Grants NO congregation-admin —
+          there is no real submitter to grant it to (D-CongregationImport). Resumable: a retry after
+          a partial failure continues from the persisted createdUnitId rather than re-creating the
+          unit.
+        args:
+          candidateId:
+            type: string
+            param-type: path
+          request: ApproveCandidateRequest
+        returns: Candidate
+      rejectCandidate:
+        http: POST /candidates/{candidateId}/reject
+        docs: Reject a candidate with a reason. No go-oikumenea writes. Operator-only.
+        args:
+          candidateId:
+            type: string
+            param-type: path
+          request: RejectCandidateRequest
+        returns: Candidate
+      listTaxonAliases:
+        http: GET /taxon-aliases
+        docs: >
+          List every taxon alias, source-scoped first then global — small and operator-curated, no
+          pagination (see docs/modules/congregationimport.md). Operator-only.
+        args:
+          sourceCode:
+            type: optional<string>
+            param-type: query
+        returns: TaxonAliasList
+      createTaxonAlias:
+        http: POST /taxon-aliases
+        docs: >
+          Add a free-text-hint -> religion_taxa RID alias, used by matchTaxon's substring matching
+          on future connector runs. Operator-only.
+        args:
+          request: CreateTaxonAliasRequest
+        returns: TaxonAlias
+      listJurisdictionAliases:
+        http: GET /jurisdiction-aliases
+        docs: >
+          List every jurisdiction alias, source-scoped first then global — small and
+          operator-curated, no pagination. Operator-only.
+        args:
+          sourceCode:
+            type: optional<string>
+            param-type: query
+        returns: JurisdictionAliasList
+      createJurisdictionAlias:
+        http: POST /jurisdiction-aliases
+        docs: >
+          Add a free-text-hint -> go-oikumenea jurisdiction Unit RID alias, used by
+          matchJurisdiction's substring matching on future connector runs. Advisory only —
+          D-JurisdictionUnits: never auto-applied at approval. Operator-only.
+        args:
+          request: CreateJurisdictionAliasRequest
+        returns: JurisdictionAlias

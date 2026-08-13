@@ -15,6 +15,7 @@
 
 import { DefaultHttpApiBridge, type IHttpApiBridge, type IUserAgent } from "conjure-client";
 
+import { CongregationImportService } from "./generated/congregationimport";
 import { ContentPublicService, ContentService } from "./generated/content";
 import { DiscoveryPublicService, DiscoveryService } from "./generated/discovery";
 import { ModerationPublicService, ModerationService } from "./generated/moderation";
@@ -51,6 +52,7 @@ export interface OpenFaithMapClient {
   readonly moderation: ModerationService;
   readonly moderationPublic: ModerationPublicService;
   readonly vouching: VouchingService;
+  readonly congregationImport: CongregationImportService;
   /** The underlying conjure HTTP bridge, for advanced use. */
   readonly bridge: IHttpApiBridge;
 }
@@ -86,6 +88,7 @@ export function createOpenFaithMapClient(
     moderation: new ModerationService(bridge),
     moderationPublic: new ModerationPublicService(bridge),
     vouching: new VouchingService(bridge),
+    congregationImport: new CongregationImportService(bridge),
     bridge,
   };
 }

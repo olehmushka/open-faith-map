@@ -152,6 +152,21 @@ func main() {
 			// unit.edges.<graph>.manage permissions for command/operational, not canonical.
 			"unit.read",
 			"unit.edges.manage",
+			// religion.read: found live (production-hardening pass, 2026-08-13) once go-oikumenea#36's
+			// RLS fix let a non-admin approve actually reach this far — registration.ensureSite /
+			// congregationimport.ensureSite both call Religion.ListUnitSites on the newly-created unit
+			// as a resumability check (has a primary site already been created on a retry?), which
+			// go-oikumenea's ReligionService.ListUnitSites gates on religion.read via pep.Require
+			// (person-only), unit-scoped. Never exercised before this session: every prior live proof
+			// of approve used the instance-admin identity, which bypasses PDP checks entirely.
+			"religion.read",
+			// location.create: found live in the same pass, immediately behind religion.read —
+			// ensureSite's CreateLocation call (both registration's and congregationimport's) is
+			// gated by go-oikumenea's LocationService via pep.RequireAnywhere (instance-wide grant,
+			// not unit-scoped — a location isn't itself a unit-scoped resource). Same root cause as
+			// religion.read above: masked until now by the RLS failure that always short-circuited
+			// approve before reaching this far.
+			"location.create",
 		},
 	})
 	if err != nil {

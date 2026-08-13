@@ -78,10 +78,11 @@ services:
           END \$\$;"
 
   oikumenea-app:
-    # 0.0.3 fixes go-oikumenea#34: RLS on religion_sites (and siblings) couldn't recognize an
-    # instance-wide (org_id IS NULL) principal grant, silently zeroing discovery search results
-    # for a service principal even after #33's PEP-layer fix. Re-verify live after bumping.
-    image: docker.io/olegamysk/oikumenea:0.0.3
+    # 0.0.4 fixes go-oikumenea#36: tenant_units RLS was structurally unsatisfiable at a new unit's
+    # first INSERT for any person-shaped, non-admin caller (CreateChildOrg inserted the unit before
+    # tenant_unit_closure was seeded, so the person-arm RLS predicate could never pass). Fixed by
+    # seeding closure before the INSERT. Re-verify live after bumping.
+    image: docker.io/olegamysk/oikumenea:0.0.4
     depends_on:
       oikumenea-init-role:
         condition: service_completed_successfully
@@ -229,6 +230,13 @@ services:
       # already uses on the host (.env.example); this container needs its own copy mounted in to
       # mint Google ID tokens for GET /search's cache-miss fallback.
       GOOGLE_APPLICATION_CREDENTIALS: "/app/var/service-account.json"
+      # congregationimport (D-CongregationImport, docs/modules/congregationimport.md): optional —
+      # the ЄДР connector only registers if this is set. Real weekly bulk download is an operator's
+      # own out-of-band step (data.gov.ua dataset 03cc1239-3988-4451-aa0d-aadb77448714, resource
+      # uo.zip); mount it in with an extra `volumes:` entry when actually using this connector, same
+      # shape as GOOGLE_APPLICATION_CREDENTIALS above. Left unset here — no file is bundled or
+      # auto-downloaded by this compose file.
+      UAEDR_UO_FILE_PATH: "${UAEDR_UO_FILE_PATH:-}"
     volumes:
       # The leading "./" is load-bearing: Compose treats a bare relative path as a named-volume
       # reference, not a bind mount, and fails with "undefined volume" otherwise — found by
