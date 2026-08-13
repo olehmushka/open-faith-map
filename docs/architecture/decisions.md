@@ -27,6 +27,7 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-JurisdictionUnits](#d-jurisdictionunits--denomination-aware-non-uniform-jurisdiction-layer-operator-assigned) | Jurisdiction is an ordinary, operator-assigned Unit — denomination-aware but not one canonical hierarchy per tradition, variable and optional depth |
 | [D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit) | Platform-moderator authority is a go-oikumenea Role on the shared root unit, checked target-scoped — not an OpenFaithMap roster table |
 | [D-Hardening](#d-hardening--in-process-rate-limiting-on-anonymous-writes-reused-witchcraft-observability) | In-process per-IP rate limiting on moderation's two anonymous write endpoints; observability reuses witchcraft's already-wired stack, no new infrastructure |
+| [D-CongregationImport](#d-congregationimport--scraped-congregations-provision-as-real-admin-less-units-a-verifiedclaimed-overlay-tracks-their-status) | Scraped/imported congregations provision as real, admin-less go-oikumenea Units under the approving operator's own token; a verified/claimed overlay (proposal, not settled) tracks status. Resolves `DS-OFM-10` |
 
 ---
 
@@ -39,6 +40,14 @@ online presence — a map (discovery) and a per-congregation site builder (prese
 project name means *open-source and free*, not multi-faith — this is a deliberate, narrow product
 surface, not a placeholder for a broader one. Geographic rollout: Ukraine + USA first, Poland/UK
 next, then the rest of EU/LATAM/Africa/Asia.
+
+> **Update (2026-08-12): rollout priority reordered, direct from the product owner.** The active
+> priority list is now **Ukraine, Argentina, Uruguay, Paraguay, Colombia, Chile, Brazil, USA** —
+> six LATAM countries moved ahead of Poland/UK, given directly while scoping `congregationimport`
+> (D-CongregationImport). The original "Poland/UK next" text above is left as written (an
+> append-only correction, this doc set's own convention), not edited in place, since the
+> underlying decision — narrow, named markets, expanded deliberately rather than pivoting to
+> "everywhere" — is unchanged; only the sequence is.
 
 **Five audiences** (the original three, plus two the build surfaced — see
 [glossary.md](../glossary.md) for each one's definition):
@@ -990,3 +999,60 @@ It's request-level telemetry, which the metrics counter above already covers.
   closed out.
 - Read-side rate limiting (content/discovery public GETs) and multi-replica coordination remain
   open — recorded in `hardening.md`'s Open Seams, not silently dropped.
+
+---
+
+### D-CongregationImport — Scraped congregations provision as real, admin-less Units; a verified/claimed overlay tracks their status
+
+**Decision.** A new module, `congregationimport` (resolving `DS-OFM-10`), ingests congregation data
+from external sources (bulk open government data, OpenStreetMap, denomination-locator HTML) and
+stages it for a registration operator's review. On approval, the operator's own forwarded token
+performs the real go-oikumenea write (`createChildOrg` under the shared root or a chosen
+jurisdiction unit, then a site over a new location) — the identical mechanism
+`registration.Approve` already uses for `ensureUnit`/`ensureSite`, minus the position/fill/
+`congregation-admin`-grant steps, because there is no submitter to grant authority to. **No
+`congregation-admin` role is granted at provisioning time** — the congregation is real and
+publicly discoverable, but genuinely admin-less until a future claim.
+
+A new overlay table, `congregationimport_congregation_status` (same shape as
+`vouching_guarantor_status`: a mutable projection keyed by an immutable go-oikumenea entity),
+records `verified_by_person_rid`/`verified_at` (the approving operator) and
+`claimed_by_person_rid`/`claimed_at` (nullable — reserved for `vouching.md`'s already-named,
+not-yet-built congregation-claim flow). **This status model is a proposal, not settled** — the
+product owner has explicitly said the exact state machine (a scraped congregation that was never
+reviewed by a platform admin vs. one that was, vs. a real future claim) is still open for
+discussion; this decision records the minimal schema needed to not block on it, not a final
+design.
+
+**Why this isn't an on-behalf-of write.** `core-integration.md`'s no-on-behalf-of invariant forbids
+OpenFaithMap acting *as* a specific person without their authority. Nobody is impersonated here —
+the write is honestly attributed to the real operator who reviewed the candidate and decided it's
+a legitimate congregation, exactly as `registration.Approve`'s `createChildOrg` call already is.
+This is different in kind from D-BulkImport's rejected CLI, which would have attributed every row
+to the *operator as the congregation's admin* — the wrong person, holding authority they
+shouldn't have. Here, no admin is granted to anyone, so there is no wrong-attribution problem to
+have.
+
+**Why not a service-principal write instead of the operator's token.** Rejected —
+`createChildOrg`'s real gate is `religionorg.manage`/`assignment.grant` on the target unit,
+permissions a human operator holds and a service principal structurally shouldn't (the same
+reasoning `core-integration.md` already gives for every other real go-oikumenea write in this
+project: the actual judgment call, "is this really a legitimate congregation," needs a human
+decision point). The service principal's role in this pipeline stays confined to read-only work
+(the D-Exclusions taxon walk, the dedup `SearchSites` check) — never a provisioning write.
+
+**Why not replay `registration`'s submit/approve flow.** Already tried and rejected once
+(D-BulkImport's Correction) — `submittedByPersonId` has no field a connector can fill, and there
+is no real submitter for a scraped row. `congregationimport` is a **separate creation path**
+converging on the same go-oikumenea Unit shape, not a client of `registration`'s endpoints.
+
+**Consequences.**
+- `registration.md`'s "every congregation has an admin from creation" invariant now has an
+  explicit exception, scoped to this module's path only.
+- `content`/`discovery` currently have no UI treatment of verified/unverified/claimed —
+  deliberately out of this decision's scope, a follow-on question once the status model above is
+  actually settled.
+- D-Exclusions applies unchanged: the ancestor-walk check runs under the service principal before
+  a candidate is ever presented for approval, and a match is an automatic `REJECTED_EXCLUDED`,
+  never a silent drop or a later surprise.
+- `DS-OFM-10` (`open-questions.md`) is resolved by this block.

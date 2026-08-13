@@ -38,15 +38,6 @@ from the module doc it was raised in.
   "block this whole tradition" behavior, it becomes a real go-oikumenea feature request rather than
   something each consumer reimplements. See
   [core-integration.md](modules/core-integration.md#open-seams).
-- **DS-OFM-10 — A future scraped-church-data importer has no name, schema, or design.** M2.2's
-  original congregation-bulk-import scenario is real (importing an existing directory of churches
-  from a legacy system or scraped source) but is not `hermenea` — that name belongs to
-  go-oikumenea's own reference-data companion, deployed unmodified for M2.2 (see D-BulkImport's
-  Correction in [decisions.md](architecture/decisions.md)). A narrower, separately-named tool near
-  `openfaithmap-api` is expected to address it eventually; input format, field set, row-attribution
-  (how an imported congregation's real-world contact is resolved to a go-oikumenea person RID, if
-  at all), and connector shape are all undecided — pick when that milestone is actually scoped. See
-  [import.md](modules/import.md#open-seams).
 - **DS-OFM-12 — Backfilling `moderation_actions` into go-oikumenea's audit trail.** D-Moderation's
   Correction drops the single-ledger goal because go-oikumenea's audit module has no write endpoint.
   If one ever ships upstream, backfilling becomes a real option — recorded so the intent isn't lost,

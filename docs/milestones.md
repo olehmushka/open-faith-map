@@ -84,6 +84,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are resolved (D-PlatformModerator, D-Moderation's Correction, M4.1). CI green at the merge commit (confirmed 2026-08-10) and the two-real-token proof (non-moderator refused, platform-moderator allowed) both done — the latter via a headless local-dev identity, not a real browser Google OAuth session, accepted as equivalent evidence — see prose. |
 | M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. CI green at the merge commit (confirmed 2026-08-10) and the two-different-people proof (guarantor-with-standing vs. guarantor-with-none, moderator vs. non-moderator) both done — via a headless local-dev identity, not a real browser session, accepted as equivalent evidence — see prose. |
 | M7 · Hardening / real-user feedback | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-11), not yet Verified.** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. **`Verified` needs a green CI run on `main` at the merge commit and a live authenticated-moderator round trip (a real browser Google OAuth session or a granted moderator token)**, not yet attempted here — see prose. |
+| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed and live-verified (2026-08-13); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token — now confirmed live under a genuinely non-admin operator identity, not just the instance-admin. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
 
 ## Per-milestone detail
 
@@ -473,6 +474,25 @@ orphans a real go-oikumenea unit and leaves the request `PENDING`, and a retry c
 > acceptance test (a `congregation-admin`-only account, a `registration-operator` account, both via
 > real browser Google OAuth) — that's the one piece not achievable headlessly. This milestone's gates
 > stay as they are until that's done.
+>
+> **Update (2026-08-13): `approveRequest`'s real write path proven live under a genuine non-admin
+> identity for the first time — not a substitute for the two-real-token proof above, still open.**
+> M8's own production-hardening pass had found and root-cased a real go-oikumenea RLS defect
+> ([go-oikumenea#36](https://github.com/olehmushka/go-oikumenea/issues/36)) that made
+> `approveRequest` under any genuinely non-admin `registration-operator` structurally impossible —
+> every prior live proof of this endpoint, including this milestone's own, used the instance-admin
+> identity, which bypasses RLS *and* PDP checks entirely, so the defect sat unexercised. Once
+> go-oikumenea#36 was fixed upstream (image `0.0.4`) and two further permission gaps it had been
+> masking (`religion.read`, `location.create` — missing from `registration-operator`'s role) were
+> found live and fixed the same way `assignment.read` was above, a real `submitRequest` →
+> `approveRequest` round-trip under a single non-admin operator identity succeeded end-to-end:
+> `APPROVED`, a real unit created, and a real unit-scoped `congregation-admin` grant to the submitter
+> confirmed in `authz_role_assignments`. This proves the write path itself is sound under a real,
+> PDP-checked non-admin caller; it does **not** prove the target-scoped PII-disclosure fix (item 1
+> above), which needs a *second*, distinct `congregation-admin`-only identity denied where the
+> operator is allowed — still unattempted, still the one piece not achievable headlessly. This
+> milestone's gates stay exactly as they are; full detail of the RLS fix and its live verification is
+> under M8's own entry.
 
 **Also in scope, because there is nothing to regress against today:** the first real unit tests in
 this repo. `checkNotExcluded`'s ancestor walk (including the cycle cap), `slugCode`, and the
@@ -1418,6 +1438,295 @@ actual numeric tuning.
 > click loaded the next page of rows with no duplicates. `tsc --noEmit`, `eslint`, and a full
 > `next build` all pass clean on the fix.
 >
-> **This fix is not yet committed.** `Verified` needs the fix on `main` with a green CI run at that
-> merge commit (M2.4's gate) before it can flip — the live proof above is real, but the code it
-> proves is still sitting uncommitted locally.
+> **Update: the fix is merged to `main`** (`4af7f12`, PR #20). `Verified` still needs a green CI run
+> confirmed at that merge commit (M2.4's gate) before it can flip — not confirmed here.
+
+### M8 · Congregation import
+
+**Depends on:** M2 (the `registration` provisioning pattern this reuses), M2.5/M4 (the
+service-principal path this module's D-Exclusions check and dedup search need). **Leaves
+deployable:** yes — an operator-only API surface with no public-facing change; nothing scraped
+becomes visible until an operator explicitly approves it.
+
+Resolves `DS-OFM-10` — full design in [D-CongregationImport](architecture/decisions.md) and
+[modules/congregationimport.md](modules/congregationimport.md). Scoped directly with the product
+owner: broad, multi-source from the start (not one connector at a time deferred indefinitely);
+scraped congregations provision as real, deliberately admin-less go-oikumenea Units, with an
+explicit verified/claimed status overlay left open for further design; manual operator-triggered
+runs only, no new scheduler; real government open-data sources over speculative HTML scraping for
+v1. Target countries, stated directly mid-design: Ukraine, Argentina, Uruguay, Paraguay, Colombia,
+Chile, Brazil, USA — reordering `D-Scope`'s original rollout sequence (recorded there as an
+append-only update, not an edit).
+
+**As implemented (2026-08-12).** Full hexagonal module (`internal/congregationimport/{domain,
+adapters,application,transport}`), `api/congregationimport.conjure.yml`,
+`migrations/0010_congregationimport.sql` (five tables — runs, candidates, taxon aliases, connector
+citations, and the verified/claimed overlay), wired into `cmd/openfaithmap-api/main.go`'s
+composition root and `docker-compose.yml` (an optional `UAEDR_UO_FILE_PATH` — the module boots
+with zero connectors registered if unset, never a hard failure).
+
+**Real, verified sources, not fabricated:** checked live via web search and, for Ukraine, by
+downloading the actual dataset's own published schema (`uo_schema.zip`, a real XSD) and classifier
+(`kopfg.json`) from data.gov.ua directly — not inferred from a third-party tool, which turned out
+to describe an older, superseded version of the same export. Real, load-bearing finding from that
+schema: **the current ЄДР export has no address field of any kind** (an older schema version did);
+every `ua-edr` candidate lands in `NEEDS_GEOCODE`, address filled in by an operator, not invented.
+Filter confirmed against the real classifier: `OPF = "Релігійна організація"`, КОПФГ code `825`.
+Brazil (CNPJ, legal-nature code `322-0`) and Argentina (Registro Nacional de Cultos, excludes the
+Catholic Church by law) sources were confirmed real but not yet built.
+
+**Two real design corrections made while building, not assumed correct on the first pass:**
+1. Taxon-alias matching was originally designed as an exact lookup; a `TaxonHint` is typically a
+   full scraped legal name, not a short keyword, so an exact match would never fire against real
+   data. Changed to substring matching against a small, fully-loaded alias list before this was
+   ever run against real data, not discovered live.
+2. Dedup was designed to compare candidate names against live go-oikumenea site names; checked
+   directly against the real Conjure `DiscoverySite` struct (`SearchSites`'s response shape) and
+   found it carries no name field at all. Simplified to geo-proximity-only before running, with the
+   real reason recorded in code and in `congregationimport.md`, not silently dropped.
+
+**Live-verified against a real `docker compose up --build` stack, against genuinely real ЄДР
+data — not a fabricated fixture.** Downloaded the actual 326MB `uo.zip` (3.15GB uncompressed) from
+data.gov.ua, stream-scanned it with a throwaway script (not the connector itself, to keep this
+session tractable) to extract a small, honest subset: 12 real religious-organization records
+(including a real Jehovah's Witnesses congregation) and 5 real non-religious ones, repackaged into
+a `uo.zip` with the exact real structure/encoding, mounted into the container.
+
+- `POST /runs {"sourceCode":"ua-edr"}` (via a `scripts/mint-local-token`-minted operator identity):
+  `recordsFetched: 12, candidatesCreated: 12` — the 5 non-religious real records were correctly
+  excluded by the OPF filter; Cyrillic names decoded correctly (cp1251 → UTF-8) in Postgres,
+  confirmed by direct query.
+- Seeded two real taxon aliases ("свідків єгови" → Jehovah's Witnesses, "баптистів" →
+  Protestantism) and re-ran: `candidatesAutoRejected: 1`. Confirmed directly: the real JW
+  congregation (`РЕЛІГІЙНА ГРОМАДА СВІДКІВ ЄГОВИ...`) landed `REJECTED_EXCLUDED` with
+  `rejection_reason` naming `jehovahs_witnesses` — D-Exclusions firing live, on real data, not a
+  synthetic test case. `POST .../approve` on that same candidate correctly returned
+  `CongregationImport:NotApprovable`.
+- The Baptist candidate: `POST .../edit` (operator fills in missing country/coordinates — ЄДР's
+  real no-address constraint, confirmed exactly as documented) → `POST .../approve` under the
+  real instance-admin identity → `PROVISIONED`, a real go-oikumenea unit created. Confirmed
+  directly in Postgres: **zero rows** in `authz_role_assignments` for the new unit — the
+  no-congregation-admin-grant invariant holds for real, not just in the design doc — and the
+  `congregationimport_congregation_status` overlay row is correct (`verified_by_person_rid` set,
+  `claimed_by_person_rid` null).
+
+**Two real bugs found and fixed by actually running this, neither caught by review or `godelw
+verify`:**
+1. **The OPF filter would have matched zero real records.** `data.gov.ua`'s own classifier
+   resource (`kopfg.json`) gives `"Релігійна організація"` (title case) for code `825`; the real
+   export stores it as `"РЕЛІГІЙНА ОРГАНІЗАЦІЯ"` (all uppercase) — found by scanning the actual
+   downloaded file, not assumed. Fixed with `strings.EqualFold`.
+2. **A second `approveCandidate` call on an already-`PROVISIONED` candidate created a real,
+   confirmed duplicate go-oikumenea unit** — the exact defect class M2.3 fixed once for
+   `registration`, not fully replicated here: the precondition only excluded
+   `REJECTED`/`REJECTED_EXCLUDED`, so `PROVISIONED` fell through to `ensureUnit`, whose own
+   resume-check only short-circuits on `PROVISIONING`. Caught live: a real second unit
+   (`019ff2bf-...`) existed in `tenant_units` before the fix. Changed the precondition from a
+   denylist to an allowlist; re-tested — unit count stayed at 2, correctly rejected before ever
+   reaching `createChildOrg`.
+
+**One real, deep limitation found and diagnosed, left unfixed — out of scope for this module:**
+attempting the approval under a genuine non-admin `registration-operator` identity (not the
+instance-admin) failed with a real Postgres error: `new row violates row-level security policy for
+table "tenant_units"`. Traced to the actual cause, not just the symptom: go-oikumenea's
+`tenant_units` RLS write-check (`authz_unit_in_reach`) requires `tenant_unit_closure` to already
+contain the new unit — which cannot be true for a brand-new unit's first-ever INSERT — and its
+person-shaped-principal fallback path requires `authz_principal_grants`, a table
+`scripts/bootstrap-registration-org`'s own break-glass raw-SQL grant (documented as necessary
+because go-oikumenea has no API path for a first assignment) never populates, unlike whatever the
+real `grantAssignment` API call does. **This is not new to `congregationimport`** — it would
+equally block `registration.Approve` under a genuinely non-admin operator; every prior live proof
+of that path in this project's history (M2/M2.3/M4) used the instance-admin identity, which
+bypasses RLS entirely, so this gap was never previously exercised. Recorded here rather than
+patched blind — fixing `bootstrap-registration-org`'s SQL (or go-oikumenea's own RLS policy) is a
+real, separate, project-wide follow-up, not this milestone's to absorb.
+
+No review-queue UI exists in `web/apps/admin` yet — this milestone is API-only for now.
+`Verified` needs that UI, a green CI run on `main` at the merge commit, and a decision on the RLS
+finding above — not attempted here.
+
+> **Update (2026-08-12): institutional-hierarchy support (Catholic/Orthodox/Lutheran/
+> Anglican-Episcopal).** Added `Candidate.JurisdictionHint`/`SuggestedJurisdictionUnitID` and a
+> `congregationimport_jurisdiction_aliases` table, mirroring `congregationimport_taxon_aliases`'s own
+> shape and substring-match discipline exactly. Deliberately follows
+> [D-JurisdictionUnits](architecture/decisions.md) rather than inventing a parallel model: jurisdiction
+> stays operator-assigned, never inferred — a match here is surfaced to the operator as
+> `SuggestedJurisdictionUnitID` and nothing more; `ApproveCandidateRequest.jurisdictionUnitId` still
+> requires the operator's own explicit choice, unchanged from before this feature existed. Traditions
+> with no real institutional hierarchy (Baptist, Pentecostal, most non-denominational bodies)
+> correctly produce no hint and no suggestion — by design, not a gap, matching D-JurisdictionUnits'
+> own rejection of a single canonical per-denomination tree.
+>
+> **A real bug, found live, not by review:** the jurisdiction-match call was originally placed after
+> the taxon-match step, which returns early (`NEEDS_TAXON_REVIEW`) whenever the taxon hint doesn't
+> resolve — silently skipping jurisdiction matching entirely for exactly the candidates most likely to
+> carry a useful jurisdiction hint (a still-unaliased denomination keyword sitting next to a
+> resolvable diocese name in the same scraped legal name). Found by seeding a real jurisdiction alias
+> against a UGCC (Ukrainian Greek Catholic) test record with an intentionally-unaliased taxon hint and
+> observing `SuggestedJurisdictionUnitID` stay null after a re-run. Fixed by moving the
+> jurisdiction-match call ahead of the taxon-match early return, so it always runs regardless of taxon
+> outcome; re-tested, confirmed the suggestion populates correctly.
+>
+> **Live-verified against a real `docker compose up --build` stack**, using a locally-crafted fixture
+> structurally faithful to the real, previously-verified `uo.zip` `<SUBJECT>` schema (this session did
+> not re-download the 3.15GB export; the schema/encoding/field verification from the original M8 pass
+> above still stands) — three records: a UGCC parish whose real legal name textually names "Львівської
+> архієпархії" (the Lviv archeparchy), an independent Baptist congregation, and a non-religious LLC
+> (OPF filter regression check).
+> - After the fix: the UGCC record correctly got `suggestedJurisdictionUnitId` set from a seeded
+>   `"львівської архієпархії"` alias, **while still sitting in `NEEDS_TAXON_REVIEW`** (no taxon alias
+>   seeded for UGCC) — direct confirmation the two matches are independent, not sequentially gated.
+>   The Baptist record correctly got no suggestion (no jurisdiction substring in its name); the LLC
+>   record was correctly never staged at all.
+> - **The "never auto-applied" invariant confirmed live, not just by reading `provision.go`:**
+>   approved the UGCC candidate under the real instance-admin identity (the genuinely non-admin
+>   `registration-operator` path hit the same pre-existing RLS gap recorded above, unrelated to this
+>   feature) **without** passing `jurisdictionUnitId`, despite a matched (deliberately fake,
+>   unresolvable) `suggestedJurisdictionUnitId` on the candidate. Provisioning succeeded; a direct
+>   `oikumenea.tenant_unit_edges` query on the real created unit confirmed its parent is
+>   `REGISTRATION_ROOT_UNIT_ID` — not the fake suggested unit, which would have failed outright had it
+>   been used. `godelw verify --skip-test` clean; `go build ./... && go vet ./...` clean.
+
+> **Update (2026-08-12): production-hardening pass — depth on `ua-edr`, not new breadth.** Scoped
+> directly with the owner: harden the existing pipeline + review flow to real production quality
+> (UI, real pagination, alias-management endpoints, automated tests, metrics), root-cause the RLS
+> blocker rather than absorb a fix for it, no new connectors/countries this pass.
+>
+> **Review-queue UI now exists** — `web/apps/admin/app/[locale]/admin/congregation-import/{page.tsx,
+> candidate-list.tsx}` (modeled on `/admin/moderation`'s server/client split and "Load more" pattern,
+> not `/admin/registrations`'s no-pagination one) plus a secondary `/admin/congregation-import/
+> aliases` page for taxon/jurisdiction alias management. `lib/congregation-import.ts` mirrors
+> `lib/moderation.ts` exactly. `scripts/gen-ts-client.sh` regenerated both web apps'
+> `lib/openfaithmap/generated` trees for the first time with `CongregationImportService`. `tsc
+> --noEmit`, `eslint .`, and `next build` all pass clean on both new routes; `web/apps/web`'s own
+> `tsc --noEmit` stays clean too (its `generated/` tree also picked up the new service, unused).
+>
+> **Real keyset pagination** — `ListRuns`/`ListCandidates` previously declared `pageToken` on the
+> wire and silently ignored it, the exact M7-fixed defect class, unfixed until now. Ported
+> `moderation`'s own M7 solution byte-for-byte (`domain.PageCursor`, `transport/cursor.go`, the
+> `(created_at, id) < (...)` keyset predicate, a `CongregationImport:InvalidPageToken` error
+> matching `Moderation:InvalidPageToken`'s precedent, a `pageSizeOrDefault` `maxPageSize` clamp that
+> didn't exist before). New `migrations/0011_congregationimport_hardening.sql` (a separate file, not
+> amending 0010 — mirrors `0009_hardening.sql`'s own precedent) adds the two composite indexes the
+> new keyset queries need.
+>
+> **Alias management is a real API + a simple UI form now**, not SQL-only —
+> `listTaxonAliases`/`createTaxonAlias`/`listJurisdictionAliases`/`createJurisdictionAlias`, gated by
+> the same `requireOperator` check every other operator endpoint uses. A duplicate `(sourceCode,
+> aliasText)` returns a typed `CongregationImport:AliasConflict` (`CONFLICT`), not a bare 500 —
+> `adapters`'s `CreateTaxonAlias`/`CreateJurisdictionAlias` now translate the real Postgres
+> unique-violation (`INSERT`, catch, translate — never check-then-insert, matching `content`'s own
+> `InsertSite` precedent), race-safely. Deliberately `create`+`list` only, no delete — named as an
+> open seam, not silently dropped.
+>
+> **Automated test coverage, zero before this pass.** Pure, DB-free logic was split out of
+> I/O-bound functions specifically so it's unit-testable (matching `scripts/bootstrap-registration-
+> org`'s own `permissionsToAdd` precedent): `findTaxonAliasMatch`/`findJurisdictionAliasMatch`
+> (taxonmatch.go/jurisdictionmatch.go), `isApprovable` (provision.go — a direct regression test for
+> the real duplicate-provisioning bug this milestone's own earlier update found and fixed live), plus
+> `haversineMeters` and the cursor codec (copied from `moderation`'s own test cases). `go test
+> ./internal/congregationimport/...` passes clean; no DB/go-oikumenea mocking framework introduced.
+>
+> **A small, fixed set of metrics**, matching D-Hardening's already-decided pattern applied to a new
+> module for the first time: `openfaithmap.congregationimport.{candidates_staged,
+> candidates_auto_rejected, candidates_provisioned, connector_run_failures}`, wired into
+> `RunConnector`/`ApproveCandidate`.
+>
+> **The RLS gap is now root-caused precisely, not fixed** — this session read the actual go-oikumenea
+> RLS policy/helper/grant code (not inferred) and confirmed it structurally cannot be satisfied by
+> any person-shaped caller's first `CreateChildOrg` INSERT, for reasons unrelated to how the grant
+> was made (`docs/modules/congregationimport.md`'s Known limitations has the full trail: exact
+> files/lines, why the service-principal fix go-oikumenea already built for this exact problem class
+> is unreachable from `CreateChildOrg`, two viable fix directions). Filed as
+> [go-oikumenea#36](https://github.com/olehmushka/go-oikumenea/issues/36) per the owner's own
+> decision — a go-oikumenea-side fix in a separate session, not absorbed into this module.
+>
+> **Live-verified against a real `docker compose up --build` stack, including a genuine full-scale
+> run against the real ЄДР export** — the one piece no prior M8 pass had done (every earlier proof
+> used a small subset or a synthetic fixture):
+> - Downloaded the real `uo.zip` fresh from data.gov.ua (326,722,660 bytes, byte-identical in size to
+>   the dataset's own published metadata) and mounted it in unmodified. `POST /runs
+>   {"sourceCode":"ua-edr"}` completed with `status: SUCCEEDED` in ~4 minutes:
+>   `recordsFetched: 3000, candidatesCreated: 2904, candidatesUpdated: 16, candidatesAutoRejected: 80`.
+>   Independently cross-checked the claim that this was genuinely the whole file, not an early exit:
+>   `unzip -l` confirms 3,158,894,541 bytes uncompressed; a direct byte-level scan of the extracted
+>   file counted 2,015,098 real `<SUBJECT>` records — the connector's own Go `encoding/xml` streaming
+>   decoder (charset-aware, unlike the ad-hoc byte-grep used only for this cross-check) scanned every
+>   one of them and kept the ~0.15% whose `OPF` matched, a plausible real ratio.
+> - **Memory stayed at ~16MiB (`docker stats`) for the entire multi-minute run against a 3.15GB
+>   uncompressed file** — the batch=500 streaming design's own memory-boundedness claim, now proven
+>   at real scale, not just asserted in a doc comment.
+> - Resulting real status breakdown: `NEEDS_TAXON_REVIEW: 2713` (only 2 taxon aliases seeded — real
+>   UGCC/Orthodox/Adventist/etc. records correctly wait for an operator, exactly the "advisory hint,
+>   never inferred" design working as intended at scale), `NEEDS_GEOCODE: 202` (taxon resolved via a
+>   seeded alias, no coordinates — ЄДР's real no-address-field constraint), `REJECTED_EXCLUDED: 81`
+>   (D-Exclusions firing live on real data, not synthetic).
+> - Real keyset pagination proven against real multi-page data: `pageSize=5` returned exactly 5 rows
+>   and a real `nextPageToken`; the follow-up page returned 5 distinct rows with no overlap against
+>   the first page's ids; a tampered `pageToken=not-a-valid-token-at-all` correctly returned `400
+>   CongregationImport:InvalidPageToken`.
+> - Real alias-endpoint round-trip: `createTaxonAlias`/`createJurisdictionAlias` both succeeded and
+>   the created rows appeared in `listTaxonAliases`/`listJurisdictionAliases`; a duplicate
+>   `createTaxonAlias` call on the same `(sourceCode, aliasText)` correctly returned `409
+>   CongregationImport:AliasConflict`, not a 500.
+> - One real, self-caused hiccup along the way, not a connector defect: the first full-scale attempt
+>   failed 500 records in (`getTaxon failed: ... 500 Internal Server Error`) because an earlier
+>   alias-conflict test in this same session had seeded a taxon alias pointing at a fake RID
+>   (`test-taxon-adventist`). Cleaned up the test alias and re-ran cleanly — a real illustration of
+>   why a bad alias can currently abort an entire run rather than just skip one candidate, named as a
+>   new, small open seam rather than silently absorbed into this pass's scope.
+>
+> `godelw verify --skip-test`, `go build ./... && go vet ./... && go test ./...`, and both web apps'
+> `tsc --noEmit`/`eslint .`/`next build` all pass clean. **The admin UI's actual browser
+> click-through was not run** (no Google OAuth session in this environment) — named explicitly, same
+> unresolved category M4.1/M7 both already carry. **`Verified` still stays `⬜`** — the browser
+> click-through, a green CI run at the merge commit, and the go-oikumenea-side RLS fix (tracked
+> separately, [go-oikumenea#36](https://github.com/olehmushka/go-oikumenea/issues/36)) all remain.
+
+> **Update (2026-08-13): go-oikumenea#36 fixed upstream — the non-admin RLS blocker is closed.**
+> go-oikumenea's `main` gained commit `02a1c6f` ("seed closure before INSERT so CreateChildOrg passes
+> RLS for non-admin persons"), released as image tag `0.0.4` (`docker.io/olegamysk/oikumenea:0.0.4`,
+> published via `scripts/release.sh`/CI this session — the release workflow needed
+> `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` repo secrets that had never been configured on
+> `go-oikumenea`, found and fixed live). Bumped `docker-compose.yml`'s `oikumenea-app` pin to `0.0.4`.
+>
+> **Live-verified against a real stack, from a genuinely non-admin identity — not the instance-admin,
+> which bypasses RLS *and* PDP checks entirely, so it could never have exercised this path.** Minted a
+> real, distinct person (`scripts/bootstrap-admin-person` + `scripts/bootstrap-registration-org` +
+> `scripts/mint-local-token`, the same tool chain M5/M8 already established) holding only the
+> `registration-operator` grant, no instance-admin flag:
+> - Ran a small connector pass (a hand-crafted fixture, structurally faithful to the real `<SUBJECT>`
+>   schema already verified at full scale above — no need to re-download the 3.15GB export just to
+>   re-prove the RLS path) and called `ApproveCandidate` under this identity. Result: `PROVISIONED`, a
+>   real `oikumenea.tenant_units` row created — directly confirmed in Postgres — where every prior
+>   attempt (this module's own original live-verification, quoted above) hit `new row violates
+>   row-level security policy for table "tenant_units"` outright. The admin-less-provisioning
+>   invariant still holds: zero rows in `authz_role_assignments` for the new unit.
+> - **The RLS fix unmasked two further, real, open-faith-map-side gaps immediately behind it** —
+>   found live, the same discovery pattern this module's own history already established (bugs found
+>   by actually running the thing, not by review): `registration-operator`'s role
+>   (`scripts/bootstrap-registration-org`) was missing `religion.read` (`ensureSite`'s
+>   `ListUnitSites` resumability check, unit-scoped `pep.Require`) and `location.create`
+>   (`ensureSite`'s `CreateLocation` call, instance-wide `pep.RequireAnywhere`). Neither permission
+>   was ever reachable before this session — both calls sit immediately behind the exact RLS wall that
+>   had blocked every prior non-admin attempt, on both `congregationimport` and `registration`. Fixed
+>   by adding both permissions to the role definition (`scripts/bootstrap-registration-org/main.go`)
+>   and re-running the script — `reconcilePermissions` (already unit-tested, M2.3) added them to the
+>   live, already-existing role idempotently. Re-tested: `ApproveCandidate` completed clean.
+> - **Confirmed not specific to this module, live, not just by reading the code**: submitted a real
+>   `registration` request and approved it under the *same* non-admin identity —
+>   `POST /requests` → `POST /requests/{id}/approve` returned `APPROVED`, a real unit created, and
+>   (the one place the two modules' provisioning intentionally differs from `congregationimport`) a
+>   real unit-scoped `congregation-admin` grant to the submitter confirmed in
+>   `authz_role_assignments`. This is *not* M2.3's own still-open "two-real-token" acceptance test
+>   (a `congregation-admin`-only account and a `registration-operator` account, both via a real
+>   browser Google OAuth session, proving the target-scoped PII-disclosure fix specifically) — that
+>   remains unattempted, unrelated to RLS, and is recorded separately under M2.3 below. What this does
+>   confirm is that `registration.Approve`'s real go-oikumenea write path now works end-to-end under a
+>   genuine, PDP-checked non-admin identity for the first time in this project's history.
+>
+> `docs/modules/congregationimport.md`'s "Known limitations" RLS bullet updated to record the fix
+> (struck through, not deleted, so the root-cause trail stays legible) rather than restating it as
+> still-open. **`Verified` still stays `⬜`** — the RLS item is now the one thing on the earlier list
+> that's actually closed; the admin UI's browser click-through and a green CI run at the merge commit
+> both remain, unchanged from before.

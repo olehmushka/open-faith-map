@@ -191,5 +191,43 @@
     "guarantorCongregationLabel": "Your own congregation unit ID",
     "statementLabel": "Statement (optional)",
     "submit": "Submit vouch"
+  },
+  "CongregationImportPage": {
+    "heading": "Congregation import",
+    "runConnector": "Run ua-edr connector",
+    "allStatuses": "All statuses",
+    "filter": "Filter",
+    "manageAliases": "Manage aliases",
+    "noCandidates": "No candidates.",
+    "taxonHint": "Taxon hint",
+    "jurisdictionHint": "Jurisdiction hint",
+    "suggestedJurisdiction": "Suggested jurisdiction (advisory only)",
+    "taxonId": "Taxon ID",
+    "countryId": "Country ID",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "save": "Save",
+    "jurisdictionUnitId": "Jurisdiction unit ID (optional)",
+    "approve": "Approve",
+    "reasonPlaceholder": "Reason",
+    "reject": "Reject",
+    "loadMore": "Load more",
+    "loading": "Loading…"
+  },
+  "CongregationImportAliasesPage": {
+    "heading": "Congregation import — aliases",
+    "backToQueue": "Back to review queue",
+    "taxonAliasesHeading": "Taxon aliases",
+    "taxonAliasesHint": "Free-text hint → religion taxon RID. Substring-matched against a candidate's scraped name.",
+    "jurisdictionAliasesHeading": "Jurisdiction aliases",
+    "jurisdictionAliasesHint": "Free-text hint → go-oikumenea jurisdiction unit RID. Advisory only — never applied automatically at approval.",
+    "sourceCode": "Source code",
+    "sourceCodeAllPlaceholder": "(all sources)",
+    "aliasText": "Alias text",
+    "taxonId": "Taxon RID",
+    "jurisdictionUnitId": "Jurisdiction unit RID",
+    "add": "Add",
+    "noAliases": "No aliases yet.",
+    "global": "global"
   }
 }

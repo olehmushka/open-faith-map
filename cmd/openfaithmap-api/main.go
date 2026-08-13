@@ -15,6 +15,12 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	congregationimportadapters "github.com/olehmushka/open-faith-map/internal/congregationimport/adapters"
+	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/uaedr"
+	congregationimportapplication "github.com/olehmushka/open-faith-map/internal/congregationimport/application"
+	congregationimportdomain "github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
+	congregationimporttransport "github.com/olehmushka/open-faith-map/internal/congregationimport/transport"
+	gencongregationimport "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/congregationimport"
 	gencontent "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/content"
 	gendiscovery "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/discovery"
 	genmoderation "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/moderation"
@@ -263,6 +269,38 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	if err := genvouching.RegisterRoutesVouchingService(info.Router, vouchingTransportSvc); err != nil {
 		pool.Close()
 		return nil, werror.WrapWithContextParams(ctx, err, "register vouching routes")
+	}
+
+	// congregationimport (D-CongregationImport, docs/modules/congregationimport.md): connectors are
+	// a fixed registry built here, not a plugin-discovery mechanism (application.Service's own doc
+	// comment). UAEDR_UO_FILE_PATH is optional — the ЄДР connector is only registered when an
+	// operator has actually placed a copy of the real uo.zip/uo.xml export somewhere reachable;
+	// omitting it leaves the module running with zero connectors registered (RunConnector then
+	// returns ErrRunNotFound for any sourceCode), never a boot failure.
+	var connectors []congregationimportdomain.Connector
+	if uaedrFilePath := os.Getenv("UAEDR_UO_FILE_PATH"); uaedrFilePath != "" {
+		connectors = append(connectors, uaedr.New(uaedrFilePath))
+	}
+	congregationimportStore := congregationimportadapters.NewStore(pool)
+	congregationimportAppSvc := congregationimportapplication.NewService(congregationimportStore, congregationimportapplication.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+		RootUnitID:                  rootUnitID,
+		ServicePrincipal: coreintegration.Config{
+			BaseURL:            oikumeneaBaseURL,
+			CredentialsFile:    requireEnv("GOOGLE_APPLICATION_CREDENTIALS"),
+			Audience:           "openfaithmap-api",
+			InsecureSkipVerify: insecureSkipVerify,
+		},
+	}, connectors)
+	congregationimportTransportSvc := congregationimporttransport.NewService(congregationimportAppSvc, congregationimporttransport.Config{
+		OikumeneaBaseURL:            oikumeneaBaseURL,
+		OikumeneaInsecureSkipVerify: insecureSkipVerify,
+	})
+
+	if err := gencongregationimport.RegisterRoutesCongregationImportService(info.Router, congregationimportTransportSvc); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "register congregationimport routes")
 	}
 
 	return pool.Close, nil

@@ -120,10 +120,10 @@ the pattern, not a specific manifest.
 
 ## Open seams
 
-- **The future scraped-church-data importer is unscoped.** A narrower tool, near `openfaithmap-api`,
-  for importing scraped/legacy congregation data is real future work but has no name, schema,
-  connector design, or milestone yet — see [open-questions.md](../open-questions.md)'s `DS-OFM-10`.
-  It is not `hermenea` and will need its own name to avoid re-colliding with go-oikumenea's.
+- **Resolved (2026-08-12): the future scraped-church-data importer is now the `congregationimport`
+  module** — see [congregationimport.md](congregationimport.md) and
+  [D-CongregationImport](../architecture/decisions.md). Not `hermenea`, avoiding the name
+  collision this doc originally flagged; `DS-OFM-10` is closed.
 - **Default-enabled live-network sources.** The reference install config this repo copies from
   go-oikumenea enables `glottolog-languoids`, `cldr-language-scripts`, and `wikidata-orgs-ua` by
   default (`@weekly` cron, live calls to raw.githubusercontent.com / iso639-3.sil.org /
