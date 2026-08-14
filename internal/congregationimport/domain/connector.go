@@ -32,8 +32,23 @@ type Connector interface {
 	Citation() SourceCitation
 	// Fetch returns one batch of raw records plus a cursor to resume from, or a nil cursor when the
 	// source is exhausted. Cursor semantics are connector-defined (e.g. a byte offset, a page
-	// token, an Overpass tile index).
+	// token, an Overpass tile index). An HTTP-streaming source may treat cursor as an opaque
+	// "has this run already started" marker backed by internal, run-scoped stream state (an open
+	// response body + decoder held across calls) rather than a literal reopen-from-scratch offset —
+	// re-fetching a multi-hundred-MB source from byte zero on every batch is not viable. A connector
+	// doing this must guard against two concurrent Fetch sequences racing on the same instance (see
+	// ConnectorCloser) and should document that a mid-run crash cannot cheaply resume mid-stream.
 	Fetch(ctx context.Context, cursor *string) (batch []RawRecord, nextCursor *string, err error)
 	// Normalize maps one connector-native RawRecord onto the common NormalizedCandidate shape.
 	Normalize(raw RawRecord) (NormalizedCandidate, error)
+}
+
+// ConnectorCloser is an optional interface a Connector implements when it holds run-scoped
+// resources across Fetch calls (e.g. an open HTTP response body and a run semaphore) that must be
+// released even if a run ends via ctx cancellation or a Fetch error, not just clean source
+// exhaustion — RunConnector's own loop only calls Fetch again on the success path, so without this
+// hook such a connector would leak its lock/stream forever on any error exit. RunConnector calls
+// Close via a deferred, best-effort call whenever a connector implements it.
+type ConnectorCloser interface {
+	Close() error
 }

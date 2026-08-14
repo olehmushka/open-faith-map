@@ -273,13 +273,21 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 
 	// congregationimport (D-CongregationImport, docs/modules/congregationimport.md): connectors are
 	// a fixed registry built here, not a plugin-discovery mechanism (application.Service's own doc
-	// comment). UAEDR_UO_FILE_PATH is optional — the ЄДР connector is only registered when an
-	// operator has actually placed a copy of the real uo.zip/uo.xml export somewhere reachable;
-	// omitting it leaves the module running with zero connectors registered (RunConnector then
-	// returns ErrRunNotFound for any sourceCode), never a boot failure.
+	// comment). UAEDR_UO_FILE_PATH/UAEDR_SOURCE_URL are both optional and mutually exclusive (see
+	// uaedr.New) — the ЄДР connector is only registered when an operator has configured one of
+	// them; omitting both leaves the module running with zero connectors registered (RunConnector
+	// then returns ErrRunNotFound for any sourceCode), never a boot failure. UAEDR_SOURCE_URL
+	// streams directly from the remote export (no local disk landing spot needed — a cheap,
+	// memory-constrained VM deployment); the exact current data.gov.ua resource URL is an
+	// operator-supplied value, never hardcoded here.
 	var connectors []congregationimportdomain.Connector
-	if uaedrFilePath := os.Getenv("UAEDR_UO_FILE_PATH"); uaedrFilePath != "" {
-		connectors = append(connectors, uaedr.New(uaedrFilePath))
+	if uaedrFilePath, uaedrSourceURL := os.Getenv("UAEDR_UO_FILE_PATH"), os.Getenv("UAEDR_SOURCE_URL"); uaedrFilePath != "" || uaedrSourceURL != "" {
+		uaedrConnector, err := uaedr.New(uaedrFilePath, uaedrSourceURL, nil)
+		if err != nil {
+			pool.Close()
+			return nil, werror.WrapWithContextParams(ctx, err, "construct uaedr connector")
+		}
+		connectors = append(connectors, uaedrConnector)
 	}
 	congregationimportStore := congregationimportadapters.NewStore(pool)
 	congregationimportAppSvc := congregationimportapplication.NewService(congregationimportStore, congregationimportapplication.Config{

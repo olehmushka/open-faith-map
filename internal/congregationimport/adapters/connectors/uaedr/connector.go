@@ -41,6 +41,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -73,18 +74,35 @@ type subject struct {
 	Stan   string `xml:"STAN" json:"stan"`
 }
 
-// Connector reads a local uo.zip (or an already-extracted uo.xml) — this repo's own
-// scripts/bootstrap-* precedent for "operator supplies a local file" (docker-compose-mounted),
-// matching hermenea's own file-shaped connector-type rather than this connector reaching out to
-// data.gov.ua itself. FilePath is required; the real download is an operator's own out-of-band
-// step (weekly, per the dataset's own update cadence) — automating that fetch is a real, separate
-// increment, not built here.
+// Connector reads ЄДР's uo.zip/uo.xml one of two ways, mutually exclusive:
+//   - FilePath: a local file (docker-compose-mounted, this repo's own scripts/bootstrap-*
+//     precedent for "operator supplies a local file", matching hermenea's own file-shaped
+//     connector-type) — Fetch is stateless, reopening and reskipping from scratch every call.
+//   - SourceURL: a remote HTTP(S) URL — Fetch is stateful (connector_http.go), holding one open
+//     stream across calls, for a deployment that can't or won't stage the ~326MB export on local
+//     disk (a cheap, memory-constrained cloud VM). Cursor semantics differ accordingly; see
+//     domain.Connector's own doc comment.
 type Connector struct {
-	FilePath string
+	FilePath  string
+	SourceURL string
+
+	httpClient *http.Client
+	http       httpModeState
 }
 
-func New(filePath string) *Connector {
-	return &Connector{FilePath: filePath}
+// New constructs a ua-edr connector. Exactly one of filePath/sourceURL must be set — they imply
+// genuinely different Fetch state machines (see Connector's doc comment), not just a different
+// input location. httpClient is only used in SourceURL mode; nil defaults to an explicit
+// no-Timeout *http.Client — this is a multi-hundred-MB streaming download, so a fixed deadline
+// would fail slow connections arbitrarily. ctx passed to Fetch is the only cancellation mechanism.
+func New(filePath, sourceURL string, httpClient *http.Client) (*Connector, error) {
+	if (filePath == "") == (sourceURL == "") {
+		return nil, fmt.Errorf("uaedr: exactly one of filePath or sourceURL must be set (got filePath=%q sourceURL=%q)", filePath, sourceURL)
+	}
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
+	return &Connector{FilePath: filePath, SourceURL: sourceURL, httpClient: httpClient}, nil
 }
 
 func (c *Connector) Code() string { return Code }
@@ -99,12 +117,38 @@ func (c *Connector) Citation() domain.SourceCitation {
 	}
 }
 
-// Fetch reads batchSize <SUBJECT> records starting after skipping the number of records named by
-// cursor (a decimal string; nil/empty means start from the beginning), filters to OPF ==
+// Fetch dispatches to fetchFile (FilePath mode: stateless, reopen-and-reskip) or fetchHTTP
+// (SourceURL mode: stateful, one held-open stream across calls) — see Connector's own doc comment
+// for why these are genuinely different state machines, not just a different input location.
+func (c *Connector) Fetch(ctx context.Context, cursor *string) (batch []domain.RawRecord, nextCursor *string, err error) {
+	if c.SourceURL != "" {
+		return c.fetchHTTP(ctx, cursor)
+	}
+	return c.fetchFile(ctx, cursor)
+}
+
+// fetchFile reads batchSize <SUBJECT> records starting after skipping the number of records named
+// by cursor (a decimal string; nil/empty means start from the beginning), filters to OPF ==
 // religiousOrgOPF, and returns the matched raw records plus a cursor to resume from. Streams via
 // xml.Decoder — never loads the full file into memory, since a real export is hundreds of
 // thousands of records.
-func (c *Connector) Fetch(ctx context.Context, cursor *string) (batch []domain.RawRecord, nextCursor *string, err error) {
+//
+// seen counts every <SUBJECT> element visited in THIS reopened pass, starting from 1 — which
+// already includes the skip re-decode, since the pass walks the file from byte zero every time. So
+// by the time this call returns, seen already equals the correct new cumulative position (skip +
+// however many new elements this call actually processed) — the cursor returned must be seen
+// alone. A real bug, found live (2026-08-14) against the real ~2M-record export via HTTP-streaming
+// mode's independently-correct count (30,721 OPF matches, cross-checked against a plain
+// unzip+grep) disagreeing 10x with this path's own count on the same file: this used to return
+// cursorOf(seen), double-counting the skip prefix on every call after the first (skip=0 on
+// the first call hid it completely). The error compounds across calls — each returned cursor
+// carries an extra, growing copy of the previous skip — until the inflated value races past the
+// file's true record count and dec.Token() hits a real io.EOF far too early, which looks
+// indistinguishable from a clean, complete run (SUCCEEDED, not FAILED) unless independently
+// cross-checked, which is exactly how this was caught. Every prior "full-scale" run of this
+// connector needing more than one batch (over 500 OPF matches) undercounted as a result — see
+// docs/milestones.md's corrected M8 entry.
+func (c *Connector) fetchFile(ctx context.Context, cursor *string) (batch []domain.RawRecord, nextCursor *string, err error) {
 	skip := 0
 	if cursor != nil && *cursor != "" {
 		skip, err = strconv.Atoi(*cursor)
@@ -132,14 +176,14 @@ func (c *Connector) Fetch(ctx context.Context, cursor *string) (batch []domain.R
 	seen := 0
 	for {
 		if err := ctx.Err(); err != nil {
-			return batch, cursorOf(skip + seen), err
+			return batch, cursorOf(seen), err
 		}
 		tok, err := dec.Token()
 		if err == io.EOF {
 			return batch, nil, nil // source exhausted — nextCursor nil signals "done"
 		}
 		if err != nil {
-			return batch, cursorOf(skip + seen), fmt.Errorf("uaedr: decode: %w", err)
+			return batch, cursorOf(seen), fmt.Errorf("uaedr: decode: %w", err)
 		}
 		start, ok := tok.(xml.StartElement)
 		if !ok || start.Name.Local != "SUBJECT" {
@@ -148,7 +192,7 @@ func (c *Connector) Fetch(ctx context.Context, cursor *string) (batch []domain.R
 
 		var s subject
 		if err := dec.DecodeElement(&s, &start); err != nil {
-			return batch, cursorOf(skip + seen), fmt.Errorf("uaedr: decode SUBJECT: %w", err)
+			return batch, cursorOf(seen), fmt.Errorf("uaedr: decode SUBJECT: %w", err)
 		}
 		seen++
 		if seen <= skip {
@@ -160,7 +204,7 @@ func (c *Connector) Fetch(ctx context.Context, cursor *string) (batch []domain.R
 
 		payload, err := json.Marshal(s)
 		if err != nil {
-			return batch, cursorOf(skip + seen), fmt.Errorf("uaedr: marshal raw payload: %w", err)
+			return batch, cursorOf(seen), fmt.Errorf("uaedr: marshal raw payload: %w", err)
 		}
 		batch = append(batch, domain.RawRecord{
 			SourceRecordID: s.EDRPOU,
@@ -168,7 +212,7 @@ func (c *Connector) Fetch(ctx context.Context, cursor *string) (batch []domain.R
 			FetchedAt:      time.Now(),
 		})
 		if len(batch) >= batchSize {
-			return batch, cursorOf(skip + seen), nil
+			return batch, cursorOf(seen), nil
 		}
 	}
 }
