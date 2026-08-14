@@ -84,7 +84,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are resolved (D-PlatformModerator, D-Moderation's Correction, M4.1). CI green at the merge commit (confirmed 2026-08-10) and the two-real-token proof (non-moderator refused, platform-moderator allowed) both done — the latter via a headless local-dev identity, not a real browser Google OAuth session, accepted as equivalent evidence — see prose. |
 | M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. CI green at the merge commit (confirmed 2026-08-10) and the two-different-people proof (guarantor-with-standing vs. guarantor-with-none, moderator vs. non-moderator) both done — via a headless local-dev identity, not a real browser session, accepted as equivalent evidence — see prose. |
 | M7 · Hardening / real-user feedback | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-11), not yet Verified.** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. **`Verified` needs a green CI run on `main` at the merge commit and a live authenticated-moderator round trip (a real browser Google OAuth session or a granted moderator token)**, not yet attempted here — see prose. |
-| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed and live-verified (2026-08-13); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token — now confirmed live under a genuinely non-admin operator identity, not just the instance-admin. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
+| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed (2026-08-13); HTTP-streaming ingestion + D-Scope Christian-name filter added, a real cursor-doubling bug found and fixed (2026-08-14); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
 
 ## Per-milestone detail
 
@@ -1730,3 +1730,98 @@ finding above — not attempted here.
 > still-open. **`Verified` still stays `⬜`** — the RLS item is now the one thing on the earlier list
 > that's actually closed; the admin UI's browser click-through and a green CI run at the merge commit
 > both remain, unchanged from before.
+
+> **Update (2026-08-14): two owner-requested deployment features — HTTP-streaming ingestion and a
+> D-Scope Christian-name filter — built, live-verified, and along the way a real, previously
+> undiscovered bug was found that corrects this milestone's own earlier "full-scale" numbers.**
+> The owner's target deployment is the cheapest available cloud VM (~500MB RAM), and asked two
+> things: don't require downloading the ~326MB export to disk at all (no cron, no object storage —
+> "too expensive" for this), stream it straight into the database; and add an automatic filter for
+> the Muslim/Jewish congregations they'd seen live in the review queue, as a **positive**
+> Christian-keyword match rather than a blacklist of every non-Christian religion/sect variant.
+>
+> **HTTP-streaming connector** (`adapters/connectors/uaedr/connector_http.go`, new) — `uaedr.New`
+> now takes either `filePath` or `sourceURL` (mutually exclusive). The real incompatibility: the
+> existing `Fetch(ctx, cursor)` reopens the file and reskips from scratch every call, fine for a
+> local file, impossible over HTTP (thousands of full re-downloads for a ~2M-record file at
+> batch=500). Fixed by making the HTTP mode stateful — one held-open response body + `xml.Decoder`
+> across calls, `cursor` becoming an opaque "already started" marker for this mode only, guarded by
+> a `TryLock`'d semaphore (a second concurrent run on the same source is rejected with a clear
+> error, not raced) — plus a new, additive `domain.ConnectorCloser` interface so `RunConnector`
+> releases the lock/stream even when a run ends via a `Fetch` error or `ctx` cancellation, not just
+> clean exhaustion (a real deadlock this design would otherwise have). The zip itself streams
+> through a hand-written 30-byte local-file-header parser straight into `compress/flate` — no
+> `archive/zip`, no `io.ReaderAt` requirement, true forward-only reading (DEFLATE's own end marker
+> terminates decoding, independent of the zip's declared sizes); STORE is supported only when its
+> length is knowable up front (empirically, Go's own `archive/zip.Writer` never produces that shape
+> for a streamed write — verified directly, not assumed, and tested as a deliberate "rejected"
+> case, not silently unsupported).
+>
+> **Live-verified against the real data.gov.ua resource**, not a local fixture: found the actual
+> current download URL via data.gov.ua's own CKAN API (`package_show`), confirmed reachable and
+> exactly 326,722,660 bytes via a plain `HEAD`, then ran the real connector against it twice through
+> a genuinely non-admin operator identity. Both runs: `SUCCEEDED`, `recordsFetched: 30721` — RAM
+> stayed in the low tens of MiB throughout (`docker stats`), no local file ever written to disk.
+>
+> **That very number — 30,721 — is itself the second real finding.** It disagreed by 10x with this
+> milestone's own earlier "full-scale" verification (`recordsFetched: 3000`, quoted above), which
+> had been treated as the real, complete count. Independently cross-checked the new figure three
+> ways before trusting it over the old one: (1) a plain `unzip -p uo.zip | iconv -f windows-1251 -t
+> utf-8 | grep -o '<OPF>[^<]*</OPF>' | grep -ic 'релігійна організація'` on the freshly-downloaded
+> real file returned **30,721**, exact match, zero Go code involved; (2) direct sampling of the
+> resulting DB rows showed real, plausible, geographically-diverse Ukrainian religious-organization
+> names — Orthodox, Greek-Catholic, Baptist parishes, correctly alongside a few real Muslim/Jewish
+> communities (pre-filter fix) that had prompted this whole session; (3) 30,721 is also simply the
+> more plausible figure on its own terms — Ukraine has tens of thousands of registered religious
+> organizations, not 3,000. Root-caused the old figure directly rather than assuming the file
+> changed (`Last-Modified` on the current resource is 2026-08-11, predating the original 3,000-record
+> run): a throwaway diagnostic driving `fetchFile` verbosely against the same real file showed the
+> returned cursor **roughly doubling every call** (26455 → 82597 → 283345 → 613009 → 1247060 →
+> 2510423 — the last value already exceeding the file's true 2,015,098 total records, which is why
+> the very next call found nothing and reported a clean, false "exhaustion"). The bug:
+> `fetchFile` returned `cursorOf(skip + seen)`, but `seen` already counts every element from 1
+> within the current reopened pass — which itself re-decodes the `skip` prefix from byte zero — so
+> `seen` alone already equals the correct new cumulative position; adding `skip` again double-counts
+> it, and the error compounds across every subsequent call. Confirmed via direct experiment, not
+> just static reading: a plain `io.Copy` of the raw zip entry read all 3,158,894,541 bytes
+> correctly; a single continuous XML/charset decode (no skip logic at all) correctly counted all
+> 2,015,098 `<SUBJECT>` elements, three times in a row; only the reopen-and-reskip cursor arithmetic
+> was wrong. Fixed (`cursorOf(seen)`) and regression-tested
+> (`TestFetchFileMultiBatchResume` — confirmed to actually fail against the pre-fix code, not just
+> pass trivially against the fixed one). **Every prior run of this connector needing more than one
+> batch (over 500 real matches) silently undercounted** — this was a real, live defect in production
+> code, not a documentation error, present since the connector was first written, invisible at any
+> smaller scale (a single-batch run never exercises `skip > 0` at all) and invisible in status too
+> (`SUCCEEDED`, not `FAILED` — the corrupted cursor's false "exhaustion" is indistinguishable from a
+> genuinely complete run without an independent count to check against).
+>
+> **D-Scope Christian-name pre-filter** (`application/christianfilter.go`, new) — a candidate whose
+> taxon hint resolves to nothing at all (the exact case Muslim/Jewish congregations hit, since no
+> taxon alias exists for them) is now checked against a positive, source-agnostic Ukrainian keyword
+> list before falling through to `NEEDS_TAXON_REVIEW`; a miss auto-rejects it (`REJECTED_EXCLUDED`,
+> reused — no migration — with a distinct `"D-Scope: ..."` reason, matching `checkExcluded`'s own
+> existing precedent for carrying the specific reason in free text, not a dedicated status).
+> Deliberately placed only inside the no-match branch, never before taxon-match, so it can never
+> shadow `checkExcluded`'s own more specific D-Exclusions reason for a real excluded denomination.
+> Live sampling of the real 30,721-record run's `REJECTED_EXCLUDED` rows caught **two further real
+> keyword-list bugs** before calling this done: the original `"парафія"` (parish) entry didn't match
+> its own genitive form `"парафії"` — the form real registered names actually use — the identical
+> declension trap already documented for `"церква"`, just not applied consistently on the first
+> pass; and two near-ubiquitous Orthodox abbreviations, `УПЦ` and `ПЦУ`, plus `єпархія`
+> (eparchy/diocese), were missing entirely. Fixed and regression-tested
+> (`christianfilter_test.go`, 16 cases). Re-running the connector after the fix correctly
+> reclassified newly-seen records; rows already `REJECTED_EXCLUDED` from the pre-fix pass stayed
+> frozen at their old (wrong) classification, by design — `UpsertCandidate`'s own `WHERE status IN
+> (...)` guard deliberately never touches a row already past review, so a re-scrape can't silently
+> undo an operator's decision. That's the correct invariant for a real deployment (no
+> "pre-fix pass" ever occurs there); confirmed directly (not assumed) that the handful of
+> still-visibly-wrong rows in this session's own dev database are exactly the frozen, stale ones —
+> `import_run_id` and `updated_at` both point to the pre-fix run — not a live re-manifestation of
+> the bug. A residue of genuinely ambiguous names remains by design (a parish named only after a
+> saint or icon, or abbreviated `СВ.` for "Holy/Saint" — no keyword list can resolve these from the
+> short legal name alone without real false-positive risk) — the explicit, owner-accepted "~99%, not
+> 100%" bar, not chased further.
+>
+> `go build ./... && go vet ./... && go test ./... -race` and `./godelw verify --skip-test` both
+> clean. **`Verified` still stays `⬜`** — unchanged blockers (browser click-through, CI green at the
+> merge commit).

@@ -68,6 +68,13 @@ func (s *Service) RunConnector(ctx context.Context, sourceCode, triggeredByPerso
 	if !ok {
 		return domain.Run{}, domain.ErrRunNotFound
 	}
+	// Some connectors (an HTTP-streaming source) hold run-scoped resources across Fetch calls that
+	// only their own success path releases — without this, an error/ctx-cancellation exit below
+	// would leak the connector's lock/stream for the rest of the process's life. Best-effort: this
+	// run's own outcome is already decided by the time Close runs, never overridden by it.
+	if closer, ok := connector.(domain.ConnectorCloser); ok {
+		defer func() { _ = closer.Close() }()
+	}
 
 	run, err := s.store.CreateRun(ctx, sourceCode, triggeredByPersonRID, nil)
 	if err != nil {
@@ -173,6 +180,16 @@ func (s *Service) processRawRecord(ctx context.Context, svc *oikumenea.Client, c
 		return domain.Candidate{}, false, false, err
 	}
 	if !matched {
+		// D-Scope pre-filter (Christian-only): a taxon hint that resolved to NOTHING at all is the
+		// one case this catches — a record that already resolved a real taxon (Christian and
+		// legitimately matched, or an excluded denomination caught by checkExcluded below) is never
+		// touched here, so this can't ever override checkExcluded's more specific rejection reason
+		// with the generic one. isLikelyChristian is a positive keyword match, not a blacklist — see
+		// its own doc comment for why.
+		if !isLikelyChristian(norm.Name) {
+			c, err = s.store.RejectExcluded(ctx, c.ID, "D-Scope: name did not match a Christian-identifying keyword")
+			return c, isNew, true, err
+		}
 		c, err = s.store.SetStatus(ctx, c.ID, domain.StatusNeedsTaxonReview, nil, nil)
 		return c, isNew, false, err
 	}

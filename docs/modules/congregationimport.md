@@ -73,8 +73,9 @@ STAGED / NEEDS_TAXON_REVIEW / NEEDS_GEOCODE / POSSIBLE_DUPLICATE
 
 ```
 Connector.Fetch → Connector.Normalize → jurisdiction-hint match (alias table, substring, advisory
-  only) → taxon-match (alias table, substring, not exact) → D-Exclusions check (service-principal
-  identity) → dedup check (geo-radius against live go-oikumenea sites, service-principal identity)
+  only) → taxon-match (alias table, substring, not exact) → [no taxon match: D-Scope Christian-name
+  pre-filter, auto-reject on no keyword hit] → [taxon matched: D-Exclusions check, service-principal
+  identity] → dedup check (geo-radius against live go-oikumenea sites, service-principal identity)
   → stage → operator review (edit/approve/reject) → on approve: resumable go-oikumenea provisioning
   (operator's own token, no congregation-admin grant, jurisdiction parent only if the operator
   explicitly chose one) → congregation_status overlay row written
@@ -115,6 +116,31 @@ jurisdiction-unit suggestion, without passing `jurisdictionUnitId`, produced a u
 the configured root — not the suggested unit — confirmed by a direct `tenant_unit_edges` query
 against the real created edge.
 
+**D-Scope pre-filter (source-agnostic, application layer, not per-connector) auto-rejects a
+candidate whose taxon hint resolved to nothing at all**, added 2026-08-14 in response to a real,
+live problem: `docs/architecture/decisions.md`'s D-Scope declares OpenFaithMap Christian-only, but
+a source's own institutional-form filter (e.g. `ua-edr`'s `OPF == "religious organization"`) has no
+way to distinguish *which* religion — Muslim and Jewish congregations were being staged into the
+review queue identically to Christian ones, confirmed live by direct sampling of a real ЄДР run.
+`application/christianfilter.go`'s `isLikelyChristian` is a **positive** keyword match (does the
+name look Christian?), deliberately not a blacklist of every non-Christian religion/sect name
+variant — open-ended, easy to miss entries for. Placement matters: it only runs inside the
+`!matched` branch (taxon hint resolved to nothing), never before — an excluded-denomination record
+(e.g. Jehovah's Witnesses, matched via a real taxon alias) is caught downstream by the existing
+D-Exclusions check with its own, more specific reason, never reaching this filter at all; running
+the Christian filter unconditionally-early would have overwritten that specific reason with the
+generic one for no benefit. Reuses `StatusRejectedExcluded` with a distinct `rejection_reason`
+string (`"D-Scope: ..."`) — no migration, matching `checkExcluded`'s own existing precedent exactly
+(same status, the specific reason lives in the free-text column). ~99% recall is the explicit bar,
+not 100%: a keyword miss on a real Christian name is a no-op (falls through to manual review,
+unchanged from before this filter existed); a keyword hit on a non-Christian name is also harmless
+(under-filtering, today's status quo). **Two real keyword-list bugs found live** sampling a real
+30,721-record run, both fixed: the original `"парафія"` entry (parish) didn't match its own
+genitive form `"парафії"` — the real form most registered names use — the exact declension trap
+the file's own doc comment already warned about for `"церква"`, just not applied consistently on
+the first pass; and two near-ubiquitous Orthodox abbreviations (`УПЦ`, `ПЦУ`) plus `єпархія`
+(eparchy/diocese) were missing entirely. `christianfilter_test.go` regression-tests both.
+
 **Dedup is geo-radius only, not name+radius** — go-oikumenea's `DiscoverySite` (the `SearchSites`
 response shape) carries no name field to compare against, checked directly against the Conjure
 struct, not assumed. A candidate within 250m of an already-provisioned site is flagged
@@ -137,8 +163,7 @@ automated one.
   encoding: windows-1251**, checked directly against the real downloaded export's XML prolog (the
   schema XSD's own "UTF-8" declares the XSD file, not the data file).
   Live-tested end-to-end (`docs/milestones.md`'s M8 detail) against a real subset of the actual
-  downloaded export — full-file streaming performance across the real 3.15GB/millions-of-records
-  file was not run in that session. `STAN` values distinguishing active/terminated are not filtered
+  downloaded export. `STAN` values distinguishing active/terminated are not filtered
   on in v1 — every `OPF`-matched record is staged regardless, `STAN`'s raw value visible to the
   operator in `raw_payload`. **`JurisdictionHint` reuses the same NAME string as `TaxonHint`, not a
   separate field** — re-checked against `uo_schema.zip`'s `<SUBJECT>` element: there is no dedicated
@@ -147,6 +172,32 @@ automated one.
   itself (a UGCC parish's registered name routinely reads "...ПАРАФІЯ ... ЛЬВІВСЬКОЇ АРХІЄПАРХІЇ
   УКРАЇНСЬКОЇ ГРЕКО-КАТОЛИЦЬКОЇ ЦЕРКВИ" — the archeparchy is textually present); independent-polity
   registrations simply produce no jurisdiction-alias substring match, correctly.
+  - **Two ways to reach the export**, mutually exclusive (`uaedr.New`): `UAEDR_UO_FILE_PATH` (a
+    local file, optionally `.zip`, `fetchFile` — stateless, reopens and reskips from scratch on
+    every batch) or `UAEDR_SOURCE_URL` (a remote HTTP(S) URL, `fetchHTTP` — stateful, one held-open
+    stream across the whole run). The HTTP mode exists for a cheap, memory-constrained cloud VM
+    deployment that can't or won't stage the ~326MB compressed export on local disk: the response
+    body streams straight through a hand-written single-entry zip-local-file-header parser (no
+    `archive/zip`, no `io.ReaderAt` — DEFLATE decodes via `compress/flate`'s own forward-only
+    end-of-stream marker, independent of the zip's declared sizes) into the same charset-aware
+    `xml.Decoder` the file mode uses. Live-verified against the real data.gov.ua resource
+    (2026-08-14): completed a full run with no local file ever written to disk.
+  - **A real, serious bug was found and fixed in `fetchFile`'s cursor arithmetic (2026-08-14)**:
+    it returned `cursorOf(skip + seen)`, double-counting the `skip` prefix on every call after the
+    first (`seen` already includes it, since each reopened pass re-decodes from byte zero). The
+    error compounds across calls — each returned cursor carries a growing extra copy of the
+    previous `skip` — until the inflated value races past the file's true record count and
+    `dec.Token()` hits a real `io.EOF` far too early, indistinguishable from a genuinely complete
+    run (`SUCCEEDED`, not `FAILED`) unless independently cross-checked. **This is why M8's original
+    "full-scale" verification reported only 3,000 matched candidates** (see `docs/milestones.md`'s
+    corrected M8 entry) — the true figure, confirmed three independent ways (a plain
+    `unzip | iconv | grep` count, and two separate live runs of the fixed HTTP-streaming path) is
+    **30,721**. Fixed (`cursorOf(seen)`); regression-tested
+    (`connector_test.go`'s `TestFetchFileMultiBatchResume`, a fixture large enough to force more
+    than one batch — the bug was invisible at any scale under 500 matches, since `skip=0` on the
+    first call hides it completely).
+  - **A D-Scope pre-filter now runs for every source** (not just `ua-edr`) — see `application/
+    christianfilter.go` below; `ua-edr`'s own OPF filter only means "any religion," not "Christian."
 - Real candidates identified but **not yet built**: Brazil (CNPJ/Receita Federal open data, legal
   nature code `322-0` = "Organização Religiosa"), Argentina (Registro Nacional de Cultos,
   datos.gob.ar — excludes the Catholic Church by law), OpenStreetMap (Overpass API,
@@ -265,6 +316,17 @@ coordinate pairs), and `transport/cursor_test.go`/`service_test.go` (pageToken r
 cases, `pageSizeOrDefault`'s clamp — copied directly from `moderation`'s own M7 test cases). No
 DB/go-oikumenea mocking framework — every test operates on plain data in, plain data out.
 
+Added since (2026-08-14): `application/christianfilter_test.go` (the D-Scope positive-keyword
+filter — real Ukrainian names across every keyword family, the JW/LDS "correctly not caught here,
+caught downstream" ordering case, all three real apostrophe spellings). `adapters/connectors/uaedr/
+connector_test.go`'s `TestFetchFileMultiBatchResume` is a direct regression test for the real
+cursor-doubling bug (a fixture forcing more than one `batchSize=500` batch — confirmed to fail
+against the pre-fix code, not just pass trivially against the fixed one). `adapters/connectors/
+uaedr/connector_http_test.go` covers the hand-written streaming zip parser (good/bad signature,
+DEFLATE, STORE with and without a data-descriptor, the latter empirically what Go's own
+`archive/zip.Writer` produces for a streamed STORE entry) and an `httptest`-backed end-to-end
+`fetchHTTP` run plus a concurrency-guard test (two goroutines, one must be rejected).
+
 ## Open seams
 
 - Additional country sources (Brazil, Argentina, OSM, and confirming Uruguay/Paraguay/Colombia/
@@ -283,3 +345,8 @@ DB/go-oikumenea mocking framework — every test operates on plain data in, plai
   (same limitation M4.1/M7 both named and accepted as equivalent evidence for their own UI work).
 - ~~The go-oikumenea RLS fix itself~~ — resolved; see Known limitations
   ([go-oikumenea#36](https://github.com/olehmushka/go-oikumenea/issues/36)).
+- ~~Deploying `ua-edr` on a memory-constrained VM without a local file / cron / object storage~~ —
+  resolved (`UAEDR_SOURCE_URL`, see Sources above).
+- A bad/nonexistent taxon-alias RID can still abort an entire connector run rather than just
+  failing that one candidate (named as a small open seam in the original production-hardening
+  pass, unchanged).
