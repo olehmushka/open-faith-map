@@ -95,13 +95,19 @@ func main() {
 	}
 	fmt.Printf("service principal: id=%s code=%s issuer=%s subject=%s\n", principal.Id, principal.Code, principal.Issuer, principal.Subject)
 
-	// religion.read: the real, documented need (core-integration.md — discovery-cache refresh). Not
-	// yet EXERCISABLE by any principal today, though: every religion-module read endpoint is gated
-	// with RequireAnywhere, a person-shaped PEP path that denies a machine subject outright
-	// (internal/authorization/pep — "every person-shaped PEP path denies it at its empty-subject
-	// guard"). Machine-reachable (RequireService/RequireServiceOrPerson) endpoints exist only in the
-	// connector/wiring modules today — this is a real go-oikumenea gap, not an OpenFaithMap
-	// misconfiguration; discovered by proving this exact grant 403 against a real instance.
+	// religion.read: the real, documented need (core-integration.md — discovery-cache refresh). Used
+	// to be structurally unexercisable by any principal (every religion-module read endpoint was
+	// gated with RequireAnywhere, a person-shaped PEP path that denies a machine subject outright,
+	// regardless of grants) — fixed go-oikumenea-side (GH-33, "gate instance-wide reads with
+	// RequireServiceOrPerson"), so this grant is now real.
+	//
+	// country.read: same fix, same shape, one module over — go-oikumenea's GeoService.ListCountries
+	// (and ListPlaces/ResolveCoordinate) had the identical RequireAnywhere gap. Added live
+	// (2026-08-14) for congregationimport's matchCountry (application/countrymatch.go): resolving a
+	// connector's CountryHint to a real country RID at ingest time, under this same service
+	// principal, the same way checkExcluded already calls Religion.GetTaxon. Fixed go-oikumenea-side
+	// as GH-37 ("gate country.read reads with RequireServiceOrPerson", image 0.0.5+) — bump
+	// docker-compose.yml's oikumenea-app image and re-run this bootstrap script before relying on it.
 	//
 	// docs/modules/core-integration.md's authorization-touchpoints table also lists "audit.write" —
 	// that grant does not exist: go-oikumenea's audit module is READ-ONLY from the API ("there is no
@@ -109,10 +115,10 @@ func main() {
 	// defines only audit.read. Both discrepancies need a core-integration.md correction pass, not
 	// attempted here.
 	//
-	// connector.read is added alongside it SOLELY to prove the service-principal mechanism itself
+	// connector.read is added alongside them SOLELY to prove the service-principal mechanism itself
 	// (registration -> grant -> Google ID token -> PDP allow) end-to-end against a permission that is
 	// actually machine-reachable today — see internal/coreintegration's integration test.
-	for _, perm := range []string{"religion.read", "connector.read"} {
+	for _, perm := range []string{"religion.read", "country.read", "connector.read"} {
 		if err := grantOrReuse(ctx, c, principal.Id, perm); err != nil {
 			fmt.Fprintf(os.Stderr, "grant %s: %v\n", perm, err)
 			os.Exit(1)

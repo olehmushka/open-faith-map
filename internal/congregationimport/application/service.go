@@ -195,6 +195,29 @@ func (s *Service) processRawRecord(ctx context.Context, svc *oikumenea.Client, c
 		}
 	}
 
+	// Same advisory, never-overwrite-the-operator shape as the jurisdiction match above — but unlike
+	// a jurisdiction hint, CountryHint (when a connector sets one, e.g. arrnc's Argentina-only
+	// "Argentina") is a deterministic fact, not a fuzzy guess, so it's written straight to CountryID
+	// rather than a separate "suggested" column. Found live: this hint used to be computed and then
+	// silently dropped (countrymatch.go's own doc comment), leaving SuggestCoordinates with no
+	// country to query Nominatim with on ~29.6k already-ingested candidates.
+	//
+	// A matchCountry ERROR is deliberately swallowed rather than propagated, unlike the jurisdiction
+	// match above — go-oikumenea's GeoService.ListCountries used to be RequireAnywhere-gated, which
+	// structurally denied every machine (service-principal) subject regardless of its grants (the
+	// same class of gap scripts/bootstrap-service-principal's own comment documents for religion.read;
+	// filed as go-oikumenea#37, fixed there as of image 0.0.5, RequireServiceOrPerson). Kept
+	// non-fatal anyway even after that fix landed: a transient go-oikumenea outage or a stale image
+	// still shouldn't take the whole connector run down over an advisory field, matching
+	// resolveCountryName's own already-established "never blocks" precedent (application/geocode.go)
+	// for this exact same ListCountries call.
+	if countryID, cMatched, cErr := s.matchCountry(ctx, svc, norm.CountryHint); cErr == nil && cMatched {
+		c, err = s.store.SetCountryMatch(ctx, c.ID, countryID)
+		if err != nil {
+			return domain.Candidate{}, false, false, err
+		}
+	}
+
 	taxonID, matched, err := s.matchTaxon(ctx, connector.Code(), norm.TaxonHint)
 	if err != nil {
 		return domain.Candidate{}, false, false, err
