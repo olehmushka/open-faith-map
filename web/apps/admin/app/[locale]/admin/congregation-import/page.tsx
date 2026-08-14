@@ -10,6 +10,7 @@ import {
   listCandidates,
   rejectCandidate,
   runConnector,
+  suggestCoordinates,
 } from "@/lib/congregation-import";
 import { listCountriesForPicker, listTaxaForPicker } from "@/lib/dictionaries";
 import { createJurisdictionUnit, searchJurisdictionUnits } from "@/lib/jurisdiction";
@@ -129,6 +130,13 @@ export default async function CongregationImportPage({
     return createJurisdictionUnit(parentUnitId, code, name);
   }
 
+  // ADVISORY ONLY — suggestCoordinates never writes anything; CoordinateSuggest just fills the
+  // Latitude/Longitude fields with the result, the operator still has to click Save.
+  async function suggestCoordinatesAction(candidateId: string) {
+    "use server";
+    return suggestCoordinates(candidateId);
+  }
+
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-12">
       <h1 className="text-2xl font-semibold">{t("heading")}</h1>
@@ -176,6 +184,7 @@ export default async function CongregationImportPage({
         rootUnitId={rootUnitId}
         onSearchJurisdiction={searchJurisdictions}
         onCreateUnit={createUnit}
+        onSuggestCoordinates={suggestCoordinatesAction}
         labels={{
           noCandidates: t("noCandidates"),
           taxonId: t("taxonId"),
@@ -184,6 +193,11 @@ export default async function CongregationImportPage({
           countryUnset: t("countryUnset"),
           latitude: t("latitude"),
           longitude: t("longitude"),
+          suggestCoordinates: t("suggestCoordinates"),
+          suggesting: t("suggesting"),
+          suggestedVia: t("suggestedVia"),
+          geocodeNoMatch: t("geocodeNoMatch"),
+          geocodeLookupFailed: t("geocodeLookupFailed"),
           save: t("save"),
           jurisdictionUnitId: t("jurisdictionUnitId"),
           jurisdictionNone: t("jurisdictionNone"),

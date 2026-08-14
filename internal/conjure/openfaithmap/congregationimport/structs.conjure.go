@@ -386,6 +386,33 @@ func (o *RunPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+type SuggestCoordinatesResponse struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	// The provider's own reported precision/place type — shown to the operator, never trusted blindly.
+	Precision *string `json:"precision,omitempty"`
+	// The provider's resolved address, so the operator can sanity-check the match before trusting it.
+	DisplayName string `json:"displayName"`
+	// Which geocoding provider produced this (its Code()) — shown alongside the suggestion.
+	Provider string `json:"provider"`
+}
+
+func (o SuggestCoordinatesResponse) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SuggestCoordinatesResponse) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type TaxonAlias struct {
 	// OpenFaithMap-local RID (openfaithmap.congregationimport.taxon-alias).
 	Id string `json:"id"`

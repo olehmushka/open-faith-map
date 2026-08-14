@@ -220,7 +220,8 @@ automated one.
     locality, province) — `Street`/`Locality`/`AdminArea1` are populated for real, a genuinely
     better operator starting point than `ua-edr`'s blank-everything case; `Latitude`/`Longitude`
     still stay nil (no coordinates in the source), so every candidate still lands in
-    `NEEDS_GEOCODE` (no real geocoder exists yet — see Open seams).
+    `NEEDS_GEOCODE` — the operator now has a real "Suggest coordinates" action for exactly this
+    (2026-08-14, `application.Geocoder`/`nominatim`, see below), not a blank field to fill by hand.
   - **Real, consequential finding: `CI` is not a per-row unique key** — it's the registered
     institute's own registration number, shared across every `"- FILIAL N"` (branch) row of that
     institute (e.g. one institute has 100+ branch rows sharing one `CI`). `SourceRecordID` is
@@ -254,8 +255,9 @@ automated one.
 `default-auth: header`), like `vouching`: no genuinely-anonymous endpoint, since a connector run is
 always operator-triggered. `runConnector`/`listRuns`/`getRun`, `listCandidates`/`getCandidate`,
 `editCandidate`/`approveCandidate`/`rejectCandidate`, plus (production-hardening pass)
-`listTaxonAliases`/`createTaxonAlias`/`listJurisdictionAliases`/`createJurisdictionAlias`. See the
-file for full docs per endpoint.
+`listTaxonAliases`/`createTaxonAlias`/`listJurisdictionAliases`/`createJurisdictionAlias`, plus
+(2026-08-14) `suggestCoordinates` — advisory only, see Known limitations above. See the file for
+full docs per endpoint.
 
 `listRuns`/`listCandidates` have real keyset `(createdAt, id)` pagination as of the
 production-hardening pass — mirrors `moderation`'s own M7 fix
@@ -294,10 +296,46 @@ small and operator-curated (`ListAliasesForMatching`'s own reasoning), loaded in
     created, and (unlike this module) the real `congregation-admin` unit-scoped grant to the submitter
     confirmed in `authz_role_assignments`, the one place the two modules' provisioning intentionally
     differ.
-- **No geocoder implementation** — `application.Geocoder` is an interface with zero real
-  implementations in v1. Every candidate missing coordinates needs a human to fill them in during
-  review. A real implementation (e.g. Nominatim, under the same per-host rate-limit discipline the
-  HTML connectors use) is a plug-in to add later without a schema change.
+- **Real geocoder, added 2026-08-14** — this bullet previously claimed `application.Geocoder`
+  already existed as an interface with zero implementations; that was **stale/aspirational, not
+  real code** (`grep -rn "Geocoder" internal/congregationimport/` returned nothing before this
+  date), found while diagnosing a real `NotApprovable` failure an operator hit live. Now real:
+  `domain.Geocoder` (`domain/geocoder.go`) is the Strategy interface — mirrors `domain.Connector`
+  exactly, same reasoning — with one implementation, `adapters/geocoders/nominatim` (OpenStreetMap,
+  free, keyless, the same data source already behind this project's own Leaflet/OSM public map,
+  M4). **Deliberately built pluggable from day one**, not a one-off: the owner's own stated goal is
+  adding congregations globally over time, at a scale where Nominatim's real usage policy (1
+  req/sec, no bulk/systematic querying —
+  https://operations.osmfoundation.org/policies/nominatim/) will eventually need a second,
+  paid provider (LocationIQ, Google) registered alongside or instead of it — adding one is a new
+  adapter package plus one line in `cmd/openfaithmap-api/main.go`'s `geocoders` slice, zero
+  interface or Conjure changes. Which registered provider is active is `CONGREGATIONIMPORT_GEOCODER`
+  (env, defaults to `"nominatim"`), not a code change either.
+
+  New endpoint `suggestCoordinates` (`POST /candidates/{candidateId}/suggest-coordinates`) —
+  **ADVISORY ONLY**, same invariant as `suggestedJurisdictionUnitId`: it only returns a suggestion,
+  never writes to the store; the operator must still call `editCandidate` to persist. Structured
+  query (`street`/`city`/`state`/`country`), not a single concatenated string — resolves more
+  reliably against exactly the fields a candidate already carries. `countryId` (a go-oikumenea RID)
+  is best-effort resolved to a real country name via the service principal's own `Geo.ListCountries`
+  before querying (never blocks the lookup if resolution fails). A real, mechanically-enforced
+  `rate.Limiter` (1 req/sec, `golang.org/x/time/rate` — already a dependency, moderation's own
+  inbound rate limiter uses it too) — not just a policy comment — since this module must never call
+  Nominatim from `runConnector`'s bulk pipeline, only from an operator-triggered single lookup.
+
+  **Live-verified against the real public Nominatim endpoint and the real running stack**
+  (2026-08-14) — closed the loop on the exact candidate whose `NotApprovable` failure motivated
+  this work (`Ministerio Evangelístico Mi Amigo Jesús A Las Naciones`, `ar-rnc`): its own messy,
+  cadastral-code-laden street text correctly returned `GeocodeNoMatch` (not a crash, not a wrong
+  guess) — approved instead with manually-supplied coordinates, `status: PROVISIONED`, a real
+  `createdUnitId` confirmed. A second, cleaner-addressed real candidate (`IGLESIA EVANGELICA EL
+  ALFARERO CRISTO JESUS`, `CASADO 1173, CASILDA, Santa Fe`) round-tripped the full happy path:
+  `suggestCoordinates` → a real match (`-33.0513756, -61.1575169`, `displayName` confirming the
+  real street) → `editCandidate` → `approveCandidate` → `PROVISIONED`. Also hit real connection
+  resets/timeouts calling the public endpoint directly from this dev sandbox seconds apart — a real
+  reminder this is a best-effort free community service, not a guaranteed-uptime API, which is
+  exactly why a non-nil, non-`GeocodeNoMatch` error passes straight through to the operator as a
+  clear "lookup failed" rather than being silently swallowed.
 - **No claim flow** — `congregation_status.claimed_by_person_rid`/`claimed_at` exist in the schema
   but nothing writes them. `vouching.md` already names this gap ("the eventual real caller ... the
   web-admin.md congregation-claim flow") for an unrelated reason; this module's row-attribution
@@ -375,7 +413,11 @@ export — accented/unaccented "evangélica"/"evangelica", the "evangelístico" 
 Assemblies of God, JW/Bahá'í "correctly/expectedly not caught here" cases). `adapters/connectors/
 arrnc/connector_test.go` — batch-boundary correctness (this design's own real failure mode, not
 `ua-edr`'s double-counting, which is structurally impossible here) and a `SourceRecordID` test
-regression-testing the real `CI`-is-not-unique finding.
+regression-testing the real `CI`-is-not-unique finding. `adapters/geocoders/nominatim/
+geocoder_test.go` — an `httptest`-backed real-match case using the exact response shape captured
+live against the real endpoint (string `lat`/`lon`, not numbers — a real gotcha), a real-empty-match
+case, an upstream-failure-passes-through case, and a structured-query-params assertion (`street`/
+`city`/`state`/`country`, not a concatenated `q=`).
 
 ## Open seams
 
@@ -387,7 +429,9 @@ regression-testing the real `CI`-is-not-unique finding.
 - No delete/deactivate endpoint for taxon/jurisdiction aliases — `create`+`list` only. An alias is
   normalized/validated before insert, so a wrong one is rare, not a daily operator task; deferred
   rather than built speculatively.
-- A real geocoder plug-in.
+- ~~A real geocoder plug-in.~~ Built 2026-08-14 (`domain.Geocoder`/`adapters/geocoders/nominatim`,
+  see Known limitations above). A second provider (LocationIQ/Google, for volume beyond Nominatim's
+  own ToS) remains open, not yet needed.
 - The claim flow — a real, separate design decision, not this module's to make alone.
 - The review-queue UI's admin browser click-through (page loads, "Load more", approve/reject/alias
   forms submit for real) — `tsc`/`eslint`/`next build` clean and a headless API-level proof exist;

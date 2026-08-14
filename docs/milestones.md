@@ -84,7 +84,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are resolved (D-PlatformModerator, D-Moderation's Correction, M4.1). CI green at the merge commit (confirmed 2026-08-10) and the two-real-token proof (non-moderator refused, platform-moderator allowed) both done — the latter via a headless local-dev identity, not a real browser Google OAuth session, accepted as equivalent evidence — see prose. |
 | M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. CI green at the merge commit (confirmed 2026-08-10) and the two-different-people proof (guarantor-with-standing vs. guarantor-with-none, moderator vs. non-moderator) both done — via a headless local-dev identity, not a real browser session, accepted as equivalent evidence — see prose. |
 | M7 · Hardening / real-user feedback | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-11), not yet Verified.** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. **`Verified` needs a green CI run on `main` at the merge commit and a live authenticated-moderator round trip (a real browser Google OAuth session or a granted moderator token)**, not yet attempted here — see prose. |
-| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed (2026-08-13); HTTP-streaming ingestion + D-Scope Christian-name filter added, a real cursor-doubling bug found and fixed, second connector `ar-rnc` (Argentina) added and live-verified (2026-08-14); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
+| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed (2026-08-13); HTTP-streaming ingestion + D-Scope Christian-name filter added, a real cursor-doubling bug found and fixed, second connector `ar-rnc` (Argentina) added, a real pluggable geocoder (`domain.Geocoder`/`nominatim`) built and a full admin-UI usability pass done, all live-verified (2026-08-14); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
 | M9 · Production deployment (single cheap VM) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified (2026-08-14), a docs-only milestone — mirrors M0's own shape.** D-ProductionDeployment (`architecture/decisions.md`). Resolves `DS-OFM-14`/`U13`'s "no deployment milestone exists" gap. Single Linux VM (~500MB–1GB RAM), Docker Compose, Caddy for TLS — deliberately provider-agnostic, the concrete VM provider left undecided at the owner's own direction. Schedules two already-decided items (per-surface OAuth clients, WireGuard for `oikumenea-console`) as real build-phase work for the first time, and makes three new calls: `pg_dump` on a systemd timer for backup (none exists today), `restart:` policies + a systemd unit for process supervision (none exists today), and a weekly systemd timer calling `POST /runs` as the `ua-edr` periodic re-run trigger — the item M8's own memory left explicitly open. **`Verified`** needs the new doc set (this row, D-ProductionDeployment, the struck `DS-OFM-14`/`U13` entries) coherence-checked — no dangling links, no contradiction with the decisions it inherits from. **No VM is provisioned and no compose/Caddy/systemd files are written this milestone** — that is explicitly a follow-up build milestone (numbering TBD, likely M9.1) once a provider is picked. |
 
 ## Per-milestone detail
@@ -1891,6 +1891,65 @@ finding above — not attempted here.
 > `go build ./... && go vet ./... && go test ./...` and `./godelw verify --skip-test` both clean.
 > This does not change M8's own `Verified` status — still blocked on the same, unrelated items
 > (browser click-through, CI green at the merge commit).
+
+> **Update (2026-08-14): real geocoder built (`domain.Geocoder`/`nominatim`) plus a full admin-UI
+> usability pass — triggered by a real operator hitting a real, confusing `NotApprovable` failure
+> live, not planned in advance.** Full design in
+> [modules/congregationimport.md](modules/congregationimport.md)'s "Known limitations"; this block
+> is the live-verification trail.
+>
+> **Root cause of the original failure**: the review-queue UI's `taxonId`/`countryId`/
+> `jurisdictionUnitId` fields were plain free-text `<input>`s requiring a real go-oikumenea RID
+> typed from memory, and Approve required coordinates with no way to get them — `ApproveCandidate`
+> returns the identical `CongregationImport:NotApprovable` code for three different real causes
+> (wrong status, no taxon, no coordinates/country), which cost real debugging time twice on the
+> exact same candidate before the actual missing piece (coordinates) was found.
+>
+> **Admin UI**: the "Run connector" button was hardcoded to `ua-edr` — `ar-rnc` could not be
+> triggered from the UI at all; now a `<select>`. `taxonId`/`countryId` are now real `<select>`s
+> populated from `client.religion.listTaxa`/`client.geo.listCountries` (`web/apps/admin/lib/
+> dictionaries.ts`, new — mirrors `/register`'s own existing inline calls exactly, `EXCLUDED_TAXON_
+> CODES` deduplicated between the two). `jurisdictionUnitId` is now a real search-and-select
+> (`JurisdictionField`, reuses `lib/jurisdiction.ts`'s existing `searchJurisdictionUnits`, built for
+> `/admin/registrations/reparent`) plus a "Create unit" button opening a native `<dialog>` modal
+> (no new dependency — this app has none) pre-filled from the candidate's own `jurisdictionHint`;
+> submitting immediately selects the new unit, no page reload, via the same "call the Server Action
+> and use its return value" shape `candidate-list.tsx`'s own load-more already established.
+> Portaled to `document.body` since a `<dialog><form>` nested inside the outer Approve `<form>`
+> would be invalid HTML (forms cannot nest). **No Go/Conjure changes for any of this** — every
+> lookup goes straight to go-oikumenea from the Next.js layer under the operator's own session
+> token, the same D-Facade architecture `/register`/`/admin/registrations/reparent` already use.
+>
+> **Real geocoder, designed pluggable from day one per the owner's own direction** (not a one-off
+> integration: the stated goal is adding congregations globally over time, at a scale where
+> Nominatim's own ToS — 1 req/sec, no bulk/systematic querying — will eventually need a second
+> provider registered alongside or instead of it). `domain.Geocoder` mirrors `domain.Connector`
+> exactly; `adapters/geocoders/nominatim` is the first implementation (OpenStreetMap, free,
+> keyless). New `suggestCoordinates` endpoint, **advisory only** (same invariant as
+> `suggestedJurisdictionUnitId` — never writes to the store), structured query
+> (`street`/`city`/`state`/`country`, not a concatenated string), `countryId` best-effort resolved
+> to a real name via the service principal's `Geo.ListCountries` first. A real, mechanically
+> enforced `rate.Limiter` (1 req/sec, `golang.org/x/time/rate`) — not just a policy comment.
+>
+> **Live-verified against the real public Nominatim endpoint and the real running stack — closing
+> the loop on the exact candidate that started this investigation**
+> (`2e04778b-540c-4f87-9a5b-e6f9345f0c0b`, "Ministerio Evangelístico Mi Amigo Jesús A Las Naciones",
+> `ar-rnc`): its own real address text turned out to have cadastral reference codes mixed into the
+> street field — `suggestCoordinates` correctly returned `GeocodeNoMatch` (not a crash, not a wrong
+> guess); approved instead with manually-supplied coordinates, confirmed `status: PROVISIONED`, a
+> real `createdUnitId`. A second, cleaner-addressed real candidate ("IGLESIA EVANGELICA EL ALFARERO
+> CRISTO JESUS," `CASADO 1173, CASILDA, Santa Fe`) round-tripped the full happy path:
+> `suggestCoordinates` → a real match (`-33.0513756, -61.1575169`, a `displayName` naming the real
+> matched street) → `editCandidate` → `approveCandidate` → confirmed `PROVISIONED`. Also hit real
+> connection resets/timeouts calling the public Nominatim endpoint directly, seconds apart, from
+> this session's own dev sandbox during research — a genuine reminder it's a best-effort free
+> community service, not a guaranteed-uptime API, which is exactly why a non-nil,
+> non-`GeocodeNoMatch` error passes straight through to the operator as a clear failure rather than
+> being silently swallowed.
+>
+> `go build ./... && go vet ./... && go test ./...`, `./godelw verify --skip-test`, and both admin
+> apps' `tsc --noEmit`/`eslint .`/`next build` all clean. Does not change M8's own `Verified`
+> status.
 
 ### M9 · Production deployment (single cheap VM)
 

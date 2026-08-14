@@ -29,6 +29,11 @@ type Config struct {
 	// ServicePrincipal configures the server's own go-oikumenea call for the D-Exclusions check and
 	// dedup search — read-only uses only; provisioning writes always use the operator's own token.
 	ServicePrincipal coreintegration.Config
+	// ActiveGeocoderCode selects which registered Geocoder SuggestCoordinates uses (see geocoders
+	// param on NewService) — an env-driven choice (cmd/openfaithmap-api/main.go), not a code change,
+	// so swapping providers (or adding a second one to run alongside Nominatim) never touches this
+	// module's interface or Conjure surface. Defaults to "nominatim" if empty.
+	ActiveGeocoderCode string
 }
 
 type Service struct {
@@ -39,14 +44,29 @@ type Service struct {
 	// infrastructure a real need hasn't justified yet (DS-OFM-2's precedent). Adding a source is
 	// one line at construction (cmd/openfaithmap-api/main.go), not a schema or interface change.
 	connectors map[string]domain.Connector
+	// geocoder is the currently-active provider (Config.ActiveGeocoderCode), resolved once here —
+	// nil if that code isn't registered, checked at call time in SuggestCoordinates, never a boot
+	// failure (same "never a hard failure" discipline connectors already follow).
+	geocoder domain.Geocoder
 }
 
-func NewService(store *adapters.Store, cfg Config, connectors []domain.Connector) *Service {
+func NewService(store *adapters.Store, cfg Config, connectors []domain.Connector, geocoders []domain.Geocoder) *Service {
 	byCode := make(map[string]domain.Connector, len(connectors))
 	for _, c := range connectors {
 		byCode[c.Code()] = c
 	}
-	return &Service{store: store, cfg: cfg, connectors: byCode}
+	geocoderCode := cfg.ActiveGeocoderCode
+	if geocoderCode == "" {
+		geocoderCode = "nominatim"
+	}
+	var activeGeocoder domain.Geocoder
+	for _, g := range geocoders {
+		if g.Code() == geocoderCode {
+			activeGeocoder = g
+			break
+		}
+	}
+	return &Service{store: store, cfg: cfg, connectors: byCode, geocoder: activeGeocoder}
 }
 
 func (s *Service) userClient(token string) (*oikumenea.Client, error) {

@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 
 import type { Candidate, CandidatePage } from "@/lib/congregation-import";
 
+import { CoordinateSuggest } from "./coordinate-suggest";
 import { JurisdictionField } from "./jurisdiction-field";
 
 type PickerOption = { id: string; name: string };
@@ -32,6 +33,7 @@ export function CandidateList({
   rootUnitId,
   onSearchJurisdiction,
   onCreateUnit,
+  onSuggestCoordinates,
   labels,
 }: {
   initialCandidates: Candidate[];
@@ -45,6 +47,9 @@ export function CandidateList({
   rootUnitId: string;
   onSearchJurisdiction: (query: string) => Promise<UnitOption[]>;
   onCreateUnit: (parentUnitId: string, code: string, name: string) => Promise<UnitOption>;
+  onSuggestCoordinates: (
+    candidateId: string,
+  ) => Promise<{ latitude: number | "NaN"; longitude: number | "NaN"; precision?: string | null; displayName: string; provider: string }>;
   labels: {
     noCandidates: string;
     taxonId: string;
@@ -53,6 +58,11 @@ export function CandidateList({
     countryUnset: string;
     latitude: string;
     longitude: string;
+    suggestCoordinates: string;
+    suggesting: string;
+    suggestedVia: string;
+    geocodeNoMatch: string;
+    geocodeLookupFailed: string;
     save: string;
     jurisdictionUnitId: string;
     jurisdictionNone: string;
@@ -144,14 +154,12 @@ export function CandidateList({
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col text-xs">
-                {labels.latitude}
-                <input name="latitude" defaultValue={c.latitude ?? ""} className="w-24 rounded border px-2 py-1 text-sm" />
-              </label>
-              <label className="flex flex-col text-xs">
-                {labels.longitude}
-                <input name="longitude" defaultValue={c.longitude ?? ""} className="w-24 rounded border px-2 py-1 text-sm" />
-              </label>
+              <CoordinateSuggest
+                defaultLatitude={c.latitude}
+                defaultLongitude={c.longitude}
+                onSuggest={() => onSuggestCoordinates(c.id)}
+                labels={labels}
+              />
               <button type="submit" className="rounded border px-3 py-1 text-sm">
                 {labels.save}
               </button>
