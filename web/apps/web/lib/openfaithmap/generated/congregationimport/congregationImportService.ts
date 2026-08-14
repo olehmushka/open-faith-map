@@ -10,6 +10,7 @@ import { IJurisdictionAliasList } from "./jurisdictionAliasList";
 import { IRejectCandidateRequest } from "./rejectCandidateRequest";
 import { IRunConnectorRequest } from "./runConnectorRequest";
 import { IRunPage } from "./runPage";
+import { ISuggestCoordinatesResponse } from "./suggestCoordinatesResponse";
 import { ITaxonAlias } from "./taxonAlias";
 import { ITaxonAliasList } from "./taxonAliasList";
 import type { IHttpApiBridge } from "conjure-client";
@@ -65,6 +66,11 @@ export interface ICongregationImportService {
      *
      */
     createJurisdictionAlias(request: ICreateJurisdictionAliasRequest): Promise<IJurisdictionAlias>;
+    /**
+     * Look up approximate coordinates for a candidate's address via the configured geocoding provider (application.Geocoder, Nominatim by default) — ADVISORY ONLY, never applied automatically; the operator must still call editCandidate to persist. Operator-only, and real per-provider rate-limiting is enforced server-side — never called in bulk from runConnector.
+     *
+     */
+    suggestCoordinates(candidateId: string): Promise<ISuggestCoordinatesResponse>;
 }
 
 export class CongregationImportService implements ICongregationImportService {
@@ -299,6 +305,27 @@ export class CongregationImportService implements ICongregationImportService {
             __undefined,
             __undefined,
             __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Look up approximate coordinates for a candidate's address via the configured geocoding provider (application.Geocoder, Nominatim by default) — ADVISORY ONLY, never applied automatically; the operator must still call editCandidate to persist. Operator-only, and real per-provider rate-limiting is enforced server-side — never called in bulk from runConnector.
+     *
+     */
+    public suggestCoordinates(candidateId: string): Promise<ISuggestCoordinatesResponse> {
+        return this.bridge.call<ISuggestCoordinatesResponse>(
+            "CongregationImportService",
+            "suggestCoordinates",
+            "POST",
+            "/congregation-import/v1/candidates/{candidateId}/suggest-coordinates",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                candidateId,
+            ],
             __undefined,
             __undefined
         );

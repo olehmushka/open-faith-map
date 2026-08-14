@@ -29,9 +29,12 @@ import (
 // a prefix, not a spelling variant of the same word. "каплиц" (the actual chapel stem) is used
 // instead.
 //
-// Deliberately Ukrainian-only, not i18n'd — per-language lists for future connectors (Brazil,
-// Argentina, OSM) are a real, separate follow-up once those connectors exist, not built
-// speculatively now (this repo's own bias against unjustified infrastructure).
+// Originally Ukrainian-only; extended 2026-08-14 with a Spanish-language block (arrnc, Argentina's
+// Registro Nacional de Cultos — the connector this extension was built for) once that connector
+// actually existed, per this file's own original plan. A single merged list stays correct with no
+// per-source dispatch: the Ukrainian (Cyrillic) and Spanish (Latin) stems occupy disjoint Unicode
+// ranges, so cross-language false positives are structurally impossible, not just unlikely — no
+// interface change, isLikelyChristian's signature is unchanged.
 var christianKeywords = []string{
 	"христ",        // христова, християн(и/ство/ська) — broadest positive marker
 	"правосл",      // православна (Orthodox)
@@ -64,7 +67,67 @@ var christianKeywords = []string{
 	// names; found missing live — spelled-out "православ" alone doesn't cover it.
 	"пцу", // Православна Церква України — the other major Orthodox body's own equally common
 	// abbreviation, same reasoning as УПЦ above.
+
+	// --- Spanish block (arrnc, Argentina's Registro Nacional de Cultos) — every stem below was
+	// checked against the real, live-downloaded 30,178-row export before being added (grep counts,
+	// 2026-08-14), the same evidence-based discipline the Ukrainian block above already used.
+	// Diacritics are stripped before matching (see diacriticStripper) — a real, confirmed finding:
+	// "evangelica" (unaccented) outnumbers "evangélica" 10,055 to 781 in the live data, so matching
+	// only the accented form would silently miss most real matches.
+	"iglesia",  // church — the single broadest institutional marker (15,664 real hits)
+	"cristian", // cristiano/cristiana (Christian) — broadest positive marker, mirrors "христ" above
+	"evangel",  // evangélico/evangélica/evangelismo/evangelista/evangelístico — deliberately the
+	// short root, not "evangelic": a real miss found live, "evangelístico" (evangelistic) does NOT
+	// contain "evangelic" as a substring (...evangeli-STICO, not ...evangeli-CO), and it's a common
+	// real self-description ("MINISTERIO EVANGELISTICO INTERNACIONAL...").
+	"catolic",   // católica/católico, incl. Eastern/Greek-Catholic bodies still using the word
+	"bautist",   // bautista (Baptist)
+	"luteran",   // luterana (Lutheran)
+	"anglic",    // anglicana (Anglican)
+	"advent",    // adventista (Adventist)
+	"pentecost", // pentecostal
+	"carismat",  // carismática (charismatic movement) — rare in this source (2 real hits) but real
+	"metodist",  // metodista (Methodist)
+	"presbiter", // presbiteriana (Presbyterian) — also the clergy title itself, same as "пресвітер"
+	"apostolic", // apostólica — common Pentecostal/independent self-description
+	"congregac", // congregación (congregation)
+	"parroqui",  // parroquia (parish)
+	"capilla",   // chapel
+	"templo",    // temple/church building
+	"catedral",  // cathedral
+	"diocesis",  // diócesis (diocese) — also covers "arquidiócesis" (archdiocese) as a substring,
+	// no separate entry needed
+	"nazaren", // nazareno/nazarena — Church of the Nazarene, a real denomination with real
+	// presence in this source (231 real hits)
+	"menonit",  // menonita (Mennonite)
+	"reformad", // reformada (Reformed church)
+	"santidad", // holiness (the holiness movement)
+	"ortodox",  // ortodoxa (Orthodox)
+	"mision",   // misión (mission) — a very common real self-description among independent
+	// evangelical congregations in this source (4,327 real hits)
+	"ministerio", // ministerio (ministry) — a near-ubiquitous real evangelical self-description
+	// ("MINISTERIO EVANGELISTICO...", "AGAPE MINISTERIO INTERNACIONAL..."); a small number of real
+	// Espiritista entries also contain it (confirmed live, 13 of 1,882 real hits) — the same
+	// accepted safe-direction trade-off already documented above (a false positive here just means
+	// one extra manual review, never a wrongful auto-reject), not a new risk category.
+	"asamblea", // asamblea (assembly) — "UNION DE LAS ASAMBLEAS DE DIOS" (Assemblies of God) alone
+	// accounts for hundreds of real branch rows in this source with no other matching keyword; a
+	// small number of real Bahá'í ("Asamblea Espiritual...") and Espiritista entries also contain
+	// it (confirmed live, 49 of 4,846 real hits) — same accepted trade-off as "ministerio" above.
+	"jesus", // jesús — common in real independent-evangelical self-descriptions
+	// ("ASOCIACION CIVIL JESUS VIENE", "MINISTERIO INTERNACIONAL JESÚS ES MI AYUDA"); a small
+	// number of real Espiritista/rabbinical entries also contain it (confirmed live, 10 of 1,099
+	// real hits) — same accepted trade-off.
 }
+
+// diacriticStripper normalizes the small, fixed set of Spanish accented characters (already
+// lowercase — normalizeAlias runs first) so a source's inconsistent real-world accenting can never
+// silently produce a false negative — the Spanish-language equivalent of apostropheStripper below,
+// found necessary by the exact same kind of live evidence (arrnc's real export mixes "evangelica"
+// and "evangélica" roughly 13-to-1, confirmed by direct count, 2026-08-14).
+var diacriticStripper = strings.NewReplacer(
+	"á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ü", "u", "ñ", "n",
+)
 
 // apostropheStripper normalizes the several real Unicode apostrophe glyphs Ukrainian orthography
 // uses interchangeably for words like "п'ятдесятник" (straight ', curly ’, modifier letter ʼ) so a
@@ -76,7 +139,7 @@ var apostropheStripper = strings.NewReplacer("'", "", "’", "", "ʼ", "", "`", 
 // I/O, directly unit-testable, mirroring findTaxonAliasMatch's own style and reusing
 // normalizeAlias's lowercase+trim exactly.
 func isLikelyChristian(name string) bool {
-	n := apostropheStripper.Replace(normalizeAlias(name))
+	n := diacriticStripper.Replace(apostropheStripper.Replace(normalizeAlias(name)))
 	for _, kw := range christianKeywords {
 		if strings.Contains(n, kw) {
 			return true

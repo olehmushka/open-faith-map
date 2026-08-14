@@ -28,6 +28,7 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit) | Platform-moderator authority is a go-oikumenea Role on the shared root unit, checked target-scoped — not an OpenFaithMap roster table |
 | [D-Hardening](#d-hardening--in-process-rate-limiting-on-anonymous-writes-reused-witchcraft-observability) | In-process per-IP rate limiting on moderation's two anonymous write endpoints; observability reuses witchcraft's already-wired stack, no new infrastructure |
 | [D-CongregationImport](#d-congregationimport--scraped-congregations-provision-as-real-admin-less-units-a-verifiedclaimed-overlay-tracks-their-status) | Scraped/imported congregations provision as real, admin-less go-oikumenea Units under the approving operator's own token; a verified/claimed overlay (proposal, not settled) tracks status. Resolves `DS-OFM-10` |
+| [D-ProductionDeployment](#d-productiondeployment--single-cheap-vm-docker-compose-caddy-for-tls--provider-agnostic) | Single cheap VM, Docker Compose, Caddy for TLS — provider-agnostic; per-surface OAuth clients, WireGuard, backup, and the `ua-edr` re-run trigger all get scheduled here as M9's own build-phase work |
 
 ---
 
@@ -1056,3 +1057,82 @@ converging on the same go-oikumenea Unit shape, not a client of `registration`'s
   a candidate is ever presented for approval, and a match is an automatic `REJECTED_EXCLUDED`,
   never a silent drop or a later surprise.
 - `DS-OFM-10` (`open-questions.md`) is resolved by this block.
+
+---
+
+### D-ProductionDeployment — Single cheap VM, Docker Compose, Caddy for TLS — provider-agnostic
+
+**Decision.** OpenFaithMap's first real (non-local-dev) deployment target is a single Linux VM,
+sized around M8's own stated budget (~500MB–1GB RAM), running the existing `docker-compose.yml`
+stack unmodified as its base. This decision is **provider-agnostic on purpose** — the concrete VM
+provider is explicitly undecided and deferred; nothing below depends on which one gets picked.
+Scoped as [milestones.md](../milestones.md)'s **M9**, a design-only milestone (no VM is provisioned,
+no compose override is written yet — that is M9's own inherited build-phase work, done once a
+provider exists).
+
+Each sub-decision below is either new here or an existing decision formally given somewhere to
+attach as scheduled work, not re-litigated:
+
+- **Reverse proxy / TLS — new.** No reverse proxy exists anywhere in the stack today
+  ([D-Hardening](#d-hardening--in-process-rate-limiting-on-anonymous-writes-reused-witchcraft-observability)
+  deliberately rejected one, but for a rate-limiting reason that doesn't apply here — a real
+  deployment still needs TLS termination for whatever is public). **Caddy**, in front of
+  `openfaithmap-web` and `openfaithmap-admin` only — automatic Let's Encrypt, a single static
+  binary, the lowest ops burden available for a one-VM box. `oikumenea-console` gets no
+  reverse-proxy entry and no public port of any kind.
+- **Per-surface OAuth clients — inherited from
+  [D-OAuthClients](#d-oauthclients--one-google-oauth-client-today-one-per-surface-as-the-target).**
+  That decision's target state (one Google OAuth client per surface) was already made; it had
+  nowhere to attach as real work because no deployment milestone existed. It is now M9's own
+  build-phase item, not redesigned here.
+- **WireGuard for `oikumenea-console` — inherited from
+  [D-InstanceAdminConsole](#d-instanceadminconsole--reuse-go-oikumeneas-own-console-as-the-third-super-admin-only-surface).**
+  Same treatment: that decision already ruled out a bare public port or an IP allowlist for this
+  surface. Scheduled here as build-phase work, not reopened.
+- **Secrets handling — new.** A root-only `.env` file on the VM (`chmod 600`), never committed,
+  with every insecure local-dev default (`HERMENEA_OIKUMENEA_TOKEN`/`OIKUMENEA_HERMENEA_TOKEN`,
+  both Auth.js `AUTH_SECRET`s, the HS256 bootstrap-issuer key, `crypto.local-dev.kek`) rotated to
+  real values before first boot. No secrets manager for v1 — unjustified cost/complexity at this
+  scale; revisit only if a real operational need for rotation-at-scale or audit shows up.
+- **Backup — new.** No backup mechanism exists today. A `pg_dump` on a systemd timer, to some
+  off-VM target (object storage or a second cheap host — left open, deferred with the provider
+  choice). Still governed by
+  [D-SharedDatabase](#d-shareddatabase--one-postgres-instance-two-schemas)'s existing caveat: one
+  backup target, no independent RPO/RTO between go-oikumenea's and OpenFaithMap's own schemas —
+  this decision does not reopen that trade-off, only gives the VM a backup where it currently has
+  none at all.
+- **Process supervision — new.** No service in `docker-compose.yml` carries a `restart:` policy
+  today; a crash simply stays down. Add `restart: unless-stopped` to every long-running service,
+  plus a systemd unit wrapping `docker compose up -d` as the boot-time entry point, so the stack
+  survives a VM reboot without a login.
+- **`ua-edr` periodic re-run trigger — new, resolves an item M8 left explicitly open.** A systemd
+  timer (weekly, mirroring `hermenea`'s own `cron: "@weekly"` precedent for its reference-data
+  sources —
+  [D-BulkImport](#d-bulkimport--hermenea-replays-the-existing-registration-flow-in-bulk-no-new-write-path))
+  calling `POST /runs {"sourceCode":"ua-edr"}` under a real, non-bootstrap operator identity. Not a
+  new in-process scheduler — consistent with
+  [D-CongregationImport](#d-congregationimport--scraped-congregations-provision-as-real-admin-less-units-a-verifiedclaimed-overlay-tracks-their-status)'s
+  original "manual operator-triggered runs only, no new scheduler" call: this is an
+  operator-authorized timer hitting the module's existing API, not a scheduling subsystem built
+  into the module itself.
+
+**Why provider-agnostic.** The owner explicitly deferred the concrete VM provider choice — asking
+this decision to also pick one would either block on an unrelated question or bake in a choice
+that has to be redone later for no reason. Every sub-decision above (Caddy, systemd timers,
+`.env` secrets, `pg_dump`) works identically regardless of which Linux VM it runs on.
+
+**Why not decide the OAuth-client/WireGuard mechanics here.** Both were already decided in
+principle by their own original entries; what was missing was a milestone for the work to attach
+to (`open-questions.md`'s `DS-OFM-14`). Re-deciding them here would duplicate, not extend, those
+entries.
+
+**Consequences.**
+- `open-questions.md`'s `DS-OFM-14` and `milestones.md`'s `U13` are resolved by this block — both
+  said the reason per-surface OAuth clients and WireGuard had no owner was that no deployment
+  milestone existed; M9 is that milestone.
+- A follow-up build milestone (numbering TBD — likely `M9.1` once a provider is picked) does the
+  actual work this decision schedules: write `docker-compose.prod.yml` and a Caddyfile, provision
+  the two OAuth clients, stand up WireGuard, add the `restart:` policies, and wire the two systemd
+  timers (backup, `ua-edr` re-run). None of that is done by this decision itself.
+- `docker-compose.yml` itself is not rewritten by this decision — the production topology is an
+  override/addition on top of the existing file, not a replacement.

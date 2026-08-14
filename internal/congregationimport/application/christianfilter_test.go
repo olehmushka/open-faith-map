@@ -98,6 +98,58 @@ func TestIsLikelyChristian(t *testing.T) {
 			in:   "НАРОДНА КАПЕЛА БАНДУРИСТІВ",
 			want: false,
 		},
+		// --- Spanish cases (arrnc, Argentina's Registro Nacional de Cultos) — real names/shapes
+		// found live in the actual 30,178-row export, 2026-08-14.
+		{
+			name: "Evangelical, unaccented — the dominant real spelling (10,055 of ~10,836 real hits)",
+			in:   "IGLESIA EVANGELICA PENTECOSTAL",
+			want: true,
+		},
+		{
+			name: "Evangelical, accented — real but the minority spelling; must match identically to the unaccented form",
+			in:   "IGLESIA EVANGÉLICA PENTECOSTAL",
+			want: true,
+		},
+		{
+			name: "Evangelistic ministry — real miss the short 'evangel' stem exists specifically to fix ('evangelistico' does not contain 'evangelic')",
+			in:   "MINISTERIO EVANGELISTICO INTERNACIONAL JERUSALEN",
+			want: true,
+		},
+		{
+			name: "Assemblies of God — real, high-volume denomination name with no other matching keyword",
+			in:   "UNION DE LAS ASAMBLEAS DE DIOS - FILIAL 672",
+			want: true,
+		},
+		{
+			name: "Baptist, real shape",
+			in:   "IGLESIA BAUTISTA DE FE",
+			want: true,
+		},
+		{
+			name: "Church of the Nazarene, real denomination",
+			in:   "IGLESIA DEL NAZARENO ARGENTINA",
+			want: true,
+		},
+		{
+			name: "Jehovah's Witnesses — not caught here by design, caught downstream by checkExcluded (real name)",
+			in:   "ASOCIACION DE LOS TESTIGOS DE JEHOVA",
+			want: false,
+		},
+		{
+			name: "Bahá'í — a real, expected false positive for THIS filter (contains 'asamblea'), same accepted trade-off documented on the 'asamblea' keyword entry itself; still routed correctly downstream once an operator seeds a Bahá'í taxon alias, or otherwise waits in NEEDS_TAXON_REVIEW rather than being auto-rejected — asserted here to document the list's own known limits honestly, mirroring the LDS/Mormon case above",
+			in:   "ASAMBLEA ESPIRITUAL DE LOS BAHAIS DE ARGENTINA - FILIAL 1",
+			want: true,
+		},
+		{
+			name: "Spiritism — real name, correctly not Christian",
+			in:   "CONFEDERACION ESPIRITISTA ARGENTINA",
+			want: false,
+		},
+		{
+			name: "secular civil association, no religious markers at all",
+			in:   "ASOCIACION DE BENEFICENCIA SIRIANA",
+			want: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

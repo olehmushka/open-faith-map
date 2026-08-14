@@ -40,6 +40,8 @@ type CongregationImportService interface {
 	ListJurisdictionAliases(ctx context.Context, authHeader bearertoken.Token, sourceCodeArg *string) (JurisdictionAliasList, error)
 	// Add a free-text-hint -> go-oikumenea jurisdiction Unit RID alias, used by matchJurisdiction's substring matching on future connector runs. Advisory only — D-JurisdictionUnits: never auto-applied at approval. Operator-only.
 	CreateJurisdictionAlias(ctx context.Context, authHeader bearertoken.Token, requestArg CreateJurisdictionAliasRequest) (JurisdictionAlias, error)
+	// Look up approximate coordinates for a candidate's address via the configured geocoding provider (application.Geocoder, Nominatim by default) — ADVISORY ONLY, never applied automatically; the operator must still call editCandidate to persist. Operator-only, and real per-provider rate-limiting is enforced server-side — never called in bulk from runConnector.
+	SuggestCoordinates(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string) (SuggestCoordinatesResponse, error)
 }
 
 // RegisterRoutesCongregationImportService registers handlers for the CongregationImportService endpoints with a witchcraft wrouter.
@@ -84,6 +86,9 @@ func RegisterRoutesCongregationImportService(router wrouter.Router, impl Congreg
 	}
 	if err := resource.Post("CreateJurisdictionAlias", "/congregation-import/v1/jurisdiction-aliases", httpserver.NewJSONHandler(handler.HandleCreateJurisdictionAlias, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createJurisdictionAlias route")
+	}
+	if err := resource.Post("SuggestCoordinates", "/congregation-import/v1/candidates/{candidateId}/suggest-coordinates", httpserver.NewJSONHandler(handler.HandleSuggestCoordinates, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add suggestCoordinates route")
 	}
 	return nil
 }
@@ -351,6 +356,27 @@ func (c *congregationImportServiceHandler) HandleCreateJurisdictionAlias(rw http
 		return errors.WrapWithInvalidArgument(err)
 	}
 	respArg, err := c.impl.CreateJurisdictionAlias(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *congregationImportServiceHandler) HandleSuggestCoordinates(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	candidateIdArg, ok := pathParams["candidateId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"candidateId\" not present")
+	}
+	respArg, err := c.impl.SuggestCoordinates(req.Context(), bearertoken.Token(authHeader), candidateIdArg)
 	if err != nil {
 		return err
 	}

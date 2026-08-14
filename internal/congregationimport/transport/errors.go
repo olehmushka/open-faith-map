@@ -26,6 +26,8 @@ func mapErr(err error, candidateID, status string) error {
 		return gencongregationimport.NewNotEditable(candidateID, status)
 	case errors.Is(err, domain.ErrNotApprovable):
 		return gencongregationimport.NewNotApprovable(candidateID)
+	case errors.Is(err, domain.ErrGeocodeNoMatch):
+		return gencongregationimport.NewGeocodeNoMatch(candidateID)
 	default:
 		return err
 	}

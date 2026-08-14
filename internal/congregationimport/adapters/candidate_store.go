@@ -146,6 +146,25 @@ func (s *Store) SetJurisdictionMatch(ctx context.Context, id, suggestedJurisdict
 	return c, err
 }
 
+// SetCountryMatch records a connector-resolved country (matchCountry) directly on CountryID, not a
+// separate "suggested" column like SetJurisdictionMatch — unlike jurisdiction, a country hint is an
+// unambiguous, deterministic fact about the source (e.g. ar-rnc is Argentina-only), not a fuzzy
+// guess the operator must still confirm. Still never overwrites an operator's own already-set value
+// (COALESCE, same as every other UpsertCandidate column) — see the WHERE $2 IS NOT NULL guard here
+// achieved via COALESCE against the existing value.
+func (s *Store) SetCountryMatch(ctx context.Context, id, countryID string) (domain.Candidate, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.congregationimport_candidates SET country_id = COALESCE(country_id, $2) WHERE id = $1
+		RETURNING `+candidateSelectColumns,
+		id, countryID,
+	)
+	c, err := scanCandidate(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Candidate{}, domain.ErrCandidateNotFound
+	}
+	return c, err
+}
+
 // SetStatus is the plain status transition used for the automated STAGED/NEEDS_TAXON_REVIEW/
 // NEEDS_GEOCODE/POSSIBLE_DUPLICATE moves that don't carry extra fields.
 func (s *Store) SetStatus(ctx context.Context, id string, status domain.Status, dupCandidateID, dupUnitID *string) (domain.Candidate, error) {

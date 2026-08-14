@@ -54,7 +54,7 @@ block a milestone; they mislead whoever reads them next, which is worse.
 |---|---|---|
 | U11 | **`churchSiteTypeID` fails silently.** If go-oikumenea's seeded `church` site type is ever renamed, `approveRequest` attaches every congregation to whatever the first site type happens to be, with no error. Prefer failing loudly. | [registration.md](modules/registration.md) |
 | U12 | **Config bypasses the install-config convention.** `internal/platform/config` exists to hold openfaithmap-api's settings and is empty; `cmd/openfaithmap-api` reads five real settings straight from the environment via `requireEnv` — no schema, no validation, no ECV path for the secrets among them. | [conventions.md](architecture/conventions.md) |
-| U13 | **Per-surface OAuth clients and WireGuard have no milestone**, because there is no deployment milestone at all. Both are recorded as prerequisites for any non-local-dev deployment; whoever creates that milestone inherits them. | `DS-OFM-14` |
+| U13 | ~~**Per-surface OAuth clients and WireGuard have no milestone**, because there is no deployment milestone at all. Both are recorded as prerequisites for any non-local-dev deployment; whoever creates that milestone inherits them.~~ **Resolved (2026-08-14): M9 is that milestone.** Both items are now scheduled as M9's own build-phase work — still open in practice, just no longer homeless. | `DS-OFM-14`, [M9](#m9--production-deployment-single-cheap-vm) |
 
 ## Stage board
 
@@ -84,7 +84,8 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are resolved (D-PlatformModerator, D-Moderation's Correction, M4.1). CI green at the merge commit (confirmed 2026-08-10) and the two-real-token proof (non-moderator refused, platform-moderator allowed) both done — the latter via a headless local-dev identity, not a real browser Google OAuth session, accepted as equivalent evidence — see prose. |
 | M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. CI green at the merge commit (confirmed 2026-08-10) and the two-different-people proof (guarantor-with-standing vs. guarantor-with-none, moderator vs. non-moderator) both done — via a headless local-dev identity, not a real browser session, accepted as equivalent evidence — see prose. |
 | M7 · Hardening / real-user feedback | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-11), not yet Verified.** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. **`Verified` needs a green CI run on `main` at the merge commit and a live authenticated-moderator round trip (a real browser Google OAuth session or a granted moderator token)**, not yet attempted here — see prose. |
-| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed (2026-08-13); HTTP-streaming ingestion + D-Scope Christian-name filter added, a real cursor-doubling bug found and fixed (2026-08-14); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
+| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed (2026-08-13); HTTP-streaming ingestion + D-Scope Christian-name filter added, a real cursor-doubling bug found and fixed, second connector `ar-rnc` (Argentina) added, a real pluggable geocoder (`domain.Geocoder`/`nominatim`) built and a full admin-UI usability pass done, all live-verified (2026-08-14); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
+| M9 · Production deployment (single cheap VM) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified (2026-08-14), a docs-only milestone — mirrors M0's own shape.** D-ProductionDeployment (`architecture/decisions.md`). Resolves `DS-OFM-14`/`U13`'s "no deployment milestone exists" gap. Single Linux VM (~500MB–1GB RAM), Docker Compose, Caddy for TLS — deliberately provider-agnostic, the concrete VM provider left undecided at the owner's own direction. Schedules two already-decided items (per-surface OAuth clients, WireGuard for `oikumenea-console`) as real build-phase work for the first time, and makes three new calls: `pg_dump` on a systemd timer for backup (none exists today), `restart:` policies + a systemd unit for process supervision (none exists today), and a weekly systemd timer calling `POST /runs` as the `ua-edr` periodic re-run trigger — the item M8's own memory left explicitly open. **`Verified`** needs the new doc set (this row, D-ProductionDeployment, the struck `DS-OFM-14`/`U13` entries) coherence-checked — no dangling links, no contradiction with the decisions it inherits from. **No VM is provisioned and no compose/Caddy/systemd files are written this milestone** — that is explicitly a follow-up build milestone (numbering TBD, likely M9.1) once a provider is picked. |
 
 ## Per-milestone detail
 
@@ -1825,3 +1826,185 @@ finding above — not attempted here.
 > `go build ./... && go vet ./... && go test ./... -race` and `./godelw verify --skip-test` both
 > clean. **`Verified` still stays `⬜`** — unchanged blockers (browser click-through, CI green at the
 > merge commit).
+
+> **Update (2026-08-14): second connector added — `ar-rnc`, Argentina's Registro Nacional de
+> Cultos.** Confirmed with the owner: next in D-CongregationImport's own target-country order
+> (Ukraine → **Argentina** → Uruguay/Paraguay/Colombia/Chile → Brazil → USA), one connector, built
+> to the same real-verified bar as `ua-edr`. Full design/rationale is in
+> [modules/congregationimport.md](modules/congregationimport.md)'s own `ar-rnc` Sources entry; this
+> block covers the live-verification evidence.
+>
+> **Real source, the CKAN-declared URL turned out to be dead** — found live, not assumed:
+> `datos.gob.ar`'s own listed resource
+> (`https://cancilleria.gob.ar/userfiles/datos/registro-nacional-cultos.csv`) 404s. The ministry's
+> own current landing page links the real, working export instead
+> (`https://cancilleria.gob.ar/userfiles/datos/registro-culto-export.csv`, confirmed `200`,
+> 3,608,415 bytes, `Last-Modified: 2025-08-13`) — both URLs recorded honestly in the connector's own
+> `Citation()`, not just silently swapped.
+>
+> **Two real, consequential findings from directly downloading and inspecting the export** (30,178
+> rows, plain 5-column CSV, no header): (1) the `CI` column is the registered institute's own
+> registration number, **shared across every branch row of one institute** — not a per-row key, so
+> `SourceRecordID` is a SHA-256 hash of the row's own content instead, confirmed live to correctly
+> keep distinct branches distinct; (2) **503 of the 30,178 rows are byte-for-byte duplicates** of
+> another row in the source itself (a real data-quality artifact, not a bug here) — confirmed live
+> that these correctly collapse onto one candidate via the same hash (a direct query for one known
+> duplicate pair, "UNION DE LAS ASAMBLEAS DE DIOS" at "Juan Domingo Perón esq. Dinamarca", found
+> exactly one candidate row, not two).
+>
+> **Much simpler connector than `ua-edr` by design, not a shortcut**: at 3.6MB (vs. `ua-edr`'s
+> ~3.15GB), the whole export loads into memory once per run — no stateful streaming, no
+> `ConnectorCloser`, no reopen-and-reskip cursor arithmetic, so `ua-edr`'s own real 2026-08-14
+> cursor-doubling bug class is structurally impossible here. `TestFetchMultiBatch` regression-tests
+> this design's own real risk instead (an off-by-one at a batch boundary).
+>
+> **The D-Scope Christian-keyword filter is now Spanish-aware**, extending the same
+> `christianKeywords` list (no per-source dispatch — the Ukrainian/Cyrillic and Spanish/Latin stems
+> occupy disjoint Unicode ranges, so merging is safe). Every Spanish stem was checked against real
+> grep counts on the live export before being added, the same discipline the Ukrainian block used.
+> **A real, consequential diacritics finding**: unaccented `"evangelica"` outnumbers accented
+> `"evangélica"` 10,055-to-781 in the live data — the filter strips Spanish diacritics before
+> matching (same treatment Ukrainian apostrophe variants already got) so this can't cause a false
+> negative. A real short-stem finding too: `"evangelístico"` (evangelistic) does not contain
+> `"evangelic"` as a substring, so the keyword is the shorter `"evangel"` instead — found by checking
+> real unmatched names, not assumed.
+>
+> **Live-verified against a real `docker compose up --build` stack, against the genuinely live,
+> freshly-downloaded export — not a fixture.** While wiring this up, found and fixed a real,
+> pre-existing gap unrelated to this connector's own code: `docker-compose.yml` documented
+> `UAEDR_SOURCE_URL` (`.env.example`) but never actually forwarded it into `openfaithmap-api`'s
+> container environment — `UAEDR_SOURCE_URL`/`ARRNC_FILE_PATH`/`ARRNC_SOURCE_URL` are now all wired
+> through. `POST /runs {"sourceCode":"ar-rnc"}` against the real live URL, no local file ever
+> staged: `SUCCEEDED`, `recordsFetched: 30178, candidatesCreated: 26754, candidatesUpdated: 503,
+> candidatesAutoRejected: 2921` — the `updated` count matches the 503 real duplicate rows exactly.
+> Confirmed directly in Postgres: `26754` real rows `NEEDS_TAXON_REVIEW` (no Spanish taxon aliases
+> seeded yet, so nothing resolves a taxon on this first run — the exact same shape `ua-edr`'s own
+> first full-scale run had), `2921` `REJECTED_EXCLUDED` with the `"D-Scope: ..."` reason. Spot-checked
+> known real rows land correctly: `"ASOCIACION DE LOS TESTIGOS DE JEHOVA"` (JW) rejected by D-Scope
+> (no taxon alias seeded yet to route it through D-Exclusions instead — expected), `"CONFEDERACION
+> ESPIRITISTA ARGENTINA"` (Spiritism) rejected, `"ASAMBLEA ESPIRITUAL DE LOS BAHAIS..."` (Bahá'í)
+> correctly landed as the one **documented, accepted false positive** (contains "asamblea") rather
+> than silently miscounted. Real address fields confirmed populated (`street`/`locality`/
+> `admin_area1`) for real rows like `"IGLESIA BAUTISTA CALVARIO"` — genuinely better than `ua-edr`'s
+> blank-everything case, since this source actually carries address text.
+>
+> `go build ./... && go vet ./... && go test ./...` and `./godelw verify --skip-test` both clean.
+> This does not change M8's own `Verified` status — still blocked on the same, unrelated items
+> (browser click-through, CI green at the merge commit).
+
+> **Update (2026-08-14): real geocoder built (`domain.Geocoder`/`nominatim`) plus a full admin-UI
+> usability pass — triggered by a real operator hitting a real, confusing `NotApprovable` failure
+> live, not planned in advance.** Full design in
+> [modules/congregationimport.md](modules/congregationimport.md)'s "Known limitations"; this block
+> is the live-verification trail.
+>
+> **Root cause of the original failure**: the review-queue UI's `taxonId`/`countryId`/
+> `jurisdictionUnitId` fields were plain free-text `<input>`s requiring a real go-oikumenea RID
+> typed from memory, and Approve required coordinates with no way to get them — `ApproveCandidate`
+> returns the identical `CongregationImport:NotApprovable` code for three different real causes
+> (wrong status, no taxon, no coordinates/country), which cost real debugging time twice on the
+> exact same candidate before the actual missing piece (coordinates) was found.
+>
+> **Admin UI**: the "Run connector" button was hardcoded to `ua-edr` — `ar-rnc` could not be
+> triggered from the UI at all; now a `<select>`. `taxonId`/`countryId` are now real `<select>`s
+> populated from `client.religion.listTaxa`/`client.geo.listCountries` (`web/apps/admin/lib/
+> dictionaries.ts`, new — mirrors `/register`'s own existing inline calls exactly, `EXCLUDED_TAXON_
+> CODES` deduplicated between the two). `jurisdictionUnitId` is now a real search-and-select
+> (`JurisdictionField`, reuses `lib/jurisdiction.ts`'s existing `searchJurisdictionUnits`, built for
+> `/admin/registrations/reparent`) plus a "Create unit" button opening a native `<dialog>` modal
+> (no new dependency — this app has none) pre-filled from the candidate's own `jurisdictionHint`;
+> submitting immediately selects the new unit, no page reload, via the same "call the Server Action
+> and use its return value" shape `candidate-list.tsx`'s own load-more already established.
+> Portaled to `document.body` since a `<dialog><form>` nested inside the outer Approve `<form>`
+> would be invalid HTML (forms cannot nest). **No Go/Conjure changes for any of this** — every
+> lookup goes straight to go-oikumenea from the Next.js layer under the operator's own session
+> token, the same D-Facade architecture `/register`/`/admin/registrations/reparent` already use.
+>
+> **Real geocoder, designed pluggable from day one per the owner's own direction** (not a one-off
+> integration: the stated goal is adding congregations globally over time, at a scale where
+> Nominatim's own ToS — 1 req/sec, no bulk/systematic querying — will eventually need a second
+> provider registered alongside or instead of it). `domain.Geocoder` mirrors `domain.Connector`
+> exactly; `adapters/geocoders/nominatim` is the first implementation (OpenStreetMap, free,
+> keyless). New `suggestCoordinates` endpoint, **advisory only** (same invariant as
+> `suggestedJurisdictionUnitId` — never writes to the store), structured query
+> (`street`/`city`/`state`/`country`, not a concatenated string), `countryId` best-effort resolved
+> to a real name via the service principal's `Geo.ListCountries` first. A real, mechanically
+> enforced `rate.Limiter` (1 req/sec, `golang.org/x/time/rate`) — not just a policy comment.
+>
+> **Live-verified against the real public Nominatim endpoint and the real running stack — closing
+> the loop on the exact candidate that started this investigation**
+> (`2e04778b-540c-4f87-9a5b-e6f9345f0c0b`, "Ministerio Evangelístico Mi Amigo Jesús A Las Naciones",
+> `ar-rnc`): its own real address text turned out to have cadastral reference codes mixed into the
+> street field — `suggestCoordinates` correctly returned `GeocodeNoMatch` (not a crash, not a wrong
+> guess); approved instead with manually-supplied coordinates, confirmed `status: PROVISIONED`, a
+> real `createdUnitId`. A second, cleaner-addressed real candidate ("IGLESIA EVANGELICA EL ALFARERO
+> CRISTO JESUS," `CASADO 1173, CASILDA, Santa Fe`) round-tripped the full happy path:
+> `suggestCoordinates` → a real match (`-33.0513756, -61.1575169`, a `displayName` naming the real
+> matched street) → `editCandidate` → `approveCandidate` → confirmed `PROVISIONED`. Also hit real
+> connection resets/timeouts calling the public Nominatim endpoint directly, seconds apart, from
+> this session's own dev sandbox during research — a genuine reminder it's a best-effort free
+> community service, not a guaranteed-uptime API, which is exactly why a non-nil,
+> non-`GeocodeNoMatch` error passes straight through to the operator as a clear failure rather than
+> being silently swallowed.
+>
+> `go build ./... && go vet ./... && go test ./...`, `./godelw verify --skip-test`, and both admin
+> apps' `tsc --noEmit`/`eslint .`/`next build` all clean. Does not change M8's own `Verified`
+> status.
+
+### M9 · Production deployment (single cheap VM)
+
+**Depends on:** D-InstanceAdminConsole, D-OAuthClients, D-SharedDatabase (the decisions this
+milestone schedules or inherits work from), D-CongregationImport (the module whose periodic
+re-run trigger this milestone decides). **Leaves deployable:** no — this is a design milestone, not
+a build one. A follow-up build milestone (numbering TBD, likely **M9.1** once a VM provider is
+picked) does the actual provisioning; nothing in this repo changes behavior as a result of M9 by
+itself.
+
+Full design in [D-ProductionDeployment](architecture/decisions.md). Confirmed directly with the
+owner (2026-08-14): scope this session is a design-only milestone, mirroring **M0**'s own
+docs-only precedent — `Backend`/`Migrated`/`UI` are `➖` (not applicable, not just unbuilt), and the
+concrete **VM provider is explicitly deferred, not this milestone's question**. The design stays
+provider-agnostic on purpose: a single Linux VM, ~500MB–1GB RAM, Docker + Docker Compose available
+— the same budget M8's own `UAEDR_SOURCE_URL` work already targets.
+
+**Why this milestone exists at all.** `open-questions.md`'s `DS-OFM-14` and this doc's own
+`U13` both said the same thing plainly: per-surface OAuth clients
+([D-OAuthClients](architecture/decisions.md)) and WireGuard in front of `oikumenea-console`
+([D-InstanceAdminConsole](architecture/decisions.md)) were already decided in principle but had
+nowhere to attach as scheduled work, because no deployment milestone existed. Digging further
+while scoping this surfaced more real gaps with **no decision on record at all**: no service in
+`docker-compose.yml` carries a `restart:` policy (a crash just stays down), there is no reverse
+proxy or TLS termination anywhere in the stack, there is no backup mechanism for the shared
+Postgres instance, and M8's own memory explicitly named "no decision on what triggers a periodic
+re-run of the `ua-edr` connector on a real deployed VM" as still open — a different question from
+the download-step no-cron constraint M8 already resolved.
+
+**What M9 actually decides**, full rationale in D-ProductionDeployment:
+- **Reverse proxy / TLS:** Caddy (automatic Let's Encrypt), in front of `openfaithmap-web` and
+  `openfaithmap-admin` only. `oikumenea-console` gets no public port at all, WireGuard only.
+- **Per-surface OAuth clients** and **WireGuard for `oikumenea-console`**: both inherited verbatim
+  from their own existing decisions, given real scheduled work here for the first time.
+- **Secrets handling:** a root-only `.env` file on the VM (`chmod 600`), rotated from today's
+  insecure dev defaults, never committed. No secrets manager for v1.
+- **Backup:** `pg_dump` on a systemd timer to an off-VM target (concrete target deferred with the
+  provider). Still bound by D-SharedDatabase's existing "one backup target, no independent
+  RPO/RTO" caveat — not reopened here.
+- **Process supervision:** `restart: unless-stopped` on every long-running service, plus a systemd
+  unit wrapping `docker compose up -d` as the boot-time entry point.
+- **`ua-edr` periodic re-run:** a weekly systemd timer calling `POST /runs
+  {"sourceCode":"ua-edr"}` under a real operator identity — mirroring `hermenea`'s own
+  `cron: "@weekly"` precedent, not a new in-process scheduler (consistent with
+  D-CongregationImport's original "no new scheduler" call).
+
+**Explicitly out of scope this milestone** — named, not silently dropped: the concrete VM
+provider, DNS/domain, and actually writing `docker-compose.prod.yml`/a Caddyfile/the two systemd
+units/timers or provisioning the OAuth clients and WireGuard peers. All of that becomes M9's own
+inherited build-phase work, done once a provider is chosen.
+
+**`Verified`** — same exit criterion M0 used: the new/changed doc set (this section, the stage
+board row, D-ProductionDeployment, and the struck `DS-OFM-14`/`U13` entries) coherence-checked —
+no dangling relative link, no contradiction between D-ProductionDeployment's sub-decisions and the
+decisions it inherits from. Done directly, same pass (2026-08-14): every new cross-reference
+(`D-OAuthClients`, `D-InstanceAdminConsole`, `D-SharedDatabase`, `D-BulkImport`,
+`D-CongregationImport`, and the `M9`/`DS-OFM-14`/`U13` anchors themselves) resolved correctly, and
+the stage-board row's gate marks match this section's own prose.

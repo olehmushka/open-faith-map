@@ -462,6 +462,156 @@ func (e *Forbidden) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type geocodeNoMatch struct {
+	CandidateId string `json:"candidateId"`
+}
+
+func (o geocodeNoMatch) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *geocodeNoMatch) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewGeocodeNoMatch returns new instance of GeocodeNoMatch error.
+func NewGeocodeNoMatch(candidateIdArg string) *GeocodeNoMatch {
+	return &GeocodeNoMatch{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), geocodeNoMatch: geocodeNoMatch{CandidateId: candidateIdArg}}
+}
+
+// WrapWithGeocodeNoMatch returns new instance of GeocodeNoMatch error wrapping an existing error.
+func WrapWithGeocodeNoMatch(err error, candidateIdArg string) *GeocodeNoMatch {
+	return &GeocodeNoMatch{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, geocodeNoMatch: geocodeNoMatch{CandidateId: candidateIdArg}}
+}
+
+// GeocodeNoMatch is an error type.
+// The configured geocoding provider ran successfully but found nothing for this candidate's address — distinct from a network/provider failure, which surfaces as a generic error instead.
+type GeocodeNoMatch struct {
+	errorInstanceID uuid.UUID
+	geocodeNoMatch
+	cause error
+	stack werror.StackTrace
+}
+
+// IsGeocodeNoMatch returns true if err is an instance of GeocodeNoMatch.
+func IsGeocodeNoMatch(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*GeocodeNoMatch)
+	return ok
+}
+
+func (e *GeocodeNoMatch) Error() string {
+	return fmt.Sprintf("NOT_FOUND CongregationImport:GeocodeNoMatch (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *GeocodeNoMatch) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *GeocodeNoMatch) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *GeocodeNoMatch) Message() string {
+	return "NOT_FOUND CongregationImport:GeocodeNoMatch"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *GeocodeNoMatch) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *GeocodeNoMatch) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *GeocodeNoMatch) Name() string {
+	return "CongregationImport:GeocodeNoMatch"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *GeocodeNoMatch) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *GeocodeNoMatch) Parameters() map[string]interface{} {
+	return map[string]interface{}{"candidateId": e.CandidateId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *GeocodeNoMatch) safeParams() map[string]interface{} {
+	return map[string]interface{}{"candidateId": e.CandidateId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *GeocodeNoMatch) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *GeocodeNoMatch) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *GeocodeNoMatch) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e GeocodeNoMatch) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.geocodeNoMatch)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "CongregationImport:GeocodeNoMatch", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *GeocodeNoMatch) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters geocodeNoMatch
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.geocodeNoMatch = parameters
+	return nil
+}
+
 type invalidPageToken struct{}
 
 func (o invalidPageToken) MarshalYAML() (interface{}, error) {
@@ -1064,6 +1214,7 @@ func init() {
 	conjureerrors.RegisterErrorType("CongregationImport:AliasConflict", reflect.TypeOf(AliasConflict{}))
 	conjureerrors.RegisterErrorType("CongregationImport:CandidateNotFound", reflect.TypeOf(CandidateNotFound{}))
 	conjureerrors.RegisterErrorType("CongregationImport:Forbidden", reflect.TypeOf(Forbidden{}))
+	conjureerrors.RegisterErrorType("CongregationImport:GeocodeNoMatch", reflect.TypeOf(GeocodeNoMatch{}))
 	conjureerrors.RegisterErrorType("CongregationImport:InvalidPageToken", reflect.TypeOf(InvalidPageToken{}))
 	conjureerrors.RegisterErrorType("CongregationImport:NotApprovable", reflect.TypeOf(NotApprovable{}))
 	conjureerrors.RegisterErrorType("CongregationImport:NotEditable", reflect.TypeOf(NotEditable{}))

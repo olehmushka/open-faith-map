@@ -21,6 +21,7 @@ import type {
   IJurisdictionAlias,
   IJurisdictionAliasList,
   IRunPage,
+  ISuggestCoordinatesResponse,
   ITaxonAlias,
   ITaxonAliasList,
 } from "./openfaithmap/generated/congregationimport";
@@ -33,6 +34,7 @@ export type TaxonAlias = ITaxonAlias;
 export type TaxonAliasList = ITaxonAliasList;
 export type JurisdictionAlias = IJurisdictionAlias;
 export type JurisdictionAliasList = IJurisdictionAliasList;
+export type SuggestCoordinatesResponse = ISuggestCoordinatesResponse;
 
 export class CongregationImportApiError extends Error {
   constructor(
@@ -110,4 +112,12 @@ export async function listJurisdictionAliases(sourceCode?: string): Promise<Juri
 
 export async function createJurisdictionAlias(request: ICreateJurisdictionAliasRequest): Promise<JurisdictionAlias> {
   return unwrap((await client()).congregationImport.createJurisdictionAlias(request));
+}
+
+/**
+ * ADVISORY ONLY — returns a suggestion via the configured geocoding provider (Nominatim by
+ * default), never applies it. The caller must still call editCandidate to persist.
+ */
+export async function suggestCoordinates(candidateId: string): Promise<SuggestCoordinatesResponse> {
+  return unwrap((await client()).congregationImport.suggestCoordinates(candidateId));
 }

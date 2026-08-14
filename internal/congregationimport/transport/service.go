@@ -252,6 +252,24 @@ func (s *Service) CreateJurisdictionAlias(ctx context.Context, authHeader bearer
 	return toAPIJurisdictionAlias(a), nil
 }
 
+func (s *Service) SuggestCoordinates(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string) (gencongregationimport.SuggestCoordinatesResponse, error) {
+	personID, err := s.whoami(ctx, authHeader)
+	if err != nil {
+		return gencongregationimport.SuggestCoordinatesResponse{}, mapUpstreamErr(err)
+	}
+	result, err := s.appService.SuggestCoordinates(ctx, string(authHeader), personID, candidateIdArg)
+	if err != nil {
+		return gencongregationimport.SuggestCoordinatesResponse{}, mapErr(err, candidateIdArg, "")
+	}
+	return gencongregationimport.SuggestCoordinatesResponse{
+		Latitude:    result.Latitude,
+		Longitude:   result.Longitude,
+		Precision:   result.Precision,
+		DisplayName: result.DisplayName,
+		Provider:    result.Provider,
+	}, nil
+}
+
 func pageSizeOrDefault(p *int) int {
 	if p == nil || *p <= 0 {
 		return defaultPageSize

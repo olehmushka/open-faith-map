@@ -16,7 +16,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	congregationimportadapters "github.com/olehmushka/open-faith-map/internal/congregationimport/adapters"
+	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/arrnc"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/uaedr"
+	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/geocoders/nominatim"
 	congregationimportapplication "github.com/olehmushka/open-faith-map/internal/congregationimport/application"
 	congregationimportdomain "github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
 	congregationimporttransport "github.com/olehmushka/open-faith-map/internal/congregationimport/transport"
@@ -289,6 +291,26 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 		}
 		connectors = append(connectors, uaedrConnector)
 	}
+	// ar-rnc (Argentina's Registro Nacional de Cultos) — same optional/never-a-boot-failure pattern
+	// as uaedr above; ARRNC_FILE_PATH/ARRNC_SOURCE_URL are both optional and mutually exclusive
+	// (see arrnc.New). Unlike uaedr, this source is small (3.6MB, not ~326MB) — no HTTP-streaming
+	// mode exists or is needed, see arrnc's own package doc comment.
+	if arrncFilePath, arrncSourceURL := os.Getenv("ARRNC_FILE_PATH"), os.Getenv("ARRNC_SOURCE_URL"); arrncFilePath != "" || arrncSourceURL != "" {
+		arrncConnector, err := arrnc.New(arrncFilePath, arrncSourceURL, nil)
+		if err != nil {
+			pool.Close()
+			return nil, werror.WrapWithContextParams(ctx, err, "construct arrnc connector")
+		}
+		connectors = append(connectors, arrncConnector)
+	}
+	// Geocoders: a fixed registry, same shape/reasoning as the connectors slice above — Nominatim
+	// is free and keyless, so it's always registered (no env-gate needed to enable it), but which
+	// one actually SERVES SuggestCoordinates is still an env-driven choice
+	// (CONGREGATIONIMPORT_GEOCODER, application.Config.ActiveGeocoderCode), so adding a second
+	// provider (LocationIQ, Google) later — and switching to it — needs no code change here beyond
+	// one more append.
+	geocoders := []congregationimportdomain.Geocoder{nominatim.New(nil)}
+
 	congregationimportStore := congregationimportadapters.NewStore(pool)
 	congregationimportAppSvc := congregationimportapplication.NewService(congregationimportStore, congregationimportapplication.Config{
 		OikumeneaBaseURL:            oikumeneaBaseURL,
@@ -300,7 +322,8 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 			Audience:           "openfaithmap-api",
 			InsecureSkipVerify: insecureSkipVerify,
 		},
-	}, connectors)
+		ActiveGeocoderCode: os.Getenv("CONGREGATIONIMPORT_GEOCODER"),
+	}, connectors, geocoders)
 	congregationimportTransportSvc := congregationimporttransport.NewService(congregationimportAppSvc, congregationimporttransport.Config{
 		OikumeneaBaseURL:            oikumeneaBaseURL,
 		OikumeneaInsecureSkipVerify: insecureSkipVerify,
