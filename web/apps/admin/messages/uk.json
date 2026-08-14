@@ -62,7 +62,11 @@
     "jurisdictionUnitIdPlaceholder": "Jurisdiction unit id (blank = root)",
     "approve": "Approve",
     "rejectionReasonPlaceholder": "Rejection reason",
-    "reject": "Reject"
+    "reject": "Reject",
+    "congregationName": "Громада",
+    "status": "Статус",
+    "location": "Місце",
+    "filterRequests": "Фільтр заявок…"
   },
   "ReparentPage": {
     "heading": "Re-parent congregations",
@@ -82,7 +86,9 @@
     "lastMove": "last move: {oldParent} → {newParent} — {status}",
     "newParentUnitIdPlaceholder": "New parent unit id",
     "resumeMove": "Resume move",
-    "reparentButton": "Re-parent"
+    "reparentButton": "Re-parent",
+    "congregationName": "Громада",
+    "filterCongregations": "Фільтр громад…"
   },
   "SitePage": {
     "createHeading": "Create your site",
@@ -154,7 +160,12 @@
     "reasonPlaceholder": "Reason for this action",
     "takeAction": "Take action",
     "loadMore": "Load more",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "target": "Об'єкт",
+    "reasonCode": "Причина",
+    "status": "Статус",
+    "filterReports": "Фільтр завантажених скарг…",
+    "filedAtHeader": "Подано"
   },
   "AppealsPage": {
     "heading": "Appeals",
@@ -164,7 +175,11 @@
     "uphold": "Uphold",
     "overturn": "Overturn",
     "loadMore": "Load more",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "statement": "Заява",
+    "status": "Статус",
+    "filterAppeals": "Фільтр завантажених апеляцій…",
+    "filedAtHeader": "Подано"
   },
   "VouchingConsolePage": {
     "heading": "Vouching",
@@ -181,7 +196,8 @@
     "noVouches": "No vouches found.",
     "vouchLine": "{guarantor} vouched for {claimant}",
     "congregationLine": "Congregation: {unit}",
-    "filedAt": "Filed {date}"
+    "filedAt": "Filed {date}",
+    "newVouchLink": "Нове поручительство"
   },
   "NewVouchPage": {
     "heading": "Vouch for someone",
@@ -230,7 +246,11 @@
     "reasonPlaceholder": "Reason",
     "reject": "Reject",
     "loadMore": "Load more",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "name": "Назва",
+    "status": "Статус",
+    "source": "Джерело",
+    "filterCandidates": "Фільтр завантажених кандидатів…"
   },
   "CongregationImportAliasesPage": {
     "heading": "Congregation import — aliases",
@@ -247,5 +267,53 @@
     "add": "Add",
     "noAliases": "No aliases yet.",
     "global": "global"
+  },
+  "AdminShell": {
+    "brand": "OpenFaithMap Адмінка",
+    "sections": "Розділи",
+    "congregationImport": "Імпорт громад",
+    "aliases": "Псевдоніми",
+    "moderation": "Модерація",
+    "appeals": "Апеляції",
+    "registrations": "Реєстрації",
+    "reparent": "Зміна юрисдикції",
+    "vouching": "Поручительство",
+    "newVouch": "Нове поручительство",
+    "sites": "Сайти",
+    "signOut": "Вийти",
+    "commandPalette": "Командна панель",
+    "commandPalettePlaceholder": "Пошук команд або сайту…",
+    "commandPaletteNoResults": "Нічого не знайдено.",
+    "commandPaletteSites": "Сайти"
+  },
+  "AdminSitesPage": {
+    "heading": "Сайти",
+    "searchHeading": "Знайти сайт громади",
+    "searchPlaceholder": "Пошук за назвою юрисдикційної одиниці…",
+    "search": "Пошук",
+    "noResults": "Нічого не знайдено."
+  },
+  "AdminNotFoundPage": {
+    "heading": "Сторінку не знайдено",
+    "description": "Такої сторінки адмінки не існує, або вона була переміщена.",
+    "backLink": "До імпорту громад"
+  },
+  "NotFoundPage": {
+    "heading": "Сторінку не знайдено",
+    "description": "Такої сторінки не існує, або вона була переміщена.",
+    "backLink": "До входу"
+  },
+  "HomePage": {
+    "heading": "OpenFaithMap Адмінка",
+    "tagline": "Консоль модерації та оператора — перегляд заявок громад, модерація скарг і апеляцій, керування юрисдикціями та поручительство за адмінів громад.",
+    "adminHeading": "Консоль адмінки",
+    "adminDescription": "Імпорт громад, модерація, реєстрації, поручительство та сайти.",
+    "openAdmin": "Відкрити консоль адмінки",
+    "accountHeading": "Твій акаунт",
+    "accountDescription": "Дані сесії та твоя власна громада.",
+    "whoami": "Хто я",
+    "myCongregation": "Моя громада",
+    "signIn": "Увійти через Google",
+    "signOut": "Вийти"
   }
 }

@@ -1,8 +1,12 @@
 import { getTranslations } from "next-intl/server";
+import { FileText } from "lucide-react";
 
-import { auth } from "@/auth";
 import { createSite, getSite, updateSiteTheme } from "@/lib/content";
 import { Link, redirect } from "@/i18n/navigation";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Site creation + theme editor for one congregation's unit (M3, docs/modules/content.md). getSite
 // is a public-read call (ContentPublicService) — no site yet is a normal, expected state (a
@@ -14,9 +18,6 @@ export default async function SitePage({
   params: Promise<{ locale: string; unitId: string }>;
 }) {
   const { locale, unitId } = await params;
-  const session = await auth();
-  if (!session) return redirect({ href: "/login", locale });
-
   const t = await getTranslations("SitePage");
   const site = await getSite(unitId).catch(() => null);
 
@@ -39,19 +40,25 @@ export default async function SitePage({
     }
 
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 px-6 py-12">
+      <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
         <h1 className="text-2xl font-semibold">{t("createHeading")}</h1>
-        <p className="text-sm">{t("createIntro")}</p>
-        <form action={create} className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">{t("slugLabel")}</span>
-            <input name="slug" required pattern="[a-z0-9-]+" className="rounded border px-3 py-2" />
-          </label>
-          <button type="submit" className="rounded border px-4 py-2">
-            {t("createSubmit")}
-          </button>
-        </form>
-      </main>
+        <Card>
+          <CardHeader>
+            <CardDescription>{t("createIntro")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form action={create} className="flex flex-col gap-4">
+              <Label className="flex flex-col items-start gap-1">
+                {t("slugLabel")}
+                <Input name="slug" required pattern="[a-z0-9-]+" />
+              </Label>
+              <Button type="submit" className="self-start">
+                {t("createSubmit")}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -68,32 +75,41 @@ export default async function SitePage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 px-6 py-12">
-      <h1 className="text-2xl font-semibold">{t("siteHeading", { slug: site.slug })}</h1>
-      <Link href={`/admin/sites/${unitId}/documents`} className="underline">
-        {t("managePages")}
-      </Link>
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{t("siteHeading", { slug: site.slug })}</h1>
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/admin/sites/${unitId}/documents`}>
+            <FileText className="size-3.5" />
+            {t("managePages")}
+          </Link>
+        </Button>
+      </div>
 
-      <section>
-        <h2 className="text-lg font-medium">{t("themeHeading")}</h2>
-        <form action={saveTheme} className="mt-2 flex flex-col gap-4">
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">{t("accentColorLabel")}</span>
-            <input name="accentColor" defaultValue={theme.accentColor ?? ""} className="rounded border px-3 py-2" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">{t("fontPairingLabel")}</span>
-            <input name="fontPairing" defaultValue={theme.fontPairing ?? ""} className="rounded border px-3 py-2" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">{t("headerLayoutLabel")}</span>
-            <input name="headerLayout" defaultValue={theme.headerLayout ?? ""} className="rounded border px-3 py-2" />
-          </label>
-          <button type="submit" className="rounded border px-4 py-2">
-            {t("saveTheme")}
-          </button>
-        </form>
-      </section>
-    </main>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("themeHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form action={saveTheme} className="flex flex-col gap-4">
+            <Label className="flex flex-col items-start gap-1">
+              {t("accentColorLabel")}
+              <Input name="accentColor" defaultValue={theme.accentColor ?? ""} />
+            </Label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("fontPairingLabel")}
+              <Input name="fontPairing" defaultValue={theme.fontPairing ?? ""} />
+            </Label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("headerLayoutLabel")}
+              <Input name="headerLayout" defaultValue={theme.headerLayout ?? ""} />
+            </Label>
+            <Button type="submit" className="self-start">
+              {t("saveTheme")}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

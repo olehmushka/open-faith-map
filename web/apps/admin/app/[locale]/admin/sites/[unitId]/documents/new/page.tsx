@@ -1,9 +1,21 @@
 import { getTranslations } from "next-intl/server";
 
-import { auth } from "@/auth";
 import { createDocument, getSite, listDocuments } from "@/lib/content";
 import { DocumentKind } from "@/lib/openfaithmap/generated/content";
 import { redirect } from "@/i18n/navigation";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+
+const NO_PARENT = "__none__";
 
 export default async function NewDocumentPage({
   params,
@@ -13,9 +25,6 @@ export default async function NewDocumentPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { locale, unitId } = await params;
-  const session = await auth();
-  if (!session) return redirect({ href: "/login", locale });
-
   const t = await getTranslations("NewDocumentPage");
   const { error } = await searchParams;
   const site = await getSite(unitId).catch(() => null);
@@ -31,7 +40,8 @@ export default async function NewDocumentPage({
     const slug = String(formData.get("slug") ?? "");
     const translationGroupId = String(formData.get("translationGroupId") ?? "") || undefined;
     // Parent nesting only applies to PAGE — never send one for POST/EVENT (DB CHECK would reject it).
-    const parentDocumentId = kind === DocumentKind.PAGE ? String(formData.get("parentDocumentId") ?? "") || undefined : undefined;
+    const parentDocumentIdRaw = kind === DocumentKind.PAGE ? String(formData.get("parentDocumentId") ?? "") : "";
+    const parentDocumentId = parentDocumentIdRaw && parentDocumentIdRaw !== NO_PARENT ? parentDocumentIdRaw : undefined;
     const eventStartsAt = kind === DocumentKind.EVENT ? String(formData.get("eventStartsAt") ?? "") || undefined : undefined;
     const eventEndsAt = kind === DocumentKind.EVENT ? String(formData.get("eventEndsAt") ?? "") || undefined : undefined;
     const eventRecurrenceRrule = kind === DocumentKind.EVENT ? String(formData.get("eventRecurrenceRrule") ?? "") || undefined : undefined;
@@ -60,11 +70,11 @@ export default async function NewDocumentPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <h1 className="text-2xl font-semibold">{t("heading")}</h1>
 
       {error && (
-        <p className="rounded border border-red-500 p-3 text-sm">
+        <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
           {error === "Content:SlugTaken"
             ? t("errorSlugTaken")
             : error === "Content:EventMissingStart"
@@ -73,67 +83,77 @@ export default async function NewDocumentPage({
         </p>
       )}
 
-      <form action={create} className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{t("kindLabel")}</span>
-          <select name="kind" defaultValue={DocumentKind.PAGE} className="rounded border px-3 py-2">
-            <option value={DocumentKind.PAGE}>{t("kindPage")}</option>
-            <option value={DocumentKind.POST}>{t("kindPost")}</option>
-            <option value={DocumentKind.EVENT}>{t("kindEvent")}</option>
-          </select>
-        </label>
+      <Card>
+        <CardContent className="pt-6">
+          <form action={create} className="flex flex-col gap-4">
+            <Label className="flex flex-col items-start gap-1">
+              {t("kindLabel")}
+              <Select name="kind" defaultValue={DocumentKind.PAGE}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DocumentKind.PAGE}>{t("kindPage")}</SelectItem>
+                  <SelectItem value={DocumentKind.POST}>{t("kindPost")}</SelectItem>
+                  <SelectItem value={DocumentKind.EVENT}>{t("kindEvent")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </Label>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{t("localeLabel")}</span>
-          <input name="locale" required placeholder="eng" className="rounded border px-3 py-2" />
-        </label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("localeLabel")}
+              <Input name="locale" required placeholder="eng" />
+            </Label>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{t("slugLabel")}</span>
-          <input name="slug" required pattern="[a-z0-9-]+" className="rounded border px-3 py-2" />
-        </label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("slugLabel")}
+              <Input name="slug" required pattern="[a-z0-9-]+" />
+            </Label>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{t("parentPageLabel")}</span>
-          <select name="parentDocumentId" className="rounded border px-3 py-2">
-            <option value="">{t("parentPageNone")}</option>
-            {existingPages.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.slug} ({p.locale})
-              </option>
-            ))}
-          </select>
-        </label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("parentPageLabel")}
+              <Select name="parentDocumentId" defaultValue={NO_PARENT}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PARENT}>{t("parentPageNone")}</SelectItem>
+                  {existingPages.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.slug} ({p.locale})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Label>
 
-        <fieldset className="flex flex-col gap-4 rounded border p-3">
-          <legend className="px-1 text-sm font-medium">{t("eventFieldsLegend")}</legend>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm">{t("eventStartsAtLabel")}</span>
-            <input type="datetime-local" name="eventStartsAt" className="rounded border px-3 py-2" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm">{t("eventEndsAtLabel")}</span>
-            <input type="datetime-local" name="eventEndsAt" className="rounded border px-3 py-2" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm">{t("eventRecurrenceLabel")}</span>
-            <input name="eventRecurrenceRrule" placeholder="FREQ=WEEKLY;BYDAY=SU" className="rounded border px-3 py-2" />
-          </label>
-        </fieldset>
+            <fieldset className="flex flex-col gap-4 rounded-md border p-3">
+              <legend className="px-1 text-sm font-medium">{t("eventFieldsLegend")}</legend>
+              <Label className="flex flex-col items-start gap-1">
+                {t("eventStartsAtLabel")}
+                <Input type="datetime-local" name="eventStartsAt" />
+              </Label>
+              <Label className="flex flex-col items-start gap-1">
+                {t("eventEndsAtLabel")}
+                <Input type="datetime-local" name="eventEndsAt" />
+              </Label>
+              <Label className="flex flex-col items-start gap-1">
+                {t("eventRecurrenceLabel")}
+                <Input name="eventRecurrenceRrule" placeholder="FREQ=WEEKLY;BYDAY=SU" />
+              </Label>
+            </fieldset>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{t("translationGroupLabel")}</span>
-          <input
-            name="translationGroupId"
-            placeholder={t("translationGroupPlaceholder")}
-            className="rounded border px-3 py-2"
-          />
-        </label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("translationGroupLabel")}
+              <Input name="translationGroupId" placeholder={t("translationGroupPlaceholder")} />
+            </Label>
 
-        <button type="submit" className="rounded border px-4 py-2">
-          {t("submit")}
-        </button>
-      </form>
-    </main>
+            <Button type="submit" className="self-start">
+              {t("submit")}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

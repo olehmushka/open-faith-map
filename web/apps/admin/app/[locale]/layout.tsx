@@ -4,7 +4,6 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 
 import { routing } from "@/i18n/routing";
-import { LocaleSwitcher } from "./locale-switcher";
 import "../globals.css";
 
 export function generateStaticParams() {
@@ -35,12 +34,7 @@ export default async function RootLayout({
   return (
     <html lang={locale}>
       <body>
-        <NextIntlClientProvider>
-          <header className="flex justify-end border-b px-6 py-2">
-            <LocaleSwitcher />
-          </header>
-          {children}
-        </NextIntlClientProvider>
+        <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>
     </html>
   );

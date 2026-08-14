@@ -62,7 +62,11 @@
     "jurisdictionUnitIdPlaceholder": "Jurisdiction unit id (blank = root)",
     "approve": "Approve",
     "rejectionReasonPlaceholder": "Rejection reason",
-    "reject": "Reject"
+    "reject": "Reject",
+    "congregationName": "Congregação",
+    "status": "Status",
+    "location": "Localização",
+    "filterRequests": "Filtrar solicitações…"
   },
   "ReparentPage": {
     "heading": "Re-parent congregations",
@@ -82,7 +86,9 @@
     "lastMove": "last move: {oldParent} → {newParent} — {status}",
     "newParentUnitIdPlaceholder": "New parent unit id",
     "resumeMove": "Resume move",
-    "reparentButton": "Re-parent"
+    "reparentButton": "Re-parent",
+    "congregationName": "Congregação",
+    "filterCongregations": "Filtrar congregações…"
   },
   "SitePage": {
     "createHeading": "Create your site",
@@ -154,7 +160,12 @@
     "reasonPlaceholder": "Reason for this action",
     "takeAction": "Take action",
     "loadMore": "Load more",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "target": "Alvo",
+    "reasonCode": "Motivo",
+    "status": "Status",
+    "filterReports": "Filtrar denúncias carregadas…",
+    "filedAtHeader": "Registrado"
   },
   "AppealsPage": {
     "heading": "Appeals",
@@ -164,7 +175,11 @@
     "uphold": "Uphold",
     "overturn": "Overturn",
     "loadMore": "Load more",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "statement": "Declaração",
+    "status": "Status",
+    "filterAppeals": "Filtrar recursos carregados…",
+    "filedAtHeader": "Registrado"
   },
   "VouchingConsolePage": {
     "heading": "Vouching",
@@ -181,7 +196,8 @@
     "noVouches": "No vouches found.",
     "vouchLine": "{guarantor} vouched for {claimant}",
     "congregationLine": "Congregation: {unit}",
-    "filedAt": "Filed {date}"
+    "filedAt": "Filed {date}",
+    "newVouchLink": "Novo aval"
   },
   "NewVouchPage": {
     "heading": "Vouch for someone",
@@ -230,7 +246,11 @@
     "reasonPlaceholder": "Reason",
     "reject": "Reject",
     "loadMore": "Load more",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "name": "Nome",
+    "status": "Status",
+    "source": "Fonte",
+    "filterCandidates": "Filtrar candidatos carregados…"
   },
   "CongregationImportAliasesPage": {
     "heading": "Congregation import — aliases",
@@ -247,5 +267,53 @@
     "add": "Add",
     "noAliases": "No aliases yet.",
     "global": "global"
+  },
+  "AdminShell": {
+    "brand": "OpenFaithMap Admin",
+    "sections": "Seções",
+    "congregationImport": "Importação de congregações",
+    "aliases": "Apelidos",
+    "moderation": "Moderação",
+    "appeals": "Recursos",
+    "registrations": "Registros",
+    "reparent": "Reatribuir jurisdição",
+    "vouching": "Aval",
+    "newVouch": "Novo aval",
+    "sites": "Sites",
+    "signOut": "Sair",
+    "commandPalette": "Paleta de comandos",
+    "commandPalettePlaceholder": "Buscar comandos ou um site…",
+    "commandPaletteNoResults": "Nenhum resultado encontrado.",
+    "commandPaletteSites": "Sites"
+  },
+  "AdminSitesPage": {
+    "heading": "Sites",
+    "searchHeading": "Encontrar o site de uma congregação",
+    "searchPlaceholder": "Buscar pelo nome da unidade jurisdicional…",
+    "search": "Buscar",
+    "noResults": "Nenhum resultado encontrado."
+  },
+  "AdminNotFoundPage": {
+    "heading": "Página não encontrada",
+    "description": "A página de administração que você procura não existe ou pode ter sido movida.",
+    "backLink": "Voltar para Importação de congregações"
+  },
+  "NotFoundPage": {
+    "heading": "Página não encontrada",
+    "description": "A página que você procura não existe ou pode ter sido movida.",
+    "backLink": "Ir para o login"
+  },
+  "HomePage": {
+    "heading": "OpenFaithMap Admin",
+    "tagline": "O console de moderação e operador — revise submissões de congregações, modere denúncias e recursos, gerencie jurisdições e avalize administradores de congregações.",
+    "adminHeading": "Console de administração",
+    "adminDescription": "Importação de congregações, moderação, registros, aval e sites.",
+    "openAdmin": "Abrir console de administração",
+    "accountHeading": "Sua conta",
+    "accountDescription": "Detalhes da sessão e sua própria congregação.",
+    "whoami": "Quem sou eu",
+    "myCongregation": "Minha congregação",
+    "signIn": "Entrar com o Google",
+    "signOut": "Sair"
   }
 }

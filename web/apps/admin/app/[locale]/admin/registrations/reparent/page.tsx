@@ -1,9 +1,13 @@
 import { getTranslations } from "next-intl/server";
 
-import { auth } from "@/auth";
 import { createJurisdictionUnit, searchJurisdictionUnits } from "@/lib/jurisdiction";
 import { getReparentStatus, listRegistrations, reparentRegistration } from "@/lib/registration";
 import { redirect } from "@/i18n/navigation";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { ReparentList } from "./reparent-list";
 
 // Re-parenting an already-APPROVED congregation's unit onto a different jurisdiction (M4.1,
 // D-JurisdictionUnits) — separate from the approval flow (page.tsx) since it acts on a congregation
@@ -18,9 +22,6 @@ export default async function ReparentPage({
   searchParams: Promise<{ jurisdictionQuery?: string }>;
 }) {
   const { locale } = await params;
-  const session = await auth();
-  if (!session) return redirect({ href: "/login", locale });
-
   const t = await getTranslations("ReparentPage");
   const { requests } = await listRegistrations("APPROVED");
   const { jurisdictionQuery } = await searchParams;
@@ -29,7 +30,7 @@ export default async function ReparentPage({
   const jobs = await Promise.all(
     requests.map(async (r) => ({ requestId: r.id, job: await getReparentStatus(r.id) })),
   );
-  const jobByRequestId = new Map(jobs.map((j) => [j.requestId, j.job]));
+  const jobByRequestId = new Map(jobs.filter((j) => j.job).map((j) => [j.requestId, j.job!]));
 
   async function createJurisdiction(formData: FormData) {
     "use server";
@@ -56,90 +57,69 @@ export default async function ReparentPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-12">
-      <h1 className="text-2xl font-semibold">{t("heading")}</h1>
-      <p className="text-sm">{t("intro")}</p>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+        <p className="text-sm text-muted-foreground">{t("intro")}</p>
+      </div>
 
-      <section className="rounded border p-4">
-        <h2 className="font-medium">{t("jurisdictionUnitsHeading")}</h2>
-        <form action={`/${locale}/admin/registrations/reparent`} className="mt-2 flex gap-2">
-          <input
-            name="jurisdictionQuery"
-            defaultValue={jurisdictionQuery}
-            placeholder={t("jurisdictionSearchPlaceholder")}
-            className="rounded border px-2 py-1 text-sm"
-          />
-          <button type="submit" className="rounded border px-3 py-1 text-sm">
-            {t("search")}
-          </button>
-        </form>
-        {jurisdictionQuery && (
-          <ul className="mt-3 flex flex-col gap-1 text-sm">
-            {jurisdictionResults.length === 0 && <li>{t("noMatches")}</li>}
-            {jurisdictionResults.map((u) => (
-              <li key={u.id} className="flex gap-2">
-                <code className="rounded bg-gray-100 px-1">{u.id}</code>
-                <span>{u.name}</span>
-                {u.code && <span className="text-gray-500">({u.code})</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-        <form action={createJurisdiction} className="mt-3 flex flex-wrap gap-2">
-          <input name="code" placeholder={t("newUnitCodePlaceholder")} required className="rounded border px-2 py-1 text-sm" />
-          <input name="name" placeholder={t("newUnitNamePlaceholder")} required className="rounded border px-2 py-1 text-sm" />
-          <input
-            name="parentUnitId"
-            placeholder={t("parentUnitIdPlaceholder")}
-            className="rounded border px-2 py-1 text-sm"
-          />
-          <button type="submit" className="rounded border px-3 py-1 text-sm">
-            {t("createJurisdictionUnit")}
-          </button>
-        </form>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("jurisdictionUnitsHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <form action={`/${locale}/admin/registrations/reparent`} className="flex gap-2">
+            <Input
+              name="jurisdictionQuery"
+              defaultValue={jurisdictionQuery}
+              placeholder={t("jurisdictionSearchPlaceholder")}
+              className="h-8 max-w-sm"
+            />
+            <Button type="submit" variant="outline" size="sm">
+              {t("search")}
+            </Button>
+          </form>
+          {jurisdictionQuery && (
+            <ul className="flex flex-col gap-1 text-sm">
+              {jurisdictionResults.length === 0 && <li className="text-muted-foreground">{t("noMatches")}</li>}
+              {jurisdictionResults.map((u) => (
+                <li key={u.id} className="flex items-center gap-2">
+                  <code className="rounded bg-muted px-1">{u.id}</code>
+                  <span>{u.name}</span>
+                  {u.code && <span className="text-muted-foreground">({u.code})</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <form action={createJurisdiction} className="flex flex-wrap gap-2">
+            <Input name="code" placeholder={t("newUnitCodePlaceholder")} required className="h-8" />
+            <Input name="name" placeholder={t("newUnitNamePlaceholder")} required className="h-8" />
+            <Input name="parentUnitId" placeholder={t("parentUnitIdPlaceholder")} className="h-8" />
+            <Button type="submit" size="sm">
+              {t("createJurisdictionUnit")}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-      {requests.length === 0 && <p>{t("noApprovedCongregations")}</p>}
-      <ul className="flex flex-col gap-4">
-        {requests.map((r) => {
-          const job = jobByRequestId.get(r.id) ?? null;
-          return (
-            <li key={r.id} className="rounded border p-4">
-              <div className="flex items-baseline justify-between">
-                <span className="font-medium">{r.congregationName}</span>
-                <span className="text-sm text-gray-500">{t("unitLabel", { unitId: r.createdUnitId ?? "" })}</span>
-              </div>
-              <p className="text-sm">
-                {t("currentJurisdiction", {
-                  value: r.jurisdictionUnitId ?? t("currentJurisdictionNone"),
-                })}
-              </p>
-              {job && (
-                <p className="text-sm">
-                  {t("lastMove", {
-                    oldParent: job.oldParentUnitId,
-                    newParent: job.newParentUnitId,
-                    status: job.status,
-                  })}
-                  {job.error && <span className="text-red-600"> ({job.error})</span>}
-                </p>
-              )}
-              <form action={reparent} className="mt-3 flex gap-2">
-                <input type="hidden" name="id" value={r.id} />
-                <input
-                  name="newParentUnitId"
-                  placeholder={t("newParentUnitIdPlaceholder")}
-                  required
-                  className="rounded border px-2 py-1 text-sm"
-                />
-                <button type="submit" className="rounded border px-3 py-1 text-sm">
-                  {job && job.status !== "VERIFIED" && job.status !== "FAILED" ? t("resumeMove") : t("reparentButton")}
-                </button>
-              </form>
-            </li>
-          );
-        })}
-      </ul>
-    </main>
+      <ReparentList
+        requests={requests}
+        jobByRequestId={jobByRequestId}
+        onReparent={reparent}
+        labels={{
+          noApprovedCongregations: t("noApprovedCongregations"),
+          congregationName: t("congregationName"),
+          currentJurisdiction: (value: string) => t("currentJurisdiction", { value }),
+          currentJurisdictionNone: t("currentJurisdictionNone"),
+          lastMove: (oldParent: string, newParent: string, status: string) =>
+            t("lastMove", { oldParent, newParent, status }),
+          unitLabel: (unitId: string) => t("unitLabel", { unitId }),
+          newParentUnitIdPlaceholder: t("newParentUnitIdPlaceholder"),
+          resumeMove: t("resumeMove"),
+          reparentButton: t("reparentButton"),
+          filterCongregations: t("filterCongregations"),
+        }}
+      />
+    </div>
   );
 }

@@ -3,7 +3,6 @@
 
 import { getTranslations } from "next-intl/server";
 
-import { auth } from "@/auth";
 import {
   approveCandidate,
   editCandidate,
@@ -14,9 +13,20 @@ import {
 } from "@/lib/congregation-import";
 import { listCountriesForPicker, listTaxaForPicker } from "@/lib/dictionaries";
 import { createJurisdictionUnit, searchJurisdictionUnits } from "@/lib/jurisdiction";
+import { refreshRegionAroundPoint } from "@/lib/discovery";
 import { redirect } from "@/i18n/navigation";
+import { Link } from "@/i18n/navigation";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
 
-import { CandidateList } from "./candidate-list";
+import { CandidateList, UNSET_OPTION } from "./candidate-list";
 
 const STATUSES = [
   "STAGED",
@@ -58,13 +68,11 @@ export default async function CongregationImportPage({
   searchParams: Promise<{ status?: string }>;
 }) {
   const { locale } = await params;
-  const session = await auth();
-  if (!session) return redirect({ href: "/login", locale });
-
   const t = await getTranslations("CongregationImportPage");
-  const { status } = await searchParams;
+  const { status: statusRaw } = await searchParams;
+  const status = statusRaw && statusRaw !== UNSET_OPTION ? statusRaw : undefined;
   const [{ candidates, nextPageToken }, taxa, countries] = await Promise.all([
-    listCandidates(status || undefined),
+    listCandidates(status),
     listTaxaForPicker(locale),
     listCountriesForPicker(locale),
   ]);
@@ -81,8 +89,10 @@ export default async function CongregationImportPage({
   async function edit(formData: FormData) {
     "use server";
     const id = String(formData.get("id"));
-    const taxonId = String(formData.get("taxonId") ?? "").trim() || undefined;
-    const countryId = String(formData.get("countryId") ?? "").trim() || undefined;
+    const taxonIdRaw = String(formData.get("taxonId") ?? "").trim();
+    const taxonId = taxonIdRaw && taxonIdRaw !== UNSET_OPTION ? taxonIdRaw : undefined;
+    const countryIdRaw = String(formData.get("countryId") ?? "").trim();
+    const countryId = countryIdRaw && countryIdRaw !== UNSET_OPTION ? countryIdRaw : undefined;
     const latitudeRaw = String(formData.get("latitude") ?? "").trim();
     const longitudeRaw = String(formData.get("longitude") ?? "").trim();
     await editCandidate(id, {
@@ -98,7 +108,8 @@ export default async function CongregationImportPage({
     "use server";
     const id = String(formData.get("id"));
     const jurisdictionUnitId = String(formData.get("jurisdictionUnitId") ?? "").trim() || undefined;
-    await approveCandidate(id, jurisdictionUnitId);
+    const approved = await approveCandidate(id, jurisdictionUnitId);
+    await refreshRegionAroundPoint(approved.latitude, approved.longitude);
     redirect({ href: "/admin/congregation-import", locale });
   }
 
@@ -113,7 +124,7 @@ export default async function CongregationImportPage({
 
   async function loadMoreCandidates(pageToken: string) {
     "use server";
-    return listCandidates(status || undefined, undefined, pageToken);
+    return listCandidates(status, undefined, pageToken);
   }
 
   // Thin "use server" wrappers — searchJurisdictionUnits/createJurisdictionUnit aren't themselves
@@ -138,39 +149,53 @@ export default async function CongregationImportPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-12">
-      <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/admin/congregation-import/aliases">{t("manageAliases")}</Link>
+        </Button>
+      </div>
 
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded border p-4">
-        <form action={triggerRun} className="flex gap-2">
-          <select name="sourceCode" defaultValue={SOURCE_CODES[0]} className="rounded border px-2 py-1 text-sm">
-            {SOURCE_CODES.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className="rounded border px-3 py-1 text-sm">
-            {t("runConnector")}
-          </button>
-        </form>
-        <form action={`/${locale}/admin/congregation-import`} className="flex gap-2">
-          <select name="status" defaultValue={status ?? ""} className="rounded border px-2 py-1 text-sm">
-            <option value="">{t("allStatuses")}</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className="rounded border px-3 py-1 text-sm">
-            {t("filter")}
-          </button>
-        </form>
-        <a href={`/${locale}/admin/congregation-import/aliases`} className="text-sm underline">
-          {t("manageAliases")}
-        </a>
-      </section>
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-3 pt-6">
+          <form action={triggerRun} className="flex gap-2">
+            <Select name="sourceCode" defaultValue={SOURCE_CODES[0]}>
+              <SelectTrigger size="sm" className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SOURCE_CODES.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="submit" size="sm">
+              {t("runConnector")}
+            </Button>
+          </form>
+          <form action={`/${locale}/admin/congregation-import`} className="flex gap-2">
+            <Select name="status" defaultValue={status ?? UNSET_OPTION}>
+              <SelectTrigger size="sm" className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNSET_OPTION}>{t("allStatuses")}</SelectItem>
+                {STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="submit" variant="outline" size="sm">
+              {t("filter")}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <CandidateList
         initialCandidates={candidates}
@@ -218,6 +243,6 @@ export default async function CongregationImportPage({
           loading: t("loading"),
         }}
       />
-    </main>
+    </div>
   );
 }

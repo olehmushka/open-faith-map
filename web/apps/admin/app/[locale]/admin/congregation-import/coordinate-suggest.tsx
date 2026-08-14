@@ -4,6 +4,12 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { MapPin } from "lucide-react";
+
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 // latitude/longitude come back as `number | "NaN"` — conjure-typescript's own encoding for a wire
 // `double`, not something this endpoint ever actually returns as "NaN" in practice (a real geocode
@@ -74,19 +80,22 @@ export function CoordinateSuggest({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col text-xs">
+        <Label className="flex flex-col items-start gap-1 text-xs">
           {labels.latitude}
-          <input ref={latRef} name="latitude" defaultValue={defaultLatitude ?? ""} className="w-24 rounded border px-2 py-1 text-sm" />
-        </label>
-        <label className="flex flex-col text-xs">
+          <Input ref={latRef} name="latitude" defaultValue={defaultLatitude ?? ""} className="h-8 w-24" />
+        </Label>
+        <Label className="flex flex-col items-start gap-1 text-xs">
           {labels.longitude}
-          <input ref={lngRef} name="longitude" defaultValue={defaultLongitude ?? ""} className="w-24 rounded border px-2 py-1 text-sm" />
-        </label>
-        <button type="button" onClick={handleSuggest} disabled={isPending} className="rounded border px-2 py-1 text-sm">
+          <Input ref={lngRef} name="longitude" defaultValue={defaultLongitude ?? ""} className="h-8 w-24" />
+        </Label>
+        <Button type="button" variant="outline" size="sm" onClick={handleSuggest} disabled={isPending}>
+          <MapPin className="size-3.5" />
           {isPending ? labels.suggesting : labels.suggestCoordinates}
-        </button>
+        </Button>
       </div>
-      {message && <span className={`text-xs ${isError ? "text-red-600" : "text-gray-500"}`}>{message}</span>}
+      {message && (
+        <span className={cn("text-xs", isError ? "text-destructive" : "text-muted-foreground")}>{message}</span>
+      )}
     </div>
   );
 }

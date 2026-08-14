@@ -3,11 +3,23 @@
 
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
+import type { ColumnDef } from "@tanstack/react-table";
 
 import type { ActionKind } from "@/lib/moderation";
 import type { IReport, IReportPage } from "@/lib/openfaithmap/generated/moderation";
+import { DataTable } from "@/components/data-table";
+import { ReportStatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ACTION_KINDS: ActionKind[] = ["HIDE", "SUSPEND", "ARCHIVE", "WARN_ADMIN", "REVOKE_VOUCH"];
 
@@ -15,7 +27,9 @@ const ACTION_KINDS: ActionKind[] = ["HIDE", "SUSPEND", "ARCHIVE", "WARN_ADMIN", 
 // ListReports has real keyset pagination as of this milestone, previously always returned every
 // row in one shot. Pagination state lives here, purely additive to takeAction's own lifecycle
 // (still a page-level Server Action that redirect()s after a mutation, resetting to page 1 —
-// acceptable, since taking an action changes queue contents anyway).
+// acceptable, since taking an action changes queue contents anyway). Rows render through
+// DataTable, same reusable sort/filter shell as CandidateList; the take-action form is small
+// enough to stay inline in an actions cell rather than needing a row-expansion panel.
 export function ReportList({
   initialReports,
   initialNextPageToken,
@@ -50,56 +64,86 @@ export function ReportList({
     });
   }
 
+  const columns = useMemo<ColumnDef<IReport>[]>(
+    () => [
+      {
+        id: "target",
+        header: t("target"),
+        accessorFn: (r) => `${r.targetKind} ${r.targetRef}`,
+        cell: ({ row }) => (
+          <div className="flex flex-col">
+            <span className="font-medium">{row.original.targetKind}</span>
+            <span className="text-xs text-muted-foreground">{row.original.targetRef}</span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "reasonCode",
+        header: t("reasonCode"),
+      },
+      {
+        accessorKey: "status",
+        header: t("status"),
+        cell: ({ row }) => <ReportStatusBadge status={row.original.status} />,
+      },
+      {
+        id: "filedAt",
+        header: t("filedAtHeader"),
+        accessorKey: "createdAt",
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">{row.original.createdAt}</span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <form action={takeAction} className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <input type="hidden" name="reportId" value={r.id} />
+              <Select name="actionKind" defaultValue={ACTION_KINDS[0]}>
+                <SelectTrigger size="sm" className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTION_KINDS.map((kind) => (
+                    <SelectItem key={kind} value={kind}>
+                      {kind}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input name="reason" placeholder={labels.reasonPlaceholder} required className="h-8 w-48" />
+              <Button type="submit" size="sm">
+                {labels.takeAction}
+              </Button>
+            </form>
+          );
+        },
+      },
+    ],
+    [t, takeAction, labels],
+  );
+
   if (reports.length === 0) {
-    return <p>{labels.noReports}</p>;
+    return <p className="text-muted-foreground">{labels.noReports}</p>;
   }
 
   return (
-    <>
-      <ul className="flex flex-col gap-4">
-        {reports.map((r) => (
-          <li key={r.id} className="rounded border p-4">
-            <div className="flex items-baseline justify-between">
-              <span className="font-medium">
-                {r.targetKind}: {r.targetRef}
-              </span>
-              <span className="text-sm">{r.reasonCode}</span>
-            </div>
-            {r.detail && <p className="text-sm">{r.detail}</p>}
-            <p className="text-sm text-gray-500">{t("filedAt", { date: r.createdAt })}</p>
-
-            <form action={takeAction} className="mt-3 flex flex-wrap gap-2">
-              <input type="hidden" name="reportId" value={r.id} />
-              <select name="actionKind" className="rounded border px-2 py-1 text-sm" defaultValue={ACTION_KINDS[0]}>
-                {ACTION_KINDS.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kind}
-                  </option>
-                ))}
-              </select>
-              <input
-                name="reason"
-                placeholder={labels.reasonPlaceholder}
-                required
-                className="rounded border px-2 py-1 text-sm"
-              />
-              <button type="submit" className="rounded border px-3 py-1 text-sm">
-                {labels.takeAction}
-              </button>
-            </form>
-          </li>
-        ))}
-      </ul>
+    <div className="flex flex-col gap-3">
+      <DataTable
+        columns={columns}
+        data={reports}
+        globalFilterPlaceholder={t("filterReports")}
+        emptyMessage={labels.noReports}
+      />
       {nextPageToken && (
-        <button
-          type="button"
-          onClick={handleLoadMore}
-          disabled={isPending}
-          className="self-start rounded border px-3 py-1 text-sm"
-        >
+        <Button type="button" variant="outline" size="sm" onClick={handleLoadMore} disabled={isPending} className="self-start">
           {isPending ? labels.loading : labels.loadMore}
-        </button>
+        </Button>
       )}
-    </>
+    </div>
   );
 }
