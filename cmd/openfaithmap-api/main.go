@@ -13,10 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	congregationimportadapters "github.com/olehmushka/open-faith-map/internal/congregationimport/adapters"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/arrnc"
+	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/osm"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/uaedr"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/geocoders/nominatim"
 	congregationimportapplication "github.com/olehmushka/open-faith-map/internal/congregationimport/application"
@@ -302,6 +304,26 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 			return nil, werror.WrapWithContextParams(ctx, err, "construct arrnc connector")
 		}
 		connectors = append(connectors, arrncConnector)
+	}
+	// osm (OpenStreetMap, Overpass API) — same optional/never-a-boot-failure pattern as uaedr/arrnc
+	// above, gated on OSM_COUNTRY_CODES rather than a file/URL pair since OSM_OVERPASS_BASE_URL has a
+	// sensible default (overpass.kumi.systems — see osm's own package doc comment for why this mirror
+	// was chosen over the main OSM-Foundation-run one). OSM_COUNTRY_CODES is a comma-separated list
+	// of ISO 3166-1 alpha-2 codes (e.g. "UY,PY,CO,CL"), deliberately not defaulted here — the
+	// operator must opt in to a country list explicitly.
+	if osmCountryCodesRaw := os.Getenv("OSM_COUNTRY_CODES"); osmCountryCodesRaw != "" {
+		var osmCountryCodes []string
+		for _, code := range strings.Split(osmCountryCodesRaw, ",") {
+			if code = strings.TrimSpace(code); code != "" {
+				osmCountryCodes = append(osmCountryCodes, code)
+			}
+		}
+		osmConnector, err := osm.New(os.Getenv("OSM_OVERPASS_BASE_URL"), osmCountryCodes, nil)
+		if err != nil {
+			pool.Close()
+			return nil, werror.WrapWithContextParams(ctx, err, "construct osm connector")
+		}
+		connectors = append(connectors, osmConnector)
 	}
 	// Geocoders: a fixed registry, same shape/reasoning as the connectors slice above — Nominatim
 	// is free and keyless, so it's always registered (no env-gate needed to enable it), but which

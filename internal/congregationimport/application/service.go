@@ -11,6 +11,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 
 	oikumenea "github.com/olehmushka/go-oikumenea/clients/go"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters"
@@ -83,10 +84,29 @@ func (s *Service) serviceClient(ctx context.Context) (*oikumenea.Client, error) 
 // exhaustion (a nil nextCursor) or ctx is cancelled. Every batch's D-Exclusions/taxon-match/dedup
 // pass runs before that batch is written, so a crash mid-run leaves only fully-processed candidates
 // behind, never a half-checked one.
-func (s *Service) RunConnector(ctx context.Context, sourceCode, triggeredByPersonRID string) (domain.Run, error) {
-	connector, ok := s.connectors[sourceCode]
+func (s *Service) RunConnector(ctx context.Context, sourceCode, triggeredByPersonRID string, parameters map[string]string) (domain.Run, error) {
+	base, ok := s.connectors[sourceCode]
 	if !ok {
 		return domain.Run{}, domain.ErrRunNotFound
+	}
+	// Always run against a FRESH, run-scoped connector value — never the long-lived registry
+	// instance directly. Real bug fixed by this (found live 2026-08-14): a connector holding
+	// in-memory state across Fetch calls (arrnc/osm's loadOnce-cached rows) would otherwise silently
+	// replay a PRIOR run's data forever on every subsequent call against the same registered
+	// instance, never re-querying the real source. See domain.Connector.Clone's own doc comment.
+	var connector domain.Connector
+	if len(parameters) > 0 {
+		configurable, ok := base.(domain.ConnectorConfigurable)
+		if !ok {
+			return domain.Run{}, domain.ErrRunParametersNotSupported
+		}
+		configured, cerr := configurable.WithParameters(parameters)
+		if cerr != nil {
+			return domain.Run{}, fmt.Errorf("congregationimport: apply run parameters: %w", cerr)
+		}
+		connector = configured
+	} else {
+		connector = base.Clone()
 	}
 	// Some connectors (an HTTP-streaming source) hold run-scoped resources across Fetch calls that
 	// only their own success path releases — without this, an error/ctx-cancellation exit below
@@ -96,7 +116,7 @@ func (s *Service) RunConnector(ctx context.Context, sourceCode, triggeredByPerso
 		defer func() { _ = closer.Close() }()
 	}
 
-	run, err := s.store.CreateRun(ctx, sourceCode, triggeredByPersonRID, nil)
+	run, err := s.store.CreateRun(ctx, sourceCode, triggeredByPersonRID, parameters, nil)
 	if err != nil {
 		return domain.Run{}, err
 	}
@@ -288,6 +308,6 @@ func (s *Service) GetCandidate(ctx context.Context, id string) (domain.Candidate
 	return s.store.GetCandidate(ctx, id)
 }
 
-func (s *Service) ListCandidates(ctx context.Context, status *domain.Status, pageSize int, after *domain.PageCursor) ([]domain.Candidate, error) {
-	return s.store.ListCandidates(ctx, status, pageSize+1, after)
+func (s *Service) ListCandidates(ctx context.Context, status *domain.Status, sourceCode *string, pageSize int, after *domain.PageCursor) ([]domain.Candidate, error) {
+	return s.store.ListCandidates(ctx, status, sourceCode, pageSize+1, after)
 }

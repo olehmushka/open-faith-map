@@ -205,11 +205,13 @@ type ImportRun struct {
 	SourceCode          string    `json:"sourceCode"`
 	Status              RunStatus `json:"status"`
 	TriggeredByPersonId string    `json:"triggeredByPersonId"`
-	CursorAtStart       *string   `json:"cursorAtStart,omitempty"`
-	CursorAtEnd         *string   `json:"cursorAtEnd,omitempty"`
-	RecordsFetched      int       `json:"recordsFetched"`
-	CandidatesCreated   int       `json:"candidatesCreated"`
-	CandidatesUpdated   int       `json:"candidatesUpdated"`
+	// What the caller actually supplied to runConnector, if anything (e.g. osm's countryCodes override) — nil for the common no-parameters case.
+	Parameters        *map[string]string `json:"parameters,omitempty"`
+	CursorAtStart     *string            `json:"cursorAtStart,omitempty"`
+	CursorAtEnd       *string            `json:"cursorAtEnd,omitempty"`
+	RecordsFetched    int                `json:"recordsFetched"`
+	CandidatesCreated int                `json:"candidatesCreated"`
+	CandidatesUpdated int                `json:"candidatesUpdated"`
 	// Candidates this run rejected automatically via the D-Exclusions check.
 	CandidatesAutoRejected int `json:"candidatesAutoRejected"`
 	// Set only when status = FAILED.
@@ -326,6 +328,8 @@ func (o *RejectCandidateRequest) UnmarshalYAML(unmarshal func(interface{}) error
 
 type RunConnectorRequest struct {
 	SourceCode string `json:"sourceCode"`
+	// Connector-specific run parameters (e.g. {"countryCodes": "UY,PY"} for osm). Only connectors implementing ConnectorConfigurable accept a non-empty map here — supplying one for a connector that doesn't returns an error rather than being silently ignored. Omit or leave empty to run with the connector's own deploy-time configuration.
+	Parameters *map[string]string `json:"parameters,omitempty"`
 }
 
 func (o RunConnectorRequest) MarshalYAML() (interface{}, error) {

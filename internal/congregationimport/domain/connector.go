@@ -41,6 +41,16 @@ type Connector interface {
 	Fetch(ctx context.Context, cursor *string) (batch []RawRecord, nextCursor *string, err error)
 	// Normalize maps one connector-native RawRecord onto the common NormalizedCandidate shape.
 	Normalize(raw RawRecord) (NormalizedCandidate, error)
+	// Clone returns a fresh Connector value carrying the same fixed deployment config (file path,
+	// source URL, HTTP client) but zero run-scoped mutable state (in-memory caches, open streams,
+	// locks). RunConnector calls this (or WithParameters, for a ConnectorConfigurable connector when
+	// the operator supplies run parameters) exactly once per run, so a long-lived, boot-registered
+	// instance's state from a PRIOR run can never leak into this one — real bug found live
+	// 2026-08-14: arrnc/osm's sync.Once-cached in-memory rows meant a second RunConnector call
+	// against the same registered instance silently replayed the first run's data forever, never
+	// re-querying the real source. No revalidation is needed here — the original instance was
+	// already validated at construction.
+	Clone() Connector
 }
 
 // ConnectorCloser is an optional interface a Connector implements when it holds run-scoped
@@ -51,4 +61,16 @@ type Connector interface {
 // Close via a deferred, best-effort call whenever a connector implements it.
 type ConnectorCloser interface {
 	Close() error
+}
+
+// ConnectorConfigurable is implemented by a connector with genuine run-time parameters an operator
+// might reasonably vary per RunConnector call (e.g. osm's CountryCodes — "which subset of data
+// should this run cover"), as distinct from fixed deployment config (a file path, a base URL)
+// nobody would reasonably override per click of a button. WithParameters returns a fresh Connector
+// value scoped to this one run (same freshness guarantee as Clone, and callers should never call
+// both) with the given overrides applied — never mutates the receiver. An unrecognized parameter
+// key or an invalid value must be a clear, wrapped error, never a silent no-op or a silently
+// ignored key.
+type ConnectorConfigurable interface {
+	WithParameters(params map[string]string) (Connector, error)
 }

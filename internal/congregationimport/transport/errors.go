@@ -39,6 +39,19 @@ func mapUpstreamErr(err error) error {
 	return err
 }
 
+// mapRunErr is mapErr's counterpart for runConnector, which needs sourceCode (not a candidateId/
+// status) filled into RunParametersNotSupported's own safe-arg.
+func mapRunErr(err error, sourceCode string) error {
+	switch {
+	case errors.Is(err, domain.ErrRunNotFound):
+		return gencongregationimport.NewRunNotFound(sourceCode)
+	case errors.Is(err, domain.ErrRunParametersNotSupported):
+		return gencongregationimport.NewRunParametersNotSupported(sourceCode)
+	default:
+		return err
+	}
+}
+
 // mapAliasErr is mapErr's counterpart for the alias-creation endpoints, which need aliasText (not
 // a candidateId/status) filled into their one alias-specific typed error.
 func mapAliasErr(err error, aliasText string) error {

@@ -41,6 +41,11 @@ types:
           sourceCode: string
           status: RunStatus
           triggeredByPersonId: string
+          parameters:
+            type: optional<map<string, string>>
+            docs: >
+              What the caller actually supplied to runConnector, if anything (e.g. osm's
+              countryCodes override) — nil for the common no-parameters case.
           cursorAtStart: optional<string>
           cursorAtEnd: optional<string>
           recordsFetched: integer
@@ -132,6 +137,13 @@ types:
       RunConnectorRequest:
         fields:
           sourceCode: string
+          parameters:
+            type: optional<map<string, string>>
+            docs: >
+              Connector-specific run parameters (e.g. {"countryCodes": "UY,PY"} for osm). Only
+              connectors implementing ConnectorConfigurable accept a non-empty map here — supplying
+              one for a connector that doesn't returns an error rather than being silently ignored.
+              Omit or leave empty to run with the connector's own deploy-time configuration.
       CandidatePage:
         fields:
           candidates: list<Candidate>
@@ -214,6 +226,14 @@ types:
         code: NOT_FOUND
         safe-args:
           runId: string
+      RunParametersNotSupported:
+        docs: >
+          A non-empty parameters map was supplied for a connector that doesn't accept run
+          parameters — never silently ignored.
+        namespace: CongregationImport
+        code: INVALID_ARGUMENT
+        safe-args:
+          sourceCode: string
       Forbidden:
         docs: The caller does not hold religionorg.manage on the configured root unit.
         namespace: CongregationImport
@@ -296,9 +316,12 @@ services:
         returns: ImportRun
       listCandidates:
         http: GET /candidates
-        docs: List staged candidates, most recent first, optionally filtered by status.
+        docs: List staged candidates, most recent first, optionally filtered by status and/or source.
         args:
           status:
+            type: optional<string>
+            param-type: query
+          sourceCode:
             type: optional<string>
             param-type: query
           pageSize:

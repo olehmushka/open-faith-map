@@ -243,11 +243,59 @@ automated one.
     `"evangelica"` outnumbers accented `"evangélica"` 10,055-to-781 in the live data, so matching
     is diacritic-insensitive (a small, fixed Spanish accent-stripping table, same treatment
     Ukrainian apostrophe variants already got).
-- Real candidates identified but **not yet built**: Brazil (CNPJ/Receita Federal open data, legal
-  nature code `322-0` = "Organização Religiosa"), OpenStreetMap (Overpass API,
-  `amenity=place_of_worship`, covers all target countries with zero additional per-country
-  research). Uruguay/Paraguay/Colombia/Chile — no equivalent registry confirmed yet; check before
-  building, don't assume one exists.
+- **`osm`** — OpenStreetMap, via the Overpass API (`amenity=place_of_worship` +
+  `religion=christian`), scoped to Uruguay/Paraguay/Colombia/Chile by default — the D-Scope rollout
+  countries with no confirmed dedicated government registry (Ukraine/Argentina already have
+  dedicated connectors; Brazil's CNPJ is confirmed real but blocked, see below). Real, verified
+  live (2026-08-14): two Overpass mirrors were robots.txt-checked before either was used —
+  `overpass-api.de` (the main OSM-Foundation-run instance) disallows `/api/` in its own robots.txt,
+  the exact path the query endpoint lives at, so it is **not** used; `overpass.kumi.systems`
+  (Private.coffee) has **no robots.txt at all** (404, confirmed live) and its own published policy
+  welcomes reasonable use, asking only that large-scale projects notify the operator first —
+  `overpass.osm.ch` independently confirmed the same 404-no-robots.txt absence, as a second data
+  point. This is the default endpoint (`OSM_OVERPASS_BASE_URL`).
+  - **Real end-to-end query, all of Uruguay** (`area["ISO3166-1"="UY"][admin_level=2]`): 200 OK in
+    ~20s, 566 real elements (290 node, 274 way, 2 relation — every way/relation carried a real
+    `center` object from `out center`, 0 missing). Real tag shapes confirmed every field mapping:
+    `name` (78 of 566 — ~14% — had none at all, a genuinely common case, not a rare edge case —
+    these are filtered out before ever becoming a candidate, a deliberate data-quality floor),
+    `denomination` (`catholic` **and** `roman_catholic` both appear for the same real denomination —
+    a real vocabulary inconsistency an operator's alias table must account for with two separate
+    aliases, not a parsing bug), `religion=christian`, `addr:street`/`addr:housenumber`/`addr:city`/
+    `addr:country`, and a real `diocese` tag on at least one element.
+  - **Unlike either other connector, OSM commonly carries both real address text AND real
+    coordinates** — a node's own `lat`/`lon`, or a way/relation's `center`. A fresh `osm` candidate
+    therefore lands in `STAGED` directly, bypassing `NEEDS_GEOCODE` entirely (the nil-check on
+    `Latitude`/`Longitude` in `processRawRecord` already supported this; `osm` is simply the first
+    connector to exercise that path for real).
+  - **No pre-seeded taxon aliases exist for OSM's `denomination=*` vocabulary** (confirmed by reading
+    the migrations directly — the alias tables have zero seed rows for any source) — an operator
+    must create them, same as for `ua-edr`/`ar-rnc`. Starter list from real live data above:
+    `catholic`, `roman_catholic` (separate alias, same taxon — see the vocabulary-inconsistency
+    finding), `baptist`, `mormon`, `protestant`, `jehovahs_witness`, `evangelical`, `methodist`,
+    `mennonite`, `pentecostal`, `evangelical_lutheran`, `seventh_day_adventist`, `anglican`,
+    `waldensian`, `apostolic`, `greek_orthodox`.
+  - **`SourceRecordID`** is OSM's own stable element identity (`"{type}/{id}"`, e.g.
+    `"node/671836133"`) — genuinely per-element unique, no hashing workaround needed (unlike
+    `ar-rnc`'s `CI`).
+  - **Real operational reason for the default country scope, not just "match the docs' country
+    list"**: `application/dedup.go`'s `findPossibleDuplicate` only checks a new candidate against
+    **already-provisioned** go-oikumenea sites (`Religion.SearchSites`), never against sibling
+    `STAGED` candidates still sitting in another connector's own review queue — confirmed by reading
+    `dedup.go` directly. Running `osm` over Argentina today, while `ar-rnc`'s ~29,675 real candidates
+    are still largely unreviewed, would flood the queue with near-duplicates dedup can't yet catch —
+    scoping to the genuine coverage gap avoids this and is also the more valuable use of the
+    connector. `OSM_COUNTRY_CODES` is fully operator-configurable if this changes.
+- Brazil (CNPJ/Receita Federal open data, legal nature code `322-0` = "Organização Religiosa") is a
+  **confirmed real registry, fully designed, but halted before any code was written** (2026-08-14):
+  `arquivos.receitafederal.gov.br/robots.txt` (the host RFB migrated the whole CNPJ open-data dump
+  to, a Nextcloud WebDAV share, since a January-2026 layout change) returns `Disallow: /` for all
+  user agents. The owner's explicit call was to stop rather than proceed with a documented caveat
+  (unlike `osm`'s two-mirror situation above, no alternative official host exists for this dataset).
+  Full design + live-verification record kept in this project's session memory, not repeated here —
+  if revisited, re-check that exact `robots.txt` line first, since an explicit written allowance
+  from RFB or a policy change could resolve it. Uruguay/Paraguay/Colombia/Chile — no equivalent
+  dedicated government registry confirmed yet (now substantially covered by `osm` instead).
 
 ## Conjure API surface
 
@@ -265,6 +313,56 @@ production-hardening pass — mirrors `moderation`'s own M7 fix
 `CongregationImport:InvalidPageToken`, never silently reinterpreted as page 1.
 `listTaxonAliases`/`listJurisdictionAliases` are deliberately **not** paginated — both lists stay
 small and operator-curated (`ListAliasesForMatching`'s own reasoning), loaded in full.
+
+**`runConnector`'s `parameters` field (2026-08-14).** `RunConnectorRequest`/`ImportRun` both gained
+an `optional<map<string, string>>` `parameters` field — `map<string, string>` is unprecedented in
+this repo's own Conjure files but is an established, already-generated-from pattern in
+go-oikumenea's own contracts (`company.conjure.yml`, `document.conjure.yml`, etc., same toolchain),
+confirmed by reading them directly before using it here. Only a connector implementing
+`domain.ConnectorConfigurable` accepts a non-empty map — supplying one for a connector that doesn't
+returns `CongregationImport:RunParametersNotSupported` rather than being silently ignored. Today
+only `osm` implements it (one key, `countryCodes`, a comma-separated ISO 3166-1 alpha-2 list — see
+Sources above). Persisted on the run row (`congregationimport_runs.parameters`,
+`migrations/0012_congregationimport_run_parameters.sql`) and echoed back by `listRuns`/`getRun`, so
+run history shows what a past run actually used — though no admin-UI page renders run history today
+(only the review-queue itself); the data is there for a future UI to use.
+
+**Real, adjacent bug fixed the same day, not just the parameters feature itself**: `domain.Connector`
+gained a required `Clone() Connector` method. Before this, `RunConnector` ran directly against the
+long-lived, boot-registered connector instance every time — `arrnc`/`osm`'s `sync.Once`-cached
+in-memory rows meant a SECOND `RunConnector` call for the same source silently replayed the FIRST
+run's data forever, never re-querying the real source (`uaedr`'s HTTP-streaming design happened to
+avoid this on its own, via its own per-run lock/stream reset). `RunConnector` now always runs
+against a fresh, run-scoped connector value — `base.Clone()` when no parameters are supplied, or
+`configurable.WithParameters(parameters)` when they are — so a manual re-run (with or without new
+parameters) always gets real, current data.
+
+**Admin UI (`web/apps/admin/app/[locale]/admin/congregation-import`).** The run-connector `<select>`
++ button (`page.tsx`) now includes all three registered sources (`ua-edr`/`ar-rnc`/`osm` — `osm` was
+missing from the static `SOURCE_CODES` list until this pass, a real small gap found while wiring
+this up). A small client component (`run-connector-form.tsx`) conditionally renders a `countryCodes`
+text input when `osm` is selected (`PARAMETERIZED_SOURCES`, manually kept in sync with the backend —
+no "list registered connectors + their parameter shape" endpoint exists, not worth building for one
+parameterized source today). A blank field means "use the connector's own deploy-time default," never
+an explicit empty-list override.
+
+**Save no longer collapses the expanded candidate row (2026-08-14).** `page.tsx`'s `edit` action used
+to `redirect()` after every save, same as `approve`/`reject` — a real UX defect an operator hit live:
+correcting a candidate is often iterative (adjust, suggest coordinates, adjust again), and a full-page
+redirect unmounts the whole tree, wiping `DataTable`'s own `expanded` row state
+(`components/data-table.tsx`, plain `useState`) every single time. `edit` now returns the updated
+`Candidate` instead of redirecting; `candidate-list.tsx` submits it via a plain `onSubmit` handler
+(not `<form action>`) and patches the row into local state in place, so the row stays open. `approve`/
+`reject` still `redirect()` — those are terminal (the candidate leaves the pending view or changes
+status significantly), so collapsing is correct there.
+
+**`listCandidates` gained a `sourceCode` filter (2026-08-14)**, mirroring `listRuns`'s own existing
+`sourceCode` parameter byte-for-byte (same optional-query-arg shape, same `WHERE source_code = $n`
+predicate-list pattern in the store). Requested by the owner once three sources
+(`ua-edr`/`ar-rnc`/`osm`) made an unfiltered queue hard to scan. The admin UI's status-filter form
+gained a second `<Select>` for source, submitted together as one GET request (`?status=...&source=...`)
+— no new client component needed, unlike the run-connector parameters field, since this is a plain
+uncontrolled filter with no conditional-field logic.
 
 ## Known limitations (as-built)
 
@@ -419,12 +517,63 @@ live against the real endpoint (string `lat`/`lon`, not numbers — a real gotch
 case, an upstream-failure-passes-through case, and a structured-query-params assertion (`street`/
 `city`/`state`/`country`, not a concatenated `q=`).
 
+Added since (2026-08-14): `adapters/connectors/osm/connector_test.go` — an `httptest`-backed
+multi-country load test (each configured country queried exactly once, `CountryHint` assigned
+correctly per country, a nameless element filtered out, a `name:es`-only element kept via the locale
+fallback), a request-shape test (the real query string contains the ISO code and
+`amenity`/`religion` filters), batch-boundary and single-batch-exhaustion tests mirroring `ar-rnc`'s
+own, `coordinatesOf`'s node-vs-way/relation-center table test, `elementName`'s fallback-chain table
+test, and `Normalize`'s full field mapping including the `denomination`/`diocese` real-vocabulary
+cases and their fallback-to-`Name` paths.
+
+Added since (2026-08-14): each connector's own `TestClone` — `arrnc`'s and `osm`'s are real
+regression tests for the staleness bug (rewriting/re-serving different fixture content between the
+original's first load and the clone's own first `Fetch`, confirming the clone sees the CURRENT
+content, not a cached one); `uaedr`'s confirms the interface contract (a distinct value, zero
+`httpModeState`) since `FilePath` mode has no cache to go stale in the first place. `osm`'s
+`TestWithParameters` covers the `countryCodes` override, an unrecognized parameter key, an unknown
+country code, a blank value, and the empty-map/no-override case. **Not added**: an
+`application.Service.RunConnector`-level test — this module has no DB/go-oikumenea mocking
+infrastructure anywhere (`docs/modules/congregationimport.md`'s own testing philosophy, "every test
+operates on plain data in, plain data out"), and `RunConnector` needs both; the dispatch logic itself
+was verified by full build/vet/test plus reading the code directly, matching how `RunConnector`'s
+correctness has always been verified in this module — a real live run, not a unit test.
+
 ## Open seams
 
-- Additional country sources (Brazil, OSM, and confirming Uruguay/Paraguay/Colombia/Chile each
-  have — or don't have — an equivalent open registry) — see "Sources" above. Argentina (`ar-rnc`)
-  is now built (2026-08-14). Explicitly out of scope beyond that for now (owner's own call: one
-  connector at a time, done well).
+- **No run-history UI exists.** `listRuns`/`getRun` (including the new `parameters` field) are
+  wired in `lib/congregation-import.ts` but nothing in `web/apps/admin` ever calls or renders them —
+  the review-queue page only shows candidates, not past runs. An operator triggering `osm` with
+  `countryCodes` today sees the resulting candidates land in the queue, but has no page showing
+  "this run used {countryCodes: 'CL'}, fetched N, created M." Real, deliberately out of scope for
+  the 2026-08-14 manual-run-parameters pass (not asked for, and would be a new page built from
+  scratch, not an extension of an existing one) — the backend/data model is ready whenever this is
+  built.
+- Additional country sources — see "Sources" above. Argentina (`ar-rnc`) and OpenStreetMap (`osm`,
+  scoped to Uruguay/Paraguay/Colombia/Chile) are now built (2026-08-14). Brazil's CNPJ is designed
+  and live-verified but halted on a `robots.txt` finding, not built. USA remains unscoped. Explicitly
+  out of scope beyond this for now (owner's own call: one connector at a time, done well).
+- **Real, live finding (2026-08-14): Colombia's whole-country query genuinely times out on
+  `overpass.kumi.systems`** — a real operator run through the admin UI failed, reproduced directly
+  moments later (`504`, "the server is probably too busy"); an identical Uruguay query at the same
+  time completed in 6.5s. Fixed: Colombia is now the one country configured with a `regionGrid`
+  (`osm/connector.go`'s `countries["CO"]`) — its query is split into 3×2=6 smaller bbox-bounded
+  requests (still intersected with the real country polygon via the same `area["ISO3166-1"=...]`
+  filter, so results stay geographically accurate — bbox only limits how much of that polygon one
+  request has to search). A second real finding from the same investigation: the mirror doesn't
+  always fail with a clean `504` — one Colombia attempt came back `200 OK` with an HTML error page in
+  the body instead of JSON, which a bare status-code check doesn't catch; `queryRegion` now detects a
+  non-JSON body explicitly and says so, rather than surfacing a confusing raw
+  `invalid character '<'` decode error. Only Colombia has a `Grid` — Uruguay/Paraguay/Chile keep
+  their original single whole-country query, since only Colombia has actually been observed to need
+  splitting (measured, not guessed); if another country is later found to time out the same way, give
+  it a `Grid` too rather than pre-emptively splitting every country.
+- `osm`'s real per-country totals beyond Uruguay (Paraguay/Chile, and now Colombia's post-split
+  totals), and whether the `area["ISO3166-1"=...]` query shape stays reliable at those countries'
+  real scale on `overpass.kumi.systems` — only Uruguay was live-verified end to end at full scale.
+  `Country.Name`'s real content for all four target countries against a live go-oikumenea instance is
+  also still unconfirmed (the literal strings in `osm`'s `countries` map are English ISO short names,
+  same convention `ar-rnc`'s `"Argentina"` uses, but not live-checked the way `ar-rnc`'s was).
 - HTML connector scaffolding + the first real HTML-scraped site.
 - No delete/deactivate endpoint for taxon/jurisdiction aliases — `create`+`list` only. An alias is
   normalized/validated before insert, so a wrong one is rare, not a daily operator task; deferred

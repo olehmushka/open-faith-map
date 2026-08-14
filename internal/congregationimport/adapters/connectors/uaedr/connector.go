@@ -107,6 +107,15 @@ func New(filePath, sourceURL string, httpClient *http.Client) (*Connector, error
 
 func (c *Connector) Code() string { return Code }
 
+// Clone returns a fresh Connector for one RunConnector call — same fixed FilePath/SourceURL/
+// httpClient, zero httpModeState (a fresh run must open its own stream/lock, never inherit a prior
+// run's). FilePath mode already re-reads from scratch on every Fetch(nil, ...) call regardless, so
+// this matters most for SourceURL mode, but Clone always returns a pristine instance either way —
+// one uniform contract every connector honors, not a per-mode special case.
+func (c *Connector) Clone() domain.Connector {
+	return &Connector{FilePath: c.FilePath, SourceURL: c.SourceURL, httpClient: c.httpClient}
+}
+
 func (c *Connector) Citation() domain.SourceCitation {
 	return domain.SourceCitation{
 		UserAgent: "openfaithmap-congregationimport/1.0 (structured government open data, not a scrape)",

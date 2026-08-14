@@ -64,9 +64,13 @@ func (s *Service) RunConnector(ctx context.Context, authHeader bearertoken.Token
 	// WRITE — only the read-only D-Exclusions/dedup checks under the service principal), but
 	// requiring a resolvable caller identity (whoami above) still means an anonymous/invalid token
 	// can never trigger one.
-	run, err := s.appService.RunConnector(ctx, requestArg.SourceCode, personID)
+	var parameters map[string]string
+	if requestArg.Parameters != nil {
+		parameters = *requestArg.Parameters
+	}
+	run, err := s.appService.RunConnector(ctx, requestArg.SourceCode, personID, parameters)
 	if err != nil {
-		return gencongregationimport.ImportRun{}, mapErr(err, "", "")
+		return gencongregationimport.ImportRun{}, mapRunErr(err, requestArg.SourceCode)
 	}
 	return toAPIRun(run), nil
 }
@@ -113,7 +117,7 @@ func (s *Service) GetRun(ctx context.Context, authHeader bearertoken.Token, runI
 	return toAPIRun(run), nil
 }
 
-func (s *Service) ListCandidates(ctx context.Context, authHeader bearertoken.Token, statusArg *string, pageSizeArg *int, pageTokenArg *string) (gencongregationimport.CandidatePage, error) {
+func (s *Service) ListCandidates(ctx context.Context, authHeader bearertoken.Token, statusArg, sourceCodeArg *string, pageSizeArg *int, pageTokenArg *string) (gencongregationimport.CandidatePage, error) {
 	if _, err := s.whoami(ctx, authHeader); err != nil {
 		return gencongregationimport.CandidatePage{}, mapUpstreamErr(err)
 	}
@@ -131,7 +135,7 @@ func (s *Service) ListCandidates(ctx context.Context, authHeader bearertoken.Tok
 		after = &c
 	}
 	pageSize := pageSizeOrDefault(pageSizeArg)
-	cands, err := s.appService.ListCandidates(ctx, status, pageSize, after)
+	cands, err := s.appService.ListCandidates(ctx, status, sourceCodeArg, pageSize, after)
 	if err != nil {
 		return gencongregationimport.CandidatePage{}, mapErr(err, "", "")
 	}

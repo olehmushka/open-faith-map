@@ -20,6 +20,7 @@ export * from "./rejectCandidateRequest";
 export * from "./runConnectorRequest";
 export * from "./runNotFound";
 export * from "./runPage";
+export * from "./runParametersNotSupported";
 export * from "./runStatus";
 export * from "./suggestCoordinatesResponse";
 export * from "./taxonAlias";

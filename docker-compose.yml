@@ -248,6 +248,12 @@ services:
       # ar-rnc (Argentina's Registro Nacional de Cultos) — same optional pattern as ua-edr above.
       ARRNC_FILE_PATH: "${ARRNC_FILE_PATH:-}"
       ARRNC_SOURCE_URL: "${ARRNC_SOURCE_URL:-}"
+      # osm (OpenStreetMap, Overpass API) — optional, gated on OSM_COUNTRY_CODES (a comma-separated
+      # ISO 3166-1 alpha-2 list, e.g. "UY,PY,CO,CL"); OSM_OVERPASS_BASE_URL has a real code default
+      # (overpass.kumi.systems) so it's only set here when overriding it. No volumes entry needed —
+      # this connector only ever calls out over HTTP, never reads a local file.
+      OSM_COUNTRY_CODES: "${OSM_COUNTRY_CODES:-}"
+      OSM_OVERPASS_BASE_URL: "${OSM_OVERPASS_BASE_URL:-}"
     volumes:
       # The leading "./" is load-bearing: Compose treats a bare relative path as a named-volume
       # reference, not a bind mount, and fails with "undefined volume" otherwise — found by

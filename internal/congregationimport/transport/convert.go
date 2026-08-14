@@ -15,11 +15,16 @@ func toAPIRun(r domain.Run) gencongregationimport.ImportRun {
 		dt := datetime.DateTime(*r.FinishedAt)
 		finishedAt = &dt
 	}
+	var parameters *map[string]string
+	if len(r.Parameters) > 0 {
+		parameters = &r.Parameters
+	}
 	return gencongregationimport.ImportRun{
 		Id:                     r.ID,
 		SourceCode:             r.SourceCode,
 		Status:                 gencongregationimport.New_RunStatus(gencongregationimport.RunStatus_Value(r.Status)),
 		TriggeredByPersonId:    r.TriggeredByPersonRID,
+		Parameters:             parameters,
 		CursorAtStart:          r.CursorAtStart,
 		CursorAtEnd:            r.CursorAtEnd,
 		RecordsFetched:         r.RecordsFetched,

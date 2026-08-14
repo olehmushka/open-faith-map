@@ -78,12 +78,16 @@ func (s *Store) GetCandidate(ctx context.Context, id string) (domain.Candidate, 
 // (created_at DESC, id DESC) so the caller can tell whether a next page exists without a second
 // round trip. The WHERE clause is assembled from a predicate list rather than branching on every
 // (status, after) combination.
-func (s *Store) ListCandidates(ctx context.Context, status *domain.Status, pageSize int, after *domain.PageCursor) ([]domain.Candidate, error) {
+func (s *Store) ListCandidates(ctx context.Context, status *domain.Status, sourceCode *string, pageSize int, after *domain.PageCursor) ([]domain.Candidate, error) {
 	var where []string
 	var args []any
 	if status != nil {
 		args = append(args, string(*status))
 		where = append(where, fmt.Sprintf("status = $%d", len(args)))
+	}
+	if sourceCode != nil {
+		args = append(args, *sourceCode)
+		where = append(where, fmt.Sprintf("source_code = $%d", len(args)))
 	}
 	if after != nil {
 		args = append(args, after.CreatedAt, after.ID)

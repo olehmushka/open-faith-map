@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ChevronRight } from "lucide-react";
@@ -64,7 +64,7 @@ export function CandidateList({
   initialCandidates: Candidate[];
   initialNextPageToken: string | null | undefined;
   loadMore: (pageToken: string) => Promise<CandidatePage>;
-  onEdit: (formData: FormData) => void;
+  onEdit: (formData: FormData) => Promise<Candidate>;
   onApprove: (formData: FormData) => void;
   onReject: (formData: FormData) => void;
   taxa: PickerOption[];
@@ -112,6 +112,19 @@ export function CandidateList({
   const [candidates, setCandidates] = useState(initialCandidates);
   const [nextPageToken, setNextPageToken] = useState(initialNextPageToken ?? null);
   const [isPending, startTransition] = useTransition();
+
+  // Submitted via onSubmit (not the plain <form action> every other form on this page uses) so the
+  // updated Candidate can be patched into local state in place, instead of onEdit's own redirect()
+  // (removed — see page.tsx's edit action) unmounting the whole tree and collapsing every expanded
+  // row along with it.
+  function handleEditSubmit(id: string) {
+    return async (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const formData = new FormData(e.currentTarget);
+      const updated = await onEdit(formData);
+      setCandidates((prev) => prev.map((c) => (c.id === id ? updated : c)));
+    };
+  }
 
   function handleLoadMore() {
     if (!nextPageToken) return;
@@ -188,7 +201,7 @@ export function CandidateList({
               </p>
             )}
 
-            <form action={onEdit} className="flex flex-wrap items-end gap-3">
+            <form onSubmit={handleEditSubmit(c.id)} className="flex flex-wrap items-end gap-3">
               <input type="hidden" name="id" value={c.id} />
               <Label className="flex flex-col items-start gap-1 text-xs">
                 {labels.taxonId}
