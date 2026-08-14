@@ -231,12 +231,18 @@ services:
       # mint Google ID tokens for GET /search's cache-miss fallback.
       GOOGLE_APPLICATION_CREDENTIALS: "/app/var/service-account.json"
       # congregationimport (D-CongregationImport, docs/modules/congregationimport.md): optional —
-      # the ЄДР connector only registers if this is set. Real weekly bulk download is an operator's
-      # own out-of-band step (data.gov.ua dataset 03cc1239-3988-4451-aa0d-aadb77448714, resource
-      # uo.zip); mount it in with an extra `volumes:` entry when actually using this connector, same
-      # shape as GOOGLE_APPLICATION_CREDENTIALS above. Left unset here — no file is bundled or
-      # auto-downloaded by this compose file.
+      # the ЄДР connector only registers if one of these is set. Real weekly bulk download is an
+      # operator's own out-of-band step (data.gov.ua dataset 03cc1239-3988-4451-aa0d-aadb77448714,
+      # resource uo.zip); UAEDR_UO_FILE_PATH needs an extra `volumes:` entry when actually used, same
+      # shape as GOOGLE_APPLICATION_CREDENTIALS above — UAEDR_SOURCE_URL needs no mount at all. Both
+      # left unset here — no file is bundled or auto-downloaded by this compose file. UAEDR_SOURCE_URL
+      # itself was previously documented (.env.example) but never actually forwarded into this
+      # container's environment — found live while wiring ar-rnc below and fixed here too.
       UAEDR_UO_FILE_PATH: "${UAEDR_UO_FILE_PATH:-}"
+      UAEDR_SOURCE_URL: "${UAEDR_SOURCE_URL:-}"
+      # ar-rnc (Argentina's Registro Nacional de Cultos) — same optional pattern as ua-edr above.
+      ARRNC_FILE_PATH: "${ARRNC_FILE_PATH:-}"
+      ARRNC_SOURCE_URL: "${ARRNC_SOURCE_URL:-}"
     volumes:
       # The leading "./" is load-bearing: Compose treats a bare relative path as a named-volume
       # reference, not a bind mount, and fails with "undefined volume" otherwise — found by

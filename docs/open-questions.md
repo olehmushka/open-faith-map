@@ -45,11 +45,16 @@ from the module doc it was raised in.
 - **DS-OFM-14 — Per-surface OAuth clients, and WireGuard in front of `oikumenea-console`.** Both are
   recorded as required before any non-local-dev deployment
   ([D-OAuthClients](architecture/decisions.md),
-  [D-InstanceAdminConsole](architecture/decisions.md)), and neither has a milestone — because there
-  is no deployment milestone at all yet. Whoever creates one inherits both.
+  [D-InstanceAdminConsole](architecture/decisions.md)). ~~Neither has a milestone — because there
+  is no deployment milestone at all yet. Whoever creates one inherits both.~~
   **Confirmed (2026-08-11): deliberately not decoupled further right now.** Per-surface OAuth
   clients stay a real prerequisite once a deployment milestone exists. WireGuard specifically is
   infrastructure-shaped, not application-shaped — its concrete choice (WireGuard vs. something
   else) depends on wherever the instance actually ends up hosted, which doesn't exist yet either.
-  No action to take here until that milestone is scoped; recorded so this isn't silently reopened
-  as if it were undecided.
+  ~~No action to take here until that milestone is scoped; recorded so this isn't silently reopened
+  as if it were undecided.~~
+  **Resolved (2026-08-14): that milestone now exists —
+  [M9](milestones.md#m9--production-deployment-single-cheap-vm) · D-ProductionDeployment
+  (`architecture/decisions.md`).** Both items are scheduled there as M9's own build-phase work,
+  still deliberately provider-agnostic (the concrete VM provider remains undecided). Still open in
+  practice — nothing is provisioned yet — just no longer homeless.

@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	congregationimportadapters "github.com/olehmushka/open-faith-map/internal/congregationimport/adapters"
+	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/arrnc"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/uaedr"
 	congregationimportapplication "github.com/olehmushka/open-faith-map/internal/congregationimport/application"
 	congregationimportdomain "github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
@@ -288,6 +289,18 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 			return nil, werror.WrapWithContextParams(ctx, err, "construct uaedr connector")
 		}
 		connectors = append(connectors, uaedrConnector)
+	}
+	// ar-rnc (Argentina's Registro Nacional de Cultos) — same optional/never-a-boot-failure pattern
+	// as uaedr above; ARRNC_FILE_PATH/ARRNC_SOURCE_URL are both optional and mutually exclusive
+	// (see arrnc.New). Unlike uaedr, this source is small (3.6MB, not ~326MB) — no HTTP-streaming
+	// mode exists or is needed, see arrnc's own package doc comment.
+	if arrncFilePath, arrncSourceURL := os.Getenv("ARRNC_FILE_PATH"), os.Getenv("ARRNC_SOURCE_URL"); arrncFilePath != "" || arrncSourceURL != "" {
+		arrncConnector, err := arrnc.New(arrncFilePath, arrncSourceURL, nil)
+		if err != nil {
+			pool.Close()
+			return nil, werror.WrapWithContextParams(ctx, err, "construct arrnc connector")
+		}
+		connectors = append(connectors, arrncConnector)
 	}
 	congregationimportStore := congregationimportadapters.NewStore(pool)
 	congregationimportAppSvc := congregationimportapplication.NewService(congregationimportStore, congregationimportapplication.Config{

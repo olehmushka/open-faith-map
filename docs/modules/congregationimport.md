@@ -141,6 +141,12 @@ the file's own doc comment already warned about for `"церква"`, just not a
 the first pass; and two near-ubiquitous Orthodox abbreviations (`УПЦ`, `ПЦУ`) plus `єпархія`
 (eparchy/diocese) were missing entirely. `christianfilter_test.go` regression-tests both.
 
+**Extended with a Spanish-language keyword block (2026-08-14, `ar-rnc`)** — a single merged list,
+not a per-source dispatch mechanism: the Ukrainian (Cyrillic) and Spanish (Latin) stems occupy
+disjoint Unicode ranges, so cross-language false positives are structurally impossible, and
+`isLikelyChristian`'s signature is unchanged. See `ar-rnc`'s own Sources entry below for the
+real diacritics finding that shaped it.
+
 **Dedup is geo-radius only, not name+radius** — go-oikumenea's `DiscoverySite` (the `SearchSites`
 response shape) carries no name field to compare against, checked directly against the Conjure
 struct, not assumed. A candidate within 250m of an already-provisioned site is flagged
@@ -198,9 +204,46 @@ automated one.
     first call hides it completely).
   - **A D-Scope pre-filter now runs for every source** (not just `ua-edr`) — see `application/
     christianfilter.go` below; `ua-edr`'s own OPF filter only means "any religion," not "Christian."
+- **`ar-rnc`** — Argentina's Registro Nacional de Cultos (Ministerio de Relaciones Exteriores,
+  Comercio Internacional y Culto). Real, verified live (2026-08-14): listed on `datos.gob.ar`
+  (CKAN id `registro-nacional-de-cultos`, CC-BY 4.0), but **the CKAN-declared resource URL is
+  dead** (`https://cancilleria.gob.ar/userfiles/datos/registro-nacional-cultos.csv` → `404`,
+  confirmed live). The ministry's own current landing page
+  (`https://cancilleria.gob.ar/iniciativas/datos-abiertos/set-de-datos-de-culto`) links the real,
+  working export instead: `https://cancilleria.gob.ar/userfiles/datos/registro-culto-export.csv`
+  — confirmed `200`, 3,608,415 bytes, `Last-Modified: 2025-08-13`. `robots.txt` checked directly:
+  `/userfiles/` is not disallowed; `Crawl-delay: 10` honored (fetched once per run).
+  - **Real schema, downloaded and inspected directly**: a plain 5-column CSV, no header row,
+    UTF-8, 30,178 well-formed rows. Positional columns (the ministry's own landing-page prose
+    names them in a different order than the file actually uses): name, address, locality,
+    province, `CI`. **Unlike `ua-edr`, this source DOES carry real address text** (street,
+    locality, province) — `Street`/`Locality`/`AdminArea1` are populated for real, a genuinely
+    better operator starting point than `ua-edr`'s blank-everything case; `Latitude`/`Longitude`
+    still stay nil (no coordinates in the source), so every candidate still lands in
+    `NEEDS_GEOCODE` (no real geocoder exists yet — see Open seams).
+  - **Real, consequential finding: `CI` is not a per-row unique key** — it's the registered
+    institute's own registration number, shared across every `"- FILIAL N"` (branch) row of that
+    institute (e.g. one institute has 100+ branch rows sharing one `CI`). `SourceRecordID` is
+    therefore a SHA-256 hash of the normalized name+address+locality+province tuple, not `CI`
+    directly — idempotent across re-runs, unique per real physical location.
+  - **Real data-quality finding**: 503 of the 30,178 rows are byte-for-byte duplicates of another
+    row (identical name+address+locality+province) — a genuine artifact in the source itself, not
+    a parsing bug here. These correctly collapse onto one candidate under the hash-based
+    `SourceRecordID` above (two visually-identical rows would be indistinguishable to an operator
+    anyway): a clean first run yields `recordsFetched≈30178`, `candidatesCreated≈29675`.
+  - **Much simpler than `ua-edr` by design**: at 3.6MB (vs. `ua-edr`'s ~3.15GB), the whole export
+    loads into memory once per run — no stateful streaming, no `ConnectorCloser`, no
+    reopen-and-reskip cursor arithmetic (and so none of `ua-edr`'s own real cursor-doubling bug
+    class is even possible here). `Fetch` batches via plain integer-offset slicing over an
+    already-materialized, already-correct slice.
+  - **The D-Scope Christian-keyword pre-filter is now Spanish-aware too** (`application/
+    christianfilter.go`, extended, not a new dispatch mechanism) — every stem checked against the
+    real live export before being added. **Real, consequential diacritics finding**: unaccented
+    `"evangelica"` outnumbers accented `"evangélica"` 10,055-to-781 in the live data, so matching
+    is diacritic-insensitive (a small, fixed Spanish accent-stripping table, same treatment
+    Ukrainian apostrophe variants already got).
 - Real candidates identified but **not yet built**: Brazil (CNPJ/Receita Federal open data, legal
-  nature code `322-0` = "Organização Religiosa"), Argentina (Registro Nacional de Cultos,
-  datos.gob.ar — excludes the Catholic Church by law), OpenStreetMap (Overpass API,
+  nature code `322-0` = "Organização Religiosa"), OpenStreetMap (Overpass API,
   `amenity=place_of_worship`, covers all target countries with zero additional per-country
   research). Uruguay/Paraguay/Colombia/Chile — no equivalent registry confirmed yet; check before
   building, don't assume one exists.
@@ -327,12 +370,19 @@ DEFLATE, STORE with and without a data-descriptor, the latter empirically what G
 `archive/zip.Writer` produces for a streamed STORE entry) and an `httptest`-backed end-to-end
 `fetchHTTP` run plus a concurrency-guard test (two goroutines, one must be rejected).
 
+Added since (2026-08-14): `christianfilter_test.go`'s Spanish cases (real names from the `ar-rnc`
+export — accented/unaccented "evangélica"/"evangelica", the "evangelístico" short-stem miss,
+Assemblies of God, JW/Bahá'í "correctly/expectedly not caught here" cases). `adapters/connectors/
+arrnc/connector_test.go` — batch-boundary correctness (this design's own real failure mode, not
+`ua-edr`'s double-counting, which is structurally impossible here) and a `SourceRecordID` test
+regression-testing the real `CI`-is-not-unique finding.
+
 ## Open seams
 
-- Additional country sources (Brazil, Argentina, OSM, and confirming Uruguay/Paraguay/Colombia/
-  Chile each have — or don't have — an equivalent open registry) — see "Sources" above. Explicitly
-  out of scope for the production-hardening pass (owner's own call: depth on `ua-edr` first, breadth
-  later).
+- Additional country sources (Brazil, OSM, and confirming Uruguay/Paraguay/Colombia/Chile each
+  have — or don't have — an equivalent open registry) — see "Sources" above. Argentina (`ar-rnc`)
+  is now built (2026-08-14). Explicitly out of scope beyond that for now (owner's own call: one
+  connector at a time, done well).
 - HTML connector scaffolding + the first real HTML-scraped site.
 - No delete/deactivate endpoint for taxon/jurisdiction aliases — `create`+`list` only. An alias is
   normalized/validated before insert, so a wrong one is rare, not a daily operator task; deferred
