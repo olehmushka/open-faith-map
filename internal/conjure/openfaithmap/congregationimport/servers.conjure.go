@@ -23,8 +23,8 @@ type CongregationImportService interface {
 	// List connector runs, most recent first, optionally filtered by source.
 	ListRuns(ctx context.Context, authHeader bearertoken.Token, sourceCodeArg *string, pageSizeArg *int, pageTokenArg *string) (RunPage, error)
 	GetRun(ctx context.Context, authHeader bearertoken.Token, runIdArg string) (ImportRun, error)
-	// List staged candidates, most recent first, optionally filtered by status.
-	ListCandidates(ctx context.Context, authHeader bearertoken.Token, statusArg *string, pageSizeArg *int, pageTokenArg *string) (CandidatePage, error)
+	// List staged candidates, most recent first, optionally filtered by status and/or source.
+	ListCandidates(ctx context.Context, authHeader bearertoken.Token, statusArg *string, sourceCodeArg *string, pageSizeArg *int, pageTokenArg *string) (CandidatePage, error)
 	GetCandidate(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string) (Candidate, error)
 	// Correct a staged candidate's fields before approval — scraped data is noisy by nature. Only non-omitted fields are applied. Operator-only.
 	EditCandidate(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string, requestArg EditCandidateRequest) (Candidate, error)
@@ -176,6 +176,11 @@ func (c *congregationImportServiceHandler) HandleListCandidates(rw http.Response
 		statusArgInternal := statusArgStr
 		statusArg = &statusArgInternal
 	}
+	var sourceCodeArg *string
+	if sourceCodeArgStr := req.URL.Query().Get("sourceCode"); sourceCodeArgStr != "" {
+		sourceCodeArgInternal := sourceCodeArgStr
+		sourceCodeArg = &sourceCodeArgInternal
+	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
 		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
@@ -189,7 +194,7 @@ func (c *congregationImportServiceHandler) HandleListCandidates(rw http.Response
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := c.impl.ListCandidates(req.Context(), bearertoken.Token(authHeader), statusArg, pageSizeArg, pageTokenArg)
+	respArg, err := c.impl.ListCandidates(req.Context(), bearertoken.Token(authHeader), statusArg, sourceCodeArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}

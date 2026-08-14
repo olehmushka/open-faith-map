@@ -74,16 +74,21 @@ async function unwrap<T>(promise: Promise<T>): Promise<T> {
   }
 }
 
-export async function runConnector(sourceCode: string): Promise<ImportRun> {
-  return unwrap((await client()).congregationImport.runConnector({ sourceCode }));
+export async function runConnector(sourceCode: string, parameters?: Record<string, string>): Promise<ImportRun> {
+  return unwrap((await client()).congregationImport.runConnector({ sourceCode, parameters }));
 }
 
 export async function listRuns(sourceCode?: string, pageSize?: number, pageToken?: string): Promise<RunPage> {
   return unwrap((await client()).congregationImport.listRuns(sourceCode, pageSize, pageToken));
 }
 
-export async function listCandidates(status?: string, pageSize?: number, pageToken?: string): Promise<CandidatePage> {
-  return unwrap((await client()).congregationImport.listCandidates(status, pageSize, pageToken));
+export async function listCandidates(
+  status?: string,
+  sourceCode?: string,
+  pageSize?: number,
+  pageToken?: string,
+): Promise<CandidatePage> {
+  return unwrap((await client()).congregationImport.listCandidates(status, sourceCode, pageSize, pageToken));
 }
 
 export async function editCandidate(candidateId: string, request: IEditCandidateRequest): Promise<Candidate> {

@@ -31,8 +31,8 @@ export interface ICongregationImportService {
     /** List connector runs, most recent first, optionally filtered by source. */
     listRuns(sourceCode?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IRunPage>;
     getRun(runId: string): Promise<IImportRun>;
-    /** List staged candidates, most recent first, optionally filtered by status. */
-    listCandidates(status?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ICandidatePage>;
+    /** List staged candidates, most recent first, optionally filtered by status and/or source. */
+    listCandidates(status?: string | null, sourceCode?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ICandidatePage>;
     getCandidate(candidateId: string): Promise<ICandidate>;
     /**
      * Correct a staged candidate's fields before approval — scraped data is noisy by nature. Only non-omitted fields are applied. Operator-only.
@@ -133,8 +133,8 @@ export class CongregationImportService implements ICongregationImportService {
         );
     }
 
-    /** List staged candidates, most recent first, optionally filtered by status. */
-    public listCandidates(status?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ICandidatePage> {
+    /** List staged candidates, most recent first, optionally filtered by status and/or source. */
+    public listCandidates(status?: string | null, sourceCode?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ICandidatePage> {
         return this.bridge.call<ICandidatePage>(
             "CongregationImportService",
             "listCandidates",
@@ -144,6 +144,7 @@ export class CongregationImportService implements ICongregationImportService {
             __undefined,
             {
                 "status": status,
+                "sourceCode": sourceCode,
                 "pageSize": pageSize,
                 "pageToken": pageToken,
             },

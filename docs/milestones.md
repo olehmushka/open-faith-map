@@ -84,7 +84,7 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are resolved (D-PlatformModerator, D-Moderation's Correction, M4.1). CI green at the merge commit (confirmed 2026-08-10) and the two-real-token proof (non-moderator refused, platform-moderator allowed) both done — the latter via a headless local-dev identity, not a real browser Google OAuth session, accepted as equivalent evidence — see prose. |
 | M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. CI green at the merge commit (confirmed 2026-08-10) and the two-different-people proof (guarantor-with-standing vs. guarantor-with-none, moderator vs. non-moderator) both done — via a headless local-dev identity, not a real browser session, accepted as equivalent evidence — see prose. |
 | M7 · Hardening / real-user feedback | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-11), not yet Verified.** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. **`Verified` needs a green CI run on `main` at the merge commit and a live authenticated-moderator round trip (a real browser Google OAuth session or a granted moderator token)**, not yet attempted here — see prose. |
-| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed (2026-08-13); HTTP-streaming ingestion + D-Scope Christian-name filter added, a real cursor-doubling bug found and fixed, second connector `ar-rnc` (Argentina) added, a real pluggable geocoder (`domain.Geocoder`/`nominatim`) built and a full admin-UI usability pass done, all live-verified (2026-08-14); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
+| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed (2026-08-13); HTTP-streaming ingestion + D-Scope Christian-name filter added, a real cursor-doubling bug found and fixed, second connector `ar-rnc` (Argentina) added, a real pluggable geocoder (`domain.Geocoder`/`nominatim`) built and a full admin-UI usability pass done, all live-verified; third connector `osm` (OpenStreetMap/Overpass, scoped to Uruguay/Paraguay/Colombia/Chile) added and live-verified — a fourth-connector candidate, Brazil's CNPJ, was fully designed and live-verified but halted on a real `robots.txt` finding rather than built; admin UI gained manual-run parameters (`domain.ConnectorConfigurable`, `osm`'s `countryCodes`) plus a real adjacent bug fix (`domain.Connector.Clone` — a stale-cache bug that made a second manual run of `arrnc`/`osm` silently replay the first run's data forever) (all 2026-08-14); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
 | M9 · Production deployment (single cheap VM) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified (2026-08-14), a docs-only milestone — mirrors M0's own shape.** D-ProductionDeployment (`architecture/decisions.md`). Resolves `DS-OFM-14`/`U13`'s "no deployment milestone exists" gap. Single Linux VM (~500MB–1GB RAM), Docker Compose, Caddy for TLS — deliberately provider-agnostic, the concrete VM provider left undecided at the owner's own direction. Schedules two already-decided items (per-surface OAuth clients, WireGuard for `oikumenea-console`) as real build-phase work for the first time, and makes three new calls: `pg_dump` on a systemd timer for backup (none exists today), `restart:` policies + a systemd unit for process supervision (none exists today), and a weekly systemd timer calling `POST /runs` as the `ua-edr` periodic re-run trigger — the item M8's own memory left explicitly open. **`Verified`** needs the new doc set (this row, D-ProductionDeployment, the struck `DS-OFM-14`/`U13` entries) coherence-checked — no dangling links, no contradiction with the decisions it inherits from. **No VM is provisioned and no compose/Caddy/systemd files are written this milestone** — that is explicitly a follow-up build milestone (numbering TBD, likely M9.1) once a provider is picked. |
 
 ## Per-milestone detail
@@ -1950,6 +1950,152 @@ finding above — not attempted here.
 > `go build ./... && go vet ./... && go test ./...`, `./godelw verify --skip-test`, and both admin
 > apps' `tsc --noEmit`/`eslint .`/`next build` all clean. Does not change M8's own `Verified`
 > status.
+
+**2026-08-14 (same day, later session): fourth-connector attempt on Brazil (CNPJ/Receita Federal)
+fully designed and live-verified, then halted before any code was written — a `robots.txt` finding,
+not a technical blocker.** Confirmed live: legal-nature code `3220` = "Organização Religiosa"
+directly against IBGE/CONCLA and a real downloaded `Naturezas.zip`; RFB migrated the whole CNPJ
+open-data dump to a Nextcloud WebDAV share (`arquivos.receitafederal.gov.br/public.php/webdav/
+{YYYY-MM}/`) around January 2026 — the old `dadosabertos.rfb.gov.br` host is now unreachable; the
+real current month (`2026-08`) has 10 parts each for Empresas/Estabelecimentos/Socios, far smaller
+than an old ~85GB community estimate (~1.37GB/~5.34GB compressed respectively); a real match ratio
+measured from a full real part (3,513 of 4,494,860 Empresas rows, ~0.078%); ISO-8859-1 encoding and
+the official layout PDF's column order confirmed directly against real data, including one real
+doc-vs-data mismatch (a missing house number is literal `"SN"` live, not the documented `"S/N"`).
+Then found `arquivos.receitafederal.gov.br/robots.txt` returns `Disallow: /` for all user agents.
+Reasoned this was very likely a generic Nextcloud-installation default rather than an RFB directive
+aimed at this specific bulk-open-data endpoint, but asked the owner explicitly rather than deciding
+unilaterally, per this module's own established discipline (`ar-rnc`'s dead-URL finding, `ua-edr`'s
+citation checks) of surfacing robots.txt/ToS findings honestly rather than reasoning past them
+silently. **The owner's explicit answer: stop, do not build this connector** — not "proceed with a
+documented caveat," the alternative this session offered. No `brcnpj` code exists anywhere in the
+repo as a result; full record kept in this project's session memory for if it's ever revisited (the
+blocking fact to re-check first is that exact `robots.txt` line).
+
+**2026-08-14 (same day, next session): third connector `osm` (OpenStreetMap, Overpass API) built and
+live-verified, chosen specifically because it was less likely to hit the same class of blocker.**
+Live-checked robots.txt for two Overpass mirrors before building: `overpass-api.de` (the main
+OSM-Foundation-run instance) disallows `/api/` in its own robots.txt — the exact query-endpoint
+path — flagged to the owner the same way, who asked to try an alternative mirror rather than stop
+entirely. `overpass.kumi.systems` (Private.coffee) has **no robots.txt at all** (404, confirmed
+live), with a published policy welcoming reasonable use (no enforced rate limit, asks only that
+large-scale projects notify the operator first); `overpass.osm.ch` independently confirmed the same
+absence, as a second data point. Chosen as the default endpoint.
+
+A real end-to-end query against `overpass.kumi.systems` for all of Uruguay
+(`area["ISO3166-1"="UY"][admin_level=2]`, `nwr["amenity"="place_of_worship"]["religion"="christian"]`,
+`out center tags`) returned `200 OK` in ~20s: 566 real elements (290 node, 274 way, 2 relation — every
+way/relation carried a real `center` object, 0 missing). Real tag data confirmed every design
+decision: `denomination` values `catholic`/`roman_catholic` both appear for the same real
+denomination (a real vocabulary inconsistency, documented as a starter-alias-list note, not a
+parsing bug); 78 of 566 elements (~14%) had no `name` tag at all — filtered out before ever becoming
+a candidate, a deliberate data-quality floor stated explicitly in the connector's own doc comment;
+at least one real element carried a `diocese` tag, now mapped to `JurisdictionHint` when present.
+Unlike either existing connector, OSM commonly carries both real address text and real coordinates —
+`osm` is the first connector to actually populate `Latitude`/`Longitude`, which the existing
+nil-check in `processRawRecord` already routes straight to `STAGED`, bypassing `NEEDS_GEOCODE`
+entirely, with no code change needed there.
+
+`Code() = "osm"` (`internal/congregationimport/adapters/connectors/osm`), simpler execution shape
+than either existing connector: queries once per configured country on the first `Fetch` call
+(`ISO3166-1` area match, real, live-verified query shape), keeps every result in memory, serves
+batches via plain integer-offset slicing — no reopen-and-reskip step, so `ua-edr`'s real
+cursor-doubling bug class cannot occur here. Default scope `OSM_COUNTRY_CODES=UY,PY,CO,CL` — the
+D-Scope countries with no confirmed dedicated registry — deliberately **not** Ukraine/Argentina
+(already covered) or Brazil (blocked, see above): `application/dedup.go`'s `findPossibleDuplicate`
+only checks a new candidate against already-provisioned go-oikumenea sites, never against sibling
+`STAGED` candidates in another connector's own still-largely-unreviewed queue (confirmed by reading
+`dedup.go` directly), so running `osm` over Argentina today would flood the review queue with
+near-duplicates dedup can't yet catch. `SourceRecordID` is OSM's own stable element identity
+(`"{type}/{id}"`), genuinely per-element unique.
+
+`go build ./... && go vet ./... && go test ./...` clean, including new `osm`-specific tests
+(`connector_test.go`: multi-country load + `CountryHint` assignment, nameless-element filtering,
+locale-name fallback, request-shape, batch-boundary/exhaustion, node-vs-way/relation coordinate
+extraction, and the full `Normalize` field mapping). Not yet run against a live `docker compose`
+stack in this session — `Country.Name`'s real content for the four target countries, and `osm`'s real
+per-country totals beyond the one live-verified Uruguay query, remain open per
+`docs/modules/congregationimport.md`'s own Open seams entry. Does not change M8's own `Verified`
+status.
+
+**2026-08-14 (same day, next session): admin UI gained manual-run parameters, plus a real adjacent
+bug fixed in the same pass.** User request: the admin UI needed a way to manually trigger a
+connector run, and — when a connector has parameters — a way to actually use them. Explored the
+existing `RunConnectorRequest` (`sourceCode` only, no precedent anywhere in this repo's own Conjure
+files for a generic params bag — though `map<string, string>` is an established pattern in
+go-oikumenea's own contracts, confirmed by reading them directly) and `domain.Connector` (no
+parameter channel at all — `Fetch` takes only a cursor) before designing.
+
+**Real, adjacent bug found while designing, fixed in the same pass at the owner's explicit
+direction**: `arrnc`/`osm`'s `sync.Once`-cached in-memory rows lived on the SAME long-lived connector
+instance registered once at boot and reused for every `RunConnector` call — a second manual run
+would silently replay the first run's data forever, never re-querying the real source (`uaedr`'s
+own HTTP-streaming design happened to avoid this via its own per-run lock/stream reset, confirmed by
+reading `connector_http.go` directly). Fixed by adding a required `Clone() Connector` method to
+`domain.Connector`, implemented in all three connectors — `RunConnector` now always runs against a
+fresh, run-scoped value (`base.Clone()`, or `configurable.WithParameters(parameters)` when the
+caller supplies a non-empty map), never the shared registry instance directly.
+
+**The parameters feature itself**: a new optional `domain.ConnectorConfigurable` interface
+(`WithParameters(params map[string]string) (Connector, error)`, mirroring `ConnectorCloser`'s
+own "optional, type-asserted for" pattern) — only `osm` implements it (one key, `countryCodes`,
+validated against the same `countryNames` map `New` already uses; an unrecognized key or invalid
+value is a construction error, fail-loudly). `RunConnectorRequest`/`ImportRun` both gained an
+`optional<map<string, string>>` `parameters` field; a new `RunParametersNotSupported` typed error
+(`CongregationImport` namespace) for a non-empty map against a connector that doesn't implement
+`ConnectorConfigurable`. Persisted on the run row (`migrations/0012_congregationimport_run_
+parameters.sql`, a nullable `jsonb` column, expand-only). Regenerated both the Go server code
+(`./godelw conjure`) and the TypeScript SDK for both `web/apps/{admin,web}` (`scripts/
+gen-ts-client.sh` — the real, previously-undocumented-in-this-file script that does this, found by
+reading `CONTRIBUTING.md` and the M2.6 history rather than guessing a command).
+
+**Admin UI**: `SOURCE_CODES` was missing `osm` entirely (a real, separate small gap found while
+wiring this up) — added. A new small client component, `run-connector-form.tsx`, conditionally
+renders a `countryCodes` text input only when `osm` is selected (`PARAMETERIZED_SOURCES`, manually
+kept in sync with the backend — no "list registered connectors + their parameter shape" endpoint
+exists, not worth building for one parameterized source). A blank field means "use the connector's
+own deploy-time default," never an explicit empty-list override — enforced both in the Server
+Action (never sends an empty-string parameter) and in `osm.WithParameters` itself (rejects an
+effectively-empty `countryCodes` value).
+
+**Scope note, found while implementing**: `listRuns`/`getRun` are wired in `lib/congregation-
+import.ts` but nothing in `web/apps/admin` renders run history at all today — an operator sees the
+resulting candidates land in the queue, but no page shows what parameters a given run actually used.
+Real, deliberately out of scope for this pass (not asked for, would be a new page, not an extension
+of an existing one) — the backend/data model (including the new `parameters` field) is ready
+whenever this is built; see `docs/modules/congregationimport.md`'s Open seams.
+
+`go build ./... && go vet ./... && go test ./...` clean across the whole repo, including new
+`TestClone` regression tests on all three connectors (`arrnc`/`osm`'s rewrite the fixture/mock
+response between two Fetch calls to prove a clone re-reads rather than reusing a cached result) and
+`osm`'s `TestWithParameters`. `atlas migrate hash` re-run after the new migration. Both
+`web/apps/{admin,web}`'s `tsc --noEmit`/`eslint .` clean; `web/apps/admin`'s `next build` clean.
+**Not yet run against a live `docker compose` stack** in this session — the end-to-end proof (two UI
+-triggered `osm` runs with different `countryCodes`, confirming fresh candidate sets and a clear
+error for an unsupported-parameters attempt on `ua-edr`) remains open. Does not change M8's own
+`Verified` status.
+
+**2026-08-14 (same day, next session): the live `docker compose` end-to-end proof above actually ran
+— a real operator triggered `osm` with `countryCodes: "CO"` through the rebuilt UI — and it failed.**
+Root-caused directly against Postgres (`congregationimport_runs.parameters`/`.error`, the new column
+from the session above) and reproduced live moments later: `overpass.kumi.systems` genuinely times
+out computing a whole-country query for Colombia (`504`, "the server is probably too busy") — the
+identical Uruguay query, re-run at the same time, completed in 6.5s. A second real finding from the
+same investigation: the mirror doesn't always fail with a clean `504` — one Colombia attempt came
+back `200 OK` with an HTML error page in the body instead of JSON, surfacing as a confusing raw
+`invalid character '<'` JSON-decode error rather than a diagnosable one. Fixed:
+`osm/connector.go` gained a `regionGrid` concept — a country can be configured with a bbox grid
+(real bounds fetched live from Overpass itself via `relation["ISO3166-1"="CO"][admin_level=2]; out
+bb;`, not guessed) that splits its query into several smaller bbox-bounded requests, still
+intersected with the real country polygon (`area["ISO3166-1"=...]`) so results stay geographically
+accurate. Only Colombia got one (3×2=6 cells) — Uruguay/Paraguay/Chile keep their original single
+query, since only Colombia has actually been observed to need splitting; the doc comment is explicit
+that this is measured, not pre-emptive. `queryRegion` (renamed from `queryCountry`) also now detects
+a non-JSON response body explicitly instead of a bare status-code check. New tests:
+`TestSplitGrid` (pure grid math), `TestLoadSplitsColombiaOnly` (Colombia issues 6 distinct-bbox
+requests, Uruguay still issues exactly 1, in the same run), `TestQueryRegionHTMLErrorPage`
+(regression test for the HTML-error-page finding). `go build/vet/test ./...` clean. Does not change
+M8's own `Verified` status.
 
 ### M9 · Production deployment (single cheap VM)
 

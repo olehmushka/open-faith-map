@@ -19,10 +19,13 @@ const (
 // Run is one triggered connector execution — congregationimport_runs. Mirrors go-oikumenea's own
 // hermenea import_runs concept (docs/modules/import.md), scoped to one source per run.
 type Run struct {
-	ID                     string
-	SourceCode             string
-	Status                 RunStatus
-	TriggeredByPersonRID   string
+	ID                   string
+	SourceCode           string
+	Status               RunStatus
+	TriggeredByPersonRID string
+	// Parameters is what the caller actually supplied to RunConnector (nil/empty when none were) —
+	// persisted so run history shows what a past run really used, e.g. osm's countryCodes override.
+	Parameters             map[string]string
 	CursorAtStart          *string
 	CursorAtEnd            *string
 	RecordsFetched         int

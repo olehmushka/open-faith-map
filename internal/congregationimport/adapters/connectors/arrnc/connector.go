@@ -115,6 +115,14 @@ func New(filePath, sourceURL string, httpClient *http.Client) (*Connector, error
 
 func (c *Connector) Code() string { return Code }
 
+// Clone returns a fresh Connector for one RunConnector call — same fixed FilePath/SourceURL/
+// httpClient, zero loadOnce/rows. Real bug fixed by this (found live 2026-08-14): without Clone,
+// a second RunConnector call against the same long-lived, boot-registered instance would silently
+// reuse the FIRST run's cached rows forever via loadOnce, never re-fetching from the real source.
+func (c *Connector) Clone() domain.Connector {
+	return &Connector{FilePath: c.FilePath, SourceURL: c.SourceURL, httpClient: c.httpClient}
+}
+
 // Citation records what was actually checked before this connector was allowed to run
 // (D-CongregationImport's own "decision #4" discipline) — both the dead CKAN-declared URL and the
 // real working one, honestly, so a future session doesn't have to rediscover the discrepancy.

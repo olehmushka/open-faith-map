@@ -3,7 +3,9 @@
 
 package domain
 
-import "time"
+import (
+	"time"
+)
 
 // doctrinalReasonCode is not a real ReasonCode value (ReasonCode's own const block has no
 // DOCTRINAL_CONCERN) — this exists only so ValidateReasonCode can recognize the specific string a

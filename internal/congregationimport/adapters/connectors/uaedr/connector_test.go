@@ -75,3 +75,23 @@ func TestFetchFileMultiBatchResume(t *testing.T) {
 		}
 	}
 }
+
+// TestClone confirms a fresh instance shares the fixed FilePath/SourceURL/httpClient config but is
+// a genuinely distinct value with a zero httpModeState — a stale run-lock or held-open stream from
+// a PRIOR run must never carry into a new one. FilePath mode itself has no in-memory cache to go
+// stale the way arrnc/osm's loadOnce does (it re-reads from scratch on every Fetch(nil, ...) call
+// regardless), so this only needs to confirm the interface contract, not a specific staleness bug.
+func TestClone(t *testing.T) {
+	original := &Connector{FilePath: "uo.xml", SourceURL: "", httpClient: nil}
+	clone := original.Clone().(*Connector)
+
+	if clone == original {
+		t.Fatal("Clone returned the same pointer as the receiver")
+	}
+	if clone.FilePath != original.FilePath || clone.SourceURL != original.SourceURL {
+		t.Fatalf("Clone() = %+v, want same FilePath/SourceURL as %+v", clone, original)
+	}
+	if clone.http.runLockHeld || clone.http.stream != nil {
+		t.Fatal("Clone().http is not zero-valued — a fresh run must never inherit a prior run's lock/stream state")
+	}
+}

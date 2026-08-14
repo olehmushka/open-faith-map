@@ -27,6 +27,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 
 import { CandidateList, UNSET_OPTION } from "./candidate-list";
+import { RunConnectorForm } from "./run-connector-form";
 
 const STATUSES = [
   "STAGED",
@@ -41,8 +42,9 @@ const STATUSES = [
 ];
 
 // Static, not fetched — no "list registered connectors" endpoint exists (and isn't worth adding
-// for two known source codes); add a source here when a new connector is registered in main.go.
-const SOURCE_CODES = ["ua-edr", "ar-rnc"];
+// for three known source codes); add a source here when a new connector is registered in main.go
+// (and to run-connector-form.tsx's own PARAMETERIZED_SOURCES if it accepts run parameters).
+const SOURCE_CODES = ["ua-edr", "ar-rnc", "osm"];
 
 function requireRootUnitId(): string {
   const raw = process.env.REGISTRATION_ROOT_UNIT_ID?.trim();
@@ -65,14 +67,15 @@ export default async function CongregationImportPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; source?: string }>;
 }) {
   const { locale } = await params;
   const t = await getTranslations("CongregationImportPage");
-  const { status: statusRaw } = await searchParams;
+  const { status: statusRaw, source: sourceRaw } = await searchParams;
   const status = statusRaw && statusRaw !== UNSET_OPTION ? statusRaw : undefined;
+  const source = sourceRaw && sourceRaw !== UNSET_OPTION ? sourceRaw : undefined;
   const [{ candidates, nextPageToken }, taxa, countries] = await Promise.all([
-    listCandidates(status),
+    listCandidates(status, source),
     listTaxaForPicker(locale),
     listCountriesForPicker(locale),
   ]);
@@ -82,10 +85,20 @@ export default async function CongregationImportPage({
     "use server";
     const sourceCode = String(formData.get("sourceCode") ?? "").trim();
     if (!sourceCode) return;
-    await runConnector(sourceCode);
+    // A blank field means "use the connector's own default," never "override with an empty
+    // value" — only send a parameters map when the operator actually typed something.
+    const countryCodes = String(formData.get("countryCodes") ?? "").trim();
+    const parameters = countryCodes ? { countryCodes } : undefined;
+    await runConnector(sourceCode, parameters);
     redirect({ href: "/admin/congregation-import", locale });
   }
 
+  // Unlike approve/reject below, this does NOT redirect — saving a correction is something an
+  // operator often does more than once while working a candidate (try coordinates, check the
+  // result, adjust), and a full-page redirect would collapse the expanded row every time (DataTable's
+  // expanded state, components/data-table.tsx, is plain useState local to that component instance —
+  // a redirect unmounts and remounts the whole tree, wiping it). Returning the updated Candidate lets
+  // CandidateList patch its own local row data in place instead, keeping the row open.
   async function edit(formData: FormData) {
     "use server";
     const id = String(formData.get("id"));
@@ -95,13 +108,12 @@ export default async function CongregationImportPage({
     const countryId = countryIdRaw && countryIdRaw !== UNSET_OPTION ? countryIdRaw : undefined;
     const latitudeRaw = String(formData.get("latitude") ?? "").trim();
     const longitudeRaw = String(formData.get("longitude") ?? "").trim();
-    await editCandidate(id, {
+    return editCandidate(id, {
       taxonId,
       countryId,
       latitude: latitudeRaw ? Number(latitudeRaw) : undefined,
       longitude: longitudeRaw ? Number(longitudeRaw) : undefined,
     });
-    redirect({ href: "/admin/congregation-import", locale });
   }
 
   async function approve(formData: FormData) {
@@ -124,7 +136,7 @@ export default async function CongregationImportPage({
 
   async function loadMoreCandidates(pageToken: string) {
     "use server";
-    return listCandidates(status, undefined, pageToken);
+    return listCandidates(status, source, undefined, pageToken);
   }
 
   // Thin "use server" wrappers — searchJurisdictionUnits/createJurisdictionUnit aren't themselves
@@ -159,23 +171,7 @@ export default async function CongregationImportPage({
 
       <Card>
         <CardContent className="flex flex-wrap items-center gap-3 pt-6">
-          <form action={triggerRun} className="flex gap-2">
-            <Select name="sourceCode" defaultValue={SOURCE_CODES[0]}>
-              <SelectTrigger size="sm" className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SOURCE_CODES.map((code) => (
-                  <SelectItem key={code} value={code}>
-                    {code}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="submit" size="sm">
-              {t("runConnector")}
-            </Button>
-          </form>
+          <RunConnectorForm sourceCodes={SOURCE_CODES} action={triggerRun} />
           <form action={`/${locale}/admin/congregation-import`} className="flex gap-2">
             <Select name="status" defaultValue={status ?? UNSET_OPTION}>
               <SelectTrigger size="sm" className="w-56">
@@ -186,6 +182,19 @@ export default async function CongregationImportPage({
                 {STATUSES.map((s) => (
                   <SelectItem key={s} value={s}>
                     {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select name="source" defaultValue={source ?? UNSET_OPTION}>
+              <SelectTrigger size="sm" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNSET_OPTION}>{t("allSources")}</SelectItem>
+                {SOURCE_CODES.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {code}
                   </SelectItem>
                 ))}
               </SelectContent>

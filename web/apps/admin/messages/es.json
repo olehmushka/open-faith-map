@@ -211,7 +211,9 @@
   "CongregationImportPage": {
     "heading": "Congregation import",
     "runConnector": "Run connector",
+    "runCountryCodesPlaceholder": "e.g. UY,PY,CO,CL — leave blank for the connector's default",
     "allStatuses": "All statuses",
+    "allSources": "All sources",
     "filter": "Filter",
     "manageAliases": "Manage aliases",
     "noCandidates": "No candidates.",

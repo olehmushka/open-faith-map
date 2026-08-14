@@ -29,11 +29,15 @@ const (
 var (
 	ErrCandidateNotFound = errors.New("congregationimport: candidate not found")
 	ErrRunNotFound       = errors.New("congregationimport: run not found")
-	ErrForbidden         = errors.New("congregationimport: forbidden")
-	ErrNotEditable       = errors.New("congregationimport: candidate is not in an editable status")
-	ErrNotApprovable     = errors.New("congregationimport: candidate is not in an approvable status")
-	ErrInvalidPageToken  = errors.New("congregationimport: pageToken is malformed or tampered")
-	ErrAliasConflict     = errors.New("congregationimport: an alias with this (sourceCode, aliasText) already exists")
+	// ErrRunParametersNotSupported is returned when the caller supplies a non-empty parameters map
+	// for a connector that doesn't implement ConnectorConfigurable — fail loudly rather than
+	// silently ignoring parameters the operator explicitly typed in.
+	ErrRunParametersNotSupported = errors.New("congregationimport: this connector does not accept run parameters")
+	ErrForbidden                 = errors.New("congregationimport: forbidden")
+	ErrNotEditable               = errors.New("congregationimport: candidate is not in an editable status")
+	ErrNotApprovable             = errors.New("congregationimport: candidate is not in an approvable status")
+	ErrInvalidPageToken          = errors.New("congregationimport: pageToken is malformed or tampered")
+	ErrAliasConflict             = errors.New("congregationimport: an alias with this (sourceCode, aliasText) already exists")
 )
 
 // PageCursor is the decoded shape of an opaque pageToken (mirrors moderation's M7 pagination

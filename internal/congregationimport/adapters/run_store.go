@@ -29,16 +29,23 @@ func NewStore(pool *pgxpool.Pool) *Store {
 }
 
 const runSelectColumns = `
-	id, source_code, status, triggered_by_person_rid, cursor_at_start, cursor_at_end,
+	id, source_code, status, triggered_by_person_rid, parameters, cursor_at_start, cursor_at_end,
 	records_fetched, candidates_created, candidates_updated, candidates_auto_rejected, error,
 	started_at, finished_at`
 
-func (s *Store) CreateRun(ctx context.Context, sourceCode, triggeredByPersonRID string, cursorAtStart *string) (domain.Run, error) {
+// CreateRun persists a new run row, including whatever parameters the caller actually supplied to
+// RunConnector (nil when none were) — an empty map is stored as SQL NULL, not an empty JSON object,
+// so listRuns/getRun's Parameters field is nil (not an empty map) for the common no-parameters case.
+func (s *Store) CreateRun(ctx context.Context, sourceCode, triggeredByPersonRID string, parameters map[string]string, cursorAtStart *string) (domain.Run, error) {
+	var paramsArg *map[string]string
+	if len(parameters) > 0 {
+		paramsArg = &parameters
+	}
 	row := s.pool.QueryRow(ctx, `
-		INSERT INTO openfaithmap.congregationimport_runs (source_code, triggered_by_person_rid, cursor_at_start)
-		VALUES ($1, $2, $3)
+		INSERT INTO openfaithmap.congregationimport_runs (source_code, triggered_by_person_rid, parameters, cursor_at_start)
+		VALUES ($1, $2, $3, $4)
 		RETURNING `+runSelectColumns,
-		sourceCode, triggeredByPersonRID, cursorAtStart,
+		sourceCode, triggeredByPersonRID, paramsArg, cursorAtStart,
 	)
 	return scanRun(row)
 }
@@ -119,7 +126,7 @@ func scanRun(row rowScanner) (domain.Run, error) {
 	var r domain.Run
 	var status string
 	if err := row.Scan(
-		&r.ID, &r.SourceCode, &status, &r.TriggeredByPersonRID, &r.CursorAtStart, &r.CursorAtEnd,
+		&r.ID, &r.SourceCode, &status, &r.TriggeredByPersonRID, &r.Parameters, &r.CursorAtStart, &r.CursorAtEnd,
 		&r.RecordsFetched, &r.CandidatesCreated, &r.CandidatesUpdated, &r.CandidatesAutoRejected,
 		&r.Error, &r.StartedAt, &r.FinishedAt,
 	); err != nil {

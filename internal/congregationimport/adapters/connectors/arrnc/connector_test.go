@@ -13,15 +13,23 @@ import (
 	"testing"
 )
 
-// writeFixture writes an n-row CSV in this source's real shape (no header, 5 columns) and returns
-// its path.
+// writeFixture writes an n-row CSV in this source's real shape (no header, 5 columns) to a fresh
+// temp path and returns it.
 func writeFixture(t *testing.T, n int) string {
 	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "registro-culto-export.csv")
+	path := filepath.Join(t.TempDir(), "registro-culto-export.csv")
+	if _, err := writeFixtureAt(path, n); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// writeFixtureAt (over)writes an n-row CSV, same shape as writeFixture, at a caller-chosen path —
+// used by TestClone to change a fixture's content IN PLACE between two Fetch calls.
+func writeFixtureAt(path string, n int) (string, error) {
 	f, err := os.Create(path)
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	defer func() { _ = f.Close() }()
 	w := csv.NewWriter(f)
@@ -33,14 +41,14 @@ func writeFixture(t *testing.T, n int) string {
 			"Buenos Aires",
 			strconv.Itoa(i % 7), // several rows deliberately share a CI, mirroring the real "filial" shape
 		}); err != nil {
-			t.Fatal(err)
+			return "", err
 		}
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
-	return path
+	return path, nil
 }
 
 // TestFetchMultiBatch is this design's own equivalent of uaedr's TestFetchFileMultiBatchResume —
@@ -118,6 +126,37 @@ func TestSourceRecordID(t *testing.T) {
 	c := cultRow{Name: "Iglesia Nueva Apostolica - Filial 1", Address: "Calle 1", Locality: "Banfield", Province: "buenos aires", CI: "4"}
 	if sourceRecordID(a) != sourceRecordID(c) {
 		t.Fatal("identical content differing only by case got different SourceRecordIDs — a re-run would duplicate instead of upserting")
+	}
+}
+
+// TestClone is the regression test for the real 2026-08-14 staleness bug: a long-lived instance's
+// loadOnce-cached rows must never leak into a fresh run. Rewrites the fixture file's own row count
+// BETWEEN the original's first load and the clone's own first Fetch — a clone sharing the
+// original's cache would still report the OLD row count; a genuinely fresh instance reports the
+// NEW one, since it re-reads the file from scratch.
+func TestClone(t *testing.T) {
+	path := writeFixture(t, 3)
+	original := &Connector{FilePath: path}
+	if _, _, err := original.Fetch(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(original.rows) != 3 {
+		t.Fatalf("original loaded %d rows, want 3", len(original.rows))
+	}
+
+	// Overwrite the same path with different content, in place — a real re-run against a real
+	// re-downloaded/re-read source would see this.
+	if _, err := writeFixtureAt(path, 7); err != nil {
+		t.Fatal(err)
+	}
+
+	clone := original.Clone()
+	batch, _, err := clone.Fetch(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch) != 7 {
+		t.Fatalf("clone fetched %d rows, want 7 (fresh read of the file's current content) — a stale shared cache would report 3", len(batch))
 	}
 }
 
