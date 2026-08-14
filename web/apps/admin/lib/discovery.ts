@@ -62,3 +62,32 @@ async function unwrap<T>(promise: Promise<T>): Promise<T> {
 export async function refreshRegion(input: RefreshRegionInput): Promise<RefreshResult> {
   return unwrap((await client()).discovery.refresh(input));
 }
+
+// ~5km padding around a single point — enough to cover discovery_site_cache's region-bucketing
+// without refreshing a huge area for a one-congregation approval.
+const REFRESH_PADDING_DEGREES = 0.05;
+
+/**
+ * Best-effort nudge so a just-approved congregation shows up on the public map's default
+ * (no-filter) view immediately, instead of waiting for the next filtered search or an operator's
+ * manual refreshRegion call — discovery_site_cache only self-refreshes on a cache-miss or a
+ * tradition/language/dayOfWeek/query search (docs/modules/discovery.md's "lazy-only, no scheduled
+ * job"), never automatically on approval. Swallows failures deliberately: the cache is
+ * self-healing by design, so a refresh hiccup here must never fail the approval itself.
+ */
+export async function refreshRegionAroundPoint(
+  latitude: number | "NaN" | null | undefined,
+  longitude: number | "NaN" | null | undefined,
+): Promise<void> {
+  if (latitude == null || longitude == null || latitude === "NaN" || longitude === "NaN") return;
+  try {
+    await refreshRegion({
+      minLat: latitude - REFRESH_PADDING_DEGREES,
+      maxLat: latitude + REFRESH_PADDING_DEGREES,
+      minLng: longitude - REFRESH_PADDING_DEGREES,
+      maxLng: longitude + REFRESH_PADDING_DEGREES,
+    });
+  } catch {
+    // Best-effort — see doc comment above.
+  }
+}

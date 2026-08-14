@@ -62,7 +62,11 @@
     "jurisdictionUnitIdPlaceholder": "Jurisdiction unit id (blank = root)",
     "approve": "Approve",
     "rejectionReasonPlaceholder": "Rejection reason",
-    "reject": "Reject"
+    "reject": "Reject",
+    "congregationName": "Congregation",
+    "status": "Status",
+    "location": "Location",
+    "filterRequests": "Filter requests…"
   },
   "ReparentPage": {
     "heading": "Re-parent congregations",
@@ -82,7 +86,9 @@
     "lastMove": "last move: {oldParent} → {newParent} — {status}",
     "newParentUnitIdPlaceholder": "New parent unit id",
     "resumeMove": "Resume move",
-    "reparentButton": "Re-parent"
+    "reparentButton": "Re-parent",
+    "congregationName": "Congregation",
+    "filterCongregations": "Filter congregations…"
   },
   "SitePage": {
     "createHeading": "Create your site",
@@ -154,7 +160,12 @@
     "reasonPlaceholder": "Reason for this action",
     "takeAction": "Take action",
     "loadMore": "Load more",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "target": "Target",
+    "reasonCode": "Reason",
+    "status": "Status",
+    "filterReports": "Filter loaded reports…",
+    "filedAtHeader": "Filed"
   },
   "AppealsPage": {
     "heading": "Appeals",
@@ -164,7 +175,11 @@
     "uphold": "Uphold",
     "overturn": "Overturn",
     "loadMore": "Load more",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "statement": "Statement",
+    "status": "Status",
+    "filterAppeals": "Filter loaded appeals…",
+    "filedAtHeader": "Filed"
   },
   "VouchingConsolePage": {
     "heading": "Vouching",
@@ -181,7 +196,8 @@
     "noVouches": "No vouches found.",
     "vouchLine": "{guarantor} vouched for {claimant}",
     "congregationLine": "Congregation: {unit}",
-    "filedAt": "Filed {date}"
+    "filedAt": "Filed {date}",
+    "newVouchLink": "New vouch"
   },
   "NewVouchPage": {
     "heading": "Vouch for someone",
@@ -230,7 +246,11 @@
     "reasonPlaceholder": "Reason",
     "reject": "Reject",
     "loadMore": "Load more",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "name": "Name",
+    "status": "Status",
+    "source": "Source",
+    "filterCandidates": "Filter loaded candidates…"
   },
   "CongregationImportAliasesPage": {
     "heading": "Congregation import — aliases",
@@ -247,5 +267,53 @@
     "add": "Add",
     "noAliases": "No aliases yet.",
     "global": "global"
+  },
+  "AdminShell": {
+    "brand": "OpenFaithMap Admin",
+    "sections": "Sections",
+    "congregationImport": "Congregation Import",
+    "aliases": "Aliases",
+    "moderation": "Moderation",
+    "appeals": "Appeals",
+    "registrations": "Registrations",
+    "reparent": "Reparent",
+    "vouching": "Vouching",
+    "newVouch": "New vouch",
+    "sites": "Sites",
+    "signOut": "Sign out",
+    "commandPalette": "Command palette",
+    "commandPalettePlaceholder": "Search commands or jump to a site…",
+    "commandPaletteNoResults": "No results found.",
+    "commandPaletteSites": "Sites"
+  },
+  "AdminSitesPage": {
+    "heading": "Sites",
+    "searchHeading": "Find a congregation's site",
+    "searchPlaceholder": "Search by jurisdiction unit name…",
+    "search": "Search",
+    "noResults": "No matches found."
+  },
+  "AdminNotFoundPage": {
+    "heading": "Page not found",
+    "description": "The admin page you're looking for doesn't exist or may have moved.",
+    "backLink": "Back to Congregation Import"
+  },
+  "NotFoundPage": {
+    "heading": "Page not found",
+    "description": "The page you're looking for doesn't exist or may have moved.",
+    "backLink": "Go to login"
+  },
+  "HomePage": {
+    "heading": "OpenFaithMap Admin",
+    "tagline": "The moderation and operator console — review congregation submissions, moderate reports and appeals, manage jurisdictions, and vouch for congregation admins.",
+    "adminHeading": "Admin console",
+    "adminDescription": "Congregation import, moderation, registrations, vouching, and sites.",
+    "openAdmin": "Open admin console",
+    "accountHeading": "Your account",
+    "accountDescription": "Session details and your own congregation.",
+    "whoami": "Who am I",
+    "myCongregation": "My congregation",
+    "signIn": "Sign in with Google",
+    "signOut": "Sign out"
   }
 }

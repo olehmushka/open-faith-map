@@ -1,6 +1,5 @@
 import { getTranslations } from "next-intl/server";
 
-import { auth } from "@/auth";
 import { decideAppeal, listAppeals } from "@/lib/moderation";
 import { redirect } from "@/i18n/navigation";
 
@@ -10,9 +9,6 @@ import { AppealList } from "./appeal-list";
 // real access-control decision, this page just renders whatever it returns.
 export default async function AppealsPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
-  const session = await auth();
-  if (!session) return redirect({ href: "/login", locale });
-
   const t = await getTranslations("AppealsPage");
   const { appeals, nextPageToken } = await listAppeals("OPEN");
 
@@ -31,7 +27,7 @@ export default async function AppealsPage({ params }: { params: Promise<{ locale
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-12">
+    <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">{t("heading")}</h1>
 
       <AppealList
@@ -48,6 +44,6 @@ export default async function AppealsPage({ params }: { params: Promise<{ locale
           loading: t("loading"),
         }}
       />
-    </main>
+    </div>
   );
 }

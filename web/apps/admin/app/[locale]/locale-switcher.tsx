@@ -4,6 +4,13 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { routing } from "@/i18n/routing";
 import { usePathname, useRouter } from "@/i18n/navigation";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function LocaleSwitcher() {
   const locale = useLocale();
@@ -12,20 +19,20 @@ export function LocaleSwitcher() {
   const t = useTranslations("LocaleSwitcher");
 
   return (
-    <label className="flex items-center gap-1 text-xs text-gray-500">
-      <span className="hidden sm:inline">{t("label")}</span>
-      <select
-        aria-label={t("label")}
-        value={locale}
-        onChange={(e) => router.replace(pathname, { locale: e.target.value })}
-        className="rounded border px-2 py-1 text-sm"
-      >
+    <Select
+      value={locale}
+      onValueChange={(value) => router.replace(pathname, { locale: value })}
+    >
+      <SelectTrigger aria-label={t("label")} size="sm" className="w-auto">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
         {routing.locales.map((l) => (
-          <option key={l} value={l}>
+          <SelectItem key={l} value={l}>
             {t(l)}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-    </label>
+      </SelectContent>
+    </Select>
   );
 }

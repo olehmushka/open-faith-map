@@ -3,9 +3,21 @@
 
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { createPortal } from "react-dom";
+import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
+import { Plus, Search } from "lucide-react";
+
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type UnitOption = { id: string; code: string | null; name: string };
 
@@ -15,7 +27,7 @@ function slugify(name: string): string {
   return name
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "") // combining diacritical marks left behind by NFKD
+    .replace(/[̀-ͯ]/g, "") // combining diacritical marks left behind by NFKD
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
@@ -24,9 +36,9 @@ function slugify(name: string): string {
 /**
  * Search-and-select a jurisdiction unit, plus "create a missing one on the spot" — replaces a bare
  * jurisdictionUnitId <input>. Renders a hidden input carrying the real value, so it must be a
- * descendant of the enclosing Approve <form> — but the <dialog> itself is portaled to
- * document.body, since a <dialog><form> nested inside that outer <form> would be invalid HTML
- * (forms cannot nest) and behave unpredictably across browsers.
+ * descendant of the enclosing Approve <form> — the shadcn Dialog itself still portals to
+ * document.body (Radix's own DialogPortal), so it's safe to nest visually inside that outer
+ * <form> without producing invalid nested-<form> HTML.
  */
 export function JurisdictionField({
   candidateId,
@@ -68,11 +80,8 @@ export function JurisdictionField({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UnitOption[] | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [mounted, setMounted] = useState(false);
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const nameInputId = `unit-name-${candidateId}`;
-
-  useEffect(() => setMounted(true), []);
 
   function select(unit: UnitOption) {
     setSelectedId(unit.id);
@@ -94,91 +103,88 @@ export function JurisdictionField({
     startTransition(async () => {
       const unit = await onCreateUnit(parentUnitId, code, name);
       select(unit);
-      dialogRef.current?.close();
+      setDialogOpen(false);
     });
   }
 
   return (
     <div className="flex flex-col gap-1">
       <input type="hidden" name="jurisdictionUnitId" value={selectedId} />
-      <span className="text-xs">
+      <span className="text-xs text-muted-foreground">
         {labels.jurisdictionUnitId}: {selectedLabel || labels.jurisdictionNone}
       </span>
       <div className="flex flex-wrap gap-2">
-        <input
+        <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={labels.jurisdictionSearchPlaceholder}
-          className="rounded border px-2 py-1 text-sm"
+          className="h-8 w-56"
         />
-        <button type="button" onClick={handleSearch} disabled={isPending} className="rounded border px-2 py-1 text-sm">
+        <Button type="button" variant="outline" size="sm" onClick={handleSearch} disabled={isPending}>
+          <Search className="size-3.5" />
           {labels.jurisdictionSearch}
-        </button>
-        <button
-          type="button"
-          onClick={() => dialogRef.current?.showModal()}
-          className="rounded border px-2 py-1 text-sm"
-        >
-          {labels.createUnit}
-        </button>
+        </Button>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Button type="button" variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus className="size-3.5" />
+            {labels.createUnit}
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{labels.createUnitHeading}</DialogTitle>
+            </DialogHeader>
+            <form
+              action={handleCreate}
+              id={`create-unit-form-${candidateId}`}
+              className="flex flex-col gap-3"
+            >
+              <Label htmlFor={nameInputId} className="flex flex-col items-start gap-1 text-xs">
+                {labels.createUnitName}
+                <Input
+                  id={nameInputId}
+                  name="name"
+                  required
+                  defaultValue={jurisdictionHint ?? candidateName}
+                />
+              </Label>
+              <Label className="flex flex-col items-start gap-1 text-xs">
+                {labels.createUnitCode}
+                <Input name="code" required defaultValue={slugify(jurisdictionHint ?? candidateName)} />
+              </Label>
+              <Label className="flex flex-col items-start gap-1 text-xs">
+                {labels.createUnitParentUnitId}
+                <Input name="parentUnitId" defaultValue={rootUnitId} />
+              </Label>
+            </form>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  {labels.createUnitCancel}
+                </Button>
+              </DialogClose>
+              <Button type="submit" form={`create-unit-form-${candidateId}`} disabled={isPending}>
+                {labels.createUnitSubmit}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       {results && (
         <ul className="flex flex-col gap-1 text-sm">
-          {results.length === 0 && <li>{labels.jurisdictionNoMatches}</li>}
+          {results.length === 0 && <li className="text-muted-foreground">{labels.jurisdictionNoMatches}</li>}
           {results.map((u) => (
             <li key={u.id}>
               <button
                 type="button"
                 onClick={() => select(u)}
-                className="rounded border px-2 py-0.5 text-left text-sm hover:bg-gray-50"
+                className="rounded border px-2 py-0.5 text-left text-sm hover:bg-muted"
               >
-                {u.name} {u.code && <span className="text-gray-500">({u.code})</span>}
+                {u.name} {u.code && <span className="text-muted-foreground">({u.code})</span>}
               </button>
             </li>
           ))}
         </ul>
       )}
-
-      {mounted &&
-        createPortal(
-          <dialog ref={dialogRef} className="rounded border p-4 backdrop:bg-black/30">
-            <form action={handleCreate} className="flex flex-col gap-3" style={{ minWidth: "20rem" }}>
-              <h3 className="font-medium">{labels.createUnitHeading}</h3>
-              <label className="flex flex-col text-xs" htmlFor={nameInputId}>
-                {labels.createUnitName}
-                <input
-                  id={nameInputId}
-                  name="name"
-                  required
-                  defaultValue={jurisdictionHint ?? candidateName}
-                  className="rounded border px-2 py-1 text-sm"
-                />
-              </label>
-              <label className="flex flex-col text-xs">
-                {labels.createUnitCode}
-                <input
-                  name="code"
-                  required
-                  defaultValue={slugify(jurisdictionHint ?? candidateName)}
-                  className="rounded border px-2 py-1 text-sm"
-                />
-              </label>
-              <label className="flex flex-col text-xs">
-                {labels.createUnitParentUnitId}
-                <input name="parentUnitId" defaultValue={rootUnitId} className="rounded border px-2 py-1 text-sm" />
-              </label>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => dialogRef.current?.close()} className="rounded border px-3 py-1 text-sm">
-                  {labels.createUnitCancel}
-                </button>
-                <button type="submit" disabled={isPending} className="rounded border px-3 py-1 text-sm">
-                  {labels.createUnitSubmit}
-                </button>
-              </div>
-            </form>
-          </dialog>,
-          document.body,
-        )}
     </div>
   );
 }

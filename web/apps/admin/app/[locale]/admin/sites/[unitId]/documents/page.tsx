@@ -1,8 +1,10 @@
 import { getTranslations } from "next-intl/server";
+import { Plus } from "lucide-react";
 
-import { auth } from "@/auth";
 import { getSite, listDocuments } from "@/lib/content";
 import { Link, redirect } from "@/i18n/navigation";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 export default async function DocumentsPage({
   params,
@@ -10,9 +12,6 @@ export default async function DocumentsPage({
   params: Promise<{ locale: string; unitId: string }>;
 }) {
   const { locale, unitId } = await params;
-  const session = await auth();
-  if (!session) return redirect({ href: "/login", locale });
-
   const t = await getTranslations("DocumentsPage");
   const site = await getSite(unitId).catch(() => null);
   if (!site) return redirect({ href: `/admin/sites/${unitId}`, locale });
@@ -20,30 +19,35 @@ export default async function DocumentsPage({
   const documents = await listDocuments(site.id);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-12">
-      <h1 className="text-2xl font-semibold">{t("heading")}</h1>
-      <Link href={`/admin/sites/${unitId}/documents/new`} className="underline">
-        {t("newPage")}
-      </Link>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/admin/sites/${unitId}/documents/new`}>
+            <Plus className="size-3.5" />
+            {t("newPage")}
+          </Link>
+        </Button>
+      </div>
 
-      {documents.length === 0 && <p>{t("noPages")}</p>}
+      {documents.length === 0 && <p className="text-muted-foreground">{t("noPages")}</p>}
       <ul className="flex flex-col gap-3">
         {documents.map((d) => (
-          <li key={d.id} className="rounded border p-4">
+          <li key={d.id} className="rounded-md border p-4">
             <div className="flex items-baseline justify-between">
-              <Link href={`/admin/sites/${unitId}/documents/${d.id}`} className="font-medium underline">
+              <Link href={`/admin/sites/${unitId}/documents/${d.id}`} className="font-medium hover:underline">
                 {d.slug}
               </Link>
-              <span className={`text-sm ${d.state === "DRAFT" ? "font-semibold" : ""}`}>
+              <Badge variant={d.state === "DRAFT" ? "secondary" : "outline"}>
                 {d.state === "DRAFT" ? t("draftLabel") : d.state}
-              </span>
+              </Badge>
             </div>
-            <p className="text-sm">
+            <p className="text-sm text-muted-foreground">
               {d.locale} · {d.kind}
             </p>
           </li>
         ))}
       </ul>
-    </main>
+    </div>
   );
 }

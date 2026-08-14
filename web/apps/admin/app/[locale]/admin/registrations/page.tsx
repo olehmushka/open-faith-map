@@ -1,9 +1,14 @@
 import { getTranslations } from "next-intl/server";
 
-import { auth } from "@/auth";
 import { createJurisdictionUnit, searchJurisdictionUnits } from "@/lib/jurisdiction";
 import { approveRegistration, listRegistrations, rejectRegistration } from "@/lib/registration";
+import { refreshRegionAroundPoint } from "@/lib/discovery";
 import { redirect } from "@/i18n/navigation";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { RequestList } from "./request-list";
 
 // Renders whatever listRegistrations returns for the caller — openfaithmap-api itself decides
 // operator (all requests) vs. submitter (their own only) by asking go-oikumenea's PDP live
@@ -18,9 +23,6 @@ export default async function RegistrationsPage({
   searchParams: Promise<{ jurisdictionQuery?: string }>;
 }) {
   const { locale } = await params;
-  const session = await auth();
-  if (!session) return redirect({ href: "/login", locale });
-
   const t = await getTranslations("RegistrationsPage");
   const { requests } = await listRegistrations();
   const { jurisdictionQuery } = await searchParams;
@@ -29,7 +31,8 @@ export default async function RegistrationsPage({
   async function approve(formData: FormData) {
     "use server";
     const jurisdictionUnitId = String(formData.get("jurisdictionUnitId") ?? "").trim() || undefined;
-    await approveRegistration(String(formData.get("id")), undefined, jurisdictionUnitId);
+    const approved = await approveRegistration(String(formData.get("id")), undefined, jurisdictionUnitId);
+    await refreshRegionAroundPoint(approved.coordinate.latitude, approved.coordinate.longitude);
     redirect({ href: "/admin/registrations", locale });
   }
 
@@ -54,103 +57,66 @@ export default async function RegistrationsPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-12">
+    <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">{t("heading")}</h1>
 
-      <section className="rounded border p-4">
-        <h2 className="font-medium">{t("jurisdictionUnitsHeading")}</h2>
-        <p className="text-sm">{t("jurisdictionSearchHint")}</p>
-        <form action={`/${locale}/admin/registrations`} className="mt-2 flex gap-2">
-          <input
-            name="jurisdictionQuery"
-            defaultValue={jurisdictionQuery}
-            placeholder={t("jurisdictionSearchPlaceholder")}
-            className="rounded border px-2 py-1 text-sm"
-          />
-          <button type="submit" className="rounded border px-3 py-1 text-sm">
-            {t("search")}
-          </button>
-        </form>
-        {jurisdictionQuery && (
-          <ul className="mt-3 flex flex-col gap-1 text-sm">
-            {jurisdictionResults.length === 0 && <li>{t("noMatches")}</li>}
-            {jurisdictionResults.map((u) => (
-              <li key={u.id} className="flex gap-2">
-                <code className="rounded bg-gray-100 px-1">{u.id}</code>
-                <span>{u.name}</span>
-                {u.code && <span className="text-gray-500">({u.code})</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-        <form action={createJurisdiction} className="mt-3 flex flex-wrap gap-2">
-          <input
-            name="code"
-            placeholder={t("newUnitCodePlaceholder")}
-            required
-            className="rounded border px-2 py-1 text-sm"
-          />
-          <input
-            name="name"
-            placeholder={t("newUnitNamePlaceholder")}
-            required
-            className="rounded border px-2 py-1 text-sm"
-          />
-          <input
-            name="parentUnitId"
-            placeholder={t("parentUnitIdPlaceholder")}
-            className="rounded border px-2 py-1 text-sm"
-          />
-          <button type="submit" className="rounded border px-3 py-1 text-sm">
-            {t("createJurisdictionUnit")}
-          </button>
-        </form>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("jurisdictionUnitsHeading")}</CardTitle>
+          <CardDescription>{t("jurisdictionSearchHint")}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <form action={`/${locale}/admin/registrations`} className="flex gap-2">
+            <Input
+              name="jurisdictionQuery"
+              defaultValue={jurisdictionQuery}
+              placeholder={t("jurisdictionSearchPlaceholder")}
+              className="h-8 max-w-sm"
+            />
+            <Button type="submit" variant="outline" size="sm">
+              {t("search")}
+            </Button>
+          </form>
+          {jurisdictionQuery && (
+            <ul className="flex flex-col gap-1 text-sm">
+              {jurisdictionResults.length === 0 && <li className="text-muted-foreground">{t("noMatches")}</li>}
+              {jurisdictionResults.map((u) => (
+                <li key={u.id} className="flex items-center gap-2">
+                  <code className="rounded bg-muted px-1">{u.id}</code>
+                  <span>{u.name}</span>
+                  {u.code && <span className="text-muted-foreground">({u.code})</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <form action={createJurisdiction} className="flex flex-wrap gap-2">
+            <Input name="code" placeholder={t("newUnitCodePlaceholder")} required className="h-8" />
+            <Input name="name" placeholder={t("newUnitNamePlaceholder")} required className="h-8" />
+            <Input name="parentUnitId" placeholder={t("parentUnitIdPlaceholder")} className="h-8" />
+            <Button type="submit" size="sm">
+              {t("createJurisdictionUnit")}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-      {requests.length === 0 && <p>{t("noRequests")}</p>}
-      <ul className="flex flex-col gap-4">
-        {requests.map((r) => (
-          <li key={r.id} className="rounded border p-4">
-            <div className="flex items-baseline justify-between">
-              <span className="font-medium">{r.congregationName}</span>
-              <span className="text-sm">{r.status}</span>
-            </div>
-            <p className="text-sm">
-              {r.locality ?? ""} {r.street ?? ""}
-            </p>
-            {r.status === "REJECTED" && r.rejectionReason && (
-              <p className="text-sm">{t("rejectionReason", { reason: r.rejectionReason })}</p>
-            )}
-            {r.status === "PENDING" && (
-              <div className="mt-3 flex flex-col gap-3">
-                <form action={approve} className="flex gap-2">
-                  <input type="hidden" name="id" value={r.id} />
-                  <input
-                    name="jurisdictionUnitId"
-                    placeholder={t("jurisdictionUnitIdPlaceholder")}
-                    className="rounded border px-2 py-1 text-sm"
-                  />
-                  <button type="submit" className="rounded border px-3 py-1 text-sm">
-                    {t("approve")}
-                  </button>
-                </form>
-                <form action={reject} className="flex gap-2">
-                  <input type="hidden" name="id" value={r.id} />
-                  <input
-                    name="reason"
-                    placeholder={t("rejectionReasonPlaceholder")}
-                    required
-                    className="rounded border px-2 py-1 text-sm"
-                  />
-                  <button type="submit" className="rounded border px-3 py-1 text-sm">
-                    {t("reject")}
-                  </button>
-                </form>
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </main>
+      <RequestList
+        requests={requests}
+        onApprove={approve}
+        onReject={reject}
+        labels={{
+          noRequests: t("noRequests"),
+          jurisdictionUnitIdPlaceholder: t("jurisdictionUnitIdPlaceholder"),
+          approve: t("approve"),
+          rejectionReasonPlaceholder: t("rejectionReasonPlaceholder"),
+          reject: t("reject"),
+          rejectionReason: (reason: string) => t("rejectionReason", { reason }),
+          filterRequests: t("filterRequests"),
+          congregationName: t("congregationName"),
+          status: t("status"),
+          location: t("location"),
+        }}
+      />
+    </div>
   );
 }
