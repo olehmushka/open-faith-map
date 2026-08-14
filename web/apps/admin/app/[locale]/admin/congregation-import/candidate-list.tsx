@@ -8,6 +8,11 @@ import { useTranslations } from "next-intl";
 
 import type { Candidate, CandidatePage } from "@/lib/congregation-import";
 
+import { JurisdictionField } from "./jurisdiction-field";
+
+type PickerOption = { id: string; name: string };
+type UnitOption = { id: string; code: string | null; name: string };
+
 // Mirrors moderation's own ReportList exactly (M7's "Load more" pattern,
 // docs/modules/hardening.md): pagination state lives here, purely additive to the
 // edit/approve/reject Server Actions' own lifecycle (each still redirect()s after a mutation,
@@ -22,6 +27,11 @@ export function CandidateList({
   onEdit,
   onApprove,
   onReject,
+  taxa,
+  countries,
+  rootUnitId,
+  onSearchJurisdiction,
+  onCreateUnit,
   labels,
 }: {
   initialCandidates: Candidate[];
@@ -30,14 +40,32 @@ export function CandidateList({
   onEdit: (formData: FormData) => void;
   onApprove: (formData: FormData) => void;
   onReject: (formData: FormData) => void;
+  taxa: PickerOption[];
+  countries: PickerOption[];
+  rootUnitId: string;
+  onSearchJurisdiction: (query: string) => Promise<UnitOption[]>;
+  onCreateUnit: (parentUnitId: string, code: string, name: string) => Promise<UnitOption>;
   labels: {
     noCandidates: string;
     taxonId: string;
+    taxonUnset: string;
     countryId: string;
+    countryUnset: string;
     latitude: string;
     longitude: string;
     save: string;
     jurisdictionUnitId: string;
+    jurisdictionNone: string;
+    jurisdictionSearchPlaceholder: string;
+    jurisdictionSearch: string;
+    jurisdictionNoMatches: string;
+    createUnit: string;
+    createUnitHeading: string;
+    createUnitName: string;
+    createUnitCode: string;
+    createUnitParentUnitId: string;
+    createUnitSubmit: string;
+    createUnitCancel: string;
     approve: string;
     reasonPlaceholder: string;
     reject: string;
@@ -96,11 +124,25 @@ export function CandidateList({
               <input type="hidden" name="id" value={c.id} />
               <label className="flex flex-col text-xs">
                 {labels.taxonId}
-                <input name="taxonId" defaultValue={c.taxonId ?? ""} className="rounded border px-2 py-1 text-sm" />
+                <select name="taxonId" defaultValue={c.taxonId ?? ""} className="rounded border px-2 py-1 text-sm">
+                  <option value="">{labels.taxonUnset}</option>
+                  {taxa.map((taxon) => (
+                    <option key={taxon.id} value={taxon.id}>
+                      {taxon.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="flex flex-col text-xs">
                 {labels.countryId}
-                <input name="countryId" defaultValue={c.countryId ?? ""} className="rounded border px-2 py-1 text-sm" />
+                <select name="countryId" defaultValue={c.countryId ?? ""} className="rounded border px-2 py-1 text-sm">
+                  <option value="">{labels.countryUnset}</option>
+                  {countries.map((country) => (
+                    <option key={country.id} value={country.id}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="flex flex-col text-xs">
                 {labels.latitude}
@@ -116,15 +158,19 @@ export function CandidateList({
             </form>
 
             <div className="mt-2 flex flex-wrap gap-2">
-              <form action={onApprove} className="flex gap-2">
+              <form action={onApprove} className="flex flex-col gap-2">
                 <input type="hidden" name="id" value={c.id} />
-                <input
-                  name="jurisdictionUnitId"
-                  defaultValue={c.suggestedJurisdictionUnitId ?? ""}
-                  placeholder={labels.jurisdictionUnitId}
-                  className="rounded border px-2 py-1 text-sm"
+                <JurisdictionField
+                  candidateId={c.id}
+                  candidateName={c.name}
+                  jurisdictionHint={c.jurisdictionHint}
+                  suggestedJurisdictionUnitId={c.suggestedJurisdictionUnitId}
+                  rootUnitId={rootUnitId}
+                  onSearch={onSearchJurisdiction}
+                  onCreateUnit={onCreateUnit}
+                  labels={labels}
                 />
-                <button type="submit" className="rounded border px-3 py-1 text-sm">
+                <button type="submit" className="self-start rounded border px-3 py-1 text-sm">
                   {labels.approve}
                 </button>
               </form>

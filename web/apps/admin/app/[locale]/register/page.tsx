@@ -1,14 +1,10 @@
 import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/auth";
+import { EXCLUDED_TAXON_CODES } from "@/lib/dictionaries";
 import { oikumenea } from "@/lib/oikumenea";
 import { submitRegistration } from "@/lib/registration";
 import { redirect } from "@/i18n/navigation";
-
-// D-Exclusions (architecture/decisions.md), same codes as
-// internal/registration/domain.ExcludedTaxonCodes — the authoritative check runs server-side in
-// openfaithmap-api regardless; filtering them out of the picker is a UX nicety only.
-const EXCLUDED_TAXON_CODES = new Set(["russian_orthodox_church", "jehovahs_witnesses", "lds_church"]);
 
 // go-oikumenea's own locale codes are ISO 639-3; this app's URL-facing locales are ISO 639-1.
 const OIKUMENEA_LOCALE: Record<string, string> = { en: "eng", uk: "ukr", es: "spa", pt: "por" };
