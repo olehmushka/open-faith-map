@@ -202,6 +202,21 @@ types:
       JurisdictionAliasList:
         fields:
           aliases: list<JurisdictionAlias>
+      RunJurisdictionSyncRequest:
+        fields:
+          sourceCode:
+            type: string
+            docs: The JurisdictionSource to run (e.g. "wikidata-catholic").
+      JurisdictionSyncResult:
+        fields:
+          sourceCode: string
+          nodesFetched: integer
+          unitsCreated: integer
+          unitsSkipped:
+            type: integer
+            docs: Nodes already CREATED on a prior run — real work, correctly not repeated.
+          unitsFailed: integer
+          aliasesCreated: integer
       SuggestCoordinatesResponse:
         fields:
           latitude: double
@@ -265,6 +280,14 @@ types:
         code: CONFLICT
         safe-args:
           aliasText: string
+      JurisdictionSourceNotFound:
+        docs: >
+          sourceCode does not match a registered JurisdictionSource — either mistyped, or the
+          deployment has none configured (e.g. CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID unset).
+        namespace: CongregationImport
+        code: NOT_FOUND
+        safe-args:
+          sourceCode: string
       GeocodeNoMatch:
         docs: >
           The configured geocoding provider ran successfully but found nothing for this
@@ -409,6 +432,21 @@ services:
         args:
           request: CreateJurisdictionAliasRequest
         returns: JurisdictionAlias
+      runJurisdictionSync:
+        http: POST /jurisdiction-sync/runs
+        docs: >
+          Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync,
+          docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write
+          in this module works: creates/resolves JURISDICTION-TIER go-oikumenea Units (never a
+          congregation) under the deployment's configured anchor unit, fully automatically, using
+          the SERVICE PRINCIPAL's own token rather than the caller's forwarded one. Idempotent by
+          natural key (source code + the source's own external id) — a re-run only creates
+          genuinely new/changed nodes. Suitable for an unattended scheduled trigger (an operator's
+          own identity is still required to CALL this endpoint, same as runConnector, but performs
+          no go-oikumenea write itself).
+        args:
+          request: RunJurisdictionSyncRequest
+        returns: JurisdictionSyncResult
       suggestCoordinates:
         http: POST /candidates/{candidateId}/suggest-coordinates
         docs: >

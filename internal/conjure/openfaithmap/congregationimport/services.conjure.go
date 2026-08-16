@@ -37,6 +37,8 @@ type CongregationImportServiceClient interface {
 	ListJurisdictionAliases(ctx context.Context, authHeader bearertoken.Token, sourceCodeArg *string) (JurisdictionAliasList, error)
 	// Add a free-text-hint -> go-oikumenea jurisdiction Unit RID alias, used by matchJurisdiction's substring matching on future connector runs. Advisory only — D-JurisdictionUnits: never auto-applied at approval. Operator-only.
 	CreateJurisdictionAlias(ctx context.Context, authHeader bearertoken.Token, requestArg CreateJurisdictionAliasRequest) (JurisdictionAlias, error)
+	// Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write in this module works: creates/resolves JURISDICTION-TIER go-oikumenea Units (never a congregation) under the deployment's configured anchor unit, fully automatically, using the SERVICE PRINCIPAL's own token rather than the caller's forwarded one. Idempotent by natural key (source code + the source's own external id) — a re-run only creates genuinely new/changed nodes. Suitable for an unattended scheduled trigger (an operator's own identity is still required to CALL this endpoint, same as runConnector, but performs no go-oikumenea write itself).
+	RunJurisdictionSync(ctx context.Context, authHeader bearertoken.Token, requestArg RunJurisdictionSyncRequest) (JurisdictionSyncResult, error)
 	// Look up approximate coordinates for a candidate's address via the configured geocoding provider (application.Geocoder, Nominatim by default) — ADVISORY ONLY, never applied automatically; the operator must still call editCandidate to persist. Operator-only, and real per-provider rate-limiting is enforced server-side — never called in bulk from runConnector.
 	SuggestCoordinates(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string) (SuggestCoordinatesResponse, error)
 }
@@ -294,6 +296,24 @@ func (c *congregationImportServiceClient) CreateJurisdictionAlias(ctx context.Co
 	return *returnVal, nil
 }
 
+func (c *congregationImportServiceClient) RunJurisdictionSync(ctx context.Context, authHeader bearertoken.Token, requestArg RunJurisdictionSyncRequest) (JurisdictionSyncResult, error) {
+	var returnVal *JurisdictionSyncResult
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RunJurisdictionSync"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/congregation-import/v1/jurisdiction-sync/runs"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(JurisdictionSyncResult), werror.WrapWithContextParams(ctx, err, "runJurisdictionSync failed")
+	}
+	if returnVal == nil {
+		return *new(JurisdictionSyncResult), werror.ErrorWithContextParams(ctx, "runJurisdictionSync response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 func (c *congregationImportServiceClient) SuggestCoordinates(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string) (SuggestCoordinatesResponse, error) {
 	var returnVal *SuggestCoordinatesResponse
 	var requestParams []httpclient.RequestParam
@@ -335,6 +355,8 @@ type CongregationImportServiceClientWithAuth interface {
 	ListJurisdictionAliases(ctx context.Context, sourceCodeArg *string) (JurisdictionAliasList, error)
 	// Add a free-text-hint -> go-oikumenea jurisdiction Unit RID alias, used by matchJurisdiction's substring matching on future connector runs. Advisory only — D-JurisdictionUnits: never auto-applied at approval. Operator-only.
 	CreateJurisdictionAlias(ctx context.Context, requestArg CreateJurisdictionAliasRequest) (JurisdictionAlias, error)
+	// Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write in this module works: creates/resolves JURISDICTION-TIER go-oikumenea Units (never a congregation) under the deployment's configured anchor unit, fully automatically, using the SERVICE PRINCIPAL's own token rather than the caller's forwarded one. Idempotent by natural key (source code + the source's own external id) — a re-run only creates genuinely new/changed nodes. Suitable for an unattended scheduled trigger (an operator's own identity is still required to CALL this endpoint, same as runConnector, but performs no go-oikumenea write itself).
+	RunJurisdictionSync(ctx context.Context, requestArg RunJurisdictionSyncRequest) (JurisdictionSyncResult, error)
 	// Look up approximate coordinates for a candidate's address via the configured geocoding provider (application.Geocoder, Nominatim by default) — ADVISORY ONLY, never applied automatically; the operator must still call editCandidate to persist. Operator-only, and real per-provider rate-limiting is enforced server-side — never called in bulk from runConnector.
 	SuggestCoordinates(ctx context.Context, candidateIdArg string) (SuggestCoordinatesResponse, error)
 }
@@ -394,6 +416,10 @@ func (c *congregationImportServiceClientWithAuth) ListJurisdictionAliases(ctx co
 
 func (c *congregationImportServiceClientWithAuth) CreateJurisdictionAlias(ctx context.Context, requestArg CreateJurisdictionAliasRequest) (JurisdictionAlias, error) {
 	return c.client.CreateJurisdictionAlias(ctx, c.authHeader, requestArg)
+}
+
+func (c *congregationImportServiceClientWithAuth) RunJurisdictionSync(ctx context.Context, requestArg RunJurisdictionSyncRequest) (JurisdictionSyncResult, error) {
+	return c.client.RunJurisdictionSync(ctx, c.authHeader, requestArg)
 }
 
 func (c *congregationImportServiceClientWithAuth) SuggestCoordinates(ctx context.Context, candidateIdArg string) (SuggestCoordinatesResponse, error) {
@@ -503,6 +529,14 @@ func (c *congregationImportServiceClientWithTokenProvider) CreateJurisdictionAli
 		return *new(JurisdictionAlias), err
 	}
 	return c.client.CreateJurisdictionAlias(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *congregationImportServiceClientWithTokenProvider) RunJurisdictionSync(ctx context.Context, requestArg RunJurisdictionSyncRequest) (JurisdictionSyncResult, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(JurisdictionSyncResult), err
+	}
+	return c.client.RunJurisdictionSync(ctx, bearertoken.Token(token), requestArg)
 }
 
 func (c *congregationImportServiceClientWithTokenProvider) SuggestCoordinates(ctx context.Context, candidateIdArg string) (SuggestCoordinatesResponse, error) {

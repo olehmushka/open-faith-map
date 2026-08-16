@@ -200,6 +200,30 @@ func (s *Service) RejectCandidate(ctx context.Context, authHeader bearertoken.To
 	return toAPICandidate(c), nil
 }
 
+// RunJurisdictionSync triggers sourceCode's JurisdictionSource — D-CatholicJurisdictionSync's
+// automated jurisdiction-tier Unit creation (docs/architecture/decisions.md). whoami still resolves
+// the CALLER's identity (so an anonymous/invalid token can never trigger this, same discipline
+// RunConnector's own comment documents) even though the go-oikumenea writes this triggers run under
+// the service principal's token, not the caller's — see application.Service.RunJurisdictionSync's
+// own doc comment for the full reasoning.
+func (s *Service) RunJurisdictionSync(ctx context.Context, authHeader bearertoken.Token, requestArg gencongregationimport.RunJurisdictionSyncRequest) (gencongregationimport.JurisdictionSyncResult, error) {
+	if _, err := s.whoami(ctx, authHeader); err != nil {
+		return gencongregationimport.JurisdictionSyncResult{}, mapUpstreamErr(err)
+	}
+	summary, err := s.appService.RunJurisdictionSync(ctx, requestArg.SourceCode)
+	if err != nil {
+		return gencongregationimport.JurisdictionSyncResult{}, mapJurisdictionSyncErr(err, requestArg.SourceCode)
+	}
+	return gencongregationimport.JurisdictionSyncResult{
+		SourceCode:     summary.SourceCode,
+		NodesFetched:   summary.NodesFetched,
+		UnitsCreated:   summary.UnitsCreated,
+		UnitsSkipped:   summary.UnitsSkipped,
+		UnitsFailed:    summary.UnitsFailed,
+		AliasesCreated: summary.AliasesCreated,
+	}, nil
+}
+
 func (s *Service) ListTaxonAliases(ctx context.Context, authHeader bearertoken.Token, sourceCodeArg *string) (gencongregationimport.TaxonAliasList, error) {
 	personID, err := s.whoami(ctx, authHeader)
 	if err != nil {

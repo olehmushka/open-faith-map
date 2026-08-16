@@ -84,7 +84,15 @@ blocker is just ⬜. `Verified` additionally requires CI green on `main` — see
 | M5 · Moderation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/moderation.md` — reports/actions/appeals + a standalone D-Exclusions taxon-check dry-run. All three dependencies the 2026-08-09 audit found are resolved (D-PlatformModerator, D-Moderation's Correction, M4.1). CI green at the merge commit (confirmed 2026-08-10) and the two-real-token proof (non-moderator refused, platform-moderator allowed) both done — the latter via a headless local-dev identity, not a real browser Google OAuth session, accepted as equivalent evidence — see prose. |
 | M6 · Vouching | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Verified (2026-08-11).** `modules/vouching.md` — web-of-trust guarantor model. Its `moderation.read`/`moderation.act` gates and its `content.manage`-equivalent guarantor-standing check both resolved through D-PlatformModerator, the same mechanism moderation already uses. CI green at the merge commit (confirmed 2026-08-10) and the two-different-people proof (guarantor-with-standing vs. guarantor-with-none, moderator vs. non-moderator) both done — via a headless local-dev identity, not a real browser session, accepted as equivalent evidence — see prose. |
 | M7 · Hardening / real-user feedback | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-11), not yet Verified.** D-Hardening (`architecture/decisions.md`), `modules/hardening.md`. In-process per-IP rate limiting on moderation's two anonymous write endpoints, a handful of app-defined metrics on witchcraft's already-wired stack, and a fix for the moderation-queue pagination defect (`nextPageToken` silently dropped since M5). Note that the audit moved three items people might expect here (CI, least-privilege DB role, API port exposure) forward into M2.4, because they gate every intervening milestone's Verified rather than being end-state polish. **`Verified` needs a green CI run on `main` at the merge commit and a live authenticated-moderator round trip (a real browser Google OAuth session or a granted moderator token)**, not yet attempted here — see prose. |
-| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed (2026-08-13); HTTP-streaming ingestion + D-Scope Christian-name filter added, a real cursor-doubling bug found and fixed, second connector `ar-rnc` (Argentina) added, a real pluggable geocoder (`domain.Geocoder`/`nominatim`) built and a full admin-UI usability pass done, all live-verified; third connector `osm` (OpenStreetMap/Overpass, scoped to Uruguay/Paraguay/Colombia/Chile) added and live-verified — a fourth-connector candidate, Brazil's CNPJ, was fully designed and live-verified but halted on a real `robots.txt` finding rather than built; admin UI gained manual-run parameters (`domain.ConnectorConfigurable`, `osm`'s `countryCodes`) plus a real adjacent bug fix (`domain.Connector.Clone` — a stale-cache bug that made a second manual run of `arrnc`/`osm` silently replay the first run's data forever) (all 2026-08-14); not yet Verified.** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
+| M8 · Congregation import | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Production-hardening pass done (2026-08-12); go-oikumenea#36 RLS blocker fixed (2026-08-13); HTTP-streaming ingestion + D-Scope Christian-name filter added, a real cursor-doubling bug found and fixed, second connector `ar-rnc` (Argentina) added, a real pluggable geocoder (`domain.Geocoder`/`nominatim`) built and a full admin-UI usability pass done, all live-verified; third connector `osm` (OpenStreetMap/Overpass, scoped to Uruguay/Paraguay/Colombia/Chile) added and live-verified — a fourth-connector candidate, Brazil's CNPJ, was fully designed and live-verified but halted on a real `robots.txt` finding rather than built; admin UI gained manual-run parameters (`domain.ConnectorConfigurable`, `osm`'s `countryCodes`) plus a real adjacent bug fix (`domain.Connector.Clone` — a stale-cache bug that made a second manual run of `arrnc`/`osm` silently replay the first run's data forever) (all 2026-08-14); a hierarchical Catholic-church jurisdiction-tree sync (`D-CatholicJurisdictionSync`, `domain.JurisdictionSource`, `wikidata-catholic`) designed and built 2026-08-15, its first upstream blocker (go-oikumenea#39, mirroring GH-33/36/37) fixed the same day (PR #40, image 0.0.6); live verification then found the `tenant_units` write itself needed an org-scoped (not instance-wide) principal grant — fixed on this side (`scripts/bootstrap-service-principal -catholic-jurisdiction-org-id`), 38 real Ukrainian diocese/eparchy units created for real — but surfaced a second, deeper `tenant_unit_edges` RLS gap underneath (filed as go-oikumenea#41) —
+**fixed upstream and live-verified end to end 2026-08-16** (a `RETURNING`-needs-read-reach gap, not
+a policy/GUC bug, fixed upstream as image `0.0.7`; a second, real gap found on THIS side re-verifying
+against it — `bootstrap-service-principal`'s `religion.read` grant was instance-wide, not org-scoped,
+also fixed — after which a real sync against a live stack created all 38 Ukrainian dioceses with
+real, closure-confirmed `tenant_unit_edges`, idempotent on retry); this session also rewired
+`ua-edr`/`ar-rnc`/the Nominatim geocoder to delegate to standalone published packages
+(`go-uaedr`/`go-arrnc`/`go-nominatim`) instead of duplicating their parsing logic in-repo; not yet
+Verified (admin-UI browser click-through and a green CI run at the merge commit still block that).** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
 | M9 · Production deployment (single cheap VM) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified (2026-08-14), a docs-only milestone — mirrors M0's own shape.** D-ProductionDeployment (`architecture/decisions.md`). Resolves `DS-OFM-14`/`U13`'s "no deployment milestone exists" gap. Single Linux VM (~500MB–1GB RAM), Docker Compose, Caddy for TLS — deliberately provider-agnostic, the concrete VM provider left undecided at the owner's own direction. Schedules two already-decided items (per-surface OAuth clients, WireGuard for `oikumenea-console`) as real build-phase work for the first time, and makes three new calls: `pg_dump` on a systemd timer for backup (none exists today), `restart:` policies + a systemd unit for process supervision (none exists today), and a weekly systemd timer calling `POST /runs` as the `ua-edr` periodic re-run trigger — the item M8's own memory left explicitly open. **`Verified`** needs the new doc set (this row, D-ProductionDeployment, the struck `DS-OFM-14`/`U13` entries) coherence-checked — no dangling links, no contradiction with the decisions it inherits from. **No VM is provisioned and no compose/Caddy/systemd files are written this milestone** — that is explicitly a follow-up build milestone (numbering TBD, likely M9.1) once a provider is picked. |
 
 ## Per-milestone detail
@@ -360,9 +368,11 @@ database and credential, entirely unrelated to congregation registration. Full d
 D-BulkImport's Correction ([architecture/decisions.md](architecture/decisions.md)).
 
 **As built.** M2.2 is now deploy wiring only: `docker-compose.yml` gained `init-hermenea-db`,
-`migrate-hermenea`, and a `hermenea` service (built from a sibling go-oikumenea checkout via
-`Dockerfile.hermenea` — no published image exists — matching the `OIKUMENEA_SRC` sibling-checkout
-pattern `oikumenea-migrate` already uses), plus the two shared-secret env vars
+`migrate-hermenea`, and a `hermenea` service (at the time, built from a sibling go-oikumenea
+checkout via `Dockerfile.hermenea` — no published image existed yet — matching the `OIKUMENEA_SRC`
+sibling-checkout pattern `oikumenea-migrate` already uses; **2026-08-16: a published image now
+exists** (`docker.io/olegamysk/hermenea`), and `hermenea` is pulled like `oikumenea-app` rather than
+built — migrations still read from the sibling checkout, unchanged), plus the two shared-secret env vars
 (`HERMENEA_OIKUMENEA_TOKEN`/`OIKUMENEA_HERMENEA_TOKEN`) added to `oikumenea-app`. A new
 `deploy/hermenea-install.docker.yml` (adapted from go-oikumenea's own reference config, retargeting
 `oikumenea.base-url` at this repo's `oikumenea-app` service name) declares the source list —
@@ -2096,6 +2106,241 @@ a non-JSON response body explicitly instead of a bare status-code check. New tes
 requests, Uruguay still issues exactly 1, in the same run), `TestQueryRegionHTMLErrorPage`
 (regression test for the HTML-error-page finding). `go build/vet/test ./...` clean. Does not change
 M8's own `Verified` status.
+
+**2026-08-15: a hierarchical Catholic-church import strategy designed and built** — the owner asked
+specifically for a hierarchical strategy (real diocese tree, not another flat connector with an
+unaliased free-text hint), on branch `feature/congregationimport-catholic-jurisdiction-sync`, not
+yet committed. Full design in the new
+[D-CatholicJurisdictionSync](architecture/decisions.md) and
+[modules/congregationimport.md](modules/congregationimport.md)'s "Jurisdiction sync" section — this
+entry is a build summary.
+
+Research done live before any code was written (this session's own discipline, matching `ar-rnc`'s
+dead-URL check and `br-cnpj`'s robots.txt halt): **Wikidata** (CC0, public SPARQL API) was chosen
+over `catholic-hierarchy.org` and `gcatholic.org` — the former's `robots.txt` explicitly blocks known
+bulk-download tools by name (the same signal class that halted `br-cnpj`), the latter blocks
+AI-training crawlers specifically. Both findings and the choice were confirmed with the owner, not
+decided unilaterally. Live-verified via direct SPARQL queries: 6,655 Catholic dioceses/eparchies
+worldwide (scoped via `wdt:P1866`, a Catholic-Hierarchy.org cross-reference — cleanly "actually
+Catholic," unlike the generic `wdt:P708` "diocese" property Orthodox/Anglican bodies also carry),
+167,544 parish/church entities linked to them, 142,459 (85%) with direct coordinates.
+`query.wikidata.org/robots.txt` itself disallows `/sparql` for every agent — a second robots.txt
+finding, also explicitly checked with the owner before building against it, judged (and agreed) to
+be Wikimedia's standard interactive-query-page crawler block, not a block on the documented public
+API this session's live-verified response headers (`access-control-allow-origin: *`, a dedicated
+`api-user-agent` header) confirm this endpoint is designed for.
+
+Three real product decisions the owner made explicitly when asked (not assumed):
+1. Jurisdiction-tree creation is **fully automatic, no per-diocese operator click** — a deliberate,
+   narrow exception to `D-JurisdictionUnits`'s "operator-assigned, never inferred" rule, scoped
+   specifically to jurisdiction-tier Units from this one high-confidence structured source; how a
+   *congregation* gets assigned to a diocese is completely unchanged.
+2. Scope is global (all countries), not hardcoded to one — Ukraine is the natural first
+   live-verification target (ties into `ua-edr`'s own already-large, still-largely-unaliased
+   candidate set) but isn't special-cased in code.
+3. Build scope this pass is the jurisdiction-tree sync + alias population only — the natural
+   parish-level `wikidata-catholic` *connector* follow-on (167,544 candidates) is explicitly
+   deferred, not built.
+
+A real, load-bearing blocker was found by reading go-oikumenea's own source directly (sibling
+checkout, not inferred): `Religion.CreateChildOrg`'s PEP gate is `pep.Require`, a person-shaped
+method that — per that package's own doc comment — structurally denies a service-principal subject
+regardless of grants. This is the identical defect class already found and fixed three times this
+project (GH-33 `religion.read`, GH-36 the RLS defect, GH-37 `country.read`) — a machine-reachable
+**write**, this time, not a read. Asked the owner which path to take (an upstream go-oikumenea fix,
+mirroring GH-33/36/37, vs. a long-lived person-shaped "bot" credential as a workaround); the owner
+chose the upstream-fix path. Filed as
+[go-oikumenea#39](https://github.com/olehmushka/go-oikumenea/issues/39), mirroring GH-33/36/37's own
+shape (asked first, filed only after the owner explicitly confirmed — a `gh` action visible on
+another repo, per this project's own risky-action discipline). A second, related finding recorded
+honestly rather than worked around: `scripts/bootstrap-service-principal`'s `GrantPrincipalPermission`
+has no unit/subtree-scoping parameter today, so the `religionorg.manage` grant this pipeline will
+eventually need is instance-wide, like this principal's three existing grants — not silently
+narrower than it actually is.
+
+**Built, this session, all live-verified where a live external call was possible (Wikidata's real
+API), the rest unit-tested and `go build/vet/test ./...` clean:**
+- `domain.JurisdictionNode`/`domain.JurisdictionSource` — a new, deliberately separate interface
+  from `domain.Connector` (tree nodes, not congregation candidates).
+- `adapters/jurisdictionsources/wikidatacatholic/` — the SPARQL source, two-query-per-batch design
+  (bounded core-metadata page, then a `VALUES`-bounded multilingual-labels query), citation/
+  robots.txt discipline matching every existing connector.
+- `migrations/0013_congregationimport_jurisdiction_units.sql` — the natural-key
+  (`source_code`, `external_id`) idempotency anchor and `PENDING`/`CREATED`/`FAILED` state machine,
+  same decision-shape-CHECK-constraint discipline as `congregationimport_candidates`.
+- `application/jurisdictionsync.go`'s `RunJurisdictionSync` — fetches the whole node set into memory
+  (a deliberate, documented difference from `RunConnector`'s never-buffer discipline: a few thousand
+  nodes at most, three orders of magnitude smaller than a congregation source), derives org-kind
+  tiering from the fetched set's own topology (a node referenced as another's parent becomes
+  `jurisdiction` tier, chosen over a hand-maintained Wikidata-type→org-kind table), creates nodes in
+  topological order under one pre-existing, human-created anchor unit, and upserts global
+  `congregationimport_jurisdiction_aliases` rows on success.
+- A new Conjure endpoint, `POST /congregation-import/v1/jurisdiction-sync/runs` — real codegen run
+  (`./godelw conjure`), not hand-edited generated code.
+- `cmd/openfaithmap-api/main.go`/`docker-compose.yml`/`.env.example` wiring
+  (`CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID`/`_COUNTRY_QIDS`/`_WIKIDATA_BASE_URL`), same
+  never-a-boot-failure, opt-in pattern as every existing connector.
+- Unit tests for every pure function (`upgradeGroupingOrgKinds`, `jurisdictionSlugCode`'s
+  determinism, `qidFromURI`, `primaryAndAliases`, QID validation) — no DB/go-oikumenea mocking
+  infrastructure exists in this module (same established testing philosophy), so `RunJurisdictionSync`
+  itself is not unit-tested end to end, matching how `RunConnector` has always been verified (a real
+  live run), not attempted yet — see below.
+
+**Not yet done, explicitly named, not silently skipped:** the real
+`createChildOrg` call under the service principal (blocked on that fix landing, plus a
+`scripts/bootstrap-service-principal` grant deliberately not added yet — adding an unusable grant
+today would be misleading); any live `docker compose` verification (creating the anchor unit,
+running the sync scoped to Ukraine, confirming the real tree + aliases, idempotency on a second run,
+and a `ua-edr` candidate's suggestion populating on a backfill re-run); the parish-level connector
+follow-on. Does not change M8's own `Verified` status — this is design-and-build-complete-not-yet-
+live-verified, the same shape `br-cnpj`'s halt and `osm`'s first build both went through before their
+own live-verification passes.
+
+**2026-08-15 (same day, next session): go-oikumenea#39 fixed upstream, this side updated to match —
+still not live-verified.** Owner reported the fix directly (merged as
+[go-oikumenea PR #40](https://github.com/olehmushka/go-oikumenea/pull/40)). Real, not a mechanical
+copy of GH-33/36/37's own fix shape: `CreateChildOrg`'s new gate is `pep.RequireServiceOrTarget`, not
+`RequireServiceOrPerson` — go-oikumenea's own PR description explains why the straight swap this
+session's own D-block had anticipated would have been a real regression (it would have widened a
+PERSON caller's check from target-scoped to "holds it anywhere," letting any person holding
+`religionorg.manage` on an unrelated unit create a child org under any unit). A person caller keeps
+the unchanged target-scoped check; only a machine subject gets a new door, checked against its flat,
+**instance-wide** grant set — go-oikumenea's own principal grants still carry no unit/subtree scope,
+confirmed still true, not narrowed by this fix. `D-CatholicJurisdictionSync`'s own text corrected via
+an append-only update note (its "Update (2026-08-15)" block), not silently rewritten.
+
+Updated on this side: `docker-compose.yml`'s `oikumenea-app` pin `0.0.5` → `0.0.6`;
+`scripts/bootstrap-service-principal` now grants `religionorg.manage` (documented as instance-wide,
+same discipline as the `religion.read`/`country.read` grants before it); `application/
+jurisdictionsync.go`'s own doc comment and every doc cross-reference (`decisions.md`,
+`modules/congregationimport.md`) updated to describe the real fix mechanism rather than the
+originally-guessed one. `go build/vet/test ./...` clean.
+
+**Still not live-verified end to end** — a real `docker compose` stack was available in this
+environment (a `go-oikumenea-postgres-1` container already running, port `5432` published,
+apparently from unrelated prior work), and bringing up this repo's own compose stack alongside it
+risked a port/state collision with whatever that container is serving — asked the owner before
+attempting rather than guessing it was safe to bring up a competing stack. Once cleared: create the
+anchor unit, run the sync scoped to Ukraine (`CATHOLIC_JURISDICTION_COUNTRY_QIDS=Q212`), confirm the
+real go-oikumenea tree + alias rows, idempotency on a second run, and a real `ua-edr` candidate's
+suggestion populating on a backfill re-run. Does not change M8's own `Verified` status.
+
+**2026-08-15 (same day, later): owner reported go-oikumenea#39 fixed (PR #40, merged); this side
+updated and a real live-verification attempt made — found a SECOND, separate upstream blocker.**
+Bumped `docker-compose.yml`'s `oikumenea-app` pin to `0.0.6`, added `religionorg.manage` to
+`scripts/bootstrap-service-principal`'s grant loop, corrected every doc reference from the originally
+guessed "`RequireServiceOrPerson`" mechanism to the real one shipped
+(`pep.RequireServiceOrTarget` — deliberately not a straight swap, since that would have widened a
+*person* caller's check too; go-oikumenea's own PR description explains why). **A real bug in this
+session's own code was also caught here, before any live call was even attempted**: `OrgKindId` on
+`CreateChildOrgRequest` is a real go-oikumenea RID, not the stable code string
+(`"diocese"`/`"jurisdiction"`) `JurisdictionNode.SuggestedOrgKindID` carries — `ensureJurisdictionUnit`
+was passing the bare code straight through. Fixed by resolving codes to RIDs via a new
+`resolveOrgKindIDs` (lists `ListOrgKinds` once per sync run, matches by `.Code`), the exact same
+list-then-match pattern `provision.go`'s `churchSiteTypeID` already established for site types — a
+real, live-verification-only catch, not something `go build`/`go vet`/unit tests could have found
+(the type system has no way to know an `OrgKindId string` field secretly expects a specific catalog's
+RID shape).
+
+Given the go-ahead to proceed carefully despite the pre-existing (unrelated) `go-oikumenea-postgres-1`
+container, brought up this repo's own stack for real
+(`OIKUMENEA_SRC=../go-oikumenea docker compose up --build`) — confirmed no port collision (that
+container had exited on its own by the time this repo's stack came up). Also found and fixed live: a
+new migration needs `atlas migrate hash --env local` re-run before `atlas.sum` (gitignored,
+regenerated locally, not committed) matches — `openfaithmap-migrate` failed with a checksum-mismatch
+error on the first `docker compose up` attempt until this ran. Created the anchor unit for real
+(`POST /religion/v1/units/{rootUnitId}/child-orgs`, `{"code":"catholic-church-root","name":"Catholic
+Church"}` under the operator's own token) — a real go-oikumenea Unit now exists, id recorded in this
+session's own `.env` (`CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID`), not committed (matches every other
+real secret/id in this repo's `.env` handling).
+
+**The sync itself ran against the real Wikidata API and staged 38 real Ukrainian Catholic
+dioceses/eparchies correctly** (`nodesFetched: 40`, both Latin- and Greek-Catholic/UGCC dioceses
+present by name — e.g. "Erzeparchie Lemberg"/"Archiepiscopal Exarchate of Lutsk" alongside
+"Archidiócesis de Leópolis"; 2 nodes correctly left unattempted, their `P749` parent lying outside
+this country-scoped fetch, exactly the documented "left for a later run" behavior). **Every one of
+the 38 real `createChildOrg` calls failed with a genuine `500`**, root-caused directly in
+`oikumenea-app`'s own logs (not guessed): `ERROR: new row violates row-level security policy for
+table "tenant_units" (SQLSTATE 42501)`. Traced to `migrations/0005_document_order_rls.sql`'s
+`authz_unit_in_reach` — the predicate every `tenant_units` RLS policy calls — which is keyed
+**entirely** on `current_setting('app.person_id')` and `authz_role_assignments.subject_person_id`;
+nothing in it branches on a machine/service-principal subject at all. GH-39/PR #40 fixed the
+**authorization** layer only (`RequireServiceOrTarget` now lets a machine subject reach the
+endpoint); this is a separate, deeper **RLS** layer gap, the same general class GH-36 already fixed
+once for this exact table, but that fix was scoped to a person-caller timing issue, not to machine
+callers at all — a third upstream issue, still open, needed before this can go further.
+
+**What DID work as designed, despite the underlying write failing**: `RunJurisdictionSync`'s
+resumability held — all 38 failures were caught and correctly recorded
+(`MarkJurisdictionUnitFailed`, `unitsFailed: 38` in the real run summary returned to the caller) with
+no crash, no partial/inconsistent state, and no silent swallow. Does not change M8's own `Verified`
+status. Stack left running in this environment (not torn down, in case the owner wants to inspect it
+directly); `.env`'s `CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID`/`_COUNTRY_QIDS` are this session's own
+local additions, not committed.
+
+**2026-08-15 (same day, continued): the `tenant_units` failure traced to this side's own grant, not
+a new upstream gap — fixed; a genuinely new, deeper RLS bug found underneath it — filed.**
+`GrantPrincipalPermissionRequest.OrgId` has existed all along ("omit for an instance-wide grant; set
+to confine the machine to one organization") — the earlier "principal grants are instance-wide-only"
+claim (this session's own D-block, and GH-39 itself) was a research gap, not a go-oikumenea fact.
+go-oikumenea's own `authz_principal_org_in_reach` (`migrations/0011_infra.sql`) requires an
+org-scoped grant for a machine subject's `tenant_units` write — confirmed live: granted
+`religionorg.manage` org-scoped to `019fe8bb-3b41-8101-8406-06b65f756132` (the org owning both the
+shared root unit and the new anchor unit) via a direct `POST /principal-grants` call, re-ran the
+sync, and the `tenant_units` insert succeeded for real — 38 real Ukrainian Catholic diocese/eparchy
+units now exist in this environment's database. `scripts/bootstrap-service-principal` gained a
+`-catholic-jurisdiction-org-id` flag so this is reproducible without a manual API call next time; the
+script's own doc comments and this repo's other docs (`D-CatholicJurisdictionSync`,
+`modules/congregationimport.md`) corrected to match.
+
+**Immediately underneath, a second, genuinely new bug**: the same `createChildOrg` call's follow-on
+`tenant_unit_edges` insert (attaching the new unit to the anchor, same transaction) still fails with
+the identical RLS error — every one of the 38 retried nodes, consistently. Root-caused as far as
+possible without go-oikumenea's own server-side instrumentation: a manual raw-SQL reproduction of the
+exact same insert (`SET ROLE oikumenea_app`, the three `app.*` GUCs set to match the real request)
+**succeeds** — proving the RLS policy and grant model are both correct, and the gap is specifically in
+how go-oikumenea's Go request path propagates those GUCs to the connection
+`tenant.Service.CreateUnitWithEdge`'s internal `InsertEdge` call actually runs on. Filed as
+[go-oikumenea#41](https://github.com/olehmushka/go-oikumenea/issues/41), with the working raw-SQL
+repro and a suggested instrumentation point included. **Real consequence of this testing, left
+as-is**: 38 orphan `tenant_units` rows now exist in this local-dev database under the anchor unit
+(created successfully, no parent edge — unreachable from the graph). Not cleaned up — no safe
+delete-unit path exists to do this without risking corrupting go-oikumenea's own closure/RLS
+invariants by hand; flagged to the owner rather than attempted. `RunJurisdictionSync` remains not
+live-verified end to end. Does not change M8's own `Verified` status.
+
+**2026-08-16: GH-41 fixed upstream, live-verified end to end against a real stack — `wikidata-catholic`
+is no longer blocked.** Root cause, diagnosed live against a real Postgres (not the GUC-propagation
+bug this entry's own working theory above suspected): `InsertEdge`'s sqlc query uses `RETURNING`,
+and in this Postgres version a row whose `WITH CHECK` (write) passes but whose table `USING` (read)
+does not raises the identical "new row violates row-level security policy" error for `RETURNING`,
+not a silent empty result — so the org-scoped `religionorg.manage` grant satisfies the write side
+but not the implicit read side. Never an RLS policy gap or GUC-propagation bug; the policy and
+connection plumbing were both correct all along. Merged to go-oikumenea `main`, published as image
+`0.0.7` — bumped in this repo's `docker-compose.yml` (was `0.0.6`).
+
+Re-verifying against the bumped image surfaced a SECOND real gap on this side:
+`scripts/bootstrap-service-principal` already granted `religion.read`, but instance-wide — re-running
+the sync against 0.0.7 with only that grant hit the byte-for-byte identical
+`tenant_unit_edges` RLS error, proving an instance-wide grant doesn't satisfy `InsertEdge`'s
+read-reach check any more than an instance-wide `religionorg.manage` grant satisfied the write-reach
+check earlier in this same investigation. go-oikumenea's own GH-41 regression test grants
+`religion.read` ORG-SCOPED, confirming the fix: `bootstrap-service-principal` now grants a second,
+org-scoped `religion.read` alongside `religionorg.manage` when `-catholic-jurisdiction-org-id` is
+passed.
+
+**With both org-scoped grants actually in place, a real `wikidata-catholic` sync against a live
+docker-compose stack on image `0.0.7` succeeded completely**: `nodesFetched: 40, unitsCreated: 38,
+unitsSkipped: 0, unitsFailed: 0, aliasesCreated: 486`. Verified past the HTTP response, directly
+against go-oikumenea's own tables: all 38 `congregationimport_jurisdiction_units` rows are `CREATED`,
+all 38 have a real `tenant_unit_edges` row under the anchor unit, and all 38 have a real
+`tenant_unit_closure` row confirming genuine reachability from the anchor — not orphans (the previous
+session's 38 orphan `tenant_units` rows no longer exist in this environment's database; the volume
+was evidently reset between sessions, so no manual cleanup was needed either). A second sync run
+confirmed idempotency: `unitsCreated: 0, unitsSkipped: 38, unitsFailed: 0` — no duplicate
+`createChildOrg` calls. `RunJurisdictionSync` is now genuinely live-verified end to end. Does not by
+itself change M8's own `Verified` status (the admin-UI browser click-through and a green CI run at
+the merge commit remain the blockers for that).
 
 ### M9 · Production deployment (single cheap VM)
 

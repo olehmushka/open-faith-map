@@ -760,6 +760,156 @@ func (e *InvalidPageToken) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type jurisdictionSourceNotFound struct {
+	SourceCode string `json:"sourceCode"`
+}
+
+func (o jurisdictionSourceNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *jurisdictionSourceNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewJurisdictionSourceNotFound returns new instance of JurisdictionSourceNotFound error.
+func NewJurisdictionSourceNotFound(sourceCodeArg string) *JurisdictionSourceNotFound {
+	return &JurisdictionSourceNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), jurisdictionSourceNotFound: jurisdictionSourceNotFound{SourceCode: sourceCodeArg}}
+}
+
+// WrapWithJurisdictionSourceNotFound returns new instance of JurisdictionSourceNotFound error wrapping an existing error.
+func WrapWithJurisdictionSourceNotFound(err error, sourceCodeArg string) *JurisdictionSourceNotFound {
+	return &JurisdictionSourceNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, jurisdictionSourceNotFound: jurisdictionSourceNotFound{SourceCode: sourceCodeArg}}
+}
+
+// JurisdictionSourceNotFound is an error type.
+// sourceCode does not match a registered JurisdictionSource — either mistyped, or the deployment has none configured (e.g. CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID unset).
+type JurisdictionSourceNotFound struct {
+	errorInstanceID uuid.UUID
+	jurisdictionSourceNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsJurisdictionSourceNotFound returns true if err is an instance of JurisdictionSourceNotFound.
+func IsJurisdictionSourceNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*JurisdictionSourceNotFound)
+	return ok
+}
+
+func (e *JurisdictionSourceNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND CongregationImport:JurisdictionSourceNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *JurisdictionSourceNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *JurisdictionSourceNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *JurisdictionSourceNotFound) Message() string {
+	return "NOT_FOUND CongregationImport:JurisdictionSourceNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *JurisdictionSourceNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *JurisdictionSourceNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *JurisdictionSourceNotFound) Name() string {
+	return "CongregationImport:JurisdictionSourceNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *JurisdictionSourceNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *JurisdictionSourceNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"sourceCode": e.SourceCode}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *JurisdictionSourceNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"sourceCode": e.SourceCode, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *JurisdictionSourceNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *JurisdictionSourceNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *JurisdictionSourceNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e JurisdictionSourceNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.jurisdictionSourceNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "CongregationImport:JurisdictionSourceNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *JurisdictionSourceNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters jurisdictionSourceNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.jurisdictionSourceNotFound = parameters
+	return nil
+}
+
 type notApprovable struct {
 	CandidateId string `json:"candidateId"`
 }
@@ -1366,6 +1516,7 @@ func init() {
 	conjureerrors.RegisterErrorType("CongregationImport:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("CongregationImport:GeocodeNoMatch", reflect.TypeOf(GeocodeNoMatch{}))
 	conjureerrors.RegisterErrorType("CongregationImport:InvalidPageToken", reflect.TypeOf(InvalidPageToken{}))
+	conjureerrors.RegisterErrorType("CongregationImport:JurisdictionSourceNotFound", reflect.TypeOf(JurisdictionSourceNotFound{}))
 	conjureerrors.RegisterErrorType("CongregationImport:NotApprovable", reflect.TypeOf(NotApprovable{}))
 	conjureerrors.RegisterErrorType("CongregationImport:NotEditable", reflect.TypeOf(NotEditable{}))
 	conjureerrors.RegisterErrorType("CongregationImport:RunNotFound", reflect.TypeOf(RunNotFound{}))

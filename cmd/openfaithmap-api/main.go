@@ -21,6 +21,7 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/osm"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/connectors/uaedr"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/geocoders/nominatim"
+	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters/jurisdictionsources/wikidatacatholic"
 	congregationimportapplication "github.com/olehmushka/open-faith-map/internal/congregationimport/application"
 	congregationimportdomain "github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
 	congregationimporttransport "github.com/olehmushka/open-faith-map/internal/congregationimport/transport"
@@ -333,6 +334,29 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	// one more append.
 	geocoders := []congregationimportdomain.Geocoder{nominatim.New(nil)}
 
+	// wikidata-catholic (D-CatholicJurisdictionSync, docs/architecture/decisions.md): only
+	// registered when an operator has configured the one-time, human-created anchor unit
+	// (CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID) — same never-a-boot-failure, opt-in pattern as
+	// uaedr/arrnc/osm above. CATHOLIC_JURISDICTION_COUNTRY_QIDS optionally scopes the sync to
+	// specific Wikidata country QIDs (e.g. "Q212" for Ukraine, the owner's own first
+	// live-verification target) — comma-separated, empty means every country worldwide.
+	var jurisdictionSources []congregationimportdomain.JurisdictionSource
+	catholicAnchorUnitID := os.Getenv("CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID")
+	if catholicAnchorUnitID != "" {
+		var countryQIDs []string
+		for _, q := range strings.Split(os.Getenv("CATHOLIC_JURISDICTION_COUNTRY_QIDS"), ",") {
+			if q = strings.TrimSpace(q); q != "" {
+				countryQIDs = append(countryQIDs, q)
+			}
+		}
+		wikidataSource, err := wikidatacatholic.New(os.Getenv("CATHOLIC_JURISDICTION_WIKIDATA_BASE_URL"), countryQIDs, nil)
+		if err != nil {
+			pool.Close()
+			return nil, werror.WrapWithContextParams(ctx, err, "construct wikidata-catholic jurisdiction source")
+		}
+		jurisdictionSources = append(jurisdictionSources, wikidataSource)
+	}
+
 	congregationimportStore := congregationimportadapters.NewStore(pool)
 	congregationimportAppSvc := congregationimportapplication.NewService(congregationimportStore, congregationimportapplication.Config{
 		OikumeneaBaseURL:            oikumeneaBaseURL,
@@ -344,8 +368,9 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 			Audience:           "openfaithmap-api",
 			InsecureSkipVerify: insecureSkipVerify,
 		},
-		ActiveGeocoderCode: os.Getenv("CONGREGATIONIMPORT_GEOCODER"),
-	}, connectors, geocoders)
+		ActiveGeocoderCode:               os.Getenv("CONGREGATIONIMPORT_GEOCODER"),
+		CatholicJurisdictionAnchorUnitID: catholicAnchorUnitID,
+	}, connectors, geocoders, jurisdictionSources)
 	congregationimportTransportSvc := congregationimporttransport.NewService(congregationimportAppSvc, congregationimporttransport.Config{
 		OikumeneaBaseURL:            oikumeneaBaseURL,
 		OikumeneaInsecureSkipVerify: insecureSkipVerify,

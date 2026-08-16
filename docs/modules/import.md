@@ -75,9 +75,10 @@ import scenario that original design was reaching for is real but is the project
 
 ## Operating hermenea
 
-Bring-up (needs a sibling checkout of go-oikumenea for its `Dockerfile.hermenea` and
-`migrations/hermenea/`, same `OIKUMENEA_SRC` convention the top of `docker-compose.yml` already
-documents for go-oikumenea's main migrations):
+Bring-up (`hermenea` itself now pulls a published image, `docker.io/olegamysk/hermenea`, same as
+`oikumenea-app` — but its migrations still aren't published as a standalone artifact, so a sibling
+checkout of go-oikumenea is still needed for `migrations/hermenea/`, same `OIKUMENEA_SRC` convention
+the top of `docker-compose.yml` already documents for go-oikumenea's main migrations):
 
 ```sh
 OIKUMENEA_SRC=/path/to/go-oikumenea docker compose up --build \
