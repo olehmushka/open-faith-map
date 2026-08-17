@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	upstream "github.com/olehmushka/go-arrnc"
 )
 
 // writeFixture writes an n-row CSV in this source's real shape (no header, 5 columns) to a fresh
@@ -115,16 +117,16 @@ func TestFetchSingleBatchExhaustion(t *testing.T) {
 // (column 4) is shared across every branch ("filial") row of one institute, so it cannot be the
 // SourceRecordID — content (name+address+locality+province) must be, instead.
 func TestSourceRecordID(t *testing.T) {
-	a := cultRow{Name: "IGLESIA NUEVA APOSTOLICA - FILIAL 1", Address: "CALLE 1", Locality: "BANFIELD", Province: "Buenos Aires", CI: "4"}
-	b := cultRow{Name: "IGLESIA NUEVA APOSTOLICA - FILIAL 2", Address: "CALLE 2", Locality: "CORDOBA", Province: "Córdoba", CI: "4"} // same CI, real distinct branch
-	if sourceRecordID(a) == sourceRecordID(b) {
+	a := upstream.Row{Name: "IGLESIA NUEVA APOSTOLICA - FILIAL 1", Address: "CALLE 1", Locality: "BANFIELD", Province: "Buenos Aires", CI: "4"}
+	b := upstream.Row{Name: "IGLESIA NUEVA APOSTOLICA - FILIAL 2", Address: "CALLE 2", Locality: "CORDOBA", Province: "Córdoba", CI: "4"} // same CI, real distinct branch
+	if a.SourceID() == b.SourceID() {
 		t.Fatal("two rows with the same CI but different content got the same SourceRecordID — this would collapse distinct real branch locations into one candidate")
 	}
 
 	// Same content, different casing — real files mix casing (see christianfilter's own diacritics
 	// finding); the ID must still be identical, so a re-run of the connector upserts in place.
-	c := cultRow{Name: "Iglesia Nueva Apostolica - Filial 1", Address: "Calle 1", Locality: "Banfield", Province: "buenos aires", CI: "4"}
-	if sourceRecordID(a) != sourceRecordID(c) {
+	c := upstream.Row{Name: "Iglesia Nueva Apostolica - Filial 1", Address: "Calle 1", Locality: "Banfield", Province: "buenos aires", CI: "4"}
+	if a.SourceID() != c.SourceID() {
 		t.Fatal("identical content differing only by case got different SourceRecordIDs — a re-run would duplicate instead of upserting")
 	}
 }

@@ -306,6 +306,32 @@ func (o *JurisdictionAliasList) UnmarshalYAML(unmarshal func(interface{}) error)
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+type JurisdictionSyncResult struct {
+	SourceCode   string `json:"sourceCode"`
+	NodesFetched int    `json:"nodesFetched"`
+	UnitsCreated int    `json:"unitsCreated"`
+	// Nodes already CREATED on a prior run — real work, correctly not repeated.
+	UnitsSkipped   int `json:"unitsSkipped"`
+	UnitsFailed    int `json:"unitsFailed"`
+	AliasesCreated int `json:"aliasesCreated"`
+}
+
+func (o JurisdictionSyncResult) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *JurisdictionSyncResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type RejectCandidateRequest struct {
 	Reason string `json:"reason"`
 }
@@ -341,6 +367,27 @@ func (o RunConnectorRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *RunConnectorRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type RunJurisdictionSyncRequest struct {
+	// The JurisdictionSource to run (e.g. "wikidata-catholic").
+	SourceCode string `json:"sourceCode"`
+}
+
+func (o RunJurisdictionSyncRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *RunJurisdictionSyncRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

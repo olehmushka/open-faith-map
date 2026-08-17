@@ -155,8 +155,8 @@ Everything below is **as built and running today** unless marked otherwise.
 | `openfaithmap-api` | 3001 | Only the management/health port is published (**M2.4**); 3000 (the app port) is internal-only, reached by `openfaithmap-admin` over the compose network. |
 | `openfaithmap-web` | 3002 | Anonymous public surface. Holds no Auth.js env vars at all since the M2.1 split. |
 | `openfaithmap-admin` | 3004 | The only OpenFaithMap-built surface with a session. Holds the `AUTH_*` vars `openfaithmap-web` used to. Its own subdomain (e.g. `admin.openfaithmap.org`) once deployed beyond local dev. |
-| `oikumenea-console` | 3003 | go-oikumenea's own published console, pinned to `:0.0.1`. See the exposure rule below. |
-| `init-hermenea-db` · `migrate-hermenea` · `hermenea` | 9443 / 9444 | Persistent service with its own database and migration set, built from a sibling go-oikumenea checkout via `Dockerfile.hermenea` (no published image). See [modules/import.md](../modules/import.md)'s "Operating hermenea". |
+| `oikumenea-console` | 3003 | go-oikumenea's own published console, pinned to `:0.0.7`. See the exposure rule below. |
+| `init-hermenea-db` · `migrate-hermenea` · `hermenea` | 9443 / 9444 | Persistent service with its own database and migration set. `hermenea` itself pulls a published image (`:0.0.7`, like `oikumenea-app`); its migrations still read from a sibling go-oikumenea checkout (not yet published standalone). See [modules/import.md](../modules/import.md)'s "Operating hermenea". |
 
 Three exposure rules, in descending strictness:
 

@@ -434,9 +434,10 @@ OpenFaithMap-owned tables go-oikumenea's generic console has no knowledge of and
 (D-Facade); those stay in `openfaithmap-admin`, unchanged from D-AdminSurface.
 
 **Consequences.**
-- `docker-compose.yml` gains an `oikumenea-console` service, pinned to
-  `docker.io/olegamysk/oikumenea-console:0.0.1` (matching how `oikumenea-app` is pinned to an exact
-  version rather than `latest`), reaching `oikumenea-app` the same way `openfaithmap-api` does
+- `docker-compose.yml` gains an `oikumenea-console` service, pinned to an exact version rather than
+  `latest` (matching how `oikumenea-app` is pinned) — `0.0.1` originally, bumped in step with
+  `oikumenea-app`/`hermenea` as new fixes land upstream (`0.0.7` as of 2026-08-16, GH-41's fix).
+  Reaches `oikumenea-app` the same way `openfaithmap-api` does
   (compose-internal network, self-signed cert, dev-only `NODE_TLS_REJECT_UNAUTHORIZED=0`). It reuses
   `openfaithmap-web`'s existing Google OAuth client rather than provisioning a new one or
   reintroducing Keycloak — `deploy/oikumenea-install.yml`'s Google issuer entry already trusts this
@@ -1057,6 +1058,213 @@ converging on the same go-oikumenea Unit shape, not a client of `registration`'s
   a candidate is ever presented for approval, and a match is an automatic `REJECTED_EXCLUDED`,
   never a silent drop or a later surprise.
 - `DS-OFM-10` (`open-questions.md`) is resolved by this block.
+
+---
+
+### D-CatholicJurisdictionSync — Automated jurisdiction-tier Unit creation from Wikidata, narrowly scoped
+
+**Decision.** `congregationimport` gains a second kind of source, `domain.JurisdictionSource`
+(distinct from `domain.Connector`, which is always congregation-level), whose job is to create/
+resolve **jurisdiction-tier** go-oikumenea Units (`jurisdiction`/`diocese`/`deanery` org-kinds —
+never a congregation) from a specific, high-confidence structured dataset: Wikidata, scoped to
+entities carrying `wdt:P1866` (a Catholic-Hierarchy.org cross-reference ID), so the scope is
+cleanly "actually Catholic" rather than the generic `wdt:P708` ("diocese") property Orthodox/
+Anglican bodies also carry. Unlike every other jurisdiction-related write in this codebase, this
+one runs **fully automatically and unattended, under the service principal's own token** — a
+narrow, deliberate exception to both `D-JurisdictionUnits`'s "jurisdiction is operator-assigned,
+never inferred" and `D-CongregationImport`'s "why not a service-principal write instead of the
+operator's token — rejected" — requested explicitly by the project owner after being asked (this
+session), on the reasoning that the source here is a curated, structured, cross-referenced dataset,
+not a fuzzy free-text guess.
+
+**What is and is not in scope for this exception — read carefully, it is narrow on purpose.**
+- **In scope**: creating/resolving `congregationimport_jurisdiction_units` rows into real
+  go-oikumenea Units, and auto-populating `congregationimport_jurisdiction_aliases` from their known
+  name variants (global, `source_code = NULL`) — both automatic, both unattended.
+- **Explicitly NOT in scope, unchanged by this decision**: how a specific *congregation* gets
+  assigned to a diocese. `Candidate.SuggestedJurisdictionUnitID` is still populated by
+  `matchJurisdiction`'s ordinary substring-alias lookup (now with far better aliases to match
+  against, but the same advisory-only mechanism), and `ApproveCandidateRequest.jurisdictionUnitId`
+  still requires the reviewing operator's own explicit choice — `D-JurisdictionUnits`'s core
+  invariant holds exactly as before for every congregation this module has ever staged or will ever
+  stage. This decision only automates building the TREE, never assigning a leaf onto it.
+
+**Why Wikidata, and why this counts as "structured" rather than "scraped."** CC0-licensed, queried
+via the public SPARQL API (not HTML scraping). Live-verified counts (2026-08-15): 6,655 Catholic
+dioceses/eparchies worldwide (Latin **and** the Eastern Catholic churches in full communion with
+Rome, e.g. Ukraine's UGCC — both carry `P1866`), with country (`wdt:P17`) and parent-diocese/
+ecclesiastical-province (`wdt:P749`) links forming a real tree, not a flat list. 167,544 parish/
+church entities are linked to those dioceses via `wdt:P708`; a future connector consuming them
+(explicitly out of scope for this decision — see Open Seams) is a natural low-effort follow-on since
+it would reuse the unmodified `Connector` interface.
+
+**robots.txt findings, both resolved explicitly with the owner before any code was written — not
+reasoned past silently, per this decision's own inherited discipline
+(`D-CongregationImport`'s decision-#4 precedent, `docs/modules/congregationimport.md`).**
+1. `catholic-hierarchy.org` (the site Wikidata's `P1866` cross-references) blocks known
+   bulk-download tools by name in `robots.txt` (Wget, HTTPClient, HTTrack, WebCopier, Teleport,
+   WebReaper) — the same signal class that halted the Brazil/CNPJ connector. **This site is never
+   touched directly** — Wikidata supplies its diocese identity for free via the cross-reference.
+2. `query.wikidata.org/robots.txt` disallows `/sparql` for every user agent. Judged — and the owner
+   explicitly agreed — to be Wikimedia's standard pattern for keeping search-engine crawlers off the
+   interactive query-builder HTML page, not a block on the documented public SPARQL API this source
+   calls: live-verified response headers on the exact endpoint confirm API-oriented design
+   (`access-control-allow-origin: *`, a dedicated `api-user-agent` header Wikimedia's own docs
+   reserve for API clients, both of which this source's requests set).
+
+**The real upstream blocker, found by reading go-oikumenea's own source directly, not inferred.**
+`ReligionService.CreateChildOrg` (`internal/religion/transport/service.go`) gates with
+`pep.Require`, one of the **person-shaped** PEP methods that — per that package's own doc comment —
+denies a service-principal subject structurally, regardless of any grant, because a principal
+carries no `PersonID`. This is the same defect class already found and fixed three times upstream
+(GH-33 `religion.read`, GH-36 the RLS defect, GH-37 `country.read`) — a machine-reachable **write**
+that is currently person-only. Filed as
+[go-oikumenea#39](https://github.com/olehmushka/go-oikumenea/issues/39), mirroring GH-33/36/37's own
+shape, asking for a `RequireServiceOrPerson`-gated path for `CreateChildOrg`, scoped by
+`religionorg.manage`. **This module's code is written to be
+correct on arrival of that fix, not blocked on it** — `RunJurisdictionSync` exists, compiles, and is
+wired end-to-end today; calling it will fail with `PermissionDenied` until the upstream fix ships
+and `scripts/bootstrap-service-principal` grants this service principal `religionorg.manage`.
+
+**A second, related finding, recorded honestly rather than quietly worked around.**
+`scripts/bootstrap-service-principal`'s `GrantPrincipalPermission` call has no unit/subtree-scoping
+parameter today — every grant this project's service principal already holds (`religion.read`,
+`country.read`, `connector.read`) is **instance-wide**. The `religionorg.manage` grant this
+decision needs will be instance-wide too, not narrowed to a Catholic-jurisdiction subtree — a real,
+named blast-radius trade-off, not silently smaller than it actually is. Mitigated in practice, not
+in the permission model: `RunJurisdictionSync` only ever calls `createChildOrg` for
+`JurisdictionSource`-supplied, topologically-ordered nodes under one pre-existing, human-created
+anchor unit (see below) — never anything else, regardless of what the raw grant would technically
+allow. Whether go-oikumenea should also grow subtree-scoped principal grants is left as an open
+question for the upstream issue to raise, not decided unilaterally here.
+
+**Mechanism.**
+- One pre-existing anchor Unit (`CatholicJurisdictionAnchorUnitID`, an env-configured go-oikumenea
+  Unit RID) is created **once, out-of-band, by a human operator** through the existing admin "Create
+  unit" modal — the same one-time-bootstrap shape `scripts/bootstrap-registration-org`'s root
+  already uses. Every top-level (no-parent) node this sync creates goes directly under that unit;
+  nothing is ever created above or outside its own subtree.
+- `congregationimport_jurisdiction_units` (`source_code`, `external_id`) is the idempotency anchor —
+  a re-run recognizes an already-`CREATED` node by natural key and skips it, never calling
+  `createChildOrg` twice for the same node. A `FAILED` row is retried on the next run (unlike
+  `CREATED`, since the underlying cause — a transient outage, a since-fixed parent — may no longer
+  apply).
+- The whole node set (a few thousand at most — three orders of magnitude smaller than a
+  congregation source) is fetched into memory before any write happens, unlike `RunConnector`'s
+  deliberate never-buffer-a-whole-run discipline — a real, documented, scale-driven difference (see
+  `RunJurisdictionSync`'s own doc comment), not an inconsistency.
+- **Org-kind tiering is topology-derived, not a hand-maintained Wikidata-type→org-kind table**: any
+  node another node in the same fetched set points to as its parent is re-tagged `jurisdiction`
+  tier; every leaf stays the source's own default, `diocese` tier. Chosen because Wikidata models
+  many overlapping ecclesiastical-circumscription types (diocese, archdiocese, eparchy, apostolic
+  vicariate, ecclesiastical province, ...) with no single authoritative type→tier mapping to encode
+  reliably — the tree's own shape is a more honest signal than guessing from an uncertain type
+  vocabulary.
+
+**Consequences.**
+- `docs/modules/congregationimport.md` gains a new "Jurisdiction sync" section describing this
+  pipeline alongside the existing connector one.
+- `congregationimport_jurisdiction_aliases` rows created this way are attributed to a fixed sentinel
+  (`system:wikidata-catholic-jurisdiction-sync`), not a real person RID — the first alias-creating
+  write in this module with no human behind it; `CreatedByPersonRID`'s own field meaning is
+  unchanged (still "who created this alias"), just occasionally answered by a machine identity now.
+- Deferred, not built here: the parish-level Wikidata connector (167,544 candidates) that would
+  consume this same dataset's leaf entities — a natural follow-on, reusing the unmodified
+  `Connector` interface, explicitly out of this decision's build scope (the owner's own call).
+
+> **Update (2026-08-15): go-oikumenea#39 fixed upstream** — merged as
+> [PR #40](https://github.com/olehmushka/go-oikumenea/pull/40), released as image `0.0.6`
+> (`docker-compose.yml`'s pin bumped from `0.0.5` to match), and
+> `scripts/bootstrap-service-principal` now grants `religionorg.manage`. **Correction to this
+> decision's own text above**, which anticipated a straight `RequireServiceOrPerson` swap (the
+> mechanical fix GH-33/36/37 all used) — the actual fix is more precise, a new
+> `pep.RequireServiceOrTarget` gate: a person subject keeps the exact same target-scoped
+> `Require(action, unitID)` check as before (unchanged for `registration.Approve`/
+> `congregationimport.ApproveCandidate`), and only a machine subject gets a new door, checked
+> against its flat grant set. go-oikumenea's own PR description explains why the straight swap this
+> decision assumed would have been a real regression: `RequireServiceOrPerson`'s person arm is
+> `RequireAnywhere` ("holds the permission somewhere"), not the target-scoped check `CreateChildOrg`
+> has always used for a person caller — it would have let any person holding `religionorg.manage` on
+> an unrelated unit create a child org under any unit. The instance-wide-grant trade-off this
+> decision already named is confirmed, not narrowed: go-oikumenea's own PR description states
+> explicitly that principal grants still carry no unit/subtree scope, "an open question this issue
+> deliberately leaves unresolved."
+>
+> **Update (2026-08-15, same day): live-verification attempted for real — found a SECOND, separate
+> upstream blocker, not yet fixed.** Brought up a real `docker compose` stack (image `0.0.6`),
+> created the anchor unit, granted `religionorg.manage`, and ran the sync scoped to Ukraine
+> (`CATHOLIC_JURISDICTION_COUNTRY_QIDS=Q212`) against the real Wikidata API: **40 real Ukrainian
+> Catholic dioceses/eparchies fetched** (Latin and Greek-Catholic/UGCC both present, confirmed by
+> name), 38 staged as `PENDING` (the other 2 correctly left unattempted — their `P749` parent lies
+> outside this country-scoped node set, exactly the documented "left for a later run" behavior, not a
+> bug). **All 38 `createChildOrg` calls failed with a real `500`**, root-caused in `oikumenea-app`'s
+> own logs, not guessed: `ERROR: new row violates row-level security policy for table "tenant_units"
+> (SQLSTATE 42501)`. Read directly against `migrations/0005_document_order_rls.sql`:
+> `authz_unit_in_reach` (the predicate every `tenant_units` RLS policy calls) is keyed **entirely** on
+> `current_setting('app.person_id')` and `authz_role_assignments.subject_person_id` — no branch
+> anywhere in it consults a machine/service-principal subject at all. GH-39/PR #40 fixed the
+> **authorization** layer (`pep.RequireServiceOrTarget` now lets a machine subject reach the
+> endpoint); this is a separate, deeper **RLS** layer gap the PEP fix could not have touched — the
+> same general class GH-36 already fixed once for `tenant_units`, but that fix was scoped to a
+> person-caller timing issue (closure not yet seeded before insert), not to machine callers at all.
+> One real thing that DID work as designed: the 38 failures were caught and correctly recorded
+> (`MarkJurisdictionUnitFailed`, `unitsFailed: 38` in the run summary) rather than crashing the whole
+> sync — the resumability design held even though the underlying write never succeeded.
+>
+> **Update (2026-08-15, same day, continued): the `tenant_units`-level failure above was NOT a new
+> upstream bug — it was this decision's own grant misconfigured. Correcting a real research gap in
+> this decision's own earlier text** (and in go-oikumenea#39 itself): `GrantPrincipalPermissionRequest`
+> has always had an `orgId` field ("omit for an instance-wide grant; set to confine the machine to
+> one organization") — the earlier "principal grants carry no unit/subtree scope" claim only checked
+> `scripts/bootstrap-service-principal`'s own instance-wide-only call site, not the full Conjure
+> contract. go-oikumenea's own `migrations/0011_infra.sql` (`authz_principal_org_in_reach`) requires
+> an ORG-scoped grant for a machine subject's `tenant_units` write — an instance-wide one "confers NO
+> operational reach" by that migration's own comment, exactly matching what was observed. **Fixed on
+> this side**: `scripts/bootstrap-service-principal` gained a `-catholic-jurisdiction-org-id` flag;
+> `religionorg.manage` is now granted ORG-scoped to the org owning the anchor unit (confirmed live:
+> the anchor unit and the shared root unit are both in org `019fe8bb-3b41-8101-8406-06b65f756132` in
+> this environment), and skipped entirely when the flag is omitted — a misleading unusable
+> instance-wide grant is worse than none. Re-running the sync with this grant in place, the
+> `tenant_units` insert genuinely succeeds now (confirmed: 38 real unit rows created for real
+> Ukrainian dioceses/eparchies).
+>
+> **A second, DEEPER, and still genuinely unresolved bug surfaced once that layer was fixed**: the
+> SAME `createChildOrg` call's follow-on `tenant_unit_edges` insert (attaching the new unit under the
+> anchor in the `canonical` graph — same transaction, same request) still fails with the identical RLS
+> error. Root-caused as far as possible from outside go-oikumenea's own request-handling code: a
+> **manual raw-SQL reproduction of the exact same insert, with the RLS session GUCs (`app.principal_id`
+> etc.) set to match the real request, succeeds** — proving the policy/grant model itself is correct
+> and the gap is in how go-oikumenea's Go server propagates those GUCs to the specific connection/
+> transaction `tenant.Service.CreateUnitWithEdge`'s internal `InsertEdge` call runs on, not in the
+> RLS design. Filed as a new go-oikumenea issue (see `docs/milestones.md`'s M8 detail for the link) —
+> this one genuinely needs the repo owner's own server-side instrumentation to pin down, since it
+> could not be isolated further by black-box HTTP/SQL probing alone
+> ([go-oikumenea#41](https://github.com/olehmushka/go-oikumenea/issues/41)). `RunJurisdictionSync` is
+> **still not live-verified end to end** as a result — real progress (one full layer fixed, live data
+> flowing, resumability proven under real failure), but the actual go-oikumenea Unit tree for Ukraine
+> does not exist yet.
+>
+> **2026-08-16: GH-41 fixed upstream and live-verified end to end.** Diagnosed live, not by further
+> black-box probing — the repo owner's own server-side instrumentation pinned it down to
+> `InsertEdge`'s sqlc query using `RETURNING`: a row whose `WITH CHECK` (write) passes but whose
+> table `USING` (read) does not raises the identical RLS error for `RETURNING`, not a silent empty
+> result, in this Postgres version. So it was never a GUC-propagation bug (this decision's own
+> working theory above) or a policy gap — an org-scoped `religionorg.manage` grant alone satisfies
+> the write side but not the implicit read side. Merged to go-oikumenea `main`, published as image
+> `0.0.7` (bumped in this repo's `docker-compose.yml`, was `0.0.6`).
+>
+> Re-verifying against 0.0.7 on this side surfaced a SECOND, real gap: `bootstrap-service-principal`
+> already granted `religion.read`, but instance-wide, and a re-run still hit the identical
+> `tenant_unit_edges` RLS error — an instance-wide `religion.read` grant does not satisfy
+> `InsertEdge`'s read-reach check any more than an instance-wide `religionorg.manage` grant satisfied
+> the write-reach check earlier in this same trace. go-oikumenea's own GH-41 regression test grants
+> `religion.read` ORG-SCOPED, confirming the fix: `bootstrap-service-principal` now grants a second,
+> org-scoped `religion.read` alongside `religionorg.manage`. With both actually in place, a real
+> `wikidata-catholic` sync against a live docker-compose stack on image `0.0.7` succeeded completely
+> (`nodesFetched: 40, unitsCreated: 38, unitsFailed: 0, aliasesCreated: 486`), confirmed directly
+> against go-oikumenea's tables — all 38 units have real `tenant_unit_edges` and
+> `tenant_unit_closure` rows, genuinely reachable from the anchor, not orphans — and a second run
+> confirmed idempotency (`unitsSkipped: 38`). `RunJurisdictionSync` is no longer blocked.
 
 ---
 

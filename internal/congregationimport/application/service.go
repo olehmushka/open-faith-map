@@ -35,6 +35,12 @@ type Config struct {
 	// so swapping providers (or adding a second one to run alongside Nominatim) never touches this
 	// module's interface or Conjure surface. Defaults to "nominatim" if empty.
 	ActiveGeocoderCode string
+	// CatholicJurisdictionAnchorUnitID is the pre-existing go-oikumenea Unit RunJurisdictionSync
+	// creates every top-level (no-parent) jurisdiction node under — created ONCE, out-of-band, by a
+	// human operator through the admin "Create unit" modal (D-CatholicJurisdictionSync,
+	// docs/architecture/decisions.md). RunJurisdictionSync never creates or touches anything above or
+	// outside this unit's own subtree.
+	CatholicJurisdictionAnchorUnitID string
 }
 
 type Service struct {
@@ -49,9 +55,12 @@ type Service struct {
 	// nil if that code isn't registered, checked at call time in SuggestCoordinates, never a boot
 	// failure (same "never a hard failure" discipline connectors already follow).
 	geocoder domain.Geocoder
+	// jurisdictionSources is RunJurisdictionSync's own fixed registry, same shape/reasoning as
+	// connectors above — keyed by JurisdictionSource.Code().
+	jurisdictionSources map[string]domain.JurisdictionSource
 }
 
-func NewService(store *adapters.Store, cfg Config, connectors []domain.Connector, geocoders []domain.Geocoder) *Service {
+func NewService(store *adapters.Store, cfg Config, connectors []domain.Connector, geocoders []domain.Geocoder, jurisdictionSources []domain.JurisdictionSource) *Service {
 	byCode := make(map[string]domain.Connector, len(connectors))
 	for _, c := range connectors {
 		byCode[c.Code()] = c
@@ -67,7 +76,11 @@ func NewService(store *adapters.Store, cfg Config, connectors []domain.Connector
 			break
 		}
 	}
-	return &Service{store: store, cfg: cfg, connectors: byCode, geocoder: activeGeocoder}
+	jsByCode := make(map[string]domain.JurisdictionSource, len(jurisdictionSources))
+	for _, js := range jurisdictionSources {
+		jsByCode[js.Code()] = js
+	}
+	return &Service{store: store, cfg: cfg, connectors: byCode, geocoder: activeGeocoder, jurisdictionSources: jsByCode}
 }
 
 func (s *Service) userClient(token string) (*oikumenea.Client, error) {

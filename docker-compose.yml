@@ -21,9 +21,10 @@
 # go-oikumenea's migrations aren't published as a standalone artifact yet, so oikumenea-migrate reads
 # them from a sibling checkout of the go-oikumenea repo (OIKUMENEA_SRC, default ../go-oikumenea) —
 # make sure its migrations/ matches the image tag below. The same sibling checkout is now also used
-# for hermenea (M2.2, D-BulkImport) — go-oikumenea's own reference-data companion service, which has
-# no published image, so it's built from OIKUMENEA_SRC's Dockerfile.hermenea, and its own migration
-# set is read from OIKUMENEA_SRC's migrations/hermenea/. See docs/modules/import.md.
+# for migrate-hermenea (M2.2, D-BulkImport), whose migration set is read from OIKUMENEA_SRC's
+# migrations/hermenea/. The hermenea SERVICE itself, unlike its migrations, now has a published
+# image (docker.io/olegamysk/hermenea) and is pulled like oikumenea-app rather than built from
+# OIKUMENEA_SRC's Dockerfile.hermenea. See docs/modules/import.md.
 #
 #   OIKUMENEA_SRC=/path/to/go-oikumenea docker compose up --build
 
@@ -87,7 +88,23 @@ services:
     # service-principal caller outright regardless of grants — found live via congregationimport's
     # matchCountry (scripts/bootstrap-service-principal now grants country.read for real). Both
     # re-verified live after bumping.
-    image: docker.io/olegamysk/oikumenea:0.0.5
+    # 0.0.6 fixes go-oikumenea#39: Religion.CreateChildOrg's pep.Require also structurally denied a
+    # service-principal caller (same class as 0.0.5's fix, this time on a WRITE) — found live via
+    # D-CatholicJurisdictionSync's RunJurisdictionSync. Fixed with a new RequireServiceOrTarget gate,
+    # not a straight RequireServiceOrPerson swap: a person keeps the existing target-scoped Require
+    # check unchanged, only a machine subject gets a new door (checked against its flat, INSTANCE-WIDE
+    # grant set — go-oikumenea's principal grants still carry no unit/subtree scope, a deliberate,
+    # documented open question, not something this bump narrows).
+    # 0.0.7 fixes go-oikumenea#41: CreateChildOrg's tenant_unit_edges insert (via CreateUnitWithEdge)
+    # still failed RLS for a service principal holding only an org-scoped religionorg.manage grant,
+    # even though the preceding tenant_units insert succeeded — root-caused live to InsertEdge's sqlc
+    # query using RETURNING, which needs the row's implicit read reach in addition to its WITH CHECK
+    # (write) pass; a manage-only grant satisfies the write side but not the read side. Not a policy
+    # or GUC-propagation bug, as GH-41 originally suspected. Fix: document/require religion.read
+    # alongside religionorg.manage for a service principal doing this write (same manage+read pairing
+    # a person caller already needed). Closes out D-CatholicJurisdictionSync's own last open blocker —
+    # see docs/architecture/decisions.md and docs/milestones.md's M8 entry.
+    image: docker.io/olegamysk/oikumenea:0.0.7
     depends_on:
       oikumenea-init-role:
         condition: service_completed_successfully
@@ -111,8 +128,12 @@ services:
   # hermenea (M2.2, D-BulkImport) — go-oikumenea's own reference-data companion service, deployed
   # unmodified, not built by OpenFaithMap (docs/modules/import.md). Owns a SEPARATE Postgres
   # database (named `hermenea`, not a schema inside `oikumenea`/`openfaithmap`) with its own
-  # migration set. No published image exists, so it's built from the same OIKUMENEA_SRC sibling
-  # checkout oikumenea-migrate already uses, via that checkout's Dockerfile.hermenea.
+  # migration set. Its migrations still aren't published as a standalone artifact, so
+  # migrate-hermenea below still reads them from the OIKUMENEA_SRC sibling checkout — but the
+  # service itself now has a published image (docker.io/olegamysk/hermenea), so it's pulled rather
+  # than built from that checkout's Dockerfile.hermenea (was: `build: {context: OIKUMENEA_SRC,
+  # dockerfile: Dockerfile.hermenea}` — no other field changed by this switch, same ENTRYPOINT,
+  # config-mount path, and `command: ["serve"]` override).
   init-hermenea-db:
     image: postgres:16
     depends_on:
@@ -140,9 +161,7 @@ services:
       - ${OIKUMENEA_SRC:-../go-oikumenea}/migrations/hermenea:/migrations:ro
 
   hermenea:
-    build:
-      context: ${OIKUMENEA_SRC:-../go-oikumenea}
-      dockerfile: Dockerfile.hermenea
+    image: docker.io/olegamysk/hermenea:0.0.7
     command: ["serve"]
     depends_on:
       migrate-hermenea:
@@ -254,6 +273,19 @@ services:
       # this connector only ever calls out over HTTP, never reads a local file.
       OSM_COUNTRY_CODES: "${OSM_COUNTRY_CODES:-}"
       OSM_OVERPASS_BASE_URL: "${OSM_OVERPASS_BASE_URL:-}"
+      # wikidata-catholic (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — optional,
+      # only registers once CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID is set (a real go-oikumenea Unit an
+      # operator must create ONCE, out-of-band, through the admin "Create unit" modal — this connector
+      # never creates or touches anything above or outside that unit's own subtree).
+      # CATHOLIC_JURISDICTION_COUNTRY_QIDS optionally scopes the sync to specific Wikidata country
+      # QIDs (e.g. "Q212" for Ukraine); empty means every country worldwide. Also needs
+      # religionorg.manage granted to THIS service principal in scripts/bootstrap-service-principal —
+      # currently blocked upstream (CreateChildOrg's PEP gate structurally denies a machine subject;
+      # see the D-CatholicJurisdictionSync decision for the filed go-oikumenea issue) — the endpoint
+      # is wired but will 403 until that upstream fix ships.
+      CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID: "${CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID:-}"
+      CATHOLIC_JURISDICTION_COUNTRY_QIDS: "${CATHOLIC_JURISDICTION_COUNTRY_QIDS:-}"
+      CATHOLIC_JURISDICTION_WIKIDATA_BASE_URL: "${CATHOLIC_JURISDICTION_WIKIDATA_BASE_URL:-}"
     volumes:
       # The leading "./" is load-bearing: Compose treats a bare relative path as a named-volume
       # reference, not a bind mount, and fails with "undefined volume" otherwise — found by
@@ -324,7 +356,7 @@ services:
   # deployment restricts this behind a WireGuard VPN instead (decided, not yet implemented — see
   # D-InstanceAdminConsole's consequences in docs/architecture/decisions.md).
   oikumenea-console:
-    image: docker.io/olegamysk/oikumenea-console:0.0.1
+    image: docker.io/olegamysk/oikumenea-console:0.0.7
     depends_on:
       oikumenea-app:
         condition: service_started

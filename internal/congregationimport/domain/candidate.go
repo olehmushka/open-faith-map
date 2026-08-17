@@ -38,6 +38,9 @@ var (
 	ErrNotApprovable             = errors.New("congregationimport: candidate is not in an approvable status")
 	ErrInvalidPageToken          = errors.New("congregationimport: pageToken is malformed or tampered")
 	ErrAliasConflict             = errors.New("congregationimport: an alias with this (sourceCode, aliasText) already exists")
+	// ErrJurisdictionSourceNotFound is RunJurisdictionSync's counterpart to ErrRunNotFound — sourceCode
+	// doesn't match a registered domain.JurisdictionSource.
+	ErrJurisdictionSourceNotFound = errors.New("congregationimport: jurisdiction source not found")
 )
 
 // PageCursor is the decoded shape of an opaque pageToken (mirrors moderation's M7 pagination
