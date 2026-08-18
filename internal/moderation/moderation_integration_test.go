@@ -57,14 +57,13 @@ func TestModerationIntegration(t *testing.T) {
 		RootUnitID: seed.RootUnitID,
 	})
 
-	// reportIDs/actionIDs are recorded for visibility but deliberately never cleaned up:
-	// moderation_actions is genuinely append-only (migrations/0007_moderation.sql's own
-	// reject_mutation trigger blocks UPDATE/DELETE unconditionally), and deleting a report it
+	// The filed report and taken action below are logged (t.Logf) for visibility but deliberately
+	// never cleaned up: moderation_actions is genuinely append-only (migrations/0007_moderation.sql's
+	// own reject_mutation trigger blocks UPDATE/DELETE unconditionally), and deleting a report it
 	// references would cascade an UPDATE (ON DELETE SET NULL on actions.report_id) that trigger
 	// blocks too — confirmed live, not assumed. Leaving these test rows behind is the correct
 	// behaviour for an audit-log-shaped table, not a leak this cleanup should fight.
 	var personIDs, unitIDs, assignmentIDs, appealIDs []string
-	var reportIDs, actionIDs []string
 	t.Cleanup(func() {
 		bg := context.Background()
 		for _, id := range appealIDs {
@@ -147,7 +146,7 @@ func TestModerationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FileReport: %v", err)
 	}
-	reportIDs = append(reportIDs, report.ID)
+	t.Logf("filed report %s — deliberately not cleaned up (append-only table)", report.ID)
 
 	// --- TakeActionOnReport is denied for a non-moderator, allowed for the real moderator.
 	if _, err := modSvc.TakeActionOnReport(nonModCtx, nonModeratorID, report.ID, moderationdomain.ActionSuspend, "test"); !errors.Is(err, moderationdomain.ErrForbidden) {
@@ -157,7 +156,7 @@ func TestModerationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TakeActionOnReport by real moderator: %v", err)
 	}
-	actionIDs = append(actionIDs, action.ID)
+	t.Logf("took action %s — deliberately not cleaned up (append-only table)", action.ID)
 
 	// --- FileAppeal gates on requireCongregationAdmin against the action's own target unit, not
 	// requireModerate — denied for a caller with no grant on unit, allowed for a real
