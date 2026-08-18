@@ -1,0 +1,2502 @@
+[
+  {
+    "code": "AD",
+    "name": "Andorra",
+    "names": {
+      "eng": "Andorra",
+      "por": "Andorra",
+      "spa": "Andorra",
+      "ukr": "Андорра"
+    }
+  },
+  {
+    "code": "AE",
+    "name": "United Arab Emirates",
+    "names": {
+      "eng": "United Arab Emirates",
+      "por": "Emirados Árabes Unidos",
+      "spa": "Emiratos Árabes Unidos",
+      "ukr": "Обʼєднані Арабські Емірати"
+    }
+  },
+  {
+    "code": "AF",
+    "name": "Afghanistan",
+    "names": {
+      "eng": "Afghanistan",
+      "por": "Afeganistão",
+      "spa": "Afganistán",
+      "ukr": "Афганістан"
+    }
+  },
+  {
+    "code": "AG",
+    "name": "Antigua and Barbuda",
+    "names": {
+      "eng": "Antigua & Barbuda",
+      "por": "Antígua e Barbuda",
+      "spa": "Antigua y Barbuda",
+      "ukr": "Антигуа і Барбуда"
+    }
+  },
+  {
+    "code": "AI",
+    "name": "Anguilla",
+    "names": {
+      "eng": "Anguilla",
+      "por": "Anguila",
+      "spa": "Anguila",
+      "ukr": "Ангілья"
+    }
+  },
+  {
+    "code": "AL",
+    "name": "Albania",
+    "names": {
+      "eng": "Albania",
+      "por": "Albânia",
+      "spa": "Albania",
+      "ukr": "Албанія"
+    }
+  },
+  {
+    "code": "AM",
+    "name": "Armenia",
+    "names": {
+      "eng": "Armenia",
+      "por": "Armênia",
+      "spa": "Armenia",
+      "ukr": "Вірменія"
+    }
+  },
+  {
+    "code": "AO",
+    "name": "Angola",
+    "names": {
+      "eng": "Angola",
+      "por": "Angola",
+      "spa": "Angola",
+      "ukr": "Ангола"
+    }
+  },
+  {
+    "code": "AQ",
+    "name": "Antarctica",
+    "names": {
+      "eng": "Antarctica",
+      "por": "Antártida",
+      "spa": "Antártida",
+      "ukr": "Антарктика"
+    }
+  },
+  {
+    "code": "AR",
+    "name": "Argentina",
+    "names": {
+      "eng": "Argentina",
+      "por": "Argentina",
+      "spa": "Argentina",
+      "ukr": "Аргентина"
+    }
+  },
+  {
+    "code": "AS",
+    "name": "American Samoa",
+    "names": {
+      "eng": "American Samoa",
+      "por": "Samoa Americana",
+      "spa": "Samoa Americana",
+      "ukr": "Американське Самоа"
+    }
+  },
+  {
+    "code": "AT",
+    "name": "Austria",
+    "names": {
+      "eng": "Austria",
+      "por": "Áustria",
+      "spa": "Austria",
+      "ukr": "Австрія"
+    }
+  },
+  {
+    "code": "AU",
+    "name": "Australia",
+    "names": {
+      "eng": "Australia",
+      "por": "Austrália",
+      "spa": "Australia",
+      "ukr": "Австралія"
+    }
+  },
+  {
+    "code": "AW",
+    "name": "Aruba",
+    "names": {
+      "eng": "Aruba",
+      "por": "Aruba",
+      "spa": "Aruba",
+      "ukr": "Аруба"
+    }
+  },
+  {
+    "code": "AX",
+    "name": "Åland Islands",
+    "names": {
+      "eng": "Åland Islands",
+      "por": "Ilhas Aland",
+      "spa": "Islas Åland",
+      "ukr": "Аландські Острови"
+    }
+  },
+  {
+    "code": "AZ",
+    "name": "Azerbaijan",
+    "names": {
+      "eng": "Azerbaijan",
+      "por": "Azerbaijão",
+      "spa": "Azerbaiyán",
+      "ukr": "Азербайджан"
+    }
+  },
+  {
+    "code": "BA",
+    "name": "Bosnia and Herzegovina",
+    "names": {
+      "eng": "Bosnia & Herzegovina",
+      "por": "Bósnia e Herzegovina",
+      "spa": "Bosnia-Herzegovina",
+      "ukr": "Боснія і Герцеговина"
+    }
+  },
+  {
+    "code": "BB",
+    "name": "Barbados",
+    "names": {
+      "eng": "Barbados",
+      "por": "Barbados",
+      "spa": "Barbados",
+      "ukr": "Барбадос"
+    }
+  },
+  {
+    "code": "BD",
+    "name": "Bangladesh",
+    "names": {
+      "eng": "Bangladesh",
+      "por": "Bangladesh",
+      "spa": "Bangladés",
+      "ukr": "Бангладеш"
+    }
+  },
+  {
+    "code": "BE",
+    "name": "Belgium",
+    "names": {
+      "eng": "Belgium",
+      "por": "Bélgica",
+      "spa": "Bélgica",
+      "ukr": "Бельгія"
+    }
+  },
+  {
+    "code": "BF",
+    "name": "Burkina Faso",
+    "names": {
+      "eng": "Burkina Faso",
+      "por": "Burquina Faso",
+      "spa": "Burkina Faso",
+      "ukr": "Буркіна-Фасо"
+    }
+  },
+  {
+    "code": "BG",
+    "name": "Bulgaria",
+    "names": {
+      "eng": "Bulgaria",
+      "por": "Bulgária",
+      "spa": "Bulgaria",
+      "ukr": "Болгарія"
+    }
+  },
+  {
+    "code": "BH",
+    "name": "Bahrain",
+    "names": {
+      "eng": "Bahrain",
+      "por": "Barein",
+      "spa": "Baréin",
+      "ukr": "Бахрейн"
+    }
+  },
+  {
+    "code": "BI",
+    "name": "Burundi",
+    "names": {
+      "eng": "Burundi",
+      "por": "Burundi",
+      "spa": "Burundi",
+      "ukr": "Бурунді"
+    }
+  },
+  {
+    "code": "BJ",
+    "name": "Benin",
+    "names": {
+      "eng": "Benin",
+      "por": "Benin",
+      "spa": "Benín",
+      "ukr": "Бенін"
+    }
+  },
+  {
+    "code": "BL",
+    "name": "Saint Barthélemy",
+    "names": {
+      "eng": "St. Barthélemy",
+      "por": "São Bartolomeu",
+      "spa": "San Bartolomé",
+      "ukr": "Сен-Бартелемі"
+    }
+  },
+  {
+    "code": "BM",
+    "name": "Bermuda",
+    "names": {
+      "eng": "Bermuda",
+      "por": "Bermudas",
+      "spa": "Bermudas",
+      "ukr": "Бермудські Острови"
+    }
+  },
+  {
+    "code": "BN",
+    "name": "Brunei Darussalam",
+    "names": {
+      "eng": "Brunei",
+      "por": "Brunei",
+      "spa": "Brunéi",
+      "ukr": "Бруней"
+    }
+  },
+  {
+    "code": "BO",
+    "name": "Bolivia",
+    "names": {
+      "eng": "Bolivia",
+      "por": "Bolívia",
+      "spa": "Bolivia",
+      "ukr": "Болівія"
+    }
+  },
+  {
+    "code": "BQ",
+    "name": "Bonaire, Sint Eustatius and Saba",
+    "names": {
+      "eng": "Caribbean Netherlands",
+      "por": "Países Baixos Caribenhos",
+      "spa": "Caribe neerlandés",
+      "ukr": "Карибські Нідерланди"
+    }
+  },
+  {
+    "code": "BR",
+    "name": "Brazil",
+    "names": {
+      "eng": "Brazil",
+      "por": "Brasil",
+      "spa": "Brasil",
+      "ukr": "Бразилія"
+    }
+  },
+  {
+    "code": "BS",
+    "name": "Bahamas",
+    "names": {
+      "eng": "Bahamas",
+      "por": "Bahamas",
+      "spa": "Bahamas",
+      "ukr": "Багамські Острови"
+    }
+  },
+  {
+    "code": "BT",
+    "name": "Bhutan",
+    "names": {
+      "eng": "Bhutan",
+      "por": "Butão",
+      "spa": "Bután",
+      "ukr": "Бутан"
+    }
+  },
+  {
+    "code": "BV",
+    "name": "Bouvet Island",
+    "names": {
+      "eng": "Bouvet Island",
+      "por": "Ilha Bouvet",
+      "spa": "Isla Bouvet",
+      "ukr": "Острів Буве"
+    }
+  },
+  {
+    "code": "BW",
+    "name": "Botswana",
+    "names": {
+      "eng": "Botswana",
+      "por": "Botsuana",
+      "spa": "Botsuana",
+      "ukr": "Ботсвана"
+    }
+  },
+  {
+    "code": "BY",
+    "name": "Belarus",
+    "names": {
+      "eng": "Belarus",
+      "por": "Bielorrússia",
+      "spa": "Bielorrusia",
+      "ukr": "Білорусь"
+    }
+  },
+  {
+    "code": "BZ",
+    "name": "Belize",
+    "names": {
+      "eng": "Belize",
+      "por": "Belize",
+      "spa": "Belice",
+      "ukr": "Беліз"
+    }
+  },
+  {
+    "code": "CA",
+    "name": "Canada",
+    "names": {
+      "eng": "Canada",
+      "por": "Canadá",
+      "spa": "Canadá",
+      "ukr": "Канада"
+    }
+  },
+  {
+    "code": "CC",
+    "name": "Cocos (Keeling) Islands",
+    "names": {
+      "eng": "Cocos (Keeling) Islands",
+      "por": "Ilhas Cocos (Keeling)",
+      "spa": "Islas Cocos",
+      "ukr": "Кокосові (Кілінг) Острови"
+    }
+  },
+  {
+    "code": "CD",
+    "name": "Congo, The Democratic Republic of the",
+    "names": {
+      "eng": "Congo - Kinshasa",
+      "por": "Congo - Kinshasa",
+      "spa": "República Democrática del Congo",
+      "ukr": "Конго – Кіншаса"
+    }
+  },
+  {
+    "code": "CF",
+    "name": "Central African Republic",
+    "names": {
+      "eng": "Central African Republic",
+      "por": "República Centro-Africana",
+      "spa": "República Centroafricana",
+      "ukr": "Центральноафриканська Республіка"
+    }
+  },
+  {
+    "code": "CG",
+    "name": "Congo",
+    "names": {
+      "eng": "Congo - Brazzaville",
+      "por": "República do Congo",
+      "spa": "República del Congo",
+      "ukr": "Конго – Браззавіль"
+    }
+  },
+  {
+    "code": "CH",
+    "name": "Switzerland",
+    "names": {
+      "eng": "Switzerland",
+      "por": "Suíça",
+      "spa": "Suiza",
+      "ukr": "Швейцарія"
+    }
+  },
+  {
+    "code": "CI",
+    "name": "Côte d'Ivoire",
+    "names": {
+      "eng": "Côte d’Ivoire",
+      "por": "Costa do Marfim",
+      "spa": "Costa de Marfil",
+      "ukr": "Кот-дʼІвуар"
+    }
+  },
+  {
+    "code": "CK",
+    "name": "Cook Islands",
+    "names": {
+      "eng": "Cook Islands",
+      "por": "Ilhas Cook",
+      "spa": "Islas Cook",
+      "ukr": "Острови Кука"
+    }
+  },
+  {
+    "code": "CL",
+    "name": "Chile",
+    "names": {
+      "eng": "Chile",
+      "por": "Chile",
+      "spa": "Chile",
+      "ukr": "Чилі"
+    }
+  },
+  {
+    "code": "CM",
+    "name": "Cameroon",
+    "names": {
+      "eng": "Cameroon",
+      "por": "Camarões",
+      "spa": "Camerún",
+      "ukr": "Камерун"
+    }
+  },
+  {
+    "code": "CN",
+    "name": "China",
+    "names": {
+      "eng": "China",
+      "por": "China",
+      "spa": "China",
+      "ukr": "Китай"
+    }
+  },
+  {
+    "code": "CO",
+    "name": "Colombia",
+    "names": {
+      "eng": "Colombia",
+      "por": "Colômbia",
+      "spa": "Colombia",
+      "ukr": "Колумбія"
+    }
+  },
+  {
+    "code": "CR",
+    "name": "Costa Rica",
+    "names": {
+      "eng": "Costa Rica",
+      "por": "Costa Rica",
+      "spa": "Costa Rica",
+      "ukr": "Коста-Рика"
+    }
+  },
+  {
+    "code": "CU",
+    "name": "Cuba",
+    "names": {
+      "eng": "Cuba",
+      "por": "Cuba",
+      "spa": "Cuba",
+      "ukr": "Куба"
+    }
+  },
+  {
+    "code": "CV",
+    "name": "Cabo Verde",
+    "names": {
+      "eng": "Cape Verde",
+      "por": "Cabo Verde",
+      "spa": "Cabo Verde",
+      "ukr": "Кабо-Верде"
+    }
+  },
+  {
+    "code": "CW",
+    "name": "Curaçao",
+    "names": {
+      "eng": "Curaçao",
+      "por": "Curaçao",
+      "spa": "Curazao",
+      "ukr": "Кюрасао"
+    }
+  },
+  {
+    "code": "CX",
+    "name": "Christmas Island",
+    "names": {
+      "eng": "Christmas Island",
+      "por": "Ilha Christmas",
+      "spa": "Isla de Navidad",
+      "ukr": "Острів Різдва"
+    }
+  },
+  {
+    "code": "CY",
+    "name": "Cyprus",
+    "names": {
+      "eng": "Cyprus",
+      "por": "Chipre",
+      "spa": "Chipre",
+      "ukr": "Кіпр"
+    }
+  },
+  {
+    "code": "CZ",
+    "name": "Czechia",
+    "names": {
+      "eng": "Czechia",
+      "por": "Tchéquia",
+      "spa": "Chequia",
+      "ukr": "Чехія"
+    }
+  },
+  {
+    "code": "DE",
+    "name": "Germany",
+    "names": {
+      "eng": "Germany",
+      "por": "Alemanha",
+      "spa": "Alemania",
+      "ukr": "Німеччина"
+    }
+  },
+  {
+    "code": "DJ",
+    "name": "Djibouti",
+    "names": {
+      "eng": "Djibouti",
+      "por": "Djibuti",
+      "spa": "Yibuti",
+      "ukr": "Джибуті"
+    }
+  },
+  {
+    "code": "DK",
+    "name": "Denmark",
+    "names": {
+      "eng": "Denmark",
+      "por": "Dinamarca",
+      "spa": "Dinamarca",
+      "ukr": "Данія"
+    }
+  },
+  {
+    "code": "DM",
+    "name": "Dominica",
+    "names": {
+      "eng": "Dominica",
+      "por": "Dominica",
+      "spa": "Dominica",
+      "ukr": "Домініка"
+    }
+  },
+  {
+    "code": "DO",
+    "name": "Dominican Republic",
+    "names": {
+      "eng": "Dominican Republic",
+      "por": "República Dominicana",
+      "spa": "República Dominicana",
+      "ukr": "Домініканська Республіка"
+    }
+  },
+  {
+    "code": "DZ",
+    "name": "Algeria",
+    "names": {
+      "eng": "Algeria",
+      "por": "Argélia",
+      "spa": "Argelia",
+      "ukr": "Алжир"
+    }
+  },
+  {
+    "code": "EC",
+    "name": "Ecuador",
+    "names": {
+      "eng": "Ecuador",
+      "por": "Equador",
+      "spa": "Ecuador",
+      "ukr": "Еквадор"
+    }
+  },
+  {
+    "code": "EE",
+    "name": "Estonia",
+    "names": {
+      "eng": "Estonia",
+      "por": "Estônia",
+      "spa": "Estonia",
+      "ukr": "Естонія"
+    }
+  },
+  {
+    "code": "EG",
+    "name": "Egypt",
+    "names": {
+      "eng": "Egypt",
+      "por": "Egito",
+      "spa": "Egipto",
+      "ukr": "Єгипет"
+    }
+  },
+  {
+    "code": "EH",
+    "name": "Western Sahara",
+    "names": {
+      "eng": "Western Sahara",
+      "por": "Saara Ocidental",
+      "spa": "Sáhara Occidental",
+      "ukr": "Західна Сахара"
+    }
+  },
+  {
+    "code": "ER",
+    "name": "Eritrea",
+    "names": {
+      "eng": "Eritrea",
+      "por": "Eritreia",
+      "spa": "Eritrea",
+      "ukr": "Еритрея"
+    }
+  },
+  {
+    "code": "ES",
+    "name": "Spain",
+    "names": {
+      "eng": "Spain",
+      "por": "Espanha",
+      "spa": "España",
+      "ukr": "Іспанія"
+    }
+  },
+  {
+    "code": "ET",
+    "name": "Ethiopia",
+    "names": {
+      "eng": "Ethiopia",
+      "por": "Etiópia",
+      "spa": "Etiopía",
+      "ukr": "Ефіопія"
+    }
+  },
+  {
+    "code": "FI",
+    "name": "Finland",
+    "names": {
+      "eng": "Finland",
+      "por": "Finlândia",
+      "spa": "Finlandia",
+      "ukr": "Фінляндія"
+    }
+  },
+  {
+    "code": "FJ",
+    "name": "Fiji",
+    "names": {
+      "eng": "Fiji",
+      "por": "Fiji",
+      "spa": "Fiyi",
+      "ukr": "Фіджі"
+    }
+  },
+  {
+    "code": "FK",
+    "name": "Falkland Islands (Malvinas)",
+    "names": {
+      "eng": "Falkland Islands",
+      "por": "Ilhas Malvinas",
+      "spa": "Islas Malvinas",
+      "ukr": "Фолклендські Острови"
+    }
+  },
+  {
+    "code": "FM",
+    "name": "Micronesia, Federated States of",
+    "names": {
+      "eng": "Micronesia",
+      "por": "Micronésia",
+      "spa": "Micronesia",
+      "ukr": "Мікронезія"
+    }
+  },
+  {
+    "code": "FO",
+    "name": "Faroe Islands",
+    "names": {
+      "eng": "Faroe Islands",
+      "por": "Ilhas Faroé",
+      "spa": "Islas Feroe",
+      "ukr": "Фарерські Острови"
+    }
+  },
+  {
+    "code": "FR",
+    "name": "France",
+    "names": {
+      "eng": "France",
+      "por": "França",
+      "spa": "Francia",
+      "ukr": "Франція"
+    }
+  },
+  {
+    "code": "GA",
+    "name": "Gabon",
+    "names": {
+      "eng": "Gabon",
+      "por": "Gabão",
+      "spa": "Gabón",
+      "ukr": "Габон"
+    }
+  },
+  {
+    "code": "GB",
+    "name": "United Kingdom",
+    "names": {
+      "eng": "United Kingdom",
+      "por": "Reino Unido",
+      "spa": "Reino Unido",
+      "ukr": "Велика Британія"
+    }
+  },
+  {
+    "code": "GD",
+    "name": "Grenada",
+    "names": {
+      "eng": "Grenada",
+      "por": "Granada",
+      "spa": "Granada",
+      "ukr": "Гренада"
+    }
+  },
+  {
+    "code": "GE",
+    "name": "Georgia",
+    "names": {
+      "eng": "Georgia",
+      "por": "Geórgia",
+      "spa": "Georgia",
+      "ukr": "Грузія"
+    }
+  },
+  {
+    "code": "GF",
+    "name": "French Guiana",
+    "names": {
+      "eng": "French Guiana",
+      "por": "Guiana Francesa",
+      "spa": "Guayana Francesa",
+      "ukr": "Французька Гвіана"
+    }
+  },
+  {
+    "code": "GG",
+    "name": "Guernsey",
+    "names": {
+      "eng": "Guernsey",
+      "por": "Guernsey",
+      "spa": "Guernesey",
+      "ukr": "Гернсі"
+    }
+  },
+  {
+    "code": "GH",
+    "name": "Ghana",
+    "names": {
+      "eng": "Ghana",
+      "por": "Gana",
+      "spa": "Ghana",
+      "ukr": "Гана"
+    }
+  },
+  {
+    "code": "GI",
+    "name": "Gibraltar",
+    "names": {
+      "eng": "Gibraltar",
+      "por": "Gibraltar",
+      "spa": "Gibraltar",
+      "ukr": "Гібралтар"
+    }
+  },
+  {
+    "code": "GL",
+    "name": "Greenland",
+    "names": {
+      "eng": "Greenland",
+      "por": "Groenlândia",
+      "spa": "Groenlandia",
+      "ukr": "Гренландія"
+    }
+  },
+  {
+    "code": "GM",
+    "name": "Gambia",
+    "names": {
+      "eng": "Gambia",
+      "por": "Gâmbia",
+      "spa": "Gambia",
+      "ukr": "Гамбія"
+    }
+  },
+  {
+    "code": "GN",
+    "name": "Guinea",
+    "names": {
+      "eng": "Guinea",
+      "por": "Guiné",
+      "spa": "Guinea",
+      "ukr": "Гвінея"
+    }
+  },
+  {
+    "code": "GP",
+    "name": "Guadeloupe",
+    "names": {
+      "eng": "Guadeloupe",
+      "por": "Guadalupe",
+      "spa": "Guadalupe",
+      "ukr": "Гваделупа"
+    }
+  },
+  {
+    "code": "GQ",
+    "name": "Equatorial Guinea",
+    "names": {
+      "eng": "Equatorial Guinea",
+      "por": "Guiné Equatorial",
+      "spa": "Guinea Ecuatorial",
+      "ukr": "Екваторіальна Гвінея"
+    }
+  },
+  {
+    "code": "GR",
+    "name": "Greece",
+    "names": {
+      "eng": "Greece",
+      "por": "Grécia",
+      "spa": "Grecia",
+      "ukr": "Греція"
+    }
+  },
+  {
+    "code": "GS",
+    "name": "South Georgia and the South Sandwich Islands",
+    "names": {
+      "eng": "South Georgia & South Sandwich Islands",
+      "por": "Ilhas Geórgia do Sul e Sandwich do Sul",
+      "spa": "Islas Georgia del Sur y Sándwich del Sur",
+      "ukr": "Південна Джорджія та Південні Сандвічеві Острови"
+    }
+  },
+  {
+    "code": "GT",
+    "name": "Guatemala",
+    "names": {
+      "eng": "Guatemala",
+      "por": "Guatemala",
+      "spa": "Guatemala",
+      "ukr": "Гватемала"
+    }
+  },
+  {
+    "code": "GU",
+    "name": "Guam",
+    "names": {
+      "eng": "Guam",
+      "por": "Guam",
+      "spa": "Guam",
+      "ukr": "Гуам"
+    }
+  },
+  {
+    "code": "GW",
+    "name": "Guinea-Bissau",
+    "names": {
+      "eng": "Guinea-Bissau",
+      "por": "Guiné-Bissau",
+      "spa": "Guinea-Bisáu",
+      "ukr": "Гвінея-Бісау"
+    }
+  },
+  {
+    "code": "GY",
+    "name": "Guyana",
+    "names": {
+      "eng": "Guyana",
+      "por": "Guiana",
+      "spa": "Guyana",
+      "ukr": "Гаяна"
+    }
+  },
+  {
+    "code": "HK",
+    "name": "Hong Kong",
+    "names": {
+      "eng": "Hong Kong SAR China",
+      "por": "Hong Kong, RAE da China",
+      "spa": "RAE de Hong Kong (China)",
+      "ukr": "Гонконг, ОАР Китаю"
+    }
+  },
+  {
+    "code": "HM",
+    "name": "Heard Island and McDonald Islands",
+    "names": {
+      "eng": "Heard & McDonald Islands",
+      "por": "Ilhas Heard e McDonald",
+      "spa": "Islas Heard y McDonald",
+      "ukr": "Острови Герд і Макдоналд"
+    }
+  },
+  {
+    "code": "HN",
+    "name": "Honduras",
+    "names": {
+      "eng": "Honduras",
+      "por": "Honduras",
+      "spa": "Honduras",
+      "ukr": "Гондурас"
+    }
+  },
+  {
+    "code": "HR",
+    "name": "Croatia",
+    "names": {
+      "eng": "Croatia",
+      "por": "Croácia",
+      "spa": "Croacia",
+      "ukr": "Хорватія"
+    }
+  },
+  {
+    "code": "HT",
+    "name": "Haiti",
+    "names": {
+      "eng": "Haiti",
+      "por": "Haiti",
+      "spa": "Haití",
+      "ukr": "Гаїті"
+    }
+  },
+  {
+    "code": "HU",
+    "name": "Hungary",
+    "names": {
+      "eng": "Hungary",
+      "por": "Hungria",
+      "spa": "Hungría",
+      "ukr": "Угорщина"
+    }
+  },
+  {
+    "code": "ID",
+    "name": "Indonesia",
+    "names": {
+      "eng": "Indonesia",
+      "por": "Indonésia",
+      "spa": "Indonesia",
+      "ukr": "Індонезія"
+    }
+  },
+  {
+    "code": "IE",
+    "name": "Ireland",
+    "names": {
+      "eng": "Ireland",
+      "por": "Irlanda",
+      "spa": "Irlanda",
+      "ukr": "Ірландія"
+    }
+  },
+  {
+    "code": "IL",
+    "name": "Israel",
+    "names": {
+      "eng": "Israel",
+      "por": "Israel",
+      "spa": "Israel",
+      "ukr": "Ізраїль"
+    }
+  },
+  {
+    "code": "IM",
+    "name": "Isle of Man",
+    "names": {
+      "eng": "Isle of Man",
+      "por": "Ilha de Man",
+      "spa": "Isla de Man",
+      "ukr": "Острів Мен"
+    }
+  },
+  {
+    "code": "IN",
+    "name": "India",
+    "names": {
+      "eng": "India",
+      "por": "Índia",
+      "spa": "India",
+      "ukr": "Індія"
+    }
+  },
+  {
+    "code": "IO",
+    "name": "British Indian Ocean Territory",
+    "names": {
+      "eng": "British Indian Ocean Territory",
+      "por": "Território Britânico do Oceano Índico",
+      "spa": "Territorio Británico del Océano Índico",
+      "ukr": "Британська територія в Індійському океані"
+    }
+  },
+  {
+    "code": "IQ",
+    "name": "Iraq",
+    "names": {
+      "eng": "Iraq",
+      "por": "Iraque",
+      "spa": "Irak",
+      "ukr": "Ірак"
+    }
+  },
+  {
+    "code": "IR",
+    "name": "Iran",
+    "names": {
+      "eng": "Iran",
+      "por": "Irã",
+      "spa": "Irán",
+      "ukr": "Іран"
+    }
+  },
+  {
+    "code": "IS",
+    "name": "Iceland",
+    "names": {
+      "eng": "Iceland",
+      "por": "Islândia",
+      "spa": "Islandia",
+      "ukr": "Ісландія"
+    }
+  },
+  {
+    "code": "IT",
+    "name": "Italy",
+    "names": {
+      "eng": "Italy",
+      "por": "Itália",
+      "spa": "Italia",
+      "ukr": "Італія"
+    }
+  },
+  {
+    "code": "JE",
+    "name": "Jersey",
+    "names": {
+      "eng": "Jersey",
+      "por": "Jersey",
+      "spa": "Jersey",
+      "ukr": "Джерсі"
+    }
+  },
+  {
+    "code": "JM",
+    "name": "Jamaica",
+    "names": {
+      "eng": "Jamaica",
+      "por": "Jamaica",
+      "spa": "Jamaica",
+      "ukr": "Ямайка"
+    }
+  },
+  {
+    "code": "JO",
+    "name": "Jordan",
+    "names": {
+      "eng": "Jordan",
+      "por": "Jordânia",
+      "spa": "Jordania",
+      "ukr": "Йорданія"
+    }
+  },
+  {
+    "code": "JP",
+    "name": "Japan",
+    "names": {
+      "eng": "Japan",
+      "por": "Japão",
+      "spa": "Japón",
+      "ukr": "Японія"
+    }
+  },
+  {
+    "code": "KE",
+    "name": "Kenya",
+    "names": {
+      "eng": "Kenya",
+      "por": "Quênia",
+      "spa": "Kenia",
+      "ukr": "Кенія"
+    }
+  },
+  {
+    "code": "KG",
+    "name": "Kyrgyzstan",
+    "names": {
+      "eng": "Kyrgyzstan",
+      "por": "Quirguistão",
+      "spa": "Kirguistán",
+      "ukr": "Киргизстан"
+    }
+  },
+  {
+    "code": "KH",
+    "name": "Cambodia",
+    "names": {
+      "eng": "Cambodia",
+      "por": "Camboja",
+      "spa": "Camboya",
+      "ukr": "Камбоджа"
+    }
+  },
+  {
+    "code": "KI",
+    "name": "Kiribati",
+    "names": {
+      "eng": "Kiribati",
+      "por": "Quiribati",
+      "spa": "Kiribati",
+      "ukr": "Кірибаті"
+    }
+  },
+  {
+    "code": "KM",
+    "name": "Comoros",
+    "names": {
+      "eng": "Comoros",
+      "por": "Comores",
+      "spa": "Comoras",
+      "ukr": "Комори"
+    }
+  },
+  {
+    "code": "KN",
+    "name": "Saint Kitts and Nevis",
+    "names": {
+      "eng": "St. Kitts & Nevis",
+      "por": "São Cristóvão e Névis",
+      "spa": "San Cristóbal y Nieves",
+      "ukr": "Сент-Кітс і Невіс"
+    }
+  },
+  {
+    "code": "KP",
+    "name": "North Korea",
+    "names": {
+      "eng": "North Korea",
+      "por": "Coreia do Norte",
+      "spa": "Corea del Norte",
+      "ukr": "Північна Корея"
+    }
+  },
+  {
+    "code": "KR",
+    "name": "Korea, Republic of",
+    "names": {
+      "eng": "South Korea",
+      "por": "Coreia do Sul",
+      "spa": "Corea del Sur",
+      "ukr": "Південна Корея"
+    }
+  },
+  {
+    "code": "KW",
+    "name": "Kuwait",
+    "names": {
+      "eng": "Kuwait",
+      "por": "Kuwait",
+      "spa": "Kuwait",
+      "ukr": "Кувейт"
+    }
+  },
+  {
+    "code": "KY",
+    "name": "Cayman Islands",
+    "names": {
+      "eng": "Cayman Islands",
+      "por": "Ilhas Cayman",
+      "spa": "Islas Caimán",
+      "ukr": "Кайманові Острови"
+    }
+  },
+  {
+    "code": "KZ",
+    "name": "Kazakhstan",
+    "names": {
+      "eng": "Kazakhstan",
+      "por": "Cazaquistão",
+      "spa": "Kazajistán",
+      "ukr": "Казахстан"
+    }
+  },
+  {
+    "code": "LA",
+    "name": "Laos",
+    "names": {
+      "eng": "Laos",
+      "por": "Laos",
+      "spa": "Laos",
+      "ukr": "Лаос"
+    }
+  },
+  {
+    "code": "LB",
+    "name": "Lebanon",
+    "names": {
+      "eng": "Lebanon",
+      "por": "Líbano",
+      "spa": "Líbano",
+      "ukr": "Ліван"
+    }
+  },
+  {
+    "code": "LC",
+    "name": "Saint Lucia",
+    "names": {
+      "eng": "St. Lucia",
+      "por": "Santa Lúcia",
+      "spa": "Santa Lucía",
+      "ukr": "Сент-Люсія"
+    }
+  },
+  {
+    "code": "LI",
+    "name": "Liechtenstein",
+    "names": {
+      "eng": "Liechtenstein",
+      "por": "Liechtenstein",
+      "spa": "Liechtenstein",
+      "ukr": "Ліхтенштейн"
+    }
+  },
+  {
+    "code": "LK",
+    "name": "Sri Lanka",
+    "names": {
+      "eng": "Sri Lanka",
+      "por": "Sri Lanka",
+      "spa": "Sri Lanka",
+      "ukr": "Шрі-Ланка"
+    }
+  },
+  {
+    "code": "LR",
+    "name": "Liberia",
+    "names": {
+      "eng": "Liberia",
+      "por": "Libéria",
+      "spa": "Liberia",
+      "ukr": "Ліберія"
+    }
+  },
+  {
+    "code": "LS",
+    "name": "Lesotho",
+    "names": {
+      "eng": "Lesotho",
+      "por": "Lesoto",
+      "spa": "Lesoto",
+      "ukr": "Лесото"
+    }
+  },
+  {
+    "code": "LT",
+    "name": "Lithuania",
+    "names": {
+      "eng": "Lithuania",
+      "por": "Lituânia",
+      "spa": "Lituania",
+      "ukr": "Литва"
+    }
+  },
+  {
+    "code": "LU",
+    "name": "Luxembourg",
+    "names": {
+      "eng": "Luxembourg",
+      "por": "Luxemburgo",
+      "spa": "Luxemburgo",
+      "ukr": "Люксембург"
+    }
+  },
+  {
+    "code": "LV",
+    "name": "Latvia",
+    "names": {
+      "eng": "Latvia",
+      "por": "Letônia",
+      "spa": "Letonia",
+      "ukr": "Латвія"
+    }
+  },
+  {
+    "code": "LY",
+    "name": "Libya",
+    "names": {
+      "eng": "Libya",
+      "por": "Líbia",
+      "spa": "Libia",
+      "ukr": "Лівія"
+    }
+  },
+  {
+    "code": "MA",
+    "name": "Morocco",
+    "names": {
+      "eng": "Morocco",
+      "por": "Marrocos",
+      "spa": "Marruecos",
+      "ukr": "Марокко"
+    }
+  },
+  {
+    "code": "MC",
+    "name": "Monaco",
+    "names": {
+      "eng": "Monaco",
+      "por": "Mônaco",
+      "spa": "Mónaco",
+      "ukr": "Монако"
+    }
+  },
+  {
+    "code": "MD",
+    "name": "Moldova, Republic of",
+    "names": {
+      "eng": "Moldova",
+      "por": "Moldávia",
+      "spa": "Moldavia",
+      "ukr": "Молдова"
+    }
+  },
+  {
+    "code": "ME",
+    "name": "Montenegro",
+    "names": {
+      "eng": "Montenegro",
+      "por": "Montenegro",
+      "spa": "Montenegro",
+      "ukr": "Чорногорія"
+    }
+  },
+  {
+    "code": "MF",
+    "name": "Saint Martin (French part)",
+    "names": {
+      "eng": "St. Martin",
+      "por": "São Martinho",
+      "spa": "San Martín",
+      "ukr": "Сен-Мартен"
+    }
+  },
+  {
+    "code": "MG",
+    "name": "Madagascar",
+    "names": {
+      "eng": "Madagascar",
+      "por": "Madagascar",
+      "spa": "Madagascar",
+      "ukr": "Мадагаскар"
+    }
+  },
+  {
+    "code": "MH",
+    "name": "Marshall Islands",
+    "names": {
+      "eng": "Marshall Islands",
+      "por": "Ilhas Marshall",
+      "spa": "Islas Marshall",
+      "ukr": "Маршаллові Острови"
+    }
+  },
+  {
+    "code": "MK",
+    "name": "North Macedonia",
+    "names": {
+      "eng": "North Macedonia",
+      "por": "Macedônia do Norte",
+      "spa": "Macedonia del Norte",
+      "ukr": "Північна Македонія"
+    }
+  },
+  {
+    "code": "ML",
+    "name": "Mali",
+    "names": {
+      "eng": "Mali",
+      "por": "Mali",
+      "spa": "Mali",
+      "ukr": "Малі"
+    }
+  },
+  {
+    "code": "MM",
+    "name": "Myanmar",
+    "names": {
+      "eng": "Myanmar (Burma)",
+      "por": "Mianmar (Birmânia)",
+      "spa": "Myanmar (Birmania)",
+      "ukr": "Мʼянма (Бірма)"
+    }
+  },
+  {
+    "code": "MN",
+    "name": "Mongolia",
+    "names": {
+      "eng": "Mongolia",
+      "por": "Mongólia",
+      "spa": "Mongolia",
+      "ukr": "Монголія"
+    }
+  },
+  {
+    "code": "MO",
+    "name": "Macao",
+    "names": {
+      "eng": "Macao SAR China",
+      "por": "Macau, RAE da China",
+      "spa": "RAE de Macao (China)",
+      "ukr": "Макао, ОАР Китаю"
+    }
+  },
+  {
+    "code": "MP",
+    "name": "Northern Mariana Islands",
+    "names": {
+      "eng": "Northern Mariana Islands",
+      "por": "Ilhas Marianas do Norte",
+      "spa": "Islas Marianas del Norte",
+      "ukr": "Північні Маріанські Острови"
+    }
+  },
+  {
+    "code": "MQ",
+    "name": "Martinique",
+    "names": {
+      "eng": "Martinique",
+      "por": "Martinica",
+      "spa": "Martinica",
+      "ukr": "Мартиніка"
+    }
+  },
+  {
+    "code": "MR",
+    "name": "Mauritania",
+    "names": {
+      "eng": "Mauritania",
+      "por": "Mauritânia",
+      "spa": "Mauritania",
+      "ukr": "Мавританія"
+    }
+  },
+  {
+    "code": "MS",
+    "name": "Montserrat",
+    "names": {
+      "eng": "Montserrat",
+      "por": "Montserrat",
+      "spa": "Montserrat",
+      "ukr": "Монтсеррат"
+    }
+  },
+  {
+    "code": "MT",
+    "name": "Malta",
+    "names": {
+      "eng": "Malta",
+      "por": "Malta",
+      "spa": "Malta",
+      "ukr": "Мальта"
+    }
+  },
+  {
+    "code": "MU",
+    "name": "Mauritius",
+    "names": {
+      "eng": "Mauritius",
+      "por": "Maurício",
+      "spa": "Mauricio",
+      "ukr": "Маврикій"
+    }
+  },
+  {
+    "code": "MV",
+    "name": "Maldives",
+    "names": {
+      "eng": "Maldives",
+      "por": "Maldivas",
+      "spa": "Maldivas",
+      "ukr": "Мальдіви"
+    }
+  },
+  {
+    "code": "MW",
+    "name": "Malawi",
+    "names": {
+      "eng": "Malawi",
+      "por": "Malaui",
+      "spa": "Malaui",
+      "ukr": "Малаві"
+    }
+  },
+  {
+    "code": "MX",
+    "name": "Mexico",
+    "names": {
+      "eng": "Mexico",
+      "por": "México",
+      "spa": "México",
+      "ukr": "Мексика"
+    }
+  },
+  {
+    "code": "MY",
+    "name": "Malaysia",
+    "names": {
+      "eng": "Malaysia",
+      "por": "Malásia",
+      "spa": "Malasia",
+      "ukr": "Малайзія"
+    }
+  },
+  {
+    "code": "MZ",
+    "name": "Mozambique",
+    "names": {
+      "eng": "Mozambique",
+      "por": "Moçambique",
+      "spa": "Mozambique",
+      "ukr": "Мозамбік"
+    }
+  },
+  {
+    "code": "NA",
+    "name": "Namibia",
+    "names": {
+      "eng": "Namibia",
+      "por": "Namíbia",
+      "spa": "Namibia",
+      "ukr": "Намібія"
+    }
+  },
+  {
+    "code": "NC",
+    "name": "New Caledonia",
+    "names": {
+      "eng": "New Caledonia",
+      "por": "Nova Caledônia",
+      "spa": "Nueva Caledonia",
+      "ukr": "Нова Каледонія"
+    }
+  },
+  {
+    "code": "NE",
+    "name": "Niger",
+    "names": {
+      "eng": "Niger",
+      "por": "Níger",
+      "spa": "Níger",
+      "ukr": "Нігер"
+    }
+  },
+  {
+    "code": "NF",
+    "name": "Norfolk Island",
+    "names": {
+      "eng": "Norfolk Island",
+      "por": "Ilha Norfolk",
+      "spa": "Isla Norfolk",
+      "ukr": "Острів Норфолк"
+    }
+  },
+  {
+    "code": "NG",
+    "name": "Nigeria",
+    "names": {
+      "eng": "Nigeria",
+      "por": "Nigéria",
+      "spa": "Nigeria",
+      "ukr": "Нігерія"
+    }
+  },
+  {
+    "code": "NI",
+    "name": "Nicaragua",
+    "names": {
+      "eng": "Nicaragua",
+      "por": "Nicarágua",
+      "spa": "Nicaragua",
+      "ukr": "Нікарагуа"
+    }
+  },
+  {
+    "code": "NL",
+    "name": "Netherlands",
+    "names": {
+      "eng": "Netherlands",
+      "por": "Países Baixos",
+      "spa": "Países Bajos",
+      "ukr": "Нідерланди"
+    }
+  },
+  {
+    "code": "NO",
+    "name": "Norway",
+    "names": {
+      "eng": "Norway",
+      "por": "Noruega",
+      "spa": "Noruega",
+      "ukr": "Норвегія"
+    }
+  },
+  {
+    "code": "NP",
+    "name": "Nepal",
+    "names": {
+      "eng": "Nepal",
+      "por": "Nepal",
+      "spa": "Nepal",
+      "ukr": "Непал"
+    }
+  },
+  {
+    "code": "NR",
+    "name": "Nauru",
+    "names": {
+      "eng": "Nauru",
+      "por": "Nauru",
+      "spa": "Nauru",
+      "ukr": "Науру"
+    }
+  },
+  {
+    "code": "NU",
+    "name": "Niue",
+    "names": {
+      "eng": "Niue",
+      "por": "Niue",
+      "spa": "Niue",
+      "ukr": "Ніуе"
+    }
+  },
+  {
+    "code": "NZ",
+    "name": "New Zealand",
+    "names": {
+      "eng": "New Zealand",
+      "por": "Nova Zelândia",
+      "spa": "Nueva Zelanda",
+      "ukr": "Нова Зеландія"
+    }
+  },
+  {
+    "code": "OM",
+    "name": "Oman",
+    "names": {
+      "eng": "Oman",
+      "por": "Omã",
+      "spa": "Omán",
+      "ukr": "Оман"
+    }
+  },
+  {
+    "code": "PA",
+    "name": "Panama",
+    "names": {
+      "eng": "Panama",
+      "por": "Panamá",
+      "spa": "Panamá",
+      "ukr": "Панама"
+    }
+  },
+  {
+    "code": "PE",
+    "name": "Peru",
+    "names": {
+      "eng": "Peru",
+      "por": "Peru",
+      "spa": "Perú",
+      "ukr": "Перу"
+    }
+  },
+  {
+    "code": "PF",
+    "name": "French Polynesia",
+    "names": {
+      "eng": "French Polynesia",
+      "por": "Polinésia Francesa",
+      "spa": "Polinesia Francesa",
+      "ukr": "Французька Полінезія"
+    }
+  },
+  {
+    "code": "PG",
+    "name": "Papua New Guinea",
+    "names": {
+      "eng": "Papua New Guinea",
+      "por": "Papua-Nova Guiné",
+      "spa": "Papúa Nueva Guinea",
+      "ukr": "Папуа-Нова Гвінея"
+    }
+  },
+  {
+    "code": "PH",
+    "name": "Philippines",
+    "names": {
+      "eng": "Philippines",
+      "por": "Filipinas",
+      "spa": "Filipinas",
+      "ukr": "Філіппіни"
+    }
+  },
+  {
+    "code": "PK",
+    "name": "Pakistan",
+    "names": {
+      "eng": "Pakistan",
+      "por": "Paquistão",
+      "spa": "Pakistán",
+      "ukr": "Пакистан"
+    }
+  },
+  {
+    "code": "PL",
+    "name": "Poland",
+    "names": {
+      "eng": "Poland",
+      "por": "Polônia",
+      "spa": "Polonia",
+      "ukr": "Польща"
+    }
+  },
+  {
+    "code": "PM",
+    "name": "Saint Pierre and Miquelon",
+    "names": {
+      "eng": "St. Pierre & Miquelon",
+      "por": "São Pedro e Miquelão",
+      "spa": "San Pedro y Miquelón",
+      "ukr": "Сен-Пʼєр і Мікелон"
+    }
+  },
+  {
+    "code": "PN",
+    "name": "Pitcairn",
+    "names": {
+      "eng": "Pitcairn Islands",
+      "por": "Ilhas Pitcairn",
+      "spa": "Islas Pitcairn",
+      "ukr": "Острови Піткерн"
+    }
+  },
+  {
+    "code": "PR",
+    "name": "Puerto Rico",
+    "names": {
+      "eng": "Puerto Rico",
+      "por": "Porto Rico",
+      "spa": "Puerto Rico",
+      "ukr": "Пуерто-Рико"
+    }
+  },
+  {
+    "code": "PS",
+    "name": "Palestine, State of",
+    "names": {
+      "eng": "Palestinian Territories",
+      "por": "Territórios palestinos",
+      "spa": "Territorios Palestinos",
+      "ukr": "Палестинські території"
+    }
+  },
+  {
+    "code": "PT",
+    "name": "Portugal",
+    "names": {
+      "eng": "Portugal",
+      "por": "Portugal",
+      "spa": "Portugal",
+      "ukr": "Португалія"
+    }
+  },
+  {
+    "code": "PW",
+    "name": "Palau",
+    "names": {
+      "eng": "Palau",
+      "por": "Palau",
+      "spa": "Palaos",
+      "ukr": "Палау"
+    }
+  },
+  {
+    "code": "PY",
+    "name": "Paraguay",
+    "names": {
+      "eng": "Paraguay",
+      "por": "Paraguai",
+      "spa": "Paraguay",
+      "ukr": "Парагвай"
+    }
+  },
+  {
+    "code": "QA",
+    "name": "Qatar",
+    "names": {
+      "eng": "Qatar",
+      "por": "Catar",
+      "spa": "Catar",
+      "ukr": "Катар"
+    }
+  },
+  {
+    "code": "RE",
+    "name": "Réunion",
+    "names": {
+      "eng": "Réunion",
+      "por": "Reunião",
+      "spa": "Reunión",
+      "ukr": "Реюньйон"
+    }
+  },
+  {
+    "code": "RO",
+    "name": "Romania",
+    "names": {
+      "eng": "Romania",
+      "por": "Romênia",
+      "spa": "Rumania",
+      "ukr": "Румунія"
+    }
+  },
+  {
+    "code": "RS",
+    "name": "Serbia",
+    "names": {
+      "eng": "Serbia",
+      "por": "Sérvia",
+      "spa": "Serbia",
+      "ukr": "Сербія"
+    }
+  },
+  {
+    "code": "RU",
+    "name": "Russian Federation",
+    "names": {
+      "eng": "Russia",
+      "por": "Rússia",
+      "spa": "Rusia",
+      "ukr": "Росія"
+    }
+  },
+  {
+    "code": "RW",
+    "name": "Rwanda",
+    "names": {
+      "eng": "Rwanda",
+      "por": "Ruanda",
+      "spa": "Ruanda",
+      "ukr": "Руанда"
+    }
+  },
+  {
+    "code": "SA",
+    "name": "Saudi Arabia",
+    "names": {
+      "eng": "Saudi Arabia",
+      "por": "Arábia Saudita",
+      "spa": "Arabia Saudita",
+      "ukr": "Саудівська Аравія"
+    }
+  },
+  {
+    "code": "SB",
+    "name": "Solomon Islands",
+    "names": {
+      "eng": "Solomon Islands",
+      "por": "Ilhas Salomão",
+      "spa": "Islas Salomón",
+      "ukr": "Соломонові Острови"
+    }
+  },
+  {
+    "code": "SC",
+    "name": "Seychelles",
+    "names": {
+      "eng": "Seychelles",
+      "por": "Seicheles",
+      "spa": "Seychelles",
+      "ukr": "Сейшельські Острови"
+    }
+  },
+  {
+    "code": "SD",
+    "name": "Sudan",
+    "names": {
+      "eng": "Sudan",
+      "por": "Sudão",
+      "spa": "Sudán",
+      "ukr": "Судан"
+    }
+  },
+  {
+    "code": "SE",
+    "name": "Sweden",
+    "names": {
+      "eng": "Sweden",
+      "por": "Suécia",
+      "spa": "Suecia",
+      "ukr": "Швеція"
+    }
+  },
+  {
+    "code": "SG",
+    "name": "Singapore",
+    "names": {
+      "eng": "Singapore",
+      "por": "Singapura",
+      "spa": "Singapur",
+      "ukr": "Сінгапур"
+    }
+  },
+  {
+    "code": "SH",
+    "name": "Saint Helena, Ascension and Tristan da Cunha",
+    "names": {
+      "eng": "St. Helena",
+      "por": "Santa Helena",
+      "spa": "Santa Elena",
+      "ukr": "Острів Святої Єлени"
+    }
+  },
+  {
+    "code": "SI",
+    "name": "Slovenia",
+    "names": {
+      "eng": "Slovenia",
+      "por": "Eslovênia",
+      "spa": "Eslovenia",
+      "ukr": "Словенія"
+    }
+  },
+  {
+    "code": "SJ",
+    "name": "Svalbard and Jan Mayen",
+    "names": {
+      "eng": "Svalbard & Jan Mayen",
+      "por": "Svalbard e Jan Mayen",
+      "spa": "Svalbard y Jan Mayen",
+      "ukr": "Шпіцберген та Ян-Маєн"
+    }
+  },
+  {
+    "code": "SK",
+    "name": "Slovakia",
+    "names": {
+      "eng": "Slovakia",
+      "por": "Eslováquia",
+      "spa": "Eslovaquia",
+      "ukr": "Словаччина"
+    }
+  },
+  {
+    "code": "SL",
+    "name": "Sierra Leone",
+    "names": {
+      "eng": "Sierra Leone",
+      "por": "Serra Leoa",
+      "spa": "Sierra Leona",
+      "ukr": "Сьєрра-Леоне"
+    }
+  },
+  {
+    "code": "SM",
+    "name": "San Marino",
+    "names": {
+      "eng": "San Marino",
+      "por": "San Marino",
+      "spa": "San Marino",
+      "ukr": "Сан-Марино"
+    }
+  },
+  {
+    "code": "SN",
+    "name": "Senegal",
+    "names": {
+      "eng": "Senegal",
+      "por": "Senegal",
+      "spa": "Senegal",
+      "ukr": "Сенегал"
+    }
+  },
+  {
+    "code": "SO",
+    "name": "Somalia",
+    "names": {
+      "eng": "Somalia",
+      "por": "Somália",
+      "spa": "Somalia",
+      "ukr": "Сомалі"
+    }
+  },
+  {
+    "code": "SR",
+    "name": "Suriname",
+    "names": {
+      "eng": "Suriname",
+      "por": "Suriname",
+      "spa": "Surinam",
+      "ukr": "Суринам"
+    }
+  },
+  {
+    "code": "SS",
+    "name": "South Sudan",
+    "names": {
+      "eng": "South Sudan",
+      "por": "Sudão do Sul",
+      "spa": "Sudán del Sur",
+      "ukr": "Південний Судан"
+    }
+  },
+  {
+    "code": "ST",
+    "name": "Sao Tome and Principe",
+    "names": {
+      "eng": "São Tomé & Príncipe",
+      "por": "São Tomé e Príncipe",
+      "spa": "Santo Tomé y Príncipe",
+      "ukr": "Сан-Томе і Принсіпі"
+    }
+  },
+  {
+    "code": "SV",
+    "name": "El Salvador",
+    "names": {
+      "eng": "El Salvador",
+      "por": "El Salvador",
+      "spa": "El Salvador",
+      "ukr": "Сальвадор"
+    }
+  },
+  {
+    "code": "SX",
+    "name": "Sint Maarten (Dutch part)",
+    "names": {
+      "eng": "Sint Maarten",
+      "por": "Sint Maarten",
+      "spa": "Sint Maarten",
+      "ukr": "Сінт-Мартен"
+    }
+  },
+  {
+    "code": "SY",
+    "name": "Syria",
+    "names": {
+      "eng": "Syria",
+      "por": "Síria",
+      "spa": "Siria",
+      "ukr": "Сирія"
+    }
+  },
+  {
+    "code": "SZ",
+    "name": "Eswatini",
+    "names": {
+      "eng": "Eswatini",
+      "por": "Essuatíni",
+      "spa": "Esuatini",
+      "ukr": "Есватіні"
+    }
+  },
+  {
+    "code": "TC",
+    "name": "Turks and Caicos Islands",
+    "names": {
+      "eng": "Turks & Caicos Islands",
+      "por": "Ilhas Turcas e Caicos",
+      "spa": "Islas Turcas y Caicos",
+      "ukr": "Острови Теркс і Кайкос"
+    }
+  },
+  {
+    "code": "TD",
+    "name": "Chad",
+    "names": {
+      "eng": "Chad",
+      "por": "Chade",
+      "spa": "Chad",
+      "ukr": "Чад"
+    }
+  },
+  {
+    "code": "TF",
+    "name": "French Southern Territories",
+    "names": {
+      "eng": "French Southern Territories",
+      "por": "Territórios Franceses do Sul",
+      "spa": "Territorios Australes Franceses",
+      "ukr": "Французькі Південні Території"
+    }
+  },
+  {
+    "code": "TG",
+    "name": "Togo",
+    "names": {
+      "eng": "Togo",
+      "por": "Togo",
+      "spa": "Togo",
+      "ukr": "Того"
+    }
+  },
+  {
+    "code": "TH",
+    "name": "Thailand",
+    "names": {
+      "eng": "Thailand",
+      "por": "Tailândia",
+      "spa": "Tailandia",
+      "ukr": "Таїланд"
+    }
+  },
+  {
+    "code": "TJ",
+    "name": "Tajikistan",
+    "names": {
+      "eng": "Tajikistan",
+      "por": "Tadjiquistão",
+      "spa": "Tayikistán",
+      "ukr": "Таджикистан"
+    }
+  },
+  {
+    "code": "TK",
+    "name": "Tokelau",
+    "names": {
+      "eng": "Tokelau",
+      "por": "Tokelau",
+      "spa": "Tokelau",
+      "ukr": "Токелау"
+    }
+  },
+  {
+    "code": "TL",
+    "name": "Timor-Leste",
+    "names": {
+      "eng": "Timor-Leste",
+      "por": "Timor-Leste",
+      "spa": "Timor Oriental",
+      "ukr": "Тимор-Лешті"
+    }
+  },
+  {
+    "code": "TM",
+    "name": "Turkmenistan",
+    "names": {
+      "eng": "Turkmenistan",
+      "por": "Turcomenistão",
+      "spa": "Turkmenistán",
+      "ukr": "Туркменістан"
+    }
+  },
+  {
+    "code": "TN",
+    "name": "Tunisia",
+    "names": {
+      "eng": "Tunisia",
+      "por": "Tunísia",
+      "spa": "Túnez",
+      "ukr": "Туніс"
+    }
+  },
+  {
+    "code": "TO",
+    "name": "Tonga",
+    "names": {
+      "eng": "Tonga",
+      "por": "Tonga",
+      "spa": "Tonga",
+      "ukr": "Тонга"
+    }
+  },
+  {
+    "code": "TR",
+    "name": "Türkiye",
+    "names": {
+      "eng": "Türkiye",
+      "por": "Turquia",
+      "spa": "Turquía",
+      "ukr": "Туреччина"
+    }
+  },
+  {
+    "code": "TT",
+    "name": "Trinidad and Tobago",
+    "names": {
+      "eng": "Trinidad & Tobago",
+      "por": "Trinidad e Tobago",
+      "spa": "Trinidad y Tobago",
+      "ukr": "Тринідад і Тобаго"
+    }
+  },
+  {
+    "code": "TV",
+    "name": "Tuvalu",
+    "names": {
+      "eng": "Tuvalu",
+      "por": "Tuvalu",
+      "spa": "Tuvalu",
+      "ukr": "Тувалу"
+    }
+  },
+  {
+    "code": "TW",
+    "name": "Taiwan",
+    "names": {
+      "eng": "Taiwan",
+      "por": "Taiwan",
+      "spa": "Taiwán",
+      "ukr": "Тайвань"
+    }
+  },
+  {
+    "code": "TZ",
+    "name": "Tanzania",
+    "names": {
+      "eng": "Tanzania",
+      "por": "Tanzânia",
+      "spa": "Tanzania",
+      "ukr": "Танзанія"
+    }
+  },
+  {
+    "code": "UA",
+    "name": "Ukraine",
+    "names": {
+      "eng": "Ukraine",
+      "por": "Ucrânia",
+      "spa": "Ucrania",
+      "ukr": "Україна"
+    }
+  },
+  {
+    "code": "UG",
+    "name": "Uganda",
+    "names": {
+      "eng": "Uganda",
+      "por": "Uganda",
+      "spa": "Uganda",
+      "ukr": "Уганда"
+    }
+  },
+  {
+    "code": "UM",
+    "name": "United States Minor Outlying Islands",
+    "names": {
+      "eng": "U.S. Outlying Islands",
+      "por": "Ilhas Menores Distantes dos EUA",
+      "spa": "Islas Ultramarinas de EE.UU.",
+      "ukr": "Віддалені острови США"
+    }
+  },
+  {
+    "code": "US",
+    "name": "United States",
+    "names": {
+      "eng": "United States",
+      "por": "Estados Unidos",
+      "spa": "Estados Unidos",
+      "ukr": "Сполучені Штати"
+    }
+  },
+  {
+    "code": "UY",
+    "name": "Uruguay",
+    "names": {
+      "eng": "Uruguay",
+      "por": "Uruguai",
+      "spa": "Uruguay",
+      "ukr": "Уругвай"
+    }
+  },
+  {
+    "code": "UZ",
+    "name": "Uzbekistan",
+    "names": {
+      "eng": "Uzbekistan",
+      "por": "Uzbequistão",
+      "spa": "Uzbekistán",
+      "ukr": "Узбекистан"
+    }
+  },
+  {
+    "code": "VA",
+    "name": "Holy See (Vatican City State)",
+    "names": {
+      "eng": "Vatican City",
+      "por": "Cidade do Vaticano",
+      "spa": "Ciudad del Vaticano",
+      "ukr": "Ватикан"
+    }
+  },
+  {
+    "code": "VC",
+    "name": "Saint Vincent and the Grenadines",
+    "names": {
+      "eng": "St. Vincent & Grenadines",
+      "por": "São Vicente e Granadinas",
+      "spa": "San Vicente y las Granadinas",
+      "ukr": "Сент-Вінсент і Гренадіни"
+    }
+  },
+  {
+    "code": "VE",
+    "name": "Venezuela",
+    "names": {
+      "eng": "Venezuela",
+      "por": "Venezuela",
+      "spa": "Venezuela",
+      "ukr": "Венесуела"
+    }
+  },
+  {
+    "code": "VG",
+    "name": "Virgin Islands, British",
+    "names": {
+      "eng": "British Virgin Islands",
+      "por": "Ilhas Virgens Britânicas",
+      "spa": "Islas Vírgenes Británicas",
+      "ukr": "Британські Віргінські острови"
+    }
+  },
+  {
+    "code": "VI",
+    "name": "Virgin Islands, U.S.",
+    "names": {
+      "eng": "U.S. Virgin Islands",
+      "por": "Ilhas Virgens Americanas",
+      "spa": "Islas Vírgenes de EE. UU.",
+      "ukr": "Віргінські Острови (США)"
+    }
+  },
+  {
+    "code": "VN",
+    "name": "Vietnam",
+    "names": {
+      "eng": "Vietnam",
+      "por": "Vietnã",
+      "spa": "Vietnam",
+      "ukr": "Вʼєтнам"
+    }
+  },
+  {
+    "code": "VU",
+    "name": "Vanuatu",
+    "names": {
+      "eng": "Vanuatu",
+      "por": "Vanuatu",
+      "spa": "Vanuatu",
+      "ukr": "Вануату"
+    }
+  },
+  {
+    "code": "WF",
+    "name": "Wallis and Futuna",
+    "names": {
+      "eng": "Wallis & Futuna",
+      "por": "Wallis e Futuna",
+      "spa": "Wallis y Futuna",
+      "ukr": "Уолліс і Футуна"
+    }
+  },
+  {
+    "code": "WS",
+    "name": "Samoa",
+    "names": {
+      "eng": "Samoa",
+      "por": "Samoa",
+      "spa": "Samoa",
+      "ukr": "Самоа"
+    }
+  },
+  {
+    "code": "XK",
+    "name": "Kosovo",
+    "names": {
+      "eng": "Kosovo",
+      "por": "Kosovo",
+      "spa": "Kosovo",
+      "ukr": "Косово"
+    }
+  },
+  {
+    "code": "YE",
+    "name": "Yemen",
+    "names": {
+      "eng": "Yemen",
+      "por": "Iêmen",
+      "spa": "Yemen",
+      "ukr": "Ємен"
+    }
+  },
+  {
+    "code": "YT",
+    "name": "Mayotte",
+    "names": {
+      "eng": "Mayotte",
+      "por": "Mayotte",
+      "spa": "Mayotte",
+      "ukr": "Майотта"
+    }
+  },
+  {
+    "code": "ZA",
+    "name": "South Africa",
+    "names": {
+      "eng": "South Africa",
+      "por": "África do Sul",
+      "spa": "Sudáfrica",
+      "ukr": "Південно-Африканська Республіка"
+    }
+  },
+  {
+    "code": "ZM",
+    "name": "Zambia",
+    "names": {
+      "eng": "Zambia",
+      "por": "Zâmbia",
+      "spa": "Zambia",
+      "ukr": "Замбія"
+    }
+  },
+  {
+    "code": "ZW",
+    "name": "Zimbabwe",
+    "names": {
+      "eng": "Zimbabwe",
+      "por": "Zimbábue",
+      "spa": "Zimbabue",
+      "ukr": "Зімбабве"
+    }
+  }
+]

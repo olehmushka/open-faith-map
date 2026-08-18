@@ -1,0 +1,22 @@
+[
+  {
+    "country_code": "AD",
+    "public_precision": "exact",
+    "site_count": 6
+  },
+  {
+    "country_code": "AR",
+    "public_precision": "exact",
+    "site_count": 9
+  },
+  {
+    "country_code": "UA",
+    "public_precision": "exact",
+    "site_count": 2
+  },
+  {
+    "country_code": "US",
+    "public_precision": "exact",
+    "site_count": 1
+  }
+]
