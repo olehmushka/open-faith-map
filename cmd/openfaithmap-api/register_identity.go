@@ -29,6 +29,7 @@ import (
 func registerIdentity(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	identityStore := identityadapters.NewStore(deps.Pool)
 	identitySvc := identityapplication.NewService(identityStore)
+	deps.IdentitySvc = identitySvc
 
 	issuers := []identitymiddleware.IssuerConfig{
 		{

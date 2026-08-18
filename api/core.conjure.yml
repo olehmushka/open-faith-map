@@ -1,0 +1,389 @@
+# Core module API (M10.7). docs/architecture/decisions.md's D-OwnCore/D-SuperAdminFold. Gives
+# openfaithmap-admin its own Conjure surface over the in-process core modules M10.1-M10.6 already
+# built (internal/{identity,directory,religion,membership,refdata,authz}) — the ~9 operations the
+# admin app used to reach through a sibling go-oikumenea instance (lib/oikumenea.ts, deleted this
+# milestone), plus the super-admin set that used to live in the now-deleted oikumenea-console
+# (people, role grants, units, taxa — D-SuperAdminFold), plus a batched getPersons replacing
+# my-congregation's own pre-cutover person.getPerson loop.
+#
+# TWO services share this file's types, same reasoning content.conjure.yml's own header gives:
+# Conjure's auth is a fixed per-service choice, and CoreSuperAdminService additionally needs a
+# route-group-level authorization gate (internal/authz/transport.RequireInstanceAdmin,
+# D-SuperAdminFold's amendment) no CoreService endpoint should carry. CoreService's own reads
+# (units/taxa/countries/org-kinds) carry no per-call authorization gate beyond the session
+# default-auth already requires — they mirror the pre-cutover admin app's own behaviour, where a
+# freshly-authenticated caller holding no role assignment yet (e.g. someone about to submit their
+# first registration) could still browse these catalogs. CreateChildOrg is CoreService's one
+# exception: a real write, gated on religionorg.manage over the parent unit, the same convention
+# every other consumer module already follows before calling into internal/religion (which carries
+# zero authorization logic of its own, D-InProcessAuthz).
+#
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: openfaithmap.core
+    objects:
+      Whoami:
+        fields:
+          personId: string
+          accountId:
+            type: string
+            docs: Empty if the caller's person has no login account attached yet.
+          email:
+            type: string
+            docs: Empty if unset.
+          isInstanceAdmin: boolean
+
+      Person:
+        fields:
+          id: string
+          code:
+            type: optional<string>
+            docs: Optional stable external id, unique among active persons.
+          displayName: string
+          createdAt: datetime
+          updatedAt: datetime
+      PersonPage:
+        fields:
+          persons: list<Person>
+      GetPersonsRequest:
+        fields:
+          personIds: list<string>
+
+      Unit:
+        fields:
+          id: string
+          code: optional<string>
+          name: string
+          level:
+            type: optional<integer>
+            docs: Optional sort/filter ordinal — never a PDP input.
+          state: string
+          createdAt: datetime
+          updatedAt: datetime
+      UnitPage:
+        fields:
+          units: list<Unit>
+      UnitRef:
+        docs: The shape Ancestors returns — enough to render a breadcrumb without a second round trip.
+        fields:
+          id: string
+          code: string
+          name: string
+          depth: integer
+      UnitRefPage:
+        fields:
+          units: list<UnitRef>
+
+      Taxon:
+        fields:
+          id: string
+          parentId:
+            type: optional<string>
+            docs: Unset for a root religion.
+          rankId: string
+          rankCode: string
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      TaxonPage:
+        fields:
+          taxa: list<Taxon>
+      OrgKind:
+        fields:
+          id: string
+          code: string
+          name: string
+      OrgKindPage:
+        fields:
+          orgKinds: list<OrgKind>
+      OrgClassification:
+        fields:
+          id: string
+          unitId: string
+          taxonId: string
+          taxonCode: string
+          taxonName: string
+          isPrimary: boolean
+          createdAt: datetime
+      OrgProfile:
+        fields:
+          unitId: string
+          orgKindId: optional<string>
+          shortCode: optional<string>
+          classifications: list<OrgClassification>
+      CreateChildOrgRequest:
+        fields:
+          parentUnitId: string
+          code: string
+          name: string
+          orgKindId: optional<string>
+          primaryTaxonId: optional<string>
+
+      Country:
+        fields:
+          id: string
+          code:
+            type: string
+            docs: ISO-3166-1 alpha-2.
+          name:
+            type: string
+            docs: English name.
+          names:
+            type: map<string, string>
+            docs: locale code -> localized name.
+      CountryPage:
+        fields:
+          countries: list<Country>
+
+      Membership:
+        fields:
+          id: string
+          personId: string
+          unitId: string
+          positionId: string
+          status: string
+          effectiveFrom: datetime
+      MembershipPage:
+        fields:
+          memberships: list<Membership>
+
+      Role:
+        fields:
+          id: string
+          code: string
+          name: string
+          description: optional<string>
+          isBase: boolean
+      RolePage:
+        fields:
+          roles: list<Role>
+      RoleAssignment:
+        fields:
+          id: string
+          personId: string
+          personName: string
+          roleId: string
+          roleCode: string
+          targetUnitId: string
+          scope: string
+          grantedAt: datetime
+      RoleAssignmentPage:
+        fields:
+          assignments: list<RoleAssignment>
+      GrantUnitRoleRequest:
+        fields:
+          personId: string
+          roleId: string
+          unitId: string
+
+      InstanceAdminGrant:
+        fields:
+          id: string
+          personId: string
+          personName: string
+          grantedAt: datetime
+      InstanceAdminPage:
+        fields:
+          admins: list<InstanceAdminGrant>
+      GrantInstanceAdminRequest:
+        fields:
+          personId: string
+
+    errors:
+      PersonNotFound:
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          personId: string
+      UnitNotFound:
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          unitId: string
+      TaxonNotFound:
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          taxonId: string
+      OrgProfileNotFound:
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          unitId: string
+      ChildCreationExcluded:
+        docs: The parent unit carries an active excludes_child_creation policy.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          parentUnitId: string
+      Forbidden:
+        docs: The caller does not hold religionorg.manage on the parent unit (createChildOrg) or is not an active instance admin (every CoreSuperAdminService endpoint).
+        namespace: Core
+        code: PERMISSION_DENIED
+        safe-args: {}
+      AssignmentNotFound:
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          assignmentId: string
+      InstanceAdminGrantNotFound:
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          personId: string
+
+services:
+  CoreService:
+    name: Core Service
+    package: openfaithmap.core
+    base-path: /core/v1
+    default-auth: header
+    docs: >
+      The admin app's session-gated reads over the in-process core (units, taxa, countries, org
+      kinds/profiles, memberships, persons) plus its one gated write, createChildOrg. See file
+      header for exactly which endpoints carry an authorization gate beyond the session itself.
+    endpoints:
+      whoami:
+        http: GET /whoami
+        returns: Whoami
+      getUnit:
+        http: GET /units/{unitId}
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: Unit
+      listUnits:
+        http: GET /units
+        docs: Free-text search over code/name, capped at limit (default/max 50).
+        args:
+          query:
+            type: optional<string>
+            param-type: query
+          limit:
+            type: optional<integer>
+            param-type: query
+        returns: UnitPage
+      unitAncestors:
+        http: GET /units/{unitId}/ancestors
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: UnitRefPage
+      listTaxa:
+        http: GET /taxa
+        docs: Free-text search over code/name, capped at limit (default/max 50).
+        args:
+          query:
+            type: optional<string>
+            param-type: query
+          limit:
+            type: optional<integer>
+            param-type: query
+        returns: TaxonPage
+      getTaxon:
+        http: GET /taxa/{taxonId}
+        args:
+          taxonId:
+            type: string
+            param-type: path
+        returns: Taxon
+      listOrgKinds:
+        http: GET /org-kinds
+        returns: OrgKindPage
+      getOrgProfile:
+        http: GET /units/{unitId}/org-profile
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: OrgProfile
+      createChildOrg:
+        http: POST /units/children
+        docs: Gated — the caller must hold religionorg.manage over parentUnitId.
+        args:
+          request: CreateChildOrgRequest
+        returns: OrgProfile
+      listCountries:
+        http: GET /countries
+        returns: CountryPage
+      listMembershipsByUnit:
+        http: GET /units/{unitId}/memberships
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: MembershipPage
+      getPerson:
+        http: GET /persons/{personId}
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: Person
+      getPersons:
+        http: POST /persons/batch-get
+        docs: Batched read — replaces the pre-cutover my-congregation page's per-member getPerson loop.
+        args:
+          request: GetPersonsRequest
+        returns: PersonPage
+
+  CoreSuperAdminService:
+    name: Core Super Admin Service
+    package: openfaithmap.core
+    base-path: /core/v1/super-admin
+    default-auth: header
+    docs: >
+      The super-admin surface replacing the deleted oikumenea-console (D-SuperAdminFold): people
+      search, role catalog, per-unit role-assignment grant/list/revoke, and the instance-admin
+      plane's own grant/list/revoke. Every endpoint in this service is gated as a whole route group
+      by internal/authz/transport.RequireInstanceAdmin, attached once at registration
+      (cmd/openfaithmap-api/register_core.go) — not per-handler, so no future endpoint added here
+      can be added without inheriting the check.
+    endpoints:
+      searchPersons:
+        http: GET /persons
+        args:
+          query:
+            type: optional<string>
+            param-type: query
+          limit:
+            type: optional<integer>
+            param-type: query
+        returns: PersonPage
+      listRoles:
+        http: GET /roles
+        returns: RolePage
+      listRoleAssignmentsByUnit:
+        http: GET /units/{unitId}/role-assignments
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: RoleAssignmentPage
+      grantUnitRole:
+        http: POST /role-assignments
+        args:
+          request: GrantUnitRoleRequest
+      revokeRoleAssignment:
+        http: DELETE /role-assignments/{assignmentId}
+        args:
+          assignmentId:
+            type: string
+            param-type: path
+      listInstanceAdmins:
+        http: GET /instance-admins
+        returns: InstanceAdminPage
+      grantInstanceAdmin:
+        http: POST /instance-admins
+        args:
+          request: GrantInstanceAdminRequest
+        returns: InstanceAdminGrant
+      revokeInstanceAdmin:
+        http: DELETE /instance-admins/{personId}
+        args:
+          personId:
+            type: string
+            param-type: path

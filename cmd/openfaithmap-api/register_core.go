@@ -9,6 +9,10 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzadapters "github.com/olehmushka/open-faith-map/internal/authz/adapters"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
+	authztransport "github.com/olehmushka/open-faith-map/internal/authz/transport"
+	gencore "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/core"
+	coreapplication "github.com/olehmushka/open-faith-map/internal/core/application"
+	coretransport "github.com/olehmushka/open-faith-map/internal/core/transport"
 	directoryadapters "github.com/olehmushka/open-faith-map/internal/directory/adapters"
 	directoryapplication "github.com/olehmushka/open-faith-map/internal/directory/application"
 	locationapplication "github.com/olehmushka/open-faith-map/internal/location/application"
@@ -16,6 +20,7 @@ import (
 	refdataapplication "github.com/olehmushka/open-faith-map/internal/refdata/application"
 	religionapplication "github.com/olehmushka/open-faith-map/internal/religion/application"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
+	"github.com/palantir/witchcraft-go-server/v2/wrouter"
 )
 
 // registerCore builds the M10.1-M10.5 in-process core modules and populates deps for every
@@ -46,5 +51,27 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	deps.LocationSvc = locationSvc
 	deps.MembershipSvc = membershipSvc
 	deps.RefdataSvc = refdataSvc
+
+	// M10.7: the Conjure surface these modules gain via api/core.conjure.yml, for
+	// openfaithmap-admin — deps.IdentitySvc is already built by registerIdentity, which runs before
+	// this function (registerOrder in main.go).
+	coreAppSvc := coreapplication.NewService(directorySvc, religionSvc, membershipSvc, deps.IdentitySvc, refdataSvc, authzSvc)
+
+	coreTransportSvc := coretransport.NewService(coreAppSvc)
+	if err := gencore.RegisterRoutesCoreService(info.Router, coreTransportSvc); err != nil {
+		return err
+	}
+
+	// CoreSuperAdminService is gated as a whole route group by RequireInstanceAdmin — the one
+	// shared, hard-to-misuse enforcer D-SuperAdminFold's amendment requires, attached here rather
+	// than copied into every handler so no future endpoint on this service can be added ungated.
+	coreSuperAdminTransportSvc := coretransport.NewSuperAdminService(coreAppSvc)
+	if err := gencore.RegisterRoutesCoreSuperAdminService(
+		info.Router, coreSuperAdminTransportSvc,
+		wrouter.RouteMiddleware(authztransport.RequireInstanceAdmin(authzSvc)),
+	); err != nil {
+		return err
+	}
+
 	return nil
 }

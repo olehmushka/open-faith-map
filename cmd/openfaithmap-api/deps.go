@@ -17,6 +17,7 @@ import (
 	contentapplication "github.com/olehmushka/open-faith-map/internal/content/application"
 	contentdomain "github.com/olehmushka/open-faith-map/internal/content/domain"
 	directoryapplication "github.com/olehmushka/open-faith-map/internal/directory/application"
+	identityapplication "github.com/olehmushka/open-faith-map/internal/identity/application"
 	identitymiddleware "github.com/olehmushka/open-faith-map/internal/identity/middleware"
 	locationapplication "github.com/olehmushka/open-faith-map/internal/location/application"
 	membershipapplication "github.com/olehmushka/open-faith-map/internal/membership/application"
@@ -69,6 +70,11 @@ type Deps struct {
 	LocationSvc   *locationapplication.Service
 	MembershipSvc *membershipapplication.Service
 	RefdataSvc    *refdataapplication.Service
+
+	// IdentitySvc is populated by registerIdentity (which already builds one for JIT) — M10.7's
+	// registerCore reuses this exact instance for internal/core/application rather than
+	// constructing a second one over the same store.
+	IdentitySvc *identityapplication.Service
 }
 
 func newDeps(pool *pgxpool.Pool, install config.Install) *Deps {
