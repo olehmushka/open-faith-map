@@ -6,13 +6,13 @@ package application
 import (
 	"testing"
 
-	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/geo"
+	refdatadomain "github.com/olehmushka/open-faith-map/internal/refdata/domain"
 )
 
 func TestFindCountryMatch(t *testing.T) {
-	argentina := geo.Country{Id: "country-ar", Name: map[string]string{"eng": "Argentina", "spa": "Argentina"}}
-	ukraine := geo.Country{Id: "country-ua", Name: map[string]string{"eng": "Ukraine", "ukr": "Україна"}}
-	countries := []geo.Country{argentina, ukraine}
+	argentina := refdatadomain.Country{ID: "country-ar", Names: map[string]string{"eng": "Argentina", "spa": "Argentina"}}
+	ukraine := refdatadomain.Country{ID: "country-ua", Names: map[string]string{"eng": "Ukraine", "ukr": "Україна"}}
+	countries := []refdatadomain.Country{argentina, ukraine}
 
 	tests := []struct {
 		name        string

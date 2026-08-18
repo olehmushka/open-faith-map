@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
 )
 
@@ -15,8 +16,8 @@ import (
 // invariant exactly: this never writes to the store. The operator must still call EditCandidate to
 // actually persist Latitude/Longitude, the same way a matched suggestedJurisdictionUnitId still
 // requires an explicit jurisdictionUnitId on ApproveCandidate.
-func (s *Service) SuggestCoordinates(ctx context.Context, token, callerPersonID, id string) (domain.GeocodeResult, error) {
-	if err := s.requireOperator(ctx, token, callerPersonID); err != nil {
+func (s *Service) SuggestCoordinates(ctx context.Context, id string) (domain.GeocodeResult, error) {
+	if err := s.requireOperator(ctx); err != nil {
 		return domain.GeocodeResult{}, err
 	}
 	if s.geocoder == nil {
@@ -79,29 +80,29 @@ func dedupNonEmptyQueries(queries []domain.GeocodeQuery) []domain.GeocodeQuery {
 	return out
 }
 
-// resolveCountryName best-effort maps a candidate's go-oikumenea countryId RID to a real country
-// name for the geocoder's structured query — read-only, so the service principal is the right
-// caller (same precedent checkExcluded's ancestor walk and dedup's SearchSites already use, not
-// the operator's own token). Deliberately never blocks or fails the whole lookup: a country name
-// materially helps Nominatim's own structured query resolve correctly, but its absence shouldn't
-// prevent a locality/state-level match from at least being attempted.
+// resolveCountryName best-effort maps a candidate's countryID RID to a real country name for the
+// geocoder's structured query, via internal/refdata under authz.SystemContext (D-InProcessAuthz
+// amendment #5's "resolveCountryName (read)" entry) — this read has no human subject behind it, the
+// same as every other read this module runs during a connector pass. Deliberately never blocks or
+// fails the whole lookup: a country name materially helps Nominatim's own structured query resolve
+// correctly, but its absence shouldn't prevent a locality/state-level match from at least being
+// attempted.
 func (s *Service) resolveCountryName(ctx context.Context, countryID *string) *string {
 	if countryID == nil {
 		return nil
 	}
-	c, err := s.serviceClient(ctx)
+	countries, err := s.refdata.ListCountries(authz.SystemContext(ctx))
 	if err != nil {
 		return nil
 	}
-	countries, err := c.Geo.ListCountries(ctx)
-	if err != nil {
-		return nil
-	}
-	for _, country := range countries.Countries {
-		if country.Id == *countryID {
-			name := country.Name["eng"]
+	for _, country := range countries {
+		if country.ID == *countryID {
+			name := country.Names["eng"]
 			if name == "" {
-				for _, v := range country.Name {
+				name = country.Name
+			}
+			if name == "" {
+				for _, v := range country.Names {
 					name = v
 					break
 				}

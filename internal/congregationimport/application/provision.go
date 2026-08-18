@@ -5,59 +5,46 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"regexp"
 	"strings"
 
-	oikumenea "github.com/olehmushka/go-oikumenea/clients/go"
-	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/authorization"
-	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/location"
-	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/religion"
+	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
+	locationdomain "github.com/olehmushka/open-faith-map/internal/location/domain"
+	religionadapters "github.com/olehmushka/open-faith-map/internal/religion/adapters"
 	"github.com/palantir/pkg/metrics"
 )
 
-// operatorPermission mirrors registration/content/discovery/moderation's own identical constant —
-// this repo's deliberate convention is each module holding its own copy of the target-scoped
-// capability check, not importing another module's application package.
-const operatorPermission = "religionorg.manage"
+// operatorPermission mirrors registration/content/discovery/moderation/vouching's own identical
+// constant — this repo's deliberate convention is each module holding its own copy of the
+// target-scoped capability check, not importing another module's application package.
+const operatorPermission = authzdomain.PermReligionOrgManage
 
-// requireOperator asks go-oikumenea's real PDP whether the caller holds operatorPermission on
-// Config.RootUnitID specifically — the same target-scoped pattern every other module's own
-// IsOperator/requireOperator/requireManage already uses.
-func (s *Service) requireOperator(ctx context.Context, token, callerPersonID string) error {
-	c, err := s.userClient(token)
-	if err != nil {
-		return err
-	}
-	rootUnitID := s.cfg.RootUnitID
-	resp, err := c.Authorization.Authorize(ctx, authorization.AuthorizeRequest{
-		SubjectPersonId: callerPersonID,
-		Action:          operatorPermission,
-		UnitId:          &rootUnitID,
-	})
-	if err != nil {
-		if authorization.IsPermissionDenied(err) {
+// requireOperator asks internal/authz's PDP whether the request's subject (from ctx) holds
+// operatorPermission on Config.RootUnitID specifically — the same target-scoped pattern every other
+// module's own IsOperator/requireOperator/requireManage already uses.
+func (s *Service) requireOperator(ctx context.Context) error {
+	if err := s.authzSvc.Require(ctx, operatorPermission, s.cfg.RootUnitID); err != nil {
+		if errors.Is(err, authzdomain.ErrPermissionDenied) {
 			return domain.ErrForbidden
 		}
 		return err
 	}
-	if !resp.Allow {
-		return domain.ErrForbidden
-	}
 	return nil
 }
 
-func (s *Service) EditCandidate(ctx context.Context, token, callerPersonID, id string, in domain.EditInput) (domain.Candidate, error) {
-	if err := s.requireOperator(ctx, token, callerPersonID); err != nil {
+func (s *Service) EditCandidate(ctx context.Context, id string, in domain.EditInput) (domain.Candidate, error) {
+	if err := s.requireOperator(ctx); err != nil {
 		return domain.Candidate{}, err
 	}
 	return s.store.Edit(ctx, id, in)
 }
 
-func (s *Service) RejectCandidate(ctx context.Context, token, callerPersonID, id, reason string) (domain.Candidate, error) {
-	if err := s.requireOperator(ctx, token, callerPersonID); err != nil {
+func (s *Service) RejectCandidate(ctx context.Context, callerPersonID, id, reason string) (domain.Candidate, error) {
+	if err := s.requireOperator(ctx); err != nil {
 		return domain.Candidate{}, err
 	}
 	return s.store.Reject(ctx, id, callerPersonID, reason)
@@ -66,8 +53,8 @@ func (s *Service) RejectCandidate(ctx context.Context, token, callerPersonID, id
 // ---- alias management (production-hardening pass: previously SQL-only, see
 // docs/modules/congregationimport.md) ----
 
-func (s *Service) ListTaxonAliases(ctx context.Context, token, callerPersonID string, sourceCode *string) ([]domain.TaxonAlias, error) {
-	if err := s.requireOperator(ctx, token, callerPersonID); err != nil {
+func (s *Service) ListTaxonAliases(ctx context.Context, sourceCode *string) ([]domain.TaxonAlias, error) {
+	if err := s.requireOperator(ctx); err != nil {
 		return nil, err
 	}
 	if sourceCode == nil {
@@ -76,15 +63,15 @@ func (s *Service) ListTaxonAliases(ctx context.Context, token, callerPersonID st
 	return s.store.ListAliasesForMatching(ctx, *sourceCode)
 }
 
-func (s *Service) CreateTaxonAlias(ctx context.Context, token, callerPersonID string, sourceCode *string, aliasText, taxonID string) (domain.TaxonAlias, error) {
-	if err := s.requireOperator(ctx, token, callerPersonID); err != nil {
+func (s *Service) CreateTaxonAlias(ctx context.Context, callerPersonID string, sourceCode *string, aliasText, taxonID string) (domain.TaxonAlias, error) {
+	if err := s.requireOperator(ctx); err != nil {
 		return domain.TaxonAlias{}, err
 	}
 	return s.store.CreateTaxonAlias(ctx, sourceCode, normalizeAlias(aliasText), taxonID, callerPersonID)
 }
 
-func (s *Service) ListJurisdictionAliases(ctx context.Context, token, callerPersonID string, sourceCode *string) ([]domain.JurisdictionAlias, error) {
-	if err := s.requireOperator(ctx, token, callerPersonID); err != nil {
+func (s *Service) ListJurisdictionAliases(ctx context.Context, sourceCode *string) ([]domain.JurisdictionAlias, error) {
+	if err := s.requireOperator(ctx); err != nil {
 		return nil, err
 	}
 	if sourceCode == nil {
@@ -93,8 +80,8 @@ func (s *Service) ListJurisdictionAliases(ctx context.Context, token, callerPers
 	return s.store.ListJurisdictionAliasesForMatching(ctx, *sourceCode)
 }
 
-func (s *Service) CreateJurisdictionAlias(ctx context.Context, token, callerPersonID string, sourceCode *string, aliasText, jurisdictionUnitID string) (domain.JurisdictionAlias, error) {
-	if err := s.requireOperator(ctx, token, callerPersonID); err != nil {
+func (s *Service) CreateJurisdictionAlias(ctx context.Context, callerPersonID string, sourceCode *string, aliasText, jurisdictionUnitID string) (domain.JurisdictionAlias, error) {
+	if err := s.requireOperator(ctx); err != nil {
 		return domain.JurisdictionAlias{}, err
 	}
 	return s.store.CreateJurisdictionAlias(ctx, sourceCode, normalizeAlias(aliasText), jurisdictionUnitID, callerPersonID)
@@ -104,10 +91,10 @@ func (s *Service) CreateJurisdictionAlias(ctx context.Context, token, callerPers
 // original denylist only excluded REJECTED/REJECTED_EXCLUDED, so calling ApproveCandidate a second
 // time on an already-PROVISIONED candidate fell through to ensureUnit, whose own resume-check only
 // short-circuits on PROVISIONING (not PROVISIONED), and called createChildOrg a second time — a
-// real duplicate unit, confirmed created in go-oikumenea before this fix. Only PROVISIONING (a
-// genuine crash-resume) and the pre-approval statuses may reach ensureUnit at all. Pure — no I/O —
-// split out from ApproveCandidate so it's directly unit-testable (a regression test for the exact
-// bug above) without a live store/go-oikumenea client.
+// real duplicate unit, confirmed created before this fix. Only PROVISIONING (a genuine crash-resume)
+// and the pre-approval statuses may reach ensureUnit at all. Pure — no I/O — split out from
+// ApproveCandidate so it's directly unit-testable (a regression test for the exact bug above)
+// without a live store/religion client.
 func isApprovable(status domain.Status) bool {
 	switch status {
 	case domain.StatusStaged, domain.StatusNeedsTaxonReview, domain.StatusNeedsGeocode,
@@ -118,16 +105,17 @@ func isApprovable(status domain.Status) bool {
 	}
 }
 
-// ApproveCandidate performs the real go-oikumenea write, under the APPROVING OPERATOR'S OWN
-// forwarded token — never the service principal (createChildOrg's real gate,
-// religionorg.manage/assignment.grant, is a human-held permission; "is this really a legitimate
-// congregation" is exactly the judgment call this review step exists for — D-CongregationImport).
-// Resumable, mirroring registration.Approve's exact ensureUnit/ensureSite shape (M2.3's
-// crash-resume pattern) — minus the position/fill/grantAssignment steps: there is no submitter to
-// grant congregation-admin to. On success, writes the congregationimport_congregation_status
-// overlay row recording the approving operator as the verifier.
-func (s *Service) ApproveCandidate(ctx context.Context, token, callerPersonID, id string, jurisdictionUnitID *string) (domain.Candidate, error) {
-	if err := s.requireOperator(ctx, token, callerPersonID); err != nil {
+// ApproveCandidate performs the real writes, under the APPROVING OPERATOR'S OWN context-resolved
+// subject — internal/religion/internal/location carry no authorization logic of their own
+// (D-InProcessAuthz: that's internal/authz's exclusive job), so requireOperator above is what makes
+// "is this really a legitimate congregation" the human judgment call D-CongregationImport requires,
+// not an implicit one. Resumable, mirroring registration.Approve's exact ensureUnit/ensureSite shape
+// (M2.3's crash-resume pattern) — minus the position/fill/grantAssignment steps: there is no
+// submitter to grant congregation-admin to. On success, writes the
+// congregationimport_congregation_status overlay row recording the approving operator as the
+// verifier.
+func (s *Service) ApproveCandidate(ctx context.Context, callerPersonID, id string, jurisdictionUnitID *string) (domain.Candidate, error) {
+	if err := s.requireOperator(ctx); err != nil {
 		return domain.Candidate{}, err
 	}
 	cand, err := s.store.GetCandidate(ctx, id)
@@ -144,16 +132,11 @@ func (s *Service) ApproveCandidate(ctx context.Context, token, callerPersonID, i
 		return domain.Candidate{}, fmt.Errorf("%w: missing coordinates or country — edit the candidate first", domain.ErrNotApprovable)
 	}
 
-	c, err := s.userClient(token)
+	unitID, err := s.ensureUnit(ctx, callerPersonID, cand, jurisdictionUnitID)
 	if err != nil {
 		return domain.Candidate{}, err
 	}
-
-	unitID, err := s.ensureUnit(ctx, c, callerPersonID, cand, jurisdictionUnitID)
-	if err != nil {
-		return domain.Candidate{}, err
-	}
-	if err := s.ensureSite(ctx, c, unitID, cand); err != nil {
+	if err := s.ensureSite(ctx, unitID, cand); err != nil {
 		return domain.Candidate{}, err
 	}
 
@@ -169,8 +152,8 @@ func (s *Service) ApproveCandidate(ctx context.Context, token, callerPersonID, i
 }
 
 // ensureUnit reuses cand's persisted CreatedUnitID on a resumed PROVISIONING candidate rather than
-// calling createChildOrg a second time — registration.ensureUnit's exact pattern.
-func (s *Service) ensureUnit(ctx context.Context, c *oikumenea.Client, callerPersonID string, cand domain.Candidate, jurisdictionUnitID *string) (string, error) {
+// calling CreateChildOrg a second time — registration.ensureUnit's exact pattern.
+func (s *Service) ensureUnit(ctx context.Context, callerPersonID string, cand domain.Candidate, jurisdictionUnitID *string) (string, error) {
 	if cand.Status == domain.StatusProvisioning && cand.CreatedUnitID != nil {
 		return *cand.CreatedUnitID, nil
 	}
@@ -179,81 +162,78 @@ func (s *Service) ensureUnit(ctx context.Context, c *oikumenea.Client, callerPer
 	if jurisdictionUnitID != nil && *jurisdictionUnitID != "" {
 		parentUnitID = *jurisdictionUnitID
 	}
-	profile, err := c.Religion.CreateChildOrg(ctx, parentUnitID, religion.CreateChildOrgRequest{
-		Code:           slugCode(cand.Name),
-		Name:           cand.Name,
-		PrimaryTaxonId: cand.TaxonID,
-	})
+	profile, err := s.religion.CreateChildOrg(ctx, parentUnitID, slugCode(cand.Name), cand.Name, nil, cand.TaxonID)
 	if err != nil {
 		return "", fmt.Errorf("createChildOrg: %w", err)
 	}
-	if _, err := s.store.MarkProvisioning(ctx, cand.ID, callerPersonID, profile.UnitId); err != nil {
+	if _, err := s.store.MarkProvisioning(ctx, cand.ID, callerPersonID, profile.UnitID); err != nil {
 		return "", fmt.Errorf("markProvisioning: %w", err)
 	}
-	return profile.UnitId, nil
+	return profile.UnitID, nil
 }
 
 // ensureSite mirrors registration.ensureSite exactly: check-then-create, since createSite has no
 // natural duplicate-conflict to rely on for a resumed retry.
-func (s *Service) ensureSite(ctx context.Context, c *oikumenea.Client, unitID string, cand domain.Candidate) error {
-	sites, err := c.Religion.ListUnitSites(ctx, unitID)
+func (s *Service) ensureSite(ctx context.Context, unitID string, cand domain.Candidate) error {
+	sites, err := s.religion.ListSitesByUnit(ctx, unitID)
 	if err != nil {
-		return fmt.Errorf("listUnitSites: %w", err)
+		return fmt.Errorf("listSitesByUnit: %w", err)
 	}
-	for _, site := range sites.Sites {
+	for _, site := range sites {
 		if site.IsPrimary {
 			return nil
 		}
 	}
 
-	siteTypeID, err := churchSiteTypeID(ctx, c)
+	siteTypeID, err := s.churchSiteTypeID(ctx)
 	if err != nil {
 		return err
 	}
-	loc, err := c.Location.CreateLocation(ctx, location.LocationWrite{
-		Coordinate: &location.CoordinateInput{
-			Format:    "latlon",
-			Latitude:  cand.Latitude,
-			Longitude: cand.Longitude,
-		},
-		CountryId:   *cand.CountryID,
-		AdminArea1:  cand.AdminArea1,
-		Locality:    cand.Locality,
-		Street:      cand.Street,
-		HouseNumber: cand.HouseNumber,
-		PostalCode:  cand.PostalCode,
+	loc, err := s.location.CreateLocation(ctx, locationdomain.LocationInput{
+		Latitude:    *cand.Latitude,
+		Longitude:   *cand.Longitude,
+		CountryID:   *cand.CountryID,
+		AdminArea1:  ptrOrEmpty(cand.AdminArea1),
+		Locality:    ptrOrEmpty(cand.Locality),
+		Street:      ptrOrEmpty(cand.Street),
+		HouseNumber: ptrOrEmpty(cand.HouseNumber),
+		PostalCode:  ptrOrEmpty(cand.PostalCode),
 	})
 	if err != nil {
 		return fmt.Errorf("createLocation: %w", err)
 	}
 
-	isPrimary := true
-	if _, err := c.Religion.CreateSite(ctx, unitID, religion.CreateSiteRequest{
-		LocationId: loc.Id,
-		SiteTypeId: siteTypeID,
-		IsPrimary:  &isPrimary,
+	if _, err := s.religion.CreateSite(ctx, religionadapters.CreateSiteInput{
+		OrgUnitID: unitID, LocationID: loc.ID, SiteTypeID: siteTypeID, IsPrimary: true,
 	}); err != nil {
 		return fmt.Errorf("createSite: %w", err)
 	}
 	return nil
 }
 
+func ptrOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // churchSiteTypeID and slugCode are deliberate, minimal duplicates of registration's own
 // identically-named unexported helpers — this repo's established convention (unexported symbols
 // aren't importable across packages, and every module already hand-duplicates small shared shapes
 // rather than promoting them to a common package).
-func churchSiteTypeID(ctx context.Context, c *oikumenea.Client) (string, error) {
-	types, err := c.Religion.ListSiteTypes(ctx)
+func (s *Service) churchSiteTypeID(ctx context.Context) (string, error) {
+	types, err := s.religion.ListSiteTypes(ctx)
 	if err != nil {
 		return "", fmt.Errorf("listSiteTypes: %w", err)
 	}
-	for _, t := range types.SiteTypes {
+	for _, t := range types {
 		if t.Code == "church" {
-			return t.Id, nil
+			return t.ID, nil
 		}
 	}
-	if len(types.SiteTypes) > 0 {
-		return types.SiteTypes[0].Id, nil
+	if len(types) > 0 {
+		return types[0].ID, nil
 	}
 	return "", fmt.Errorf("no religion site types configured on this instance")
 }

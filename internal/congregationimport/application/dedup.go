@@ -7,8 +7,8 @@ import (
 	"context"
 	"math"
 
-	oikumenea "github.com/olehmushka/go-oikumenea/clients/go"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
+	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
 )
 
 // duplicateRadiusMeters is the fixed geo-radius dedup uses — deliberately simple for v1 (see
@@ -16,17 +16,18 @@ import (
 // work, not built here).
 const duplicateRadiusMeters = 250.0
 
-// findPossibleDuplicate checks c against already-provisioned go-oikumenea sites near its own
-// coordinates, via the service principal's SearchSites bbox call — the exact call discovery's own
-// RefreshRegion already makes. Geo-proximity only (go-oikumenea's DiscoverySite carries no name
-// field to compare against — checked directly against the Conjure struct, not assumed) — a real
-// gap for precision, deliberately accepted for v1: this never auto-merges or auto-rejects, only
-// flags for the operator's own judgment, so a same-building-different-congregation false positive
-// costs one extra human decision, not a wrong automated one. A candidate with no coordinates yet
-// (e.g. every ЄДР row — that source has no address field at all, see the uaedr connector's own doc
-// comment) has nothing to compare against and is never flagged here; NEEDS_GEOCODE already covers
-// that case.
-func (s *Service) findPossibleDuplicate(ctx context.Context, c *oikumenea.Client, cand domain.Candidate) (dupCandidateID, dupUnitID *string, isDup bool, err error) {
+// findPossibleDuplicate checks c against already-provisioned sites near its own coordinates, via
+// internal/religion.SearchSitesExact's bbox search — the same query shape discovery's own
+// RefreshRegion makes, but using the exact (uncoarsened) counterpart since a 250m precision check
+// can't tolerate the public API's city-level rounding. ctx is expected to already carry an
+// authz.SystemContext marker (RunConnector's own doc comment) — SearchSitesExact panics otherwise.
+// Geo-proximity only (a real gap for precision, deliberately accepted for v1: this never auto-merges
+// or auto-rejects, only flags for the operator's own judgment, so a same-building-different-
+// congregation false positive costs one extra human decision, not a wrong automated one). A
+// candidate with no coordinates yet (e.g. every ЄДР row — that source has no address field at all,
+// see the uaedr connector's own doc comment) has nothing to compare against and is never flagged
+// here; NEEDS_GEOCODE already covers that case.
+func (s *Service) findPossibleDuplicate(ctx context.Context, cand domain.Candidate) (dupCandidateID, dupUnitID *string, isDup bool, err error) {
 	if cand.Latitude == nil || cand.Longitude == nil {
 		return nil, nil, false, nil
 	}
@@ -34,19 +35,17 @@ func (s *Service) findPossibleDuplicate(ctx context.Context, c *oikumenea.Client
 	const deltaDeg = 0.01 // ~1.1km at the equator — generous bbox, haversineMeters does the real cut
 	minLat, maxLat := *cand.Latitude-deltaDeg, *cand.Latitude+deltaDeg
 	minLng, maxLng := *cand.Longitude-deltaDeg, *cand.Longitude+deltaDeg
-	page, err := c.Religion.SearchSites(ctx,
-		nil, nil, nil, &minLat, &minLng, &maxLat, &maxLng, nil, nil, nil, nil, nil, nil)
+	sites, err := s.religion.SearchSitesExact(ctx, religiondomain.DiscoveryQuery{
+		MinLat: &minLat, MinLng: &minLng, MaxLat: &maxLat, MaxLng: &maxLng,
+	})
 	if err != nil {
 		return nil, nil, false, err
 	}
-	for _, site := range page.Sites {
-		if site.Latitude == nil || site.Longitude == nil {
+	for _, site := range sites {
+		if haversineMeters(*cand.Latitude, *cand.Longitude, site.Latitude, site.Longitude) > duplicateRadiusMeters {
 			continue
 		}
-		if haversineMeters(*cand.Latitude, *cand.Longitude, *site.Latitude, *site.Longitude) > duplicateRadiusMeters {
-			continue
-		}
-		unitID := site.OrgUnitId
+		unitID := site.OrgUnitID
 		return nil, &unitID, true, nil
 	}
 	return nil, nil, false, nil

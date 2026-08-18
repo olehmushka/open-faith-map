@@ -100,18 +100,14 @@ func registerCongregationImport(ctx context.Context, info witchcraft.InitInfo, d
 	}
 
 	congregationimportStore := congregationimportadapters.NewStore(deps.Pool)
-	congregationimportAppSvc := congregationimportapplication.NewService(congregationimportStore, congregationimportapplication.Config{
-		OikumeneaBaseURL:                 deps.OikumeneaBaseURL,
-		OikumeneaInsecureSkipVerify:      deps.OikumeneaInsecureSkipVerify,
-		RootUnitID:                       deps.RootUnitID,
-		ServicePrincipal:                 deps.ServicePrincipal,
-		ActiveGeocoderCode:               os.Getenv("CONGREGATIONIMPORT_GEOCODER"),
-		CatholicJurisdictionAnchorUnitID: catholicAnchorUnitID,
-	}, connectors, geocoders, jurisdictionSources)
-	congregationimportTransportSvc := congregationimporttransport.NewService(congregationimportAppSvc, congregationimporttransport.Config{
-		OikumeneaBaseURL:            deps.OikumeneaBaseURL,
-		OikumeneaInsecureSkipVerify: deps.OikumeneaInsecureSkipVerify,
-	})
+	congregationimportAppSvc := congregationimportapplication.NewService(
+		congregationimportStore, deps.ReligionSvc, deps.LocationSvc, deps.RefdataSvc, deps.AuthzSvc,
+		congregationimportapplication.Config{
+			RootUnitID:                       deps.CoreRootUnitID,
+			ActiveGeocoderCode:               os.Getenv("CONGREGATIONIMPORT_GEOCODER"),
+			CatholicJurisdictionAnchorUnitID: catholicAnchorUnitID,
+		}, connectors, geocoders, jurisdictionSources)
+	congregationimportTransportSvc := congregationimporttransport.NewService(congregationimportAppSvc)
 
 	if err := gencongregationimport.RegisterRoutesCongregationImportService(info.Router, congregationimportTransportSvc); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "register congregationimport routes")

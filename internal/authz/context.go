@@ -64,6 +64,18 @@ func isSystemContext(ctx context.Context) bool {
 	return ok
 }
 
+// MustBeSystemContext panics if ctx was not marked via SystemContext — the inverse of Require's own
+// guard, for the rare method that exposes something ONLY a trusted background caller should reach
+// (e.g. internal/religion.SearchSitesExact, which returns uncoarsened coordinates the public
+// position-oracle fix deliberately withholds). Like Require, this fails loud rather than silently:
+// a caller reaching this method with a request-scoped context is a bug in that caller, not a normal
+// deny.
+func MustBeSystemContext(ctx context.Context) {
+	if !isSystemContext(ctx) {
+		panic("authz: MustBeSystemContext called with a non-system context — this method is reserved for trusted background callers")
+	}
+}
+
 // StripSystemMarker returns a copy of ctx with any SystemContext marker removed. The identity
 // middleware calls this unconditionally on every inbound request, before anything else touches ctx,
 // so a system marker can never survive from one request into another's context chain.

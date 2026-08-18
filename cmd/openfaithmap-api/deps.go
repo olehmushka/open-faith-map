@@ -11,13 +11,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	contentapplication "github.com/olehmushka/open-faith-map/internal/content/application"
 	contentdomain "github.com/olehmushka/open-faith-map/internal/content/domain"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
 	directoryapplication "github.com/olehmushka/open-faith-map/internal/directory/application"
 	locationapplication "github.com/olehmushka/open-faith-map/internal/location/application"
 	membershipapplication "github.com/olehmushka/open-faith-map/internal/membership/application"
@@ -31,10 +29,6 @@ import (
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
 
-func insecureSkipVerifyEnv() bool {
-	return os.Getenv("OIKUMENEA_INSECURE_SKIP_VERIFY") == "true"
-}
-
 // Deps is the shared state every register<Module> function reads from and, where a later module
 // needs an earlier one's app service (discovery needs content's, vouching needs moderation's),
 // writes into. Registration order therefore matters: content and moderation must run before
@@ -44,25 +38,12 @@ type Deps struct {
 	Pool    *pgxpool.Pool
 	Install config.Install
 
-	// OikumeneaBaseURL/OikumeneaInsecureSkipVerify/ServicePrincipal/RootUnitID/
-	// CongregationAdminRoleID are the pre-cutover go-oikumenea-SDK wiring — still read by whichever
-	// consumer modules M10.6 hasn't reached yet in this session. Deleted once all six are cut over
-	// (D-SeedBootstrap: "three required environment variables disappear").
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
-	RootUnitID                  string
-	CongregationAdminRoleID     string
-
-	// ServicePrincipal is the shared service-principal credential config discovery/moderation/
-	// congregationimport each embed in their own Config — one GOOGLE_APPLICATION_CREDENTIALS
-	// resolution, not three.
-	ServicePrincipal coreintegration.Config
-
-	// CoreRootUnitID/CoreCongregationAdminRoleID are the M10.6 replacements — fixed structural RIDs
-	// from internal/platform/seed (migrations/0022_core_seed.sql), not environment variables. Used
-	// by every module already cut over to the in-process core; the pre-cutover fields above are
-	// the same values in a DIFFERENT id space (go-oikumenea's own tenant_units/authz_roles), not
-	// interchangeable with these until a module's own cutover lands.
+	// CoreRootUnitID/CoreCongregationAdminRoleID are fixed structural RIDs from
+	// internal/platform/seed (migrations/0022_core_seed.sql) — every one of the six consumer
+	// modules now reads these directly; the go-oikumenea-SDK-era OikumeneaBaseURL/RootUnitID/
+	// CongregationAdminRoleID/ServicePrincipal fields this struct carried pre-M10.6 are gone
+	// (D-SeedBootstrap: "three required environment variables disappear" once every module reading
+	// them is cut over — true as of this milestone's close).
 	CoreRootUnitID              string
 	CoreCongregationAdminRoleID string
 
@@ -71,9 +52,8 @@ type Deps struct {
 	ContentAppSvc    *contentapplication.Service
 	ModerationAppSvc *moderationapplication.Service
 
-	// Populated by registerCore (M10.6) — the M10.1-M10.5 in-process modules every one of the six
-	// consumer modules now depends on directly, replacing the go-oikumenea SDK client they used to
-	// build per-request from the caller's forwarded token.
+	// Populated by registerCore — the M10.1-M10.5 in-process modules every one of the six consumer
+	// modules now depends on directly.
 	DirectorySvc  *directoryapplication.Service
 	AuthzSvc      *authz.Service
 	ReligionSvc   *religionapplication.Service
@@ -83,23 +63,11 @@ type Deps struct {
 }
 
 func newDeps(pool *pgxpool.Pool, install config.Install) *Deps {
-	oikumeneaBaseURL := requireEnv("OIKUMENEA_BASE_URL")
-	insecureSkipVerify := insecureSkipVerifyEnv()
 	return &Deps{
 		Pool:                        pool,
 		Install:                     install,
-		OikumeneaBaseURL:            oikumeneaBaseURL,
-		OikumeneaInsecureSkipVerify: insecureSkipVerify,
-		RootUnitID:                  requireEnv("REGISTRATION_ROOT_UNIT_ID"),
-		CongregationAdminRoleID:     requireEnv("REGISTRATION_CONGREGATION_ADMIN_ROLE_ID"),
 		CoreRootUnitID:              seed.RootUnitID,
 		CoreCongregationAdminRoleID: seed.CongregationAdminRoleID,
-		ServicePrincipal: coreintegration.Config{
-			BaseURL:            oikumeneaBaseURL,
-			CredentialsFile:    requireEnv("GOOGLE_APPLICATION_CREDENTIALS"),
-			Audience:           "openfaithmap-api",
-			InsecureSkipVerify: insecureSkipVerify,
-		},
 	}
 }
 

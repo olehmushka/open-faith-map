@@ -13,6 +13,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/directory/domain"
 	"github.com/olehmushka/open-faith-map/internal/religion/adapters"
 	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
@@ -137,6 +138,13 @@ func (s *Service) ListSiteTypes(ctx context.Context) ([]adapters.SiteType, error
 	return adapters.NewStore(s.pool).ListSiteTypes(ctx)
 }
 
+// ListOrgKinds returns the seeded religion_org_kinds catalog — added at M10.6 for
+// congregationimport's jurisdiction sync (resolveOrgKindIDs), which needs to resolve a stable code
+// like "diocese"/"jurisdiction" to its real RID before calling CreateChildOrg.
+func (s *Service) ListOrgKinds(ctx context.Context) ([]adapters.OrgKind, error) {
+	return adapters.NewStore(s.pool).ListOrgKinds(ctx)
+}
+
 // ListSitesByUnit returns unitID's sites with their EXACT coordinate — callers exposing this to an
 // anonymous caller must run each result through religiondomain.Coarsen first; every current caller
 // (registration/congregationimport's own-unit site management) is an authenticated owner, not the
@@ -173,4 +181,17 @@ func (s *Service) SearchSites(ctx context.Context, q religiondomain.DiscoveryQue
 		out = append(out, hit)
 	}
 	return out, nil
+}
+
+// SearchSitesExact is SearchSites' internal counterpart: the same position-oracle-safe predicate
+// (hidden sites excluded, others matched/ordered on snapped geometry — that fix stays), but returns
+// each hit's real, uncoarsened coordinate rather than DiscoverySite's public-safe projection.
+// Reserved for trusted background callers with a real precision need the coarsened public API can't
+// support (congregationimport's dedup — a 250m distance check) — never wire this to an HTTP route.
+// Panics if ctx is not authz.SystemContext-marked (D-InProcessAuthz amendment #5's system-context
+// convention, enforced here for real rather than left to caller discipline, since what this method
+// exposes is exactly what the public search arm exists to withhold).
+func (s *Service) SearchSitesExact(ctx context.Context, q religiondomain.DiscoveryQuery) ([]religiondomain.Site, error) {
+	authz.MustBeSystemContext(ctx)
+	return adapters.NewStore(s.pool).SearchSites(ctx, q)
 }

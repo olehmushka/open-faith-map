@@ -2,50 +2,58 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package application holds congregationimport's business logic: running a connector
-// (service.go), the D-Exclusions check under the service principal (exclusion.go), taxon-alias
-// resolution (taxonmatch.go), naive geo/name dedup (dedup.go), and the operator review +
-// resumable-provisioning write path (provision.go) — always with the CALLER's own forwarded token
-// for any go-oikumenea write (D-Facade), never the service principal, since "is this really a
-// legitimate congregation" is a human judgment call.
+// (service.go), the D-Exclusions check (exclusion.go), taxon-alias resolution (taxonmatch.go),
+// naive geo/name dedup (dedup.go), and the operator review + resumable-provisioning write path
+// (provision.go).
+//
+// M10.6 cutover: provisioning writes (ApproveCandidate) call internal/religion/internal/location
+// in-process under the approving operator's own context-resolved subject — never the service
+// principal, since "is this really a legitimate congregation" is a human judgment call
+// (D-CongregationImport, unchanged by the cutover). The read-only paths that used to run under the
+// service principal (D-Exclusions check, dedup search, country-name resolution, the jurisdiction
+// sync's node fetch) now run under authz.SystemContext instead — one of D-InProcessAuthz amendment
+// #5's five named system-context paths per read, since internal/religion/internal/refdata carry no
+// authorization logic of their own to check a subject against anyway.
 package application
 
 import (
 	"context"
 	"fmt"
 
-	oikumenea "github.com/olehmushka/go-oikumenea/clients/go"
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
+	locationapplication "github.com/olehmushka/open-faith-map/internal/location/application"
+	refdataapplication "github.com/olehmushka/open-faith-map/internal/refdata/application"
+	religionapplication "github.com/olehmushka/open-faith-map/internal/religion/application"
 	"github.com/palantir/pkg/metrics"
 )
 
 type Config struct {
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
 	// RootUnitID is the same shared root unit registration/content/discovery/moderation already use
-	// (scripts/bootstrap-registration-org) — the target of the operator-scoped Authorize check, and
+	// (internal/platform/seed.RootUnitID) — the target of the operator-scoped Require check, and
 	// the default parent for provisioned units when a candidate has no jurisdiction chosen.
 	RootUnitID string
-	// ServicePrincipal configures the server's own go-oikumenea call for the D-Exclusions check and
-	// dedup search — read-only uses only; provisioning writes always use the operator's own token.
-	ServicePrincipal coreintegration.Config
 	// ActiveGeocoderCode selects which registered Geocoder SuggestCoordinates uses (see geocoders
 	// param on NewService) — an env-driven choice (cmd/openfaithmap-api/main.go), not a code change,
 	// so swapping providers (or adding a second one to run alongside Nominatim) never touches this
 	// module's interface or Conjure surface. Defaults to "nominatim" if empty.
 	ActiveGeocoderCode string
-	// CatholicJurisdictionAnchorUnitID is the pre-existing go-oikumenea Unit RunJurisdictionSync
-	// creates every top-level (no-parent) jurisdiction node under — created ONCE, out-of-band, by a
-	// human operator through the admin "Create unit" modal (D-CatholicJurisdictionSync,
+	// CatholicJurisdictionAnchorUnitID is the pre-existing Unit RunJurisdictionSync creates every
+	// top-level (no-parent) jurisdiction node under — created ONCE, out-of-band, by a human operator
+	// through the admin "Create unit" modal (D-CatholicJurisdictionSync,
 	// docs/architecture/decisions.md). RunJurisdictionSync never creates or touches anything above or
 	// outside this unit's own subtree.
 	CatholicJurisdictionAnchorUnitID string
 }
 
 type Service struct {
-	store *adapters.Store
-	cfg   Config
+	store    *adapters.Store
+	religion *religionapplication.Service
+	location *locationapplication.Service
+	refdata  *refdataapplication.Service
+	authzSvc *authz.Service
+	cfg      Config
 	// connectors is the fixed registry of available sources, keyed by Connector.Code() — a plain
 	// map rather than a plugin-discovery mechanism, matching this repo's own bias against
 	// infrastructure a real need hasn't justified yet (DS-OFM-2's precedent). Adding a source is
@@ -60,7 +68,17 @@ type Service struct {
 	jurisdictionSources map[string]domain.JurisdictionSource
 }
 
-func NewService(store *adapters.Store, cfg Config, connectors []domain.Connector, geocoders []domain.Geocoder, jurisdictionSources []domain.JurisdictionSource) *Service {
+func NewService(
+	store *adapters.Store,
+	religionSvc *religionapplication.Service,
+	locationSvc *locationapplication.Service,
+	refdataSvc *refdataapplication.Service,
+	authzSvc *authz.Service,
+	cfg Config,
+	connectors []domain.Connector,
+	geocoders []domain.Geocoder,
+	jurisdictionSources []domain.JurisdictionSource,
+) *Service {
 	byCode := make(map[string]domain.Connector, len(connectors))
 	for _, c := range connectors {
 		byCode[c.Code()] = c
@@ -80,15 +98,10 @@ func NewService(store *adapters.Store, cfg Config, connectors []domain.Connector
 	for _, js := range jurisdictionSources {
 		jsByCode[js.Code()] = js
 	}
-	return &Service{store: store, cfg: cfg, connectors: byCode, geocoder: activeGeocoder, jurisdictionSources: jsByCode}
-}
-
-func (s *Service) userClient(token string) (*oikumenea.Client, error) {
-	return coreintegration.NewUserClient(s.cfg.OikumeneaBaseURL, token, s.cfg.OikumeneaInsecureSkipVerify)
-}
-
-func (s *Service) serviceClient(ctx context.Context) (*oikumenea.Client, error) {
-	return coreintegration.NewServiceClient(ctx, s.cfg.ServicePrincipal)
+	return &Service{
+		store: store, religion: religionSvc, location: locationSvc, refdata: refdataSvc, authzSvc: authzSvc,
+		cfg: cfg, connectors: byCode, geocoder: activeGeocoder, jurisdictionSources: jsByCode,
+	}
 }
 
 // RunConnector drives sourceCode's connector to completion: Fetch/Normalize one batch at a time,
@@ -143,10 +156,11 @@ func (s *Service) RunConnector(ctx context.Context, sourceCode, triggeredByPerso
 		return s.store.FinishRun(ctx, run.ID, domain.RunStatusFailed, cursor, fetched, created, updated, autoRejected, &errMsg)
 	}
 
-	svc, err := s.serviceClient(ctx)
-	if err != nil {
-		return failRun(nil, 0, 0, 0, 0, err)
-	}
+	// sysCtx marks every per-record read below (D-Exclusions check, country match, dedup search) as
+	// running under no human subject — the connector run has no caller token to check reach against,
+	// and internal/religion/internal/refdata carry no authorization logic of their own to gate on
+	// anyway (D-InProcessAuthz amendment #5's "RunConnector import loop (read)" entry).
+	sysCtx := authz.SystemContext(ctx)
 
 	var cursor *string
 	var fetched, created, updated, autoRejected int
@@ -159,7 +173,7 @@ func (s *Service) RunConnector(ctx context.Context, sourceCode, triggeredByPerso
 		fetched += len(batch)
 
 		for _, raw := range batch {
-			_, isNew, autoExcluded, procErr := s.processRawRecord(ctx, svc, connector, run.ID, raw)
+			_, isNew, autoExcluded, procErr := s.processRawRecord(sysCtx, connector, run.ID, raw)
 			if procErr != nil {
 				return failRun(cursor, fetched, created, updated, autoRejected, procErr)
 			}
@@ -187,8 +201,10 @@ func (s *Service) RunConnector(ctx context.Context, sourceCode, triggeredByPerso
 }
 
 // processRawRecord normalizes, taxon-matches, D-Exclusions-checks, dedup-checks, and stages one raw
-// record — the per-record body of RunConnector's streaming loop.
-func (s *Service) processRawRecord(ctx context.Context, svc *oikumenea.Client, connector domain.Connector, runID string, raw domain.RawRecord) (candidate domain.Candidate, isNew, taxonRejected bool, err error) {
+// record — the per-record body of RunConnector's streaming loop. ctx is always
+// authz.SystemContext-marked (RunConnector's own doc comment) — every internal/religion/internal/refdata
+// read below relies on that, not on a per-call client.
+func (s *Service) processRawRecord(ctx context.Context, connector domain.Connector, runID string, raw domain.RawRecord) (candidate domain.Candidate, isNew, taxonRejected bool, err error) {
 	norm, err := connector.Normalize(raw)
 	if err != nil {
 		return domain.Candidate{}, false, false, err
@@ -244,7 +260,7 @@ func (s *Service) processRawRecord(ctx context.Context, svc *oikumenea.Client, c
 	// still shouldn't take the whole connector run down over an advisory field, matching
 	// resolveCountryName's own already-established "never blocks" precedent (application/geocode.go)
 	// for this exact same ListCountries call.
-	if countryID, cMatched, cErr := s.matchCountry(ctx, svc, norm.CountryHint); cErr == nil && cMatched {
+	if countryID, cMatched, cErr := s.matchCountry(ctx, norm.CountryHint); cErr == nil && cMatched {
 		c, err = s.store.SetCountryMatch(ctx, c.ID, countryID)
 		if err != nil {
 			return domain.Candidate{}, false, false, err
@@ -274,7 +290,7 @@ func (s *Service) processRawRecord(ctx context.Context, svc *oikumenea.Client, c
 		return domain.Candidate{}, false, false, err
 	}
 
-	excluded, excludedCode, err := s.checkExcluded(ctx, svc, taxonID)
+	excluded, excludedCode, err := s.checkExcluded(ctx, taxonID)
 	if err != nil {
 		return domain.Candidate{}, false, false, err
 	}
@@ -283,7 +299,7 @@ func (s *Service) processRawRecord(ctx context.Context, svc *oikumenea.Client, c
 		return c, isNew, true, err
 	}
 
-	dupCandidateID, dupUnitID, isDup, err := s.findPossibleDuplicate(ctx, svc, c)
+	dupCandidateID, dupUnitID, isDup, err := s.findPossibleDuplicate(ctx, c)
 	if err != nil {
 		return domain.Candidate{}, false, false, err
 	}

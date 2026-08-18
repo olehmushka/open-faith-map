@@ -10,8 +10,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/religion"
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
+	religionadapters "github.com/olehmushka/open-faith-map/internal/religion/adapters"
+	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
 )
 
 // JurisdictionSyncSummary is RunJurisdictionSync's result — an in-memory summary only, not persisted
@@ -38,26 +40,28 @@ type JurisdictionSyncSummary struct {
 // topological order and the "referenced as someone's parent" org-kind upgrade (see
 // upgradeGroupingOrgKinds) without a second pass over the database.
 //
-// Runs under the SERVICE PRINCIPAL's token, not a caller's forwarded one — the one deliberate,
-// narrowly-scoped exception in this module to the "go-oikumenea writes always use the human
-// operator's own token" precedent (provision.go's ApproveCandidate, D-CongregationImport). This is
-// the load-bearing design point D-CatholicJurisdictionSync exists to document: the exception is
-// scoped to JURISDICTION-TIER units only (created here), never a congregation-level Unit (still
-// exclusively created by ApproveCandidate, unchanged). CreateChildOrg's PEP gate originally denied
-// every service-principal subject regardless of grants (go-oikumenea#39, the same defect class as
-// GH-33/36/37, this time on a write) — fixed upstream (image 0.0.6, docker-compose.yml) via a new
-// pep.RequireServiceOrTarget gate, deliberately NOT a straight RequireServiceOrPerson swap: a person
-// caller keeps the unchanged target-scoped check, only a machine subject gets a new door, checked
-// against its flat, INSTANCE-WIDE grant set (scripts/bootstrap-service-principal grants
-// religionorg.manage) — see D-CatholicJurisdictionSync for the full reasoning, including why that
-// instance-wide scope is an accepted, named trade-off rather than a narrower guarantee.
+// requireOperator-gated at the trigger (this method's own top, M10.6 fix — see D-InProcessAuthz's
+// amendment: pre-cutover this was a live gap, transport resolving only `whoami` with no
+// authorization check at all, unlike every sibling write in this module). The WRITE itself still
+// runs under authz.SystemContext, not the triggering caller's own subject — the one deliberate,
+// narrowly-scoped exception in this module to the "writes always use the human operator's own
+// subject" precedent (provision.go's ApproveCandidate, D-CongregationImport). This is the
+// load-bearing design point D-CatholicJurisdictionSync exists to document: the exception is scoped
+// to JURISDICTION-TIER units only (created here), never a congregation-level Unit (still
+// exclusively created by ApproveCandidate, unchanged) — see D-CatholicJurisdictionSync for the full
+// reasoning.
 func (s *Service) RunJurisdictionSync(ctx context.Context, sourceCode string) (JurisdictionSyncSummary, error) {
+	if err := s.requireOperator(ctx); err != nil {
+		return JurisdictionSyncSummary{}, err
+	}
+	sysCtx := authz.SystemContext(ctx)
+
 	source, ok := s.jurisdictionSources[sourceCode]
 	if !ok {
 		return JurisdictionSyncSummary{}, fmt.Errorf("%w: %q", domain.ErrJurisdictionSourceNotFound, sourceCode)
 	}
 
-	nodes, err := fetchAllNodes(ctx, source)
+	nodes, err := fetchAllNodes(sysCtx, source)
 	if err != nil {
 		return JurisdictionSyncSummary{}, err
 	}
@@ -72,11 +76,7 @@ func (s *Service) RunJurisdictionSync(ctx context.Context, sourceCode string) (J
 	}
 	upgradeGroupingOrgKinds(byExternalID)
 
-	c, err := s.serviceClient(ctx)
-	if err != nil {
-		return summary, fmt.Errorf("congregationimport: jurisdiction sync service client: %w", err)
-	}
-	orgKindIDByCode, err := resolveOrgKindIDs(ctx, c.Religion)
+	orgKindIDByCode, err := resolveOrgKindIDs(sysCtx, s.religion)
 	if err != nil {
 		return summary, fmt.Errorf("congregationimport: list org kinds: %w", err)
 	}
@@ -95,14 +95,14 @@ func (s *Service) RunJurisdictionSync(ctx context.Context, sourceCode string) (J
 	for len(remaining) > 0 {
 		progressed := false
 		for id, n := range remaining {
-			parentUnitID, ready := s.resolveParentUnitID(ctx, sourceCode, n, resolved)
+			parentUnitID, ready := s.resolveParentUnitID(sysCtx, sourceCode, n, resolved)
 			if !ready {
 				continue
 			}
-			unitID, created, skipped, failed := s.ensureJurisdictionUnit(ctx, c.Religion, sourceCode, n, parentUnitID, orgKindIDByCode)
+			unitID, created, skipped, failed := s.ensureJurisdictionUnit(sysCtx, s.religion, sourceCode, n, parentUnitID, orgKindIDByCode)
 			if created {
 				summary.UnitsCreated++
-				if n2, err := s.upsertJurisdictionAliases(ctx, unitID, n); err == nil {
+				if n2, err := s.upsertJurisdictionAliases(sysCtx, unitID, n); err == nil {
 					summary.AliasesCreated += n2
 				}
 			} else if skipped {
@@ -216,22 +216,18 @@ func (s *Service) ensureJurisdictionUnit(ctx context.Context, c serviceClient, s
 
 	orgKindID, ok := orgKindIDByCode[n.SuggestedOrgKindID]
 	if !ok {
-		_, _ = s.store.MarkJurisdictionUnitFailed(ctx, recordID, fmt.Sprintf("no go-oikumenea OrgKind found for code %q", n.SuggestedOrgKindID))
+		_, _ = s.store.MarkJurisdictionUnitFailed(ctx, recordID, fmt.Sprintf("no religion_org_kinds row found for code %q", n.SuggestedOrgKindID))
 		return "", false, false, true
 	}
-	profile, cerr := c.CreateChildOrg(ctx, parentUnitID, religion.CreateChildOrgRequest{
-		Code:      jurisdictionSlugCode(n.Name, n.ExternalID),
-		Name:      n.Name,
-		OrgKindId: &orgKindID,
-	})
+	profile, cerr := c.CreateChildOrg(ctx, parentUnitID, jurisdictionSlugCode(n.Name, n.ExternalID), n.Name, &orgKindID, nil)
 	if cerr != nil {
 		_, _ = s.store.MarkJurisdictionUnitFailed(ctx, recordID, cerr.Error())
 		return "", false, false, true
 	}
-	if _, merr := s.store.MarkJurisdictionUnitCreated(ctx, recordID, profile.UnitId); merr != nil {
+	if _, merr := s.store.MarkJurisdictionUnitCreated(ctx, recordID, profile.UnitID); merr != nil {
 		return "", false, false, true
 	}
-	return profile.UnitId, true, false, false
+	return profile.UnitID, true, false, false
 }
 
 // upsertJurisdictionAliases writes one congregationimport_jurisdiction_aliases row per distinct name
@@ -285,15 +281,16 @@ func jurisdictionSlugCode(name, externalID string) string {
 	return slug + "-" + strings.ToLower(externalID)
 }
 
-// serviceClient is the minimal surface RunJurisdictionSync needs from *oikumenea.Client — narrowed
-// so ensureJurisdictionUnit is unit-testable against a fake without constructing a real client.
+// serviceClient is the minimal surface RunJurisdictionSync needs from internal/religion's app
+// service — narrowed so ensureJurisdictionUnit is unit-testable against a fake without constructing
+// a real one. *religionapplication.Service satisfies this structurally.
 type serviceClient interface {
-	CreateChildOrg(ctx context.Context, unitID string, req religion.CreateChildOrgRequest) (religion.OrgProfile, error)
-	ListOrgKinds(ctx context.Context) (religion.OrgKindList, error)
+	CreateChildOrg(ctx context.Context, parentUnitID, code, name string, orgKindID, primaryTaxonID *string) (religiondomain.OrgProfile, error)
+	ListOrgKinds(ctx context.Context) ([]religionadapters.OrgKind, error)
 }
 
-// resolveOrgKindIDs lists go-oikumenea's real OrgKind catalog once per sync run and returns a
-// code->RID map — CreateChildOrgRequest.OrgKindId is a real RID, not the stable code string
+// resolveOrgKindIDs lists the real religion_org_kinds catalog once per sync run and returns a
+// code->RID map — CreateChildOrg's orgKindID param is a real RID, not the stable code string
 // JurisdictionNode.SuggestedOrgKindID carries, the same list-then-match-by-Code pattern
 // provision.go's churchSiteTypeID already established for site types.
 func resolveOrgKindIDs(ctx context.Context, c serviceClient) (map[string]string, error) {
@@ -301,9 +298,9 @@ func resolveOrgKindIDs(ctx context.Context, c serviceClient) (map[string]string,
 	if err != nil {
 		return nil, err
 	}
-	byCode := make(map[string]string, len(kinds.OrgKinds))
-	for _, k := range kinds.OrgKinds {
-		byCode[k.Code] = k.Id
+	byCode := make(map[string]string, len(kinds))
+	for _, k := range kinds {
+		byCode[k.Code] = k.ID
 	}
 	return byCode, nil
 }

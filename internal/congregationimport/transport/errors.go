@@ -33,12 +33,6 @@ func mapErr(err error, candidateID, status string) error {
 	}
 }
 
-// mapUpstreamErr wraps a failure resolving the caller's own identity (whoami) — always an upstream
-// go-oikumenea/network error, never one of this module's own typed errors.
-func mapUpstreamErr(err error) error {
-	return err
-}
-
 // mapRunErr is mapErr's counterpart for runConnector, which needs sourceCode (not a candidateId/
 // status) filled into RunParametersNotSupported's own safe-arg.
 func mapRunErr(err error, sourceCode string) error {

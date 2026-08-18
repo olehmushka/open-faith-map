@@ -2,18 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package transport implements the generated congregationimport.CongregationImportService
-// (Conjure server interface): translates Conjure structs <-> domain types, resolves the caller's
-// own person RID from their forwarded token (never a client-supplied id), and maps domain errors
+// (Conjure server interface): translates Conjure structs <-> domain types and maps domain errors
 // to the module's typed Conjure errors.
+//
+// M10.6: the caller's identity no longer arrives via a per-request whoami round-trip — it's resolved
+// from context (populated by internal/identity's authenticator middleware) via personID below, the
+// same pattern internal/registration/transport already uses.
 package transport
 
 import (
 	"context"
 
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/application"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
 	gencongregationimport "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/congregationimport"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
 	"github.com/palantir/pkg/bearertoken"
 )
 
@@ -25,50 +28,41 @@ const defaultPageSize = 50
 const maxPageSize = 200
 
 type Service struct {
-	oikumeneaBaseURL  string
-	oikumeneaInsecure bool
-	appService        *application.Service
+	appService *application.Service
 }
 
-type Config struct {
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
-}
-
-func NewService(appService *application.Service, cfg Config) *Service {
-	return &Service{appService: appService, oikumeneaBaseURL: cfg.OikumeneaBaseURL, oikumeneaInsecure: cfg.OikumeneaInsecureSkipVerify}
+func NewService(appService *application.Service) *Service {
+	return &Service{appService: appService}
 }
 
 var _ gencongregationimport.CongregationImportService = (*Service)(nil)
 
-// whoami resolves the caller's own go-oikumenea person RID from their forwarded token — never
-// trusts a client-supplied id, same as every other module's transport layer.
-func (s *Service) whoami(ctx context.Context, token bearertoken.Token) (string, error) {
-	c, err := coreintegration.NewUserClient(s.oikumeneaBaseURL, string(token), s.oikumeneaInsecure)
-	if err != nil {
-		return "", err
+// personID resolves the caller's own person RID from the request context, populated by
+// internal/identity's authenticator middleware — never trusted from a client-supplied value. Its
+// only failure mode here is defensive, matching internal/registration/transport's own personID
+// helper: the middleware already refuses any request with no valid subject before a handler runs.
+func personID(ctx context.Context) (string, error) {
+	subject, ok := authz.SubjectFromContext(ctx)
+	if !ok || subject.PersonID == "" {
+		return "", domain.ErrForbidden
 	}
-	who, err := c.IdentityFederation.Whoami(ctx)
-	if err != nil {
-		return "", err
-	}
-	return who.PersonId, nil
+	return subject.PersonID, nil
 }
 
 func (s *Service) RunConnector(ctx context.Context, authHeader bearertoken.Token, requestArg gencongregationimport.RunConnectorRequest) (gencongregationimport.ImportRun, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return gencongregationimport.ImportRun{}, mapUpstreamErr(err)
+		return gencongregationimport.ImportRun{}, err
 	}
-	// RunConnector itself has no operator gate at the application layer (it makes no go-oikumenea
-	// WRITE — only the read-only D-Exclusions/dedup checks under the service principal), but
-	// requiring a resolvable caller identity (whoami above) still means an anonymous/invalid token
-	// can never trigger one.
+	// RunConnector itself has no operator gate at the application layer (it makes no write under
+	// the caller's own subject — only the read-only D-Exclusions/dedup checks under
+	// authz.SystemContext), but requiring a resolvable caller identity (personID above) still means
+	// an anonymous/invalid token can never trigger one.
 	var parameters map[string]string
 	if requestArg.Parameters != nil {
 		parameters = *requestArg.Parameters
 	}
-	run, err := s.appService.RunConnector(ctx, requestArg.SourceCode, personID, parameters)
+	run, err := s.appService.RunConnector(ctx, requestArg.SourceCode, pid, parameters)
 	if err != nil {
 		return gencongregationimport.ImportRun{}, mapRunErr(err, requestArg.SourceCode)
 	}
@@ -76,8 +70,8 @@ func (s *Service) RunConnector(ctx context.Context, authHeader bearertoken.Token
 }
 
 func (s *Service) ListRuns(ctx context.Context, authHeader bearertoken.Token, sourceCodeArg *string, pageSizeArg *int, pageTokenArg *string) (gencongregationimport.RunPage, error) {
-	if _, err := s.whoami(ctx, authHeader); err != nil {
-		return gencongregationimport.RunPage{}, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return gencongregationimport.RunPage{}, err
 	}
 	var after *domain.PageCursor
 	if pageTokenArg != nil {
@@ -107,8 +101,8 @@ func (s *Service) ListRuns(ctx context.Context, authHeader bearertoken.Token, so
 }
 
 func (s *Service) GetRun(ctx context.Context, authHeader bearertoken.Token, runIdArg string) (gencongregationimport.ImportRun, error) {
-	if _, err := s.whoami(ctx, authHeader); err != nil {
-		return gencongregationimport.ImportRun{}, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return gencongregationimport.ImportRun{}, err
 	}
 	run, err := s.appService.GetRun(ctx, runIdArg)
 	if err != nil {
@@ -118,8 +112,8 @@ func (s *Service) GetRun(ctx context.Context, authHeader bearertoken.Token, runI
 }
 
 func (s *Service) ListCandidates(ctx context.Context, authHeader bearertoken.Token, statusArg, sourceCodeArg *string, pageSizeArg *int, pageTokenArg *string) (gencongregationimport.CandidatePage, error) {
-	if _, err := s.whoami(ctx, authHeader); err != nil {
-		return gencongregationimport.CandidatePage{}, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return gencongregationimport.CandidatePage{}, err
 	}
 	var status *domain.Status
 	if statusArg != nil {
@@ -154,8 +148,8 @@ func (s *Service) ListCandidates(ctx context.Context, authHeader bearertoken.Tok
 }
 
 func (s *Service) GetCandidate(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string) (gencongregationimport.Candidate, error) {
-	if _, err := s.whoami(ctx, authHeader); err != nil {
-		return gencongregationimport.Candidate{}, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return gencongregationimport.Candidate{}, err
 	}
 	c, err := s.appService.GetCandidate(ctx, candidateIdArg)
 	if err != nil {
@@ -165,11 +159,10 @@ func (s *Service) GetCandidate(ctx context.Context, authHeader bearertoken.Token
 }
 
 func (s *Service) EditCandidate(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string, requestArg gencongregationimport.EditCandidateRequest) (gencongregationimport.Candidate, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencongregationimport.Candidate{}, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return gencongregationimport.Candidate{}, err
 	}
-	c, err := s.appService.EditCandidate(ctx, string(authHeader), personID, candidateIdArg, toDomainEdit(requestArg))
+	c, err := s.appService.EditCandidate(ctx, candidateIdArg, toDomainEdit(requestArg))
 	if err != nil {
 		return gencongregationimport.Candidate{}, mapErr(err, candidateIdArg, "")
 	}
@@ -177,11 +170,11 @@ func (s *Service) EditCandidate(ctx context.Context, authHeader bearertoken.Toke
 }
 
 func (s *Service) ApproveCandidate(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string, requestArg gencongregationimport.ApproveCandidateRequest) (gencongregationimport.Candidate, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return gencongregationimport.Candidate{}, mapUpstreamErr(err)
+		return gencongregationimport.Candidate{}, err
 	}
-	c, err := s.appService.ApproveCandidate(ctx, string(authHeader), personID, candidateIdArg, requestArg.JurisdictionUnitId)
+	c, err := s.appService.ApproveCandidate(ctx, pid, candidateIdArg, requestArg.JurisdictionUnitId)
 	if err != nil {
 		return gencongregationimport.Candidate{}, mapErr(err, candidateIdArg, "")
 	}
@@ -189,11 +182,11 @@ func (s *Service) ApproveCandidate(ctx context.Context, authHeader bearertoken.T
 }
 
 func (s *Service) RejectCandidate(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string, requestArg gencongregationimport.RejectCandidateRequest) (gencongregationimport.Candidate, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return gencongregationimport.Candidate{}, mapUpstreamErr(err)
+		return gencongregationimport.Candidate{}, err
 	}
-	c, err := s.appService.RejectCandidate(ctx, string(authHeader), personID, candidateIdArg, requestArg.Reason)
+	c, err := s.appService.RejectCandidate(ctx, pid, candidateIdArg, requestArg.Reason)
 	if err != nil {
 		return gencongregationimport.Candidate{}, mapErr(err, candidateIdArg, "")
 	}
@@ -201,14 +194,14 @@ func (s *Service) RejectCandidate(ctx context.Context, authHeader bearertoken.To
 }
 
 // RunJurisdictionSync triggers sourceCode's JurisdictionSource — D-CatholicJurisdictionSync's
-// automated jurisdiction-tier Unit creation (docs/architecture/decisions.md). whoami still resolves
-// the CALLER's identity (so an anonymous/invalid token can never trigger this, same discipline
-// RunConnector's own comment documents) even though the go-oikumenea writes this triggers run under
-// the service principal's token, not the caller's — see application.Service.RunJurisdictionSync's
-// own doc comment for the full reasoning.
+// automated jurisdiction-tier Unit creation (docs/architecture/decisions.md). M10.6: the operator
+// gate that used to be missing entirely (a live gap on main — see D-InProcessAuthz's amendment) now
+// lives inside application.Service.RunJurisdictionSync itself (requireOperator, its own top), not
+// here — this handler only needs a resolvable subject so an anonymous/invalid token can never even
+// reach the application layer.
 func (s *Service) RunJurisdictionSync(ctx context.Context, authHeader bearertoken.Token, requestArg gencongregationimport.RunJurisdictionSyncRequest) (gencongregationimport.JurisdictionSyncResult, error) {
-	if _, err := s.whoami(ctx, authHeader); err != nil {
-		return gencongregationimport.JurisdictionSyncResult{}, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return gencongregationimport.JurisdictionSyncResult{}, err
 	}
 	summary, err := s.appService.RunJurisdictionSync(ctx, requestArg.SourceCode)
 	if err != nil {
@@ -225,11 +218,10 @@ func (s *Service) RunJurisdictionSync(ctx context.Context, authHeader bearertoke
 }
 
 func (s *Service) ListTaxonAliases(ctx context.Context, authHeader bearertoken.Token, sourceCodeArg *string) (gencongregationimport.TaxonAliasList, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencongregationimport.TaxonAliasList{}, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return gencongregationimport.TaxonAliasList{}, err
 	}
-	aliases, err := s.appService.ListTaxonAliases(ctx, string(authHeader), personID, sourceCodeArg)
+	aliases, err := s.appService.ListTaxonAliases(ctx, sourceCodeArg)
 	if err != nil {
 		return gencongregationimport.TaxonAliasList{}, mapErr(err, "", "")
 	}
@@ -241,11 +233,11 @@ func (s *Service) ListTaxonAliases(ctx context.Context, authHeader bearertoken.T
 }
 
 func (s *Service) CreateTaxonAlias(ctx context.Context, authHeader bearertoken.Token, requestArg gencongregationimport.CreateTaxonAliasRequest) (gencongregationimport.TaxonAlias, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return gencongregationimport.TaxonAlias{}, mapUpstreamErr(err)
+		return gencongregationimport.TaxonAlias{}, err
 	}
-	a, err := s.appService.CreateTaxonAlias(ctx, string(authHeader), personID, requestArg.SourceCode, requestArg.AliasText, requestArg.TaxonId)
+	a, err := s.appService.CreateTaxonAlias(ctx, pid, requestArg.SourceCode, requestArg.AliasText, requestArg.TaxonId)
 	if err != nil {
 		return gencongregationimport.TaxonAlias{}, mapAliasErr(err, requestArg.AliasText)
 	}
@@ -253,11 +245,10 @@ func (s *Service) CreateTaxonAlias(ctx context.Context, authHeader bearertoken.T
 }
 
 func (s *Service) ListJurisdictionAliases(ctx context.Context, authHeader bearertoken.Token, sourceCodeArg *string) (gencongregationimport.JurisdictionAliasList, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencongregationimport.JurisdictionAliasList{}, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return gencongregationimport.JurisdictionAliasList{}, err
 	}
-	aliases, err := s.appService.ListJurisdictionAliases(ctx, string(authHeader), personID, sourceCodeArg)
+	aliases, err := s.appService.ListJurisdictionAliases(ctx, sourceCodeArg)
 	if err != nil {
 		return gencongregationimport.JurisdictionAliasList{}, mapErr(err, "", "")
 	}
@@ -269,11 +260,11 @@ func (s *Service) ListJurisdictionAliases(ctx context.Context, authHeader bearer
 }
 
 func (s *Service) CreateJurisdictionAlias(ctx context.Context, authHeader bearertoken.Token, requestArg gencongregationimport.CreateJurisdictionAliasRequest) (gencongregationimport.JurisdictionAlias, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return gencongregationimport.JurisdictionAlias{}, mapUpstreamErr(err)
+		return gencongregationimport.JurisdictionAlias{}, err
 	}
-	a, err := s.appService.CreateJurisdictionAlias(ctx, string(authHeader), personID, requestArg.SourceCode, requestArg.AliasText, requestArg.JurisdictionUnitId)
+	a, err := s.appService.CreateJurisdictionAlias(ctx, pid, requestArg.SourceCode, requestArg.AliasText, requestArg.JurisdictionUnitId)
 	if err != nil {
 		return gencongregationimport.JurisdictionAlias{}, mapAliasErr(err, requestArg.AliasText)
 	}
@@ -281,11 +272,10 @@ func (s *Service) CreateJurisdictionAlias(ctx context.Context, authHeader bearer
 }
 
 func (s *Service) SuggestCoordinates(ctx context.Context, authHeader bearertoken.Token, candidateIdArg string) (gencongregationimport.SuggestCoordinatesResponse, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencongregationimport.SuggestCoordinatesResponse{}, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return gencongregationimport.SuggestCoordinatesResponse{}, err
 	}
-	result, err := s.appService.SuggestCoordinates(ctx, string(authHeader), personID, candidateIdArg)
+	result, err := s.appService.SuggestCoordinates(ctx, candidateIdArg)
 	if err != nil {
 		return gencongregationimport.SuggestCoordinatesResponse{}, mapErr(err, candidateIdArg, "")
 	}

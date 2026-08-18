@@ -181,6 +181,34 @@ func (s *Store) ListSiteTypes(ctx context.Context) ([]SiteType, error) {
 	return out, rows.Err()
 }
 
+// OrgKind is a generic-or-per-religion classification of a religious-body unit (religion_org_kinds)
+// — e.g. "diocese"/"jurisdiction" for the Catholic hierarchy sync (congregationimport's own
+// resolveOrgKindIDs).
+type OrgKind struct {
+	ID   string
+	Code string
+	Name string
+}
+
+func (s *Store) ListOrgKinds(ctx context.Context) ([]OrgKind, error) {
+	rows, err := s.q.Query(ctx, `
+		SELECT id, code, name FROM openfaithmap.religion_org_kinds
+		WHERE deleted_at IS NULL ORDER BY sort_order NULLS LAST, code`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OrgKind
+	for rows.Next() {
+		var k OrgKind
+		if err := rows.Scan(&k.ID, &k.Code, &k.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
 const siteCols = `s.id, s.org_unit_id, s.location_id, s.site_type_id, st.code, st.name,
 	s.visibility, s.public_precision, s.is_primary,
 	ST_Y(l.geom::geometry)::double precision, ST_X(l.geom::geometry)::double precision`

@@ -7,20 +7,18 @@ import (
 	"context"
 	"strings"
 
-	oikumenea "github.com/olehmushka/go-oikumenea/clients/go"
-	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/geo"
+	refdatadomain "github.com/olehmushka/open-faith-map/internal/refdata/domain"
 )
 
 // matchCountry resolves a connector's CountryHint (a plain country name, e.g. arrnc's hardcoded
-// "Argentina") to a real go-oikumenea country RID — an exact name match, deliberately simpler than
-// matchTaxon/matchJurisdiction's substring-against-operator-alias-table approach: unlike a scraped
-// taxon/jurisdiction name, CountryHint is never a full legal name to mine a keyword out of, it is
-// already exactly the country's own name. Found live (2026-08-14): this hint was being computed by
-// arrnc and then silently dropped — nothing ever read it, so every one of ~29.6k Argentina
-// candidates needed the operator to set country by hand before SuggestCoordinates had any chance of
-// resolving an address, even though the country was already a known, deterministic fact at ingest
-// time.
-func (s *Service) matchCountry(ctx context.Context, c *oikumenea.Client, hint *string) (countryID string, matched bool, err error) {
+// "Argentina") to a real country RID via internal/refdata — an exact name match, deliberately
+// simpler than matchTaxon/matchJurisdiction's substring-against-operator-alias-table approach:
+// unlike a scraped taxon/jurisdiction name, CountryHint is never a full legal name to mine a keyword
+// out of, it is already exactly the country's own name. ctx is expected to already carry an
+// authz.SystemContext marker (RunConnector's own doc comment) — refdata itself checks nothing, but
+// the marker documents that this read has no human subject behind it, same as every other read in
+// this file's own call chain.
+func (s *Service) matchCountry(ctx context.Context, hint *string) (countryID string, matched bool, err error) {
 	if hint == nil {
 		return "", false, nil
 	}
@@ -28,11 +26,11 @@ func (s *Service) matchCountry(ctx context.Context, c *oikumenea.Client, hint *s
 	if normalizedHint == "" {
 		return "", false, nil
 	}
-	countries, err := c.Geo.ListCountries(ctx)
+	countries, err := s.refdata.ListCountries(ctx)
 	if err != nil {
 		return "", false, err
 	}
-	countryID, matched = findCountryMatch(normalizedHint, countries.Countries)
+	countryID, matched = findCountryMatch(normalizedHint, countries)
 	return countryID, matched, nil
 }
 
@@ -40,12 +38,12 @@ func (s *Service) matchCountry(ctx context.Context, c *oikumenea.Client, hint *s
 // shape — an exact (not substring) match against any of a country's locale->name values, since
 // (unlike a taxon/jurisdiction hint) CountryHint is already exactly a country's own name, never a
 // longer string to mine a keyword out of. Pure — no I/O — so it's directly unit-testable without a
-// live go-oikumenea client.
-func findCountryMatch(normalizedHint string, countries []geo.Country) (countryID string, matched bool) {
+// live database.
+func findCountryMatch(normalizedHint string, countries []refdatadomain.Country) (countryID string, matched bool) {
 	for _, country := range countries {
-		for _, name := range country.Name {
+		for _, name := range country.Names {
 			if strings.ToLower(strings.TrimSpace(name)) == normalizedHint {
-				return country.Id, true
+				return country.ID, true
 			}
 		}
 	}
