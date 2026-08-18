@@ -9,9 +9,9 @@ import (
 )
 
 type ApproveRegistrationRequest struct {
-	// Short, unique go-oikumenea unit code. Defaults to a slug derived from congregationName + a short random suffix if omitted.
+	// Short, unique directory_units code. Defaults to a slug derived from congregationName + a short random suffix if omitted.
 	UnitCode *string `json:"unitCode,omitempty"`
-	// The go-oikumenea unit RID to create the congregation under (D-JurisdictionUnits, M4.1) — operator-chosen, never inferred from taxonId. Omitted = the current flat-root behavior, unchanged: the congregation is created directly under the configured root unit. On a resumed PROVISIONING retry, the ORIGINAL choice persisted at first approval is reused regardless of what this field carries on the retry call, exactly like unitCode's existing once-PROVISIONING-ignore-further-input discipline.
+	// The directory_units RID to create the congregation under (D-JurisdictionUnits, M4.1) — operator-chosen, never inferred from taxonId. Omitted = the current flat-root behavior, unchanged: the congregation is created directly under the configured root unit. On a resumed PROVISIONING retry, the ORIGINAL choice persisted at first approval is reused regardless of what this field carries on the retry call, exactly like unitCode's existing once-PROVISIONING-ignore-further-input discipline.
 	JurisdictionUnitId *string `json:"jurisdictionUnitId,omitempty"`
 }
 
@@ -56,12 +56,12 @@ func (o *Coordinate) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type RegistrationRequest struct {
 	// OpenFaithMap-local RID (openfaithmap.registration.request).
 	Id string `json:"id"`
-	// The go-oikumenea person RID of the prospective admin who submitted this request.
+	// The identity_persons RID of the prospective admin who submitted this request.
 	SubmittedByPersonId string `json:"submittedByPersonId"`
-	// The selected go-oikumenea religion_taxa RID (the congregation's tradition).
+	// The selected religion_taxa RID (the congregation's tradition).
 	TaxonId          string `json:"taxonId"`
 	CongregationName string `json:"congregationName"`
-	// The go-oikumenea location country RID.
+	// The refdata_countries RID.
 	CountryId   string             `json:"countryId"`
 	AdminArea1  *string            `json:"adminArea1,omitempty"`
 	Locality    *string            `json:"locality,omitempty"`
@@ -75,9 +75,9 @@ type RegistrationRequest struct {
 	// The operator who approved/rejected this request; unset while PENDING.
 	DecidedByPersonId *string            `json:"decidedByPersonId,omitempty"`
 	DecidedAt         *datetime.DateTime `json:"decidedAt,omitempty"`
-	// The go-oikumenea unit RID createChildOrg produced. Set as soon as status = PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays set through APPROVED.
+	// The directory_units RID createChildOrg produced. Set as soon as status = PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays set through APPROVED.
 	CreatedUnitId *string `json:"createdUnitId,omitempty"`
-	// The go-oikumenea unit RID the operator chose as this congregation's parent at approval time (D-JurisdictionUnits, M4.1) — a jurisdiction unit, or unset to fall back to the single shared root. A historical fact, not a live mirror of the current graph: if the congregation is later re-parented (reparentRequest), this field is NOT updated — ReparentingJob.newParentUnitId is the current source of truth for where it actually is.
+	// The directory_units RID the operator chose as this congregation's parent at approval time (D-JurisdictionUnits, M4.1) — a jurisdiction unit, or unset to fall back to the single shared root. A historical fact, not a live mirror of the current graph: if the congregation is later re-parented (reparentRequest), this field is NOT updated — ReparentingJob.newParentUnitId is the current source of truth for where it actually is.
 	JurisdictionUnitId *string           `json:"jurisdictionUnitId,omitempty"`
 	CreatedAt          datetime.DateTime `json:"createdAt"`
 	UpdatedAt          datetime.DateTime `json:"updatedAt"`

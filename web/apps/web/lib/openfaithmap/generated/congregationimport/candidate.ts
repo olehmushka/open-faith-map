@@ -10,7 +10,7 @@ export interface ICandidate {
     'name': string;
     /** Free-text denomination/tradition hint as scraped, before alias resolution. */
     'taxonHint'?: string | null;
-    /** The resolved go-oikumenea religion_taxa RID, once matched. */
+    /** The resolved religion_taxa RID, once matched. */
     'taxonId'?: string | null;
     /**
      * Free-text hint naming the parish's superior jurisdiction (diocese/eparchy/synod), as scraped — only meaningful for denominations with a real institutional hierarchy (Catholic, Orthodox, Lutheran, Anglican/Episcopal).
@@ -18,7 +18,7 @@ export interface ICandidate {
      */
     'jurisdictionHint'?: string | null;
     /**
-     * An alias-matched suggestion for the go-oikumenea jurisdiction Unit RID — ADVISORY ONLY. D-JurisdictionUnits: jurisdiction is operator-assigned at approval time, never inferred. Never applied automatically; the operator must still pass jurisdictionUnitId on ApproveCandidateRequest explicitly, even when this matches it.
+     * An alias-matched suggestion for the jurisdiction Unit RID — ADVISORY ONLY. D-JurisdictionUnits: jurisdiction is operator-assigned at approval time, never inferred. Never applied automatically; the operator must still pass jurisdictionUnitId on ApproveCandidateRequest explicitly, even when this matches it.
      *
      */
     'suggestedJurisdictionUnitId'?: string | null;
@@ -38,7 +38,7 @@ export interface ICandidate {
     'reviewedByPersonId'?: string | null;
     'reviewedAt'?: string | null;
     /**
-     * The go-oikumenea unit RID createChildOrg produced. Set as soon as status = PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays set through PROVISIONED.
+     * The directory_units RID createChildOrg produced. Set as soon as status = PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays set through PROVISIONED.
      *
      */
     'createdUnitId'?: string | null;

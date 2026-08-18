@@ -81,11 +81,11 @@ func (o *RevokeGuarantorRequest) UnmarshalYAML(unmarshal func(interface{}) error
 type Vouch struct {
 	// OpenFaithMap-local uuid (openfaithmap.vouching_edges.id).
 	Id string `json:"id"`
-	// The go-oikumenea Person RID of the admin who vouched.
+	// The identity_persons RID of the admin who vouched.
 	GuarantorPersonId string `json:"guarantorPersonId"`
-	// The go-oikumenea Person RID of the person being vouched for.
+	// The identity_persons RID of the person being vouched for.
 	ClaimantPersonId string `json:"claimantPersonId"`
-	// The go-oikumenea Unit RID of the congregation the claim is about.
+	// The directory_units RID of the congregation the claim is about.
 	CongregationUnitId string            `json:"congregationUnitId"`
 	Statement          *string           `json:"statement,omitempty"`
 	CreatedAt          datetime.DateTime `json:"createdAt"`

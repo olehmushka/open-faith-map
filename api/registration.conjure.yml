@@ -1,12 +1,12 @@
 # Registration module API (M2). docs/modules/registration.md. OpenFaithMap's own schema — the first
 # in openfaithmap-api — holding pending congregation-registration requests until a registration
 # operator (a person holding religionorg.manage on the shared root unit, verified live against
-# go-oikumenea's PDP — never cached locally, D-Facade) approves or rejects one.
+# internal/authz's PDP — never cached, D-InProcessAuthz's amendment) approves or rejects one.
 #
-# Approval performs the real go-oikumenea writes (createChildOrg, setOrgProfile classification,
-# createSite over a new location, createPosition/fillPosition, grantAssignment) using the OPERATOR'S
-# own forwarded bearer token — never a service-principal on-behalf-of write; go-oikumenea's PDP
-# decides for real, same as every other write in this project (core-integration.md).
+# Approval performs the real in-process core writes (createChildOrg, setOrgProfile classification,
+# createSite over a new location, createPosition/fillPosition, grantAssignment) under the OPERATOR'S
+# own resolved subject (authz.Require, not a parameter — the same defect class fixed at M2.3/M3);
+# internal/authz's PDP decides for real, same as every other write in this project.
 #
 # Generated Go lands in internal/conjure and is never hand-edited.
 types:
@@ -22,7 +22,7 @@ types:
       ReparentStatus:
         docs: >
           The state machine for re-parenting an already-APPROVED request's congregation unit onto a
-          different jurisdiction unit (M4.1). addEdge+removeEdge on go-oikumenea's canonical graph is
+          different jurisdiction unit (M4.1). AddEdge+RemoveEdge on the canonical directory graph is
           two non-transactional calls, not one atomic move — this tracks which one durably landed so
           a retry resumes rather than repeats. Add-before-remove by design: the congregation briefly
           has two canonical parents mid-migration rather than momentarily zero, so no subtree-scoped
@@ -45,14 +45,14 @@ types:
             docs: OpenFaithMap-local RID (openfaithmap.registration.request).
           submittedByPersonId:
             type: string
-            docs: The go-oikumenea person RID of the prospective admin who submitted this request.
+            docs: The identity_persons RID of the prospective admin who submitted this request.
           taxonId:
             type: string
-            docs: The selected go-oikumenea religion_taxa RID (the congregation's tradition).
+            docs: The selected religion_taxa RID (the congregation's tradition).
           congregationName: string
           countryId:
             type: string
-            docs: The go-oikumenea location country RID.
+            docs: The refdata_countries RID.
           adminArea1: optional<string>
           locality: optional<string>
           street: optional<string>
@@ -70,13 +70,13 @@ types:
           createdUnitId:
             type: optional<string>
             docs: >
-              The go-oikumenea unit RID createChildOrg produced. Set as soon as status = PROVISIONING
+              The directory_units RID createChildOrg produced. Set as soon as status = PROVISIONING
               (the one approval step that cannot be re-derived on a retry), and stays set through
               APPROVED.
           jurisdictionUnitId:
             type: optional<string>
             docs: >
-              The go-oikumenea unit RID the operator chose as this congregation's parent at approval
+              The directory_units RID the operator chose as this congregation's parent at approval
               time (D-JurisdictionUnits, M4.1) — a jurisdiction unit, or unset to fall back to the
               single shared root. A historical fact, not a live mirror of the current graph: if the
               congregation is later re-parented (reparentRequest), this field is NOT updated —
@@ -118,12 +118,12 @@ types:
           unitCode:
             type: optional<string>
             docs: >
-              Short, unique go-oikumenea unit code. Defaults to a slug derived from
+              Short, unique directory_units code. Defaults to a slug derived from
               congregationName + a short random suffix if omitted.
           jurisdictionUnitId:
             type: optional<string>
             docs: >
-              The go-oikumenea unit RID to create the congregation under (D-JurisdictionUnits,
+              The directory_units RID to create the congregation under (D-JurisdictionUnits,
               M4.1) — operator-chosen, never inferred from taxonId. Omitted = the current flat-root
               behavior, unchanged: the congregation is created directly under the configured root
               unit. On a resumed PROVISIONING retry, the ORIGINAL choice persisted at first approval
@@ -185,14 +185,14 @@ services:
     default-auth: header
     docs: >
       Congregation-registration requests: submit (any authenticated person), list/approve/reject
-      (a registration operator — verified live against go-oikumenea's PDP, not a locally-cached
-      role). See docs/modules/registration.md.
+      (a registration operator — verified live against internal/authz's PDP, never cached).
+      See docs/modules/registration.md.
     endpoints:
       submitRequest:
         http: POST /requests
         docs: >
           Submit a new registration request as the caller. Runs the D-Exclusions taxon check
-          (walking the taxon's ancestors via go-oikumenea's religion.read) before persisting —
+          (walking the taxon's ancestors via internal/religion) before persisting —
           returns Registration:TaxonExcluded if the tradition (or an ancestor) is on the named
           exclusion list, Registration:TaxonNotFound if taxonId doesn't resolve.
         args:
@@ -226,11 +226,13 @@ services:
       approveRequest:
         http: POST /requests/{requestId}/approve
         docs: >
-          Approve a PENDING request: performs the real go-oikumenea writes (createChildOrg under
+          Approve a PENDING request: performs the real in-process core writes (createChildOrg under
           the configured root unit, org classification, a site over a new location, a filled
           Position, and a unit-scoped role assignment granting the submitter authority over their
-          new congregation) using the caller's own forwarded token — go-oikumenea's PDP decides for
-          real; this returns whatever error go-oikumenea's PDP does if the caller lacks authority.
+          new congregation) under the caller's own resolved subject — internal/authz's PDP decides
+          for real if the caller lacks authority (internal/registration/transport's mapErr passes
+          authzdomain.ErrPermissionDenied through unmapped — no typed Registration:* error exists
+          for it today; a real open seam, not new to this rewrite).
         args:
           requestId:
             type: string
@@ -239,7 +241,7 @@ services:
         returns: RegistrationRequest
       rejectRequest:
         http: POST /requests/{requestId}/reject
-        docs: Reject a PENDING request with a reason. No go-oikumenea writes.
+        docs: Reject a PENDING request with a reason. No core writes.
         args:
           requestId:
             type: string
@@ -253,8 +255,8 @@ services:
           jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the
           same requestId resumes the existing job from whichever ReparentStatus step last durably
           landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check
-          as approveRequest/listRequests), using the caller's own forwarded token for every
-          go-oikumenea write. Returns Registration:RequestNotApproved if the request was never
+          as approveRequest/listRequests), using the caller's own resolved subject for every
+          directory write. Returns Registration:RequestNotApproved if the request was never
           approved.
         args:
           requestId:

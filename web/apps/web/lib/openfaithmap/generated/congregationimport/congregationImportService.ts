@@ -42,11 +42,11 @@ export interface ICongregationImportService {
      */
     editCandidate(candidateId: string, request: IEditCandidateRequest): Promise<ICandidate>;
     /**
-     * Approve a candidate: performs the real go-oikumenea writes (createChildOrg, a site over a new location) using the caller's own forwarded token. Grants NO congregation-admin — there is no real submitter to grant it to (D-CongregationImport). Resumable: a retry after a partial failure continues from the persisted createdUnitId rather than re-creating the unit.
+     * Approve a candidate: performs the real in-process core writes (createChildOrg, a site over a new location) under the caller's own resolved subject. Grants NO congregation-admin — there is no real submitter to grant it to (D-CongregationImport). Resumable: a retry after a partial failure continues from the persisted createdUnitId rather than re-creating the unit.
      *
      */
     approveCandidate(candidateId: string, request: IApproveCandidateRequest): Promise<ICandidate>;
-    /** Reject a candidate with a reason. No go-oikumenea writes. Operator-only. */
+    /** Reject a candidate with a reason. No core writes. Operator-only. */
     rejectCandidate(candidateId: string, request: IRejectCandidateRequest): Promise<ICandidate>;
     /**
      * List every taxon alias, source-scoped first then global — small and operator-curated, no pagination (see docs/modules/congregationimport.md). Operator-only.
@@ -64,12 +64,12 @@ export interface ICongregationImportService {
      */
     listJurisdictionAliases(sourceCode?: string | null): Promise<IJurisdictionAliasList>;
     /**
-     * Add a free-text-hint -> go-oikumenea jurisdiction Unit RID alias, used by matchJurisdiction's substring matching on future connector runs. Advisory only — D-JurisdictionUnits: never auto-applied at approval. Operator-only.
+     * Add a free-text-hint -> jurisdiction Unit RID alias, used by matchJurisdiction's substring matching on future connector runs. Advisory only — D-JurisdictionUnits: never auto-applied at approval. Operator-only.
      *
      */
     createJurisdictionAlias(request: ICreateJurisdictionAliasRequest): Promise<IJurisdictionAlias>;
     /**
-     * Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write in this module works: creates/resolves JURISDICTION-TIER go-oikumenea Units (never a congregation) under the deployment's configured anchor unit, fully automatically, using the SERVICE PRINCIPAL's own token rather than the caller's forwarded one. Idempotent by natural key (source code + the source's own external id) — a re-run only creates genuinely new/changed nodes. Suitable for an unattended scheduled trigger (an operator's own identity is still required to CALL this endpoint, same as runConnector, but performs no go-oikumenea write itself).
+     * Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write in this module works: creates/resolves JURISDICTION-TIER directory Units (never a congregation) under the deployment's configured anchor unit, fully automatically. The trigger itself requires an operator's resolved subject (requireOperator, gated the same as every other write in this module — a real gap found and fixed at M10.6, since an earlier version of this port left the trigger ungated); the write itself runs under authz.SystemContext() (D-InProcessAuthz amendment #5), not the caller's own grant, since it is the deployment's own anchor-unit maintenance, not a per-caller action. Idempotent by natural key (source code + the source's own external id) — a re-run only creates genuinely new/changed nodes. Suitable for an unattended scheduled trigger, the same as runConnector.
      *
      */
     runJurisdictionSync(request: IRunJurisdictionSyncRequest): Promise<IJurisdictionSyncResult>;
@@ -200,7 +200,7 @@ export class CongregationImportService implements ICongregationImportService {
     }
 
     /**
-     * Approve a candidate: performs the real go-oikumenea writes (createChildOrg, a site over a new location) using the caller's own forwarded token. Grants NO congregation-admin — there is no real submitter to grant it to (D-CongregationImport). Resumable: a retry after a partial failure continues from the persisted createdUnitId rather than re-creating the unit.
+     * Approve a candidate: performs the real in-process core writes (createChildOrg, a site over a new location) under the caller's own resolved subject. Grants NO congregation-admin — there is no real submitter to grant it to (D-CongregationImport). Resumable: a retry after a partial failure continues from the persisted createdUnitId rather than re-creating the unit.
      *
      */
     public approveCandidate(candidateId: string, request: IApproveCandidateRequest): Promise<ICandidate> {
@@ -220,7 +220,7 @@ export class CongregationImportService implements ICongregationImportService {
         );
     }
 
-    /** Reject a candidate with a reason. No go-oikumenea writes. Operator-only. */
+    /** Reject a candidate with a reason. No core writes. Operator-only. */
     public rejectCandidate(candidateId: string, request: IRejectCandidateRequest): Promise<ICandidate> {
         return this.bridge.call<ICandidate>(
             "CongregationImportService",
@@ -300,7 +300,7 @@ export class CongregationImportService implements ICongregationImportService {
     }
 
     /**
-     * Add a free-text-hint -> go-oikumenea jurisdiction Unit RID alias, used by matchJurisdiction's substring matching on future connector runs. Advisory only — D-JurisdictionUnits: never auto-applied at approval. Operator-only.
+     * Add a free-text-hint -> jurisdiction Unit RID alias, used by matchJurisdiction's substring matching on future connector runs. Advisory only — D-JurisdictionUnits: never auto-applied at approval. Operator-only.
      *
      */
     public createJurisdictionAlias(request: ICreateJurisdictionAliasRequest): Promise<IJurisdictionAlias> {
@@ -319,7 +319,7 @@ export class CongregationImportService implements ICongregationImportService {
     }
 
     /**
-     * Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write in this module works: creates/resolves JURISDICTION-TIER go-oikumenea Units (never a congregation) under the deployment's configured anchor unit, fully automatically, using the SERVICE PRINCIPAL's own token rather than the caller's forwarded one. Idempotent by natural key (source code + the source's own external id) — a re-run only creates genuinely new/changed nodes. Suitable for an unattended scheduled trigger (an operator's own identity is still required to CALL this endpoint, same as runConnector, but performs no go-oikumenea write itself).
+     * Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write in this module works: creates/resolves JURISDICTION-TIER directory Units (never a congregation) under the deployment's configured anchor unit, fully automatically. The trigger itself requires an operator's resolved subject (requireOperator, gated the same as every other write in this module — a real gap found and fixed at M10.6, since an earlier version of this port left the trigger ungated); the write itself runs under authz.SystemContext() (D-InProcessAuthz amendment #5), not the caller's own grant, since it is the deployment's own anchor-unit maintenance, not a per-caller action. Idempotent by natural key (source code + the source's own external id) — a re-run only creates genuinely new/changed nodes. Suitable for an unattended scheduled trigger, the same as runConnector.
      *
      */
     public runJurisdictionSync(request: IRunJurisdictionSyncRequest): Promise<IJurisdictionSyncResult> {

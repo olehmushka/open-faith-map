@@ -9,7 +9,7 @@ export interface IModerationAction {
     'actionKind': ActionKind;
     'targetKind': TargetKind;
     'targetRef': string;
-    /** The moderator who took this action (a go-oikumenea Person RID). */
+    /** The moderator who took this action (an identity_persons RID). */
     'actorPersonId': string;
     'reason': string;
     /** Set on the original row once a REVERSE action targets it. */

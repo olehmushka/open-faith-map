@@ -13,7 +13,7 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
-// Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never widens what go-oikumenea would already return publicly. See docs/modules/discovery.md.
+// Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never widens what internal/religion.SearchSites would already return publicly (the position-oracle fix: hidden sites excluded, others coordinate-snapped). See docs/modules/discovery.md.
 type DiscoveryPublicServiceClient interface {
 	Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string) (SearchResult, error)
 }

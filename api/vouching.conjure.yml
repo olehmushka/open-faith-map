@@ -1,8 +1,8 @@
 # Vouching module API (M6). docs/modules/vouching.md, D-Vouching. A lightweight web-of-trust
 # mechanism: an already-verified congregation admin (guarantor) can vouch that a new admin
 # (claimant) genuinely represents the congregation they claim. A vouch RAISES TRUST, NEVER GRANTS
-# AUTHORITY — real authority still comes only from a go-oikumenea role assignment. Entirely
-# OpenFaithMap-owned; go-oikumenea has no equivalent concept.
+# AUTHORITY — real authority still comes only from an internal/authz role assignment. Entirely
+# OpenFaithMap-owned, with no analog in the in-process core this repo absorbed (M10).
 #
 # ONE service, all four endpoints authenticated (default-auth: header) — unlike
 # content/discovery/moderation.conjure.yml, vouching has no genuinely-anonymous surface: even
@@ -11,8 +11,8 @@
 # Authorization (both gates resolve through D-PlatformModerator's target-scoped-capability
 # pattern, same mechanism moderation.conjure.yml already uses):
 #   - createVouch: the caller must hold write authority (religionorg.manage) over SOME
-#     congregation unit of their own — proven live against go-oikumenea, never cached
-#     (core-integration.md's invariant). Deliberately NOT scoped to the claim's own congregation:
+#     congregation unit of their own — proven live against internal/authz's PDP, never cached
+#     (D-InProcessAuthz's amendment: no grant cache). Deliberately NOT scoped to the claim's own congregation:
 #     vouching.md is explicit that "there is no relationship requirement between guarantor and
 #     claim" — a known pastor in another city can vouch. That is what CreateVouchRequest's own
 #     guarantorCongregationUnitId field names: the unit the CALLER proves standing on, independent
@@ -49,13 +49,13 @@ types:
             docs: OpenFaithMap-local uuid (openfaithmap.vouching_edges.id).
           guarantorPersonId:
             type: string
-            docs: The go-oikumenea Person RID of the admin who vouched.
+            docs: The identity_persons RID of the admin who vouched.
           claimantPersonId:
             type: string
-            docs: The go-oikumenea Person RID of the person being vouched for.
+            docs: The identity_persons RID of the person being vouched for.
           congregationUnitId:
             type: string
-            docs: The go-oikumenea Unit RID of the congregation the claim is about.
+            docs: The directory_units RID of the congregation the claim is about.
           statement: optional<string>
           createdAt: datetime
 

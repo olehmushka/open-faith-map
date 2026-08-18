@@ -1,15 +1,16 @@
-# Discovery module API (M4). docs/modules/discovery.md. A read-through cache + facade over
-# go-oikumenea's religion discovery search (D-Facade) — OpenFaithMap owns no location index of its
-# own. discovery_site_cache is disposable: rebuildable from go-oikumenea + content at any time.
+# Discovery module API (M4). docs/modules/discovery.md. A read-through cache over
+# internal/religion's closure-aware discovery search (M10.6: in-process, no external service) —
+# discovery_site_cache is disposable: rebuildable from internal/religion + content at any time.
 #
 # TWO services, same reasoning as content.conjure.yml (Conjure's auth is a fixed per-service
 # choice, not runtime-conditional): openfaithmap-web holds no session at all (D-AdminSurface), so
 # it can only ever call DiscoveryPublicService; DiscoveryService (the manual refresh tool) is
 # openfaithmap-admin only.
 #
-# search never calls go-oikumenea on behalf of the (tokenless) public caller — on a cache miss, the
-# server's own service principal (coreintegration.NewServiceClient) refreshes the cache in-request,
-# never a forwarded caller token, since there isn't one. See discovery.md's redesign section.
+# On a cache miss for the (tokenless) public caller, the server refreshes the cache in-request under
+# authz.SystemContext() (D-InProcessAuthz amendment #5) calling internal/religion.SearchSites
+# directly — no service principal, no forwarded token, since there isn't one for an anonymous
+# caller. See discovery.md's redesign section.
 #
 # Generated Go lands in internal/conjure and is never hand-edited.
 types:
@@ -21,20 +22,20 @@ types:
           id: string
           religionSiteRid:
             type: string
-            docs: The go-oikumenea religion_sites RID this row projects (opaque foreign value).
+            docs: The religion_sites RID this row projects (opaque value).
           congregationUnitRid: string
           contentSiteId:
             type: optional<string>
             docs: Set once the congregation has published a site (content module) — nullable.
           latitude:
             type: optional<double>
-            docs: Already public_precision-coarsened by go-oikumenea; null when precision is hidden.
+            docs: Already public_precision-coarsened by internal/religion.Coarsen; null when precision is hidden.
           longitude: optional<double>
           traditionTaxonId: optional<string>
           serviceLanguages: list<string>
           serviceDays:
             type: list<integer>
-            docs: 0=Sunday .. 6=Saturday, matching go-oikumenea's ServiceSchedule.dayOfWeek.
+            docs: 0=Sunday .. 6=Saturday, matching religion_service_schedules.day_of_week.
           refreshedAt: datetime
       SearchResult:
         fields:
@@ -63,7 +64,8 @@ services:
     base-path: /discovery/v1
     docs: >
       Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never
-      widens what go-oikumenea would already return publicly. See docs/modules/discovery.md.
+      widens what internal/religion.SearchSites would already return publicly (the position-oracle
+      fix: hidden sites excluded, others coordinate-snapped). See docs/modules/discovery.md.
     endpoints:
       search:
         http: GET /search
@@ -80,7 +82,7 @@ services:
           tradition:
             type: optional<string>
             param-type: query
-            docs: A religion taxon code — matches go-oikumenea's taxonomy closure.
+            docs: A religion taxon code — matches the religion_taxa_closure.
           language:
             type: optional<string>
             param-type: query

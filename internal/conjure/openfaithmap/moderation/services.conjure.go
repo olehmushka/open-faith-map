@@ -63,7 +63,7 @@ func (c *moderationPublicServiceClient) CheckExclusion(ctx context.Context, requ
 	return *returnVal, nil
 }
 
-// Moderator queue, actions, and appeals. moderation.read/moderation.act (docs/modules/moderation.md) both resolve to one live PDP check: does the caller hold platform-moderator's grant on the shared root unit (D-PlatformModerator)? No OpenFaithMap-owned moderator roster — verified live against go-oikumenea, same discipline registration/content/discovery already follow (D-Facade).
+// Moderator queue, actions, and appeals. moderation.read/moderation.act (docs/modules/moderation.md) both resolve to one live PDP check: does the caller hold platform-moderator's grant on the shared root unit (D-PlatformModerator)? No OpenFaithMap-owned moderator roster — verified live against internal/authz's PDP, same discipline registration/content/discovery already follow.
 type ModerationServiceClient interface {
 	// List reports in the given queue scope (default PLATFORM). Requires platform-moderator standing.
 	ListReports(ctx context.Context, authHeader bearertoken.Token, scopeArg *QueueScope, statusArg *ReportStatus, pageSizeArg *int, pageTokenArg *string) (ReportPage, error)
@@ -73,7 +73,7 @@ type ModerationServiceClient interface {
 	TakeAction(ctx context.Context, authHeader bearertoken.Token, requestArg TakeActionRequest) (ModerationAction, error)
 	// Reverse a prior action within its grace window. Writes a new, append-only REVERSE row and sets reversedByActionId on the original — the original row is never edited or deleted.
 	ReverseAction(ctx context.Context, authHeader bearertoken.Token, actionIdArg string, requestArg ReverseActionRequest) (ModerationAction, error)
-	// File an appeal against an action, as the affected congregation admin (verified live via a go-oikumenea authority check on the target unit, not a platform-moderator check).
+	// File an appeal against an action, as the affected congregation admin (verified live via an internal/authz.Require check on the target unit, not a platform-moderator check).
 	FileAppeal(ctx context.Context, authHeader bearertoken.Token, actionIdArg string, requestArg FileAppealRequest) (Appeal, error)
 	// List appeals. Requires platform-moderator standing.
 	ListAppeals(ctx context.Context, authHeader bearertoken.Token, statusArg *AppealStatus, pageSizeArg *int, pageTokenArg *string) (AppealPage, error)
@@ -238,7 +238,7 @@ func (c *moderationServiceClient) DecideAppeal(ctx context.Context, authHeader b
 	return *returnVal, nil
 }
 
-// Moderator queue, actions, and appeals. moderation.read/moderation.act (docs/modules/moderation.md) both resolve to one live PDP check: does the caller hold platform-moderator's grant on the shared root unit (D-PlatformModerator)? No OpenFaithMap-owned moderator roster — verified live against go-oikumenea, same discipline registration/content/discovery already follow (D-Facade).
+// Moderator queue, actions, and appeals. moderation.read/moderation.act (docs/modules/moderation.md) both resolve to one live PDP check: does the caller hold platform-moderator's grant on the shared root unit (D-PlatformModerator)? No OpenFaithMap-owned moderator roster — verified live against internal/authz's PDP, same discipline registration/content/discovery already follow.
 type ModerationServiceClientWithAuth interface {
 	// List reports in the given queue scope (default PLATFORM). Requires platform-moderator standing.
 	ListReports(ctx context.Context, scopeArg *QueueScope, statusArg *ReportStatus, pageSizeArg *int, pageTokenArg *string) (ReportPage, error)
@@ -248,7 +248,7 @@ type ModerationServiceClientWithAuth interface {
 	TakeAction(ctx context.Context, requestArg TakeActionRequest) (ModerationAction, error)
 	// Reverse a prior action within its grace window. Writes a new, append-only REVERSE row and sets reversedByActionId on the original — the original row is never edited or deleted.
 	ReverseAction(ctx context.Context, actionIdArg string, requestArg ReverseActionRequest) (ModerationAction, error)
-	// File an appeal against an action, as the affected congregation admin (verified live via a go-oikumenea authority check on the target unit, not a platform-moderator check).
+	// File an appeal against an action, as the affected congregation admin (verified live via an internal/authz.Require check on the target unit, not a platform-moderator check).
 	FileAppeal(ctx context.Context, actionIdArg string, requestArg FileAppealRequest) (Appeal, error)
 	// List appeals. Requires platform-moderator standing.
 	ListAppeals(ctx context.Context, statusArg *AppealStatus, pageSizeArg *int, pageTokenArg *string) (AppealPage, error)

@@ -69,7 +69,7 @@ func (e *RegistrationStatus) UnmarshalText(data []byte) error {
 	return nil
 }
 
-// The state machine for re-parenting an already-APPROVED request's congregation unit onto a different jurisdiction unit (M4.1). addEdge+removeEdge on go-oikumenea's canonical graph is two non-transactional calls, not one atomic move — this tracks which one durably landed so a retry resumes rather than repeats. Add-before-remove by design: the congregation briefly has two canonical parents mid-migration rather than momentarily zero, so no subtree-scoped grant (registration-operator, platform-moderator) loses reach to it during the move.
+// The state machine for re-parenting an already-APPROVED request's congregation unit onto a different jurisdiction unit (M4.1). AddEdge+RemoveEdge on the canonical directory graph is two non-transactional calls, not one atomic move — this tracks which one durably landed so a retry resumes rather than repeats. Add-before-remove by design: the congregation briefly has two canonical parents mid-migration rather than momentarily zero, so no subtree-scoped grant (registration-operator, platform-moderator) loses reach to it during the move.
 type ReparentStatus struct {
 	val ReparentStatus_Value
 }

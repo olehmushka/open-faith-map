@@ -193,7 +193,7 @@ type ModerationAction struct {
 	ActionKind ActionKind `json:"actionKind"`
 	TargetKind TargetKind `json:"targetKind"`
 	TargetRef  string     `json:"targetRef"`
-	// The moderator who took this action (a go-oikumenea Person RID).
+	// The moderator who took this action (an identity_persons RID).
 	ActorPersonId string `json:"actorPersonId"`
 	Reason        string `json:"reason"`
 	// Set on the original row once a REVERSE action targets it.
@@ -221,7 +221,7 @@ type Report struct {
 	// OpenFaithMap-local RID (openfaithmap.moderation.report).
 	Id         string     `json:"id"`
 	TargetKind TargetKind `json:"targetKind"`
-	// The RID of the reported thing — a local content_* RID, or a go-oikumenea unit RID for CONGREGATION.
+	// The RID of the reported thing — a local content_* RID, or a directory_units RID for CONGREGATION.
 	TargetRef  string     `json:"targetRef"`
 	ReasonCode ReasonCode `json:"reasonCode"`
 	Detail     *string    `json:"detail,omitempty"`

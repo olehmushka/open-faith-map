@@ -16,19 +16,19 @@ import (
 	"github.com/palantir/witchcraft-go-server/v2/wrouter"
 )
 
-// Congregation-registration requests: submit (any authenticated person), list/approve/reject (a registration operator — verified live against go-oikumenea's PDP, not a locally-cached role). See docs/modules/registration.md.
+// Congregation-registration requests: submit (any authenticated person), list/approve/reject (a registration operator — verified live against internal/authz's PDP, never cached). See docs/modules/registration.md.
 type RegistrationService interface {
-	// Submit a new registration request as the caller. Runs the D-Exclusions taxon check (walking the taxon's ancestors via go-oikumenea's religion.read) before persisting — returns Registration:TaxonExcluded if the tradition (or an ancestor) is on the named exclusion list, Registration:TaxonNotFound if taxonId doesn't resolve.
+	// Submit a new registration request as the caller. Runs the D-Exclusions taxon check (walking the taxon's ancestors via internal/religion) before persisting — returns Registration:TaxonExcluded if the tradition (or an ancestor) is on the named exclusion list, Registration:TaxonNotFound if taxonId doesn't resolve.
 	SubmitRequest(ctx context.Context, authHeader bearertoken.Token, requestArg SubmitRegistrationRequest) (RegistrationRequest, error)
 	// List registration requests. Operator-only for now (verified live: does the caller hold religionorg.manage on the configured root unit?) — see open seams in docs/modules/registration.md for a submitter's-own-requests view.
 	ListRequests(ctx context.Context, authHeader bearertoken.Token, statusArg *string, pageSizeArg *int, pageTokenArg *string) (RegistrationRequestPage, error)
 	// Read one request. The submitter or an operator (verified live) may read it.
 	GetRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string) (RegistrationRequest, error)
-	// Approve a PENDING request: performs the real go-oikumenea writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) using the caller's own forwarded token — go-oikumenea's PDP decides for real; this returns whatever error go-oikumenea's PDP does if the caller lacks authority.
+	// Approve a PENDING request: performs the real in-process core writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) under the caller's own resolved subject — internal/authz's PDP decides for real if the caller lacks authority (internal/registration/transport's mapErr passes authzdomain.ErrPermissionDenied through unmapped — no typed Registration:* error exists for it today; a real open seam, not new to this rewrite).
 	ApproveRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg ApproveRegistrationRequest) (RegistrationRequest, error)
-	// Reject a PENDING request with a reason. No go-oikumenea writes.
+	// Reject a PENDING request with a reason. No core writes.
 	RejectRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg RejectRegistrationRequest) (RegistrationRequest, error)
-	// Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own forwarded token for every go-oikumenea write. Returns Registration:RequestNotApproved if the request was never approved.
+	// Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own resolved subject for every directory write. Returns Registration:RequestNotApproved if the request was never approved.
 	ReparentRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg ReparentRegistrationRequest) (ReparentingJob, error)
 	// Read the most recent re-parenting job for this request, if one has ever been started.
 	GetReparentStatus(ctx context.Context, authHeader bearertoken.Token, requestIdArg string) (*ReparentingJob, error)

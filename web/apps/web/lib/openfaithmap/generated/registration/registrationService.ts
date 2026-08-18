@@ -11,12 +11,12 @@ import type { IHttpApiBridge } from "conjure-client";
 const __undefined: undefined = undefined;
 
 /**
- * Congregation-registration requests: submit (any authenticated person), list/approve/reject (a registration operator — verified live against go-oikumenea's PDP, not a locally-cached role). See docs/modules/registration.md.
+ * Congregation-registration requests: submit (any authenticated person), list/approve/reject (a registration operator — verified live against internal/authz's PDP, never cached). See docs/modules/registration.md.
  *
  */
 export interface IRegistrationService {
     /**
-     * Submit a new registration request as the caller. Runs the D-Exclusions taxon check (walking the taxon's ancestors via go-oikumenea's religion.read) before persisting — returns Registration:TaxonExcluded if the tradition (or an ancestor) is on the named exclusion list, Registration:TaxonNotFound if taxonId doesn't resolve.
+     * Submit a new registration request as the caller. Runs the D-Exclusions taxon check (walking the taxon's ancestors via internal/religion) before persisting — returns Registration:TaxonExcluded if the tradition (or an ancestor) is on the named exclusion list, Registration:TaxonNotFound if taxonId doesn't resolve.
      *
      */
     submitRequest(request: ISubmitRegistrationRequest): Promise<IRegistrationRequest>;
@@ -28,14 +28,14 @@ export interface IRegistrationService {
     /** Read one request. The submitter or an operator (verified live) may read it. */
     getRequest(requestId: string): Promise<IRegistrationRequest>;
     /**
-     * Approve a PENDING request: performs the real go-oikumenea writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) using the caller's own forwarded token — go-oikumenea's PDP decides for real; this returns whatever error go-oikumenea's PDP does if the caller lacks authority.
+     * Approve a PENDING request: performs the real in-process core writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) under the caller's own resolved subject — internal/authz's PDP decides for real if the caller lacks authority (internal/registration/transport's mapErr passes authzdomain.ErrPermissionDenied through unmapped — no typed Registration:* error exists for it today; a real open seam, not new to this rewrite).
      *
      */
     approveRequest(requestId: string, request: IApproveRegistrationRequest): Promise<IRegistrationRequest>;
-    /** Reject a PENDING request with a reason. No go-oikumenea writes. */
+    /** Reject a PENDING request with a reason. No core writes. */
     rejectRequest(requestId: string, request: IRejectRegistrationRequest): Promise<IRegistrationRequest>;
     /**
-     * Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own forwarded token for every go-oikumenea write. Returns Registration:RequestNotApproved if the request was never approved.
+     * Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own resolved subject for every directory write. Returns Registration:RequestNotApproved if the request was never approved.
      *
      */
     reparentRequest(requestId: string, request: IReparentRegistrationRequest): Promise<IReparentingJob>;
@@ -48,7 +48,7 @@ export class RegistrationService implements IRegistrationService {
     }
 
     /**
-     * Submit a new registration request as the caller. Runs the D-Exclusions taxon check (walking the taxon's ancestors via go-oikumenea's religion.read) before persisting — returns Registration:TaxonExcluded if the tradition (or an ancestor) is on the named exclusion list, Registration:TaxonNotFound if taxonId doesn't resolve.
+     * Submit a new registration request as the caller. Runs the D-Exclusions taxon check (walking the taxon's ancestors via internal/religion) before persisting — returns Registration:TaxonExcluded if the tradition (or an ancestor) is on the named exclusion list, Registration:TaxonNotFound if taxonId doesn't resolve.
      *
      */
     public submitRequest(request: ISubmitRegistrationRequest): Promise<IRegistrationRequest> {
@@ -108,7 +108,7 @@ export class RegistrationService implements IRegistrationService {
     }
 
     /**
-     * Approve a PENDING request: performs the real go-oikumenea writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) using the caller's own forwarded token — go-oikumenea's PDP decides for real; this returns whatever error go-oikumenea's PDP does if the caller lacks authority.
+     * Approve a PENDING request: performs the real in-process core writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) under the caller's own resolved subject — internal/authz's PDP decides for real if the caller lacks authority (internal/registration/transport's mapErr passes authzdomain.ErrPermissionDenied through unmapped — no typed Registration:* error exists for it today; a real open seam, not new to this rewrite).
      *
      */
     public approveRequest(requestId: string, request: IApproveRegistrationRequest): Promise<IRegistrationRequest> {
@@ -128,7 +128,7 @@ export class RegistrationService implements IRegistrationService {
         );
     }
 
-    /** Reject a PENDING request with a reason. No go-oikumenea writes. */
+    /** Reject a PENDING request with a reason. No core writes. */
     public rejectRequest(requestId: string, request: IRejectRegistrationRequest): Promise<IRegistrationRequest> {
         return this.bridge.call<IRegistrationRequest>(
             "RegistrationService",
@@ -147,7 +147,7 @@ export class RegistrationService implements IRegistrationService {
     }
 
     /**
-     * Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own forwarded token for every go-oikumenea write. Returns Registration:RequestNotApproved if the request was never approved.
+     * Start or resume re-parenting an APPROVED request's congregation unit onto a different jurisdiction (or root) unit (D-JurisdictionUnits, M4.1). Idempotent: re-calling with the same requestId resumes the existing job from whichever ReparentStatus step last durably landed, rather than repeating completed steps. Operator-only (same root-unit-scoped check as approveRequest/listRequests), using the caller's own resolved subject for every directory write. Returns Registration:RequestNotApproved if the request was never approved.
      *
      */
     public reparentRequest(requestId: string, request: IReparentRegistrationRequest): Promise<IReparentingJob> {

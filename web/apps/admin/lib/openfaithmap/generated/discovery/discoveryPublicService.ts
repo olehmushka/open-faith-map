@@ -5,7 +5,7 @@ import type { IHttpApiBridge } from "conjure-client";
 const __undefined: undefined = undefined;
 
 /**
- * Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never widens what go-oikumenea would already return publicly. See docs/modules/discovery.md.
+ * Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never widens what internal/religion.SearchSites would already return publicly (the position-oracle fix: hidden sites excluded, others coordinate-snapped). See docs/modules/discovery.md.
  *
  */
 export interface IDiscoveryPublicService {

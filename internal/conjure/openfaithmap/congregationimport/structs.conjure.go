@@ -9,7 +9,7 @@ import (
 )
 
 type ApproveCandidateRequest struct {
-	// The go-oikumenea unit RID to create the congregation under (D-JurisdictionUnits precedent) — operator-chosen, never inferred. Omitted = the configured root unit.
+	// The directory_units RID to create the congregation under (D-JurisdictionUnits precedent) — operator-chosen, never inferred. Omitted = the configured root unit.
 	JurisdictionUnitId *string `json:"jurisdictionUnitId,omitempty"`
 }
 
@@ -39,11 +39,11 @@ type Candidate struct {
 	Name           string `json:"name"`
 	// Free-text denomination/tradition hint as scraped, before alias resolution.
 	TaxonHint *string `json:"taxonHint,omitempty"`
-	// The resolved go-oikumenea religion_taxa RID, once matched.
+	// The resolved religion_taxa RID, once matched.
 	TaxonId *string `json:"taxonId,omitempty"`
 	// Free-text hint naming the parish's superior jurisdiction (diocese/eparchy/synod), as scraped — only meaningful for denominations with a real institutional hierarchy (Catholic, Orthodox, Lutheran, Anglican/Episcopal).
 	JurisdictionHint *string `json:"jurisdictionHint,omitempty"`
-	// An alias-matched suggestion for the go-oikumenea jurisdiction Unit RID — ADVISORY ONLY. D-JurisdictionUnits: jurisdiction is operator-assigned at approval time, never inferred. Never applied automatically; the operator must still pass jurisdictionUnitId on ApproveCandidateRequest explicitly, even when this matches it.
+	// An alias-matched suggestion for the jurisdiction Unit RID — ADVISORY ONLY. D-JurisdictionUnits: jurisdiction is operator-assigned at approval time, never inferred. Never applied automatically; the operator must still pass jurisdictionUnitId on ApproveCandidateRequest explicitly, even when this matches it.
 	SuggestedJurisdictionUnitId    *string            `json:"suggestedJurisdictionUnitId,omitempty"`
 	CountryId                      *string            `json:"countryId,omitempty"`
 	AdminArea1                     *string            `json:"adminArea1,omitempty"`
@@ -60,7 +60,7 @@ type Candidate struct {
 	RejectionReason                *string            `json:"rejectionReason,omitempty"`
 	ReviewedByPersonId             *string            `json:"reviewedByPersonId,omitempty"`
 	ReviewedAt                     *datetime.DateTime `json:"reviewedAt,omitempty"`
-	// The go-oikumenea unit RID createChildOrg produced. Set as soon as status = PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays set through PROVISIONED.
+	// The directory_units RID createChildOrg produced. Set as soon as status = PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays set through PROVISIONED.
 	CreatedUnitId *string           `json:"createdUnitId,omitempty"`
 	CreatedAt     datetime.DateTime `json:"createdAt"`
 	UpdatedAt     datetime.DateTime `json:"updatedAt"`
@@ -242,7 +242,7 @@ type JurisdictionAlias struct {
 	// Omitted means this alias applies across every source.
 	SourceCode *string `json:"sourceCode,omitempty"`
 	AliasText  string  `json:"aliasText"`
-	// The go-oikumenea jurisdiction Unit RID this alias resolves to (D-JurisdictionUnits).
+	// The jurisdiction Unit RID this alias resolves to (D-JurisdictionUnits).
 	JurisdictionUnitId string            `json:"jurisdictionUnitId"`
 	CreatedByPersonId  string            `json:"createdByPersonId"`
 	CreatedAt          datetime.DateTime `json:"createdAt"`
@@ -470,7 +470,7 @@ type TaxonAlias struct {
 	// Omitted means this alias applies across every source.
 	SourceCode *string `json:"sourceCode,omitempty"`
 	AliasText  string  `json:"aliasText"`
-	// The go-oikumenea religion_taxa RID this alias resolves to.
+	// The religion_taxa RID this alias resolves to.
 	TaxonId           string            `json:"taxonId"`
 	CreatedByPersonId string            `json:"createdByPersonId"`
 	CreatedAt         datetime.DateTime `json:"createdAt"`

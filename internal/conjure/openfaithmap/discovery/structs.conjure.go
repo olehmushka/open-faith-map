@@ -10,17 +10,17 @@ import (
 
 type DiscoverySite struct {
 	Id string `json:"id"`
-	// The go-oikumenea religion_sites RID this row projects (opaque foreign value).
+	// The religion_sites RID this row projects (opaque value).
 	ReligionSiteRid     string `json:"religionSiteRid"`
 	CongregationUnitRid string `json:"congregationUnitRid"`
 	// Set once the congregation has published a site (content module) — nullable.
 	ContentSiteId *string `json:"contentSiteId,omitempty"`
-	// Already public_precision-coarsened by go-oikumenea; null when precision is hidden.
+	// Already public_precision-coarsened by internal/religion.Coarsen; null when precision is hidden.
 	Latitude         *float64 `json:"latitude,omitempty"`
 	Longitude        *float64 `json:"longitude,omitempty"`
 	TraditionTaxonId *string  `json:"traditionTaxonId,omitempty"`
 	ServiceLanguages []string `json:"serviceLanguages"`
-	// 0=Sunday .. 6=Saturday, matching go-oikumenea's ServiceSchedule.dayOfWeek.
+	// 0=Sunday .. 6=Saturday, matching religion_service_schedules.day_of_week.
 	ServiceDays []int             `json:"serviceDays"`
 	RefreshedAt datetime.DateTime `json:"refreshedAt"`
 }

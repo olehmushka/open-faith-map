@@ -1,19 +1,20 @@
 # Moderation module API (M5). docs/modules/moderation.md. Owns reports, moderator actions, and
 # appeals across everything OpenFaithMap surfaces, plus a standalone D-Exclusions taxon-check
 # dry-run. openfaithmap.moderation_actions is this platform's ledger of record for moderation
-# decisions — append-only, reject_mutation()-guarded — not mirrored into go-oikumenea's audit trail
-# (D-Moderation's Correction: audit.write does not exist).
+# decisions — append-only, reject_mutation()-guarded — this repo's own ledger of record; no
+# separate audit log exists anywhere in this port (D-Moderation's Correction: audit.write does not
+# exist).
 #
 # TWO services, same reasoning as content.conjure.yml/discovery.conjure.yml (Conjure's auth is a
 # fixed per-service choice, not runtime-conditional): filing a report and running the exclusion
 # check are both anonymous by design (ModerationPublicService, no default-auth); the moderator
 # queue/action/appeal surface requires a forwarded bearer token (ModerationService,
-# default-auth: header) and is authorized live against go-oikumenea's PDP — does the caller hold
+# default-auth: header) and is authorized live against internal/authz's PDP — does the caller hold
 # platform-moderator's grant on the shared root unit (D-PlatformModerator)? No OpenFaithMap-owned
 # moderator roster.
 #
-# checkExclusion runs under the server's own service-principal token
-# (coreintegration.NewServiceClient), never a forwarded caller token, since the public caller here
+# checkExclusion runs under authz.SystemContext() (D-InProcessAuthz amendment #5) calling
+# internal/religion.GetTaxon directly, never a forwarded caller token, since the public caller here
 # is anonymous and has none — mirrors discovery's cache-refresh precedent for the same reason.
 # Rate limiting on the two public endpoints lands at M7 (D-Hardening) — an in-process,
 # per-(client IP, endpoint) token-bucket limiter wired outside this contract (no Conjure code maps
@@ -83,7 +84,7 @@ types:
           targetKind: TargetKind
           targetRef:
             type: string
-            docs: The RID of the reported thing — a local content_* RID, or a go-oikumenea unit RID for CONGREGATION.
+            docs: The RID of the reported thing — a local content_* RID, or a directory_units RID for CONGREGATION.
           reasonCode: ReasonCode
           detail: optional<string>
           reporterPersonId:
@@ -107,7 +108,7 @@ types:
           targetRef: string
           actorPersonId:
             type: string
-            docs: The moderator who took this action (a go-oikumenea Person RID).
+            docs: The moderator who took this action (an identity_persons RID).
           reason: string
           reversedByActionId:
             type: optional<string>
@@ -272,8 +273,8 @@ services:
       Moderator queue, actions, and appeals. moderation.read/moderation.act
       (docs/modules/moderation.md) both resolve to one live PDP check: does the caller hold
       platform-moderator's grant on the shared root unit (D-PlatformModerator)? No
-      OpenFaithMap-owned moderator roster — verified live against go-oikumenea, same discipline
-      registration/content/discovery already follow (D-Facade).
+      OpenFaithMap-owned moderator roster — verified live against internal/authz's PDP, same
+      discipline registration/content/discovery already follow.
     endpoints:
       listReports:
         http: GET /reports
@@ -324,8 +325,8 @@ services:
       fileAppeal:
         http: POST /actions/{actionId}/appeals
         docs: >
-          File an appeal against an action, as the affected congregation admin (verified live via a
-          go-oikumenea authority check on the target unit, not a platform-moderator check).
+          File an appeal against an action, as the affected congregation admin (verified live via
+          an internal/authz.Require check on the target unit, not a platform-moderator check).
         args:
           actionId:
             type: string

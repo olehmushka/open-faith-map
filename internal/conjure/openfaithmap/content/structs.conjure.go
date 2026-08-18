@@ -334,7 +334,7 @@ func (o *PutBlocksRequest) UnmarshalYAML(unmarshal func(interface{}) error) erro
 
 type Site struct {
 	Id string `json:"id"`
-	// The go-oikumenea Unit RID this site belongs to (opaque foreign value).
+	// The directory_units RID this site belongs to (opaque value).
 	CongregationUnitId string `json:"congregationUnitId"`
 	Slug               string `json:"slug"`
 	// Accent color, font pairing, header layout — data, never a per-tenant code fork.

@@ -16,7 +16,7 @@ import type { IHttpApiBridge } from "conjure-client";
 const __undefined: undefined = undefined;
 
 /**
- * Moderator queue, actions, and appeals. moderation.read/moderation.act (docs/modules/moderation.md) both resolve to one live PDP check: does the caller hold platform-moderator's grant on the shared root unit (D-PlatformModerator)? No OpenFaithMap-owned moderator roster — verified live against go-oikumenea, same discipline registration/content/discovery already follow (D-Facade).
+ * Moderator queue, actions, and appeals. moderation.read/moderation.act (docs/modules/moderation.md) both resolve to one live PDP check: does the caller hold platform-moderator's grant on the shared root unit (D-PlatformModerator)? No OpenFaithMap-owned moderator roster — verified live against internal/authz's PDP, same discipline registration/content/discovery already follow.
  *
  */
 export interface IModerationService {
@@ -35,7 +35,7 @@ export interface IModerationService {
      */
     reverseAction(actionId: string, request: IReverseActionRequest): Promise<IModerationAction>;
     /**
-     * File an appeal against an action, as the affected congregation admin (verified live via a go-oikumenea authority check on the target unit, not a platform-moderator check).
+     * File an appeal against an action, as the affected congregation admin (verified live via an internal/authz.Require check on the target unit, not a platform-moderator check).
      *
      */
     fileAppeal(actionId: string, request: IFileAppealRequest): Promise<IAppeal>;
@@ -132,7 +132,7 @@ export class ModerationService implements IModerationService {
     }
 
     /**
-     * File an appeal against an action, as the affected congregation admin (verified live via a go-oikumenea authority check on the target unit, not a platform-moderator check).
+     * File an appeal against an action, as the affected congregation admin (verified live via an internal/authz.Require check on the target unit, not a platform-moderator check).
      *
      */
     public fileAppeal(actionId: string, request: IFileAppealRequest): Promise<IAppeal> {

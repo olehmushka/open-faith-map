@@ -7,7 +7,7 @@ export interface IReport {
     /** OpenFaithMap-local RID (openfaithmap.moderation.report). */
     'id': string;
     'targetKind': TargetKind;
-    /** The RID of the reported thing — a local content_* RID, or a go-oikumenea unit RID for CONGREGATION. */
+    /** The RID of the reported thing — a local content_* RID, or a directory_units RID for CONGREGATION. */
     'targetRef': string;
     'reasonCode': ReasonCode;
     'detail'?: string | null;

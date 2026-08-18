@@ -3,9 +3,9 @@
 # external sources (open government data, OpenStreetMap, denomination-locator HTML) for a
 # registration operator to review, edit, approve, or reject.
 #
-# Approval performs the real go-oikumenea writes (createChildOrg, a site over a new location) using
-# the OPERATOR'S OWN forwarded bearer token — never the service principal; go-oikumenea's PDP
-# decides for real, same as every other write in this project. Deliberately does NOT grant
+# Approval performs the real in-process core writes (createChildOrg, a site over a new location)
+# under the OPERATOR'S OWN resolved subject — internal/authz's PDP decides for real, same as every
+# other write in this project. Deliberately does NOT grant
 # congregation-admin to anyone: there is no real submitter to grant it to. See D-CongregationImport
 # for the full "why this isn't an on-behalf-of write" reasoning.
 #
@@ -75,7 +75,7 @@ types:
             docs: Free-text denomination/tradition hint as scraped, before alias resolution.
           taxonId:
             type: optional<string>
-            docs: The resolved go-oikumenea religion_taxa RID, once matched.
+            docs: The resolved religion_taxa RID, once matched.
           jurisdictionHint:
             type: optional<string>
             docs: >
@@ -85,7 +85,7 @@ types:
           suggestedJurisdictionUnitId:
             type: optional<string>
             docs: >
-              An alias-matched suggestion for the go-oikumenea jurisdiction Unit RID — ADVISORY
+              An alias-matched suggestion for the jurisdiction Unit RID — ADVISORY
               ONLY. D-JurisdictionUnits: jurisdiction is operator-assigned at approval time, never
               inferred. Never applied automatically; the operator must still pass jurisdictionUnitId
               on ApproveCandidateRequest explicitly, even when this matches it.
@@ -107,7 +107,7 @@ types:
           createdUnitId:
             type: optional<string>
             docs: >
-              The go-oikumenea unit RID createChildOrg produced. Set as soon as status =
+              The directory_units RID createChildOrg produced. Set as soon as status =
               PROVISIONING (the one approval step that cannot be re-derived on a retry), and stays
               set through PROVISIONED.
           createdAt: datetime
@@ -129,7 +129,7 @@ types:
           jurisdictionUnitId:
             type: optional<string>
             docs: >
-              The go-oikumenea unit RID to create the congregation under (D-JurisdictionUnits
+              The directory_units RID to create the congregation under (D-JurisdictionUnits
               precedent) — operator-chosen, never inferred. Omitted = the configured root unit.
       RejectCandidateRequest:
         fields:
@@ -163,7 +163,7 @@ types:
           aliasText: string
           taxonId:
             type: string
-            docs: The go-oikumenea religion_taxa RID this alias resolves to.
+            docs: The religion_taxa RID this alias resolves to.
           createdByPersonId: string
           createdAt: datetime
           updatedAt: datetime
@@ -178,7 +178,7 @@ types:
           aliasText: string
           jurisdictionUnitId:
             type: string
-            docs: The go-oikumenea jurisdiction Unit RID this alias resolves to (D-JurisdictionUnits).
+            docs: The jurisdiction Unit RID this alias resolves to (D-JurisdictionUnits).
           createdByPersonId: string
           createdAt: datetime
           updatedAt: datetime
@@ -375,8 +375,8 @@ services:
       approveCandidate:
         http: POST /candidates/{candidateId}/approve
         docs: >
-          Approve a candidate: performs the real go-oikumenea writes (createChildOrg, a site over a
-          new location) using the caller's own forwarded token. Grants NO congregation-admin —
+          Approve a candidate: performs the real in-process core writes (createChildOrg, a site over
+          a new location) under the caller's own resolved subject. Grants NO congregation-admin —
           there is no real submitter to grant it to (D-CongregationImport). Resumable: a retry after
           a partial failure continues from the persisted createdUnitId rather than re-creating the
           unit.
@@ -388,7 +388,7 @@ services:
         returns: Candidate
       rejectCandidate:
         http: POST /candidates/{candidateId}/reject
-        docs: Reject a candidate with a reason. No go-oikumenea writes. Operator-only.
+        docs: Reject a candidate with a reason. No core writes. Operator-only.
         args:
           candidateId:
             type: string
@@ -426,7 +426,7 @@ services:
       createJurisdictionAlias:
         http: POST /jurisdiction-aliases
         docs: >
-          Add a free-text-hint -> go-oikumenea jurisdiction Unit RID alias, used by
+          Add a free-text-hint -> jurisdiction Unit RID alias, used by
           matchJurisdiction's substring matching on future connector runs. Advisory only —
           D-JurisdictionUnits: never auto-applied at approval. Operator-only.
         args:
@@ -437,13 +437,16 @@ services:
         docs: >
           Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync,
           docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write
-          in this module works: creates/resolves JURISDICTION-TIER go-oikumenea Units (never a
-          congregation) under the deployment's configured anchor unit, fully automatically, using
-          the SERVICE PRINCIPAL's own token rather than the caller's forwarded one. Idempotent by
+          in this module works: creates/resolves JURISDICTION-TIER directory Units (never a
+          congregation) under the deployment's configured anchor unit, fully automatically. The
+          trigger itself requires an operator's resolved subject (requireOperator, gated the same as
+          every other write in this module — a real gap found and fixed at M10.6, since an earlier
+          version of this port left the trigger ungated); the write itself runs under
+          authz.SystemContext() (D-InProcessAuthz amendment #5), not the caller's own grant, since it
+          is the deployment's own anchor-unit maintenance, not a per-caller action. Idempotent by
           natural key (source code + the source's own external id) — a re-run only creates
-          genuinely new/changed nodes. Suitable for an unattended scheduled trigger (an operator's
-          own identity is still required to CALL this endpoint, same as runConnector, but performs
-          no go-oikumenea write itself).
+          genuinely new/changed nodes. Suitable for an unattended scheduled trigger, the same as
+          runConnector.
         args:
           request: RunJurisdictionSyncRequest
         returns: JurisdictionSyncResult

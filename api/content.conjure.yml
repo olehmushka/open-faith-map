@@ -2,9 +2,10 @@
 # schema — a congregation's website: pages, posts, and events, each made of typed, schema-validated
 # blocks.
 #
-# content.manage is a target-scoped capability check (Authorize with Action: "religionorg.manage",
-# UnitId: the SITE's own congregation unit — never a shared root), not a go-oikumenea permission
-# code of its own — see D-PlatformModerator and content.md's authorization-touchpoints section.
+# content.manage is a target-scoped capability check (internal/authz.Require with
+# PermReligionOrgManage, unitID: the SITE's own congregation unit — never a shared root), not a
+# permission code of its own — see D-PlatformModerator and content.md's authorization-touchpoints
+# section.
 #
 # TWO services share this file's types because Conjure's auth is a fixed per-service choice
 # (header/cookie), not a runtime-conditional one — there is no way for one endpoint to require a
@@ -42,7 +43,7 @@ types:
           id: string
           congregationUnitId:
             type: string
-            docs: The go-oikumenea Unit RID this site belongs to (opaque foreign value).
+            docs: The directory_units RID this site belongs to (opaque value).
           slug: string
           theme:
             type: any
