@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package transport implements the generated content.ContentService and content.ContentPublicService
-// (Conjure server interfaces): translates Conjure structs <-> domain types, resolves the caller's
-// own person RID from their forwarded token (never a client-supplied id — always asked of
-// go-oikumenea itself via whoami), and maps domain errors to this module's typed Conjure errors.
+// (Conjure server interfaces): translates Conjure structs <-> domain types and maps domain errors to
+// this module's typed Conjure errors.
+//
+// M10.6: the caller's identity no longer arrives via a per-request whoami round-trip — internal/authz
+// resolves the subject from context (populated by internal/identity's authenticator middleware) at
+// the point requireManage decides, so this layer no longer needs it at all.
 package transport
 
 import (
@@ -14,48 +17,22 @@ import (
 	gencontent "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/content"
 	"github.com/olehmushka/open-faith-map/internal/content/application"
 	"github.com/olehmushka/open-faith-map/internal/content/domain"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 )
 
-type Config struct {
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
-}
-
 type Service struct {
-	oikumeneaBaseURL  string
-	oikumeneaInsecure bool
-	appService        *application.Service
+	appService *application.Service
 }
 
-func NewService(appService *application.Service, cfg Config) *Service {
-	return &Service{appService: appService, oikumeneaBaseURL: cfg.OikumeneaBaseURL, oikumeneaInsecure: cfg.OikumeneaInsecureSkipVerify}
+func NewService(appService *application.Service) *Service {
+	return &Service{appService: appService}
 }
 
 var _ gencontent.ContentService = (*Service)(nil)
 
-// whoami resolves the caller's own go-oikumenea person RID from their forwarded token — never
-// trusts a client-supplied id.
-func (s *Service) whoami(ctx context.Context, token bearertoken.Token) (string, error) {
-	c, err := coreintegration.NewUserClient(s.oikumeneaBaseURL, string(token), s.oikumeneaInsecure)
-	if err != nil {
-		return "", err
-	}
-	who, err := c.IdentityFederation.Whoami(ctx)
-	if err != nil {
-		return "", err
-	}
-	return who.PersonId, nil
-}
-
 func (s *Service) CreateSite(ctx context.Context, authHeader bearertoken.Token, requestArg gencontent.CreateSiteRequest) (gencontent.Site, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencontent.Site{}, mapUpstreamErr(err)
-	}
-	site, err := s.appService.CreateSite(ctx, string(authHeader), personID, domain.CreateSiteInput{
+	site, err := s.appService.CreateSite(ctx, domain.CreateSiteInput{
 		CongregationUnitRID: requestArg.CongregationUnitId,
 		Slug:                requestArg.Slug,
 	})
@@ -66,15 +43,11 @@ func (s *Service) CreateSite(ctx context.Context, authHeader bearertoken.Token, 
 }
 
 func (s *Service) UpdateSiteTheme(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg gencontent.UpdateSiteThemeRequest) (gencontent.Site, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencontent.Site{}, mapUpstreamErr(err)
-	}
 	themeBytes, err := marshalAny(requestArg.Theme)
 	if err != nil {
 		return gencontent.Site{}, err
 	}
-	site, err := s.appService.UpdateSiteTheme(ctx, string(authHeader), personID, siteIdArg, themeBytes)
+	site, err := s.appService.UpdateSiteTheme(ctx, siteIdArg, themeBytes)
 	if err != nil {
 		return gencontent.Site{}, mapErr(err, errCtx{SiteID: siteIdArg})
 	}
@@ -82,11 +55,7 @@ func (s *Service) UpdateSiteTheme(ctx context.Context, authHeader bearertoken.To
 }
 
 func (s *Service) ListDocuments(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, kindArg, localeArg, stateArg *string) (gencontent.DocumentPage, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencontent.DocumentPage{}, mapUpstreamErr(err)
-	}
-	docs, err := s.appService.ListDocuments(ctx, string(authHeader), personID, siteIdArg, kindArg, localeArg, stateArg)
+	docs, err := s.appService.ListDocuments(ctx, siteIdArg, kindArg, localeArg, stateArg)
 	if err != nil {
 		return gencontent.DocumentPage{}, mapErr(err, errCtx{SiteID: siteIdArg})
 	}
@@ -94,10 +63,6 @@ func (s *Service) ListDocuments(ctx context.Context, authHeader bearertoken.Toke
 }
 
 func (s *Service) CreateDocument(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg gencontent.CreateDocumentRequest) (gencontent.Document, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencontent.Document{}, mapUpstreamErr(err)
-	}
 	var eventStartsAt, eventEndsAt *time.Time
 	if requestArg.EventStartsAt != nil {
 		t := time.Time(*requestArg.EventStartsAt)
@@ -107,7 +72,7 @@ func (s *Service) CreateDocument(ctx context.Context, authHeader bearertoken.Tok
 		t := time.Time(*requestArg.EventEndsAt)
 		eventEndsAt = &t
 	}
-	doc, err := s.appService.CreateDocument(ctx, string(authHeader), personID, siteIdArg, domain.CreateDocumentInput{
+	doc, err := s.appService.CreateDocument(ctx, siteIdArg, domain.CreateDocumentInput{
 		Kind:                 domain.DocumentKind(requestArg.Kind.Value()),
 		TranslationGroupID:   requestArg.TranslationGroupId,
 		Locale:               requestArg.Locale,
@@ -124,11 +89,7 @@ func (s *Service) CreateDocument(ctx context.Context, authHeader bearertoken.Tok
 }
 
 func (s *Service) UpdateDocument(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, requestArg gencontent.UpdateDocumentRequest) (gencontent.Document, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencontent.Document{}, mapUpstreamErr(err)
-	}
-	doc, err := s.appService.UpdateDocument(ctx, string(authHeader), personID, documentIdArg, domain.UpdateDocumentInput{
+	doc, err := s.appService.UpdateDocument(ctx, documentIdArg, domain.UpdateDocumentInput{
 		Slug:             requestArg.Slug,
 		ParentDocumentID: requestArg.ParentDocumentId,
 		ClearParent:      requestArg.ClearParent,
@@ -140,12 +101,8 @@ func (s *Service) UpdateDocument(ctx context.Context, authHeader bearertoken.Tok
 }
 
 func (s *Service) TransitionDocument(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, requestArg gencontent.TransitionDocumentRequest) (gencontent.Document, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencontent.Document{}, mapUpstreamErr(err)
-	}
 	action := domain.TransitionAction(requestArg.Action.Value())
-	doc, err := s.appService.TransitionDocument(ctx, string(authHeader), personID, documentIdArg, action)
+	doc, err := s.appService.TransitionDocument(ctx, documentIdArg, action)
 	if err != nil {
 		return gencontent.Document{}, mapErr(err, errCtx{DocumentID: documentIdArg, Action: string(action)})
 	}
@@ -153,11 +110,7 @@ func (s *Service) TransitionDocument(ctx context.Context, authHeader bearertoken
 }
 
 func (s *Service) GetBlocks(ctx context.Context, authHeader bearertoken.Token, documentIdArg string) (gencontent.BlockList, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencontent.BlockList{}, mapUpstreamErr(err)
-	}
-	blocks, err := s.appService.GetBlocks(ctx, string(authHeader), personID, documentIdArg)
+	blocks, err := s.appService.GetBlocks(ctx, documentIdArg)
 	if err != nil {
 		return gencontent.BlockList{}, mapErr(err, errCtx{DocumentID: documentIdArg})
 	}
@@ -165,10 +118,6 @@ func (s *Service) GetBlocks(ctx context.Context, authHeader bearertoken.Token, d
 }
 
 func (s *Service) PutBlocks(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, requestArg gencontent.PutBlocksRequest) (gencontent.BlockList, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
-		return gencontent.BlockList{}, mapUpstreamErr(err)
-	}
 	inputs := make([]domain.BlockInput, 0, len(requestArg.Blocks))
 	for _, b := range requestArg.Blocks {
 		data, err := marshalAny(b.Data)
@@ -177,7 +126,7 @@ func (s *Service) PutBlocks(ctx context.Context, authHeader bearertoken.Token, d
 		}
 		inputs = append(inputs, domain.BlockInput{BlockTypeCode: b.BlockTypeCode, Position: b.Position, Data: data})
 	}
-	blocks, err := s.appService.PutBlocks(ctx, string(authHeader), personID, documentIdArg, inputs)
+	blocks, err := s.appService.PutBlocks(ctx, documentIdArg, inputs)
 	if err != nil {
 		return gencontent.BlockList{}, mapErr(err, errCtx{DocumentID: documentIdArg})
 	}

@@ -5,42 +5,29 @@ package application
 
 import (
 	"context"
+	"errors"
 
-	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/authorization"
+	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
 	"github.com/olehmushka/open-faith-map/internal/content/domain"
 )
 
-// managePermission is content.manage's underlying go-oikumenea permission (M3, D-PlatformModerator's
+// managePermission is content.manage's underlying internal/authz permission (M3, D-PlatformModerator's
 // pattern applied to content). Reused, not newly minted: congregation-admin already holds
-// religionorg.manage on its own unit (scripts/bootstrap-registration-org), the same permission
+// religionorg.manage on its own unit (migrations/0022_core_seed.sql), the same permission
 // registration's own operator gate reuses — just checked against a different unit (a specific
 // site's congregation unit, never the shared root).
-const managePermission = "religionorg.manage"
+const managePermission = authzdomain.PermReligionOrgManage
 
-// requireManage asks go-oikumenea's real PDP (Authorize) whether callerPersonID holds
+// requireManage asks internal/authz's PDP whether the request's subject (from ctx) holds
 // managePermission specifically on unitRID — never an untargeted "holds it anywhere" check
-// (architecture/conventions.md, D-PlatformModerator). Authorize itself requires the caller to
-// already hold assignment.read reaching unitRID, no self-exemption — congregation-admin's role
-// grants that (scripts/bootstrap-registration-org, M3's own fix to that role; see its comment for
-// the M2.3 precedent this mirrors).
-func (s *Service) requireManage(ctx context.Context, token, callerPersonID, unitRID string) error {
-	c, err := s.client(token)
-	if err != nil {
-		return err
-	}
-	resp, err := c.Authorization.Authorize(ctx, authorization.AuthorizeRequest{
-		SubjectPersonId: callerPersonID,
-		Action:          managePermission,
-		UnitId:          &unitRID,
-	})
-	if err != nil {
-		if authorization.IsPermissionDenied(err) {
+// (architecture/conventions.md, D-PlatformModerator). M10.6: no token, no client — the subject comes
+// from context, resolved by internal/identity's authenticator middleware.
+func (s *Service) requireManage(ctx context.Context, unitRID string) error {
+	if err := s.authzSvc.Require(ctx, managePermission, unitRID); err != nil {
+		if errors.Is(err, authzdomain.ErrPermissionDenied) {
 			return domain.ErrForbidden
 		}
 		return err
-	}
-	if !resp.Allow {
-		return domain.ErrForbidden
 	}
 	return nil
 }

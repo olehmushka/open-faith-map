@@ -3,8 +3,13 @@
 
 // Package application holds the content module's business logic: the content.manage target-scoped
 // gate (authorize.go), block json-schema validation (blockvalidation.go), the parent-depth walk,
-// the document transition state machine, and the public/admin read split — always deciding write
-// authority against go-oikumenea's real PDP with the CALLER's own forwarded token (D-Facade).
+// the document transition state machine, and the public/admin read split.
+//
+// M10.6 cutover: write authority is decided by internal/authz.Require against the request's
+// context-resolved subject (internal/identity's authenticator middleware), not a per-call
+// go-oikumenea client built from the caller's forwarded token. No behaviour change beyond
+// D-InProcessAuthz's documented removal of the assignment.read meta-check (see
+// internal/registration/application/service.go's own cutover comment for the general reasoning).
 package application
 
 import (
@@ -12,47 +17,37 @@ import (
 	"encoding/json"
 	"fmt"
 
-	oikumenea "github.com/olehmushka/go-oikumenea/clients/go"
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/content/adapters"
 	"github.com/olehmushka/open-faith-map/internal/content/domain"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
 )
 
-type Config struct {
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
-}
-
 type Service struct {
-	store *adapters.Store
-	cfg   Config
+	store    *adapters.Store
+	authzSvc *authz.Service
 }
 
-func NewService(store *adapters.Store, cfg Config) *Service {
-	return &Service{store: store, cfg: cfg}
-}
-
-func (s *Service) client(token string) (*oikumenea.Client, error) {
-	return coreintegration.NewUserClient(s.cfg.OikumeneaBaseURL, token, s.cfg.OikumeneaInsecureSkipVerify)
+func NewService(store *adapters.Store, authzSvc *authz.Service) *Service {
+	return &Service{store: store, authzSvc: authzSvc}
 }
 
 // ---- sites ----
 
 // CreateSite's target is the request's own claimed congregation unit — no site row exists yet to
 // load one from.
-func (s *Service) CreateSite(ctx context.Context, token, callerPersonID string, in domain.CreateSiteInput) (domain.Site, error) {
-	if err := s.requireManage(ctx, token, callerPersonID, in.CongregationUnitRID); err != nil {
+func (s *Service) CreateSite(ctx context.Context, in domain.CreateSiteInput) (domain.Site, error) {
+	if err := s.requireManage(ctx, in.CongregationUnitRID); err != nil {
 		return domain.Site{}, err
 	}
 	return s.store.InsertSite(ctx, in)
 }
 
-func (s *Service) UpdateSiteTheme(ctx context.Context, token, callerPersonID, siteID string, theme json.RawMessage) (domain.Site, error) {
+func (s *Service) UpdateSiteTheme(ctx context.Context, siteID string, theme json.RawMessage) (domain.Site, error) {
 	site, err := s.store.GetSiteByID(ctx, siteID)
 	if err != nil {
 		return domain.Site{}, err
 	}
-	if err := s.requireManage(ctx, token, callerPersonID, site.CongregationUnitRID); err != nil {
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return domain.Site{}, err
 	}
 	return s.store.UpdateSiteTheme(ctx, siteID, theme)
@@ -66,12 +61,12 @@ func (s *Service) GetSite(ctx context.Context, congregationUnitRID string) (doma
 // ---- documents ----
 
 // ListDocuments is the admin read (ContentService) — every state, content.manage-gated.
-func (s *Service) ListDocuments(ctx context.Context, token, callerPersonID, siteID string, kind, locale, state *string) ([]domain.Document, error) {
+func (s *Service) ListDocuments(ctx context.Context, siteID string, kind, locale, state *string) ([]domain.Document, error) {
 	site, err := s.store.GetSiteByID(ctx, siteID)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireManage(ctx, token, callerPersonID, site.CongregationUnitRID); err != nil {
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return nil, err
 	}
 	return s.store.ListDocuments(ctx, siteID, kind, locale, state)
@@ -83,12 +78,12 @@ func (s *Service) ListPublicDocuments(ctx context.Context, siteID string, kind, 
 	return s.store.ListPublicDocuments(ctx, siteID, kind, locale)
 }
 
-func (s *Service) CreateDocument(ctx context.Context, token, callerPersonID, siteID string, in domain.CreateDocumentInput) (domain.Document, error) {
+func (s *Service) CreateDocument(ctx context.Context, siteID string, in domain.CreateDocumentInput) (domain.Document, error) {
 	site, err := s.store.GetSiteByID(ctx, siteID)
 	if err != nil {
 		return domain.Document{}, err
 	}
-	if err := s.requireManage(ctx, token, callerPersonID, site.CongregationUnitRID); err != nil {
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return domain.Document{}, err
 	}
 	if in.Kind == domain.KindEvent && in.EventStartsAt == nil {
@@ -102,7 +97,7 @@ func (s *Service) CreateDocument(ctx context.Context, token, callerPersonID, sit
 	return s.store.InsertDocument(ctx, siteID, in)
 }
 
-func (s *Service) UpdateDocument(ctx context.Context, token, callerPersonID, documentID string, in domain.UpdateDocumentInput) (domain.Document, error) {
+func (s *Service) UpdateDocument(ctx context.Context, documentID string, in domain.UpdateDocumentInput) (domain.Document, error) {
 	doc, err := s.store.GetDocument(ctx, documentID)
 	if err != nil {
 		return domain.Document{}, err
@@ -111,7 +106,7 @@ func (s *Service) UpdateDocument(ctx context.Context, token, callerPersonID, doc
 	if err != nil {
 		return domain.Document{}, err
 	}
-	if err := s.requireManage(ctx, token, callerPersonID, site.CongregationUnitRID); err != nil {
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return domain.Document{}, err
 	}
 	if in.ParentDocumentID != nil {
@@ -157,7 +152,7 @@ var transitions = map[domain.DocumentState]map[domain.TransitionAction]domain.Do
 	},
 }
 
-func (s *Service) TransitionDocument(ctx context.Context, token, callerPersonID, documentID string, action domain.TransitionAction) (domain.Document, error) {
+func (s *Service) TransitionDocument(ctx context.Context, documentID string, action domain.TransitionAction) (domain.Document, error) {
 	doc, err := s.store.GetDocument(ctx, documentID)
 	if err != nil {
 		return domain.Document{}, err
@@ -166,7 +161,7 @@ func (s *Service) TransitionDocument(ctx context.Context, token, callerPersonID,
 	if err != nil {
 		return domain.Document{}, err
 	}
-	if err := s.requireManage(ctx, token, callerPersonID, site.CongregationUnitRID); err != nil {
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return domain.Document{}, err
 	}
 	next, ok := transitions[doc.State][action]
@@ -180,7 +175,7 @@ func (s *Service) TransitionDocument(ctx context.Context, token, callerPersonID,
 // ---- blocks ----
 
 // GetBlocks is the admin read (ContentService) — works regardless of document state.
-func (s *Service) GetBlocks(ctx context.Context, token, callerPersonID, documentID string) ([]domain.Block, error) {
+func (s *Service) GetBlocks(ctx context.Context, documentID string) ([]domain.Block, error) {
 	doc, err := s.store.GetDocument(ctx, documentID)
 	if err != nil {
 		return nil, err
@@ -189,7 +184,7 @@ func (s *Service) GetBlocks(ctx context.Context, token, callerPersonID, document
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireManage(ctx, token, callerPersonID, site.CongregationUnitRID); err != nil {
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return nil, err
 	}
 	return s.store.ListBlocks(ctx, documentID)
@@ -208,7 +203,7 @@ func (s *Service) GetPublicBlocks(ctx context.Context, documentID string) ([]dom
 	return s.store.ListBlocks(ctx, documentID)
 }
 
-func (s *Service) PutBlocks(ctx context.Context, token, callerPersonID, documentID string, blocks []domain.BlockInput) ([]domain.Block, error) {
+func (s *Service) PutBlocks(ctx context.Context, documentID string, blocks []domain.BlockInput) ([]domain.Block, error) {
 	doc, err := s.store.GetDocument(ctx, documentID)
 	if err != nil {
 		return nil, err
@@ -217,7 +212,7 @@ func (s *Service) PutBlocks(ctx context.Context, token, callerPersonID, document
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireManage(ctx, token, callerPersonID, site.CongregationUnitRID); err != nil {
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return nil, err
 	}
 

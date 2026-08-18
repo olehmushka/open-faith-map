@@ -55,9 +55,3 @@ func mapErr(err error, c errCtx) error {
 		return err
 	}
 }
-
-// mapUpstreamErr wraps a failure resolving the caller's own identity (whoami) — always an upstream
-// go-oikumenea/network error, never one of this module's own typed errors.
-func mapUpstreamErr(err error) error {
-	return err
-}

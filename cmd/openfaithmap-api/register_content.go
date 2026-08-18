@@ -16,16 +16,13 @@ import (
 
 // registerContent populates deps.ContentAppSvc — registerDiscovery, run after this one in
 // registerOrder (main.go), reads it to build its own contentSiteResolver.
+//
+// M10.6: depends on deps.AuthzSvc (populated by registerCore, which runs before every consumer
+// module) instead of the go-oikumenea SDK config.
 func registerContent(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	contentStore := contentadapters.NewStore(deps.Pool)
-	contentAppSvc := contentapplication.NewService(contentStore, contentapplication.Config{
-		OikumeneaBaseURL:            deps.OikumeneaBaseURL,
-		OikumeneaInsecureSkipVerify: deps.OikumeneaInsecureSkipVerify,
-	})
-	contentTransportSvc := contenttransport.NewService(contentAppSvc, contenttransport.Config{
-		OikumeneaBaseURL:            deps.OikumeneaBaseURL,
-		OikumeneaInsecureSkipVerify: deps.OikumeneaInsecureSkipVerify,
-	})
+	contentAppSvc := contentapplication.NewService(contentStore, deps.AuthzSvc)
+	contentTransportSvc := contenttransport.NewService(contentAppSvc)
 	contentPublicTransportSvc := contenttransport.NewPublicService(contentAppSvc)
 
 	if err := gencontent.RegisterRoutesContentService(info.Router, contentTransportSvc); err != nil {
