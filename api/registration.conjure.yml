@@ -176,6 +176,11 @@ types:
         safe-args:
           requestId: string
           status: string
+      Forbidden:
+        docs: The caller does not hold religionorg.manage on the configured root unit (approveRequest, rejectRequest, reparentRequest, listRequests).
+        namespace: Registration
+        code: PERMISSION_DENIED
+        safe-args: {}
 
 services:
   RegistrationService:
@@ -230,9 +235,7 @@ services:
           the configured root unit, org classification, a site over a new location, a filled
           Position, and a unit-scoped role assignment granting the submitter authority over their
           new congregation) under the caller's own resolved subject — internal/authz's PDP decides
-          for real if the caller lacks authority (internal/registration/transport's mapErr passes
-          authzdomain.ErrPermissionDenied through unmapped — no typed Registration:* error exists
-          for it today; a real open seam, not new to this rewrite).
+          for real if the caller lacks authority, returning Registration:Forbidden.
         args:
           requestId:
             type: string

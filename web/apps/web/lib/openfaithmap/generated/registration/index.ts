@@ -1,5 +1,6 @@
 export * from "./approveRegistrationRequest";
 export * from "./coordinate";
+export * from "./forbidden";
 export * from "./registrationRequest";
 export * from "./registrationRequestPage";
 export * from "./registrationService";

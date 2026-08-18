@@ -28,7 +28,7 @@ export interface IRegistrationService {
     /** Read one request. The submitter or an operator (verified live) may read it. */
     getRequest(requestId: string): Promise<IRegistrationRequest>;
     /**
-     * Approve a PENDING request: performs the real in-process core writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) under the caller's own resolved subject — internal/authz's PDP decides for real if the caller lacks authority (internal/registration/transport's mapErr passes authzdomain.ErrPermissionDenied through unmapped — no typed Registration:* error exists for it today; a real open seam, not new to this rewrite).
+     * Approve a PENDING request: performs the real in-process core writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) under the caller's own resolved subject — internal/authz's PDP decides for real if the caller lacks authority, returning Registration:Forbidden.
      *
      */
     approveRequest(requestId: string, request: IApproveRegistrationRequest): Promise<IRegistrationRequest>;
@@ -108,7 +108,7 @@ export class RegistrationService implements IRegistrationService {
     }
 
     /**
-     * Approve a PENDING request: performs the real in-process core writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) under the caller's own resolved subject — internal/authz's PDP decides for real if the caller lacks authority (internal/registration/transport's mapErr passes authzdomain.ErrPermissionDenied through unmapped — no typed Registration:* error exists for it today; a real open seam, not new to this rewrite).
+     * Approve a PENDING request: performs the real in-process core writes (createChildOrg under the configured root unit, org classification, a site over a new location, a filled Position, and a unit-scoped role assignment granting the submitter authority over their new congregation) under the caller's own resolved subject — internal/authz's PDP decides for real if the caller lacks authority, returning Registration:Forbidden.
      *
      */
     public approveRequest(requestId: string, request: IApproveRegistrationRequest): Promise<IRegistrationRequest> {

@@ -15,6 +15,154 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+type forbidden struct{}
+
+func (o forbidden) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *forbidden) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewForbidden returns new instance of Forbidden error.
+func NewForbidden() *Forbidden {
+	return &Forbidden{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), forbidden: forbidden{}}
+}
+
+// WrapWithForbidden returns new instance of Forbidden error wrapping an existing error.
+func WrapWithForbidden(err error) *Forbidden {
+	return &Forbidden{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, forbidden: forbidden{}}
+}
+
+// Forbidden is an error type.
+// The caller does not hold religionorg.manage on the configured root unit (approveRequest, rejectRequest, reparentRequest, listRequests).
+type Forbidden struct {
+	errorInstanceID uuid.UUID
+	forbidden
+	cause error
+	stack werror.StackTrace
+}
+
+// IsForbidden returns true if err is an instance of Forbidden.
+func IsForbidden(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*Forbidden)
+	return ok
+}
+
+func (e *Forbidden) Error() string {
+	return fmt.Sprintf("PERMISSION_DENIED Registration:Forbidden (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *Forbidden) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *Forbidden) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *Forbidden) Message() string {
+	return "PERMISSION_DENIED Registration:Forbidden"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *Forbidden) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *Forbidden) Code() errors.ErrorCode {
+	return errors.PermissionDenied
+}
+
+// Name returns an error name identifying error type.
+func (e *Forbidden) Name() string {
+	return "Registration:Forbidden"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *Forbidden) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *Forbidden) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *Forbidden) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *Forbidden) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *Forbidden) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *Forbidden) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e Forbidden) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.forbidden)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.PermissionDenied, ErrorName: "Registration:Forbidden", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *Forbidden) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters forbidden
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.forbidden = parameters
+	return nil
+}
+
 type requestNotApproved struct {
 	RequestId string `json:"requestId"`
 	Status    string `json:"status"`
@@ -766,6 +914,7 @@ func (e *TaxonNotFound) UnmarshalJSON(data []byte) error {
 }
 
 func init() {
+	conjureerrors.RegisterErrorType("Registration:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("Registration:RequestNotApproved", reflect.TypeOf(RequestNotApproved{}))
 	conjureerrors.RegisterErrorType("Registration:RequestNotFound", reflect.TypeOf(RequestNotFound{}))
 	conjureerrors.RegisterErrorType("Registration:RequestNotPending", reflect.TypeOf(RequestNotPending{}))
