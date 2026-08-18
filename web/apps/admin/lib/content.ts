@@ -3,7 +3,7 @@
 
 // Server-only: openfaithmap-api's content module via the generated TypeScript SDK
 // (./openfaithmap, M3), same shape as lib/registration.ts (M2.6). Forwards the session's Google ID
-// token unchanged, same as lib/oikumenea.ts. Public reads (getSite/listPublicDocuments/
+// token unchanged, same as lib/core.ts. Public reads (getSite/listPublicDocuments/
 // getPublicBlocks/listBlockTypes) go through the SAME client — ContentPublicService's generated
 // methods simply never look at the bearer token — so no separate unauthenticated client is needed.
 import "server-only";

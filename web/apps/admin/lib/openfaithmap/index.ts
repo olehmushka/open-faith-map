@@ -5,9 +5,9 @@
 //
 // The per-service clients under ./generated are GENERATED from the Conjure contract
 // (scripts/gen-ts-client.sh) — never hand-edited. This file is the only hand-written source: it
-// wires the generated service onto one shared HTTP bridge (one base URL + one bearer token), the
-// same pattern go-oikumenea's own TypeScript SDK uses (clients/typescript/src/index.ts) and this
-// app's lib/oikumenea.ts already follows for go-oikumenea itself.
+// wires the generated service onto one shared HTTP bridge (one base URL + one bearer token) — the
+// same pattern go-oikumenea's own TypeScript SDK used to use before M10.7's lib/oikumenea.ts
+// (deleted this milestone) was retired along with go-oikumenea itself.
 //
 // Deliberately generated IN PLACE here, not as a separate published package like go-oikumenea's
 // oikumenea-client — web/apps/admin is this SDK's only consumer, in this repo, and its Dockerfile's
@@ -17,6 +17,7 @@ import { DefaultHttpApiBridge, type IHttpApiBridge, type IUserAgent } from "conj
 
 import { CongregationImportService } from "./generated/congregationimport";
 import { ContentPublicService, ContentService } from "./generated/content";
+import { CoreService, CoreSuperAdminService } from "./generated/core";
 import { DiscoveryPublicService, DiscoveryService } from "./generated/discovery";
 import { ModerationPublicService, ModerationService } from "./generated/moderation";
 import { RegistrationService } from "./generated/registration";
@@ -53,6 +54,8 @@ export interface OpenFaithMapClient {
   readonly moderationPublic: ModerationPublicService;
   readonly vouching: VouchingService;
   readonly congregationImport: CongregationImportService;
+  readonly core: CoreService;
+  readonly coreSuperAdmin: CoreSuperAdminService;
   /** The underlying conjure HTTP bridge, for advanced use. */
   readonly bridge: IHttpApiBridge;
 }
@@ -89,6 +92,8 @@ export function createOpenFaithMapClient(
     moderationPublic: new ModerationPublicService(bridge),
     vouching: new VouchingService(bridge),
     congregationImport: new CongregationImportService(bridge),
+    core: new CoreService(bridge),
+    coreSuperAdmin: new CoreSuperAdminService(bridge),
     bridge,
   };
 }

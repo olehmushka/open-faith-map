@@ -23,7 +23,7 @@ import Google from "next-auth/providers/google";
 
 declare module "next-auth" {
   interface Session {
-    /** The Google ID token forwarded as the bearer on go-oikumenea calls (lib/oikumenea.ts). */
+    /** The Google ID token forwarded as the bearer on openfaithmap-api calls (lib/openfaithmap). */
     idToken?: string;
     /** Set when the refresh attempt itself failed — the session should be treated as ended. */
     error?: "RefreshTokenError";

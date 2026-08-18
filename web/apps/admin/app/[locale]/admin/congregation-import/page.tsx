@@ -76,7 +76,7 @@ export default async function CongregationImportPage({
   const source = sourceRaw && sourceRaw !== UNSET_OPTION ? sourceRaw : undefined;
   const [{ candidates, nextPageToken }, taxa, countries] = await Promise.all([
     listCandidates(status, source),
-    listTaxaForPicker(locale),
+    listTaxaForPicker(),
     listCountriesForPicker(locale),
   ]);
   const rootUnitId = requireRootUnitId();

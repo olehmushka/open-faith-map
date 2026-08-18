@@ -3,7 +3,7 @@
 
 // Server-only: openfaithmap-api's registration module via the generated TypeScript SDK
 // (./openfaithmap, M2.6) instead of a hand-rolled fetch client. Forwards the session's Google ID
-// token unchanged, same as lib/oikumenea.ts. Keeps the same exported function names as the prior
+// token unchanged, same as lib/core.ts. Keeps the same exported function names as the prior
 // hand-written client so no call site changes — only the implementation and the source of the
 // types (the Conjure contract, not a hand-copy of it) changed.
 import "server-only";

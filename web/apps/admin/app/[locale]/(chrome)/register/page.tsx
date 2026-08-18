@@ -1,13 +1,9 @@
 import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/auth";
-import { EXCLUDED_TAXON_CODES } from "@/lib/dictionaries";
-import { oikumenea } from "@/lib/oikumenea";
+import { listCountriesForPicker, listTaxaForPicker } from "@/lib/dictionaries";
 import { submitRegistration } from "@/lib/registration";
 import { redirect } from "@/i18n/navigation";
-
-// go-oikumenea's own locale codes are ISO 639-3; this app's URL-facing locales are ISO 639-1.
-const OIKUMENEA_LOCALE: Record<string, string> = { en: "eng", uk: "ukr", es: "spa", pt: "por" };
 
 export default async function RegisterPage({
   params,
@@ -22,25 +18,8 @@ export default async function RegisterPage({
 
   const t = await getTranslations("RegisterPage");
   const { error } = await searchParams;
-  const oikumeneaLocale = OIKUMENEA_LOCALE[locale] ?? "eng";
 
-  const client = await oikumenea();
-  const [taxaPage, countries] = await Promise.all([
-    client.religion.listTaxa(undefined, undefined, undefined, undefined, undefined, 500),
-    client.geo.listCountries(),
-  ]);
-
-  const taxa = taxaPage.taxa
-    .filter((taxon) => !EXCLUDED_TAXON_CODES.has(taxon.code))
-    .map((taxon) => ({
-      id: taxon.id,
-      name: taxon.name[oikumeneaLocale] ?? taxon.name["eng"] ?? Object.values(taxon.name)[0] ?? taxon.code,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const countryOptions = countries.countries
-    .map((c) => ({ id: c.id, name: c.name[oikumeneaLocale] ?? c.name["eng"] ?? Object.values(c.name)[0] ?? c.code }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const [taxa, countryOptions] = await Promise.all([listTaxaForPicker(), listCountriesForPicker(locale)]);
 
   async function submit(formData: FormData) {
     "use server";

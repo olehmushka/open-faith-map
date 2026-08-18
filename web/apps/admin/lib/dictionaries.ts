@@ -1,13 +1,15 @@
 // Copyright 2026 Oleh Mushka
 // SPDX-License-Identifier: Apache-2.0
 
-// Server-only: small, bounded picker lists (religion taxa, countries) fetched straight from
-// go-oikumenea, same D-Facade reasoning as lib/jurisdiction.ts's own file comment — no
-// openfaithmap-api mirror, no new backend endpoint, since these are go-oikumenea-native
-// dictionaries an operator just needs to pick from, not data OpenFaithMap owns.
+// Server-only: small, bounded picker lists (religion taxa, countries) — M10.7 repoints this from
+// go-oikumenea (lib/oikumenea.ts, deleted this milestone) to openfaithmap-api's own core.conjure.yml
+// surface (lib/core.ts). This got strictly simpler, not just repointed: religion_taxa.name is a
+// plain string (no per-locale name table was ported, D-CorePortScope), and refdata_country_names'
+// locale column already uses this app's own locale codes (en/es/pt/uk) directly — no ISO-639-3
+// translation table to maintain anymore.
 import "server-only";
 
-import { oikumenea } from "./oikumenea";
+import * as core from "./core";
 
 // D-Exclusions (architecture/decisions.md), same codes as
 // internal/registration/domain.ExcludedTaxonCodes — the authoritative check runs server-side in
@@ -15,36 +17,24 @@ import { oikumenea } from "./oikumenea";
 // only. Shared across every picker in this app (register/page.tsx used to keep its own copy).
 export const EXCLUDED_TAXON_CODES = new Set(["russian_orthodox_church", "jehovahs_witnesses", "lds_church"]);
 
-// go-oikumenea's own locale codes are ISO 639-3; this app's URL-facing locales are ISO 639-1.
-const OIKUMENEA_LOCALE: Record<string, string> = { en: "eng", uk: "ukr", es: "spa", pt: "por" };
-
 export type PickerOption = { id: string; name: string };
 
-function localizedName(name: Record<string, string>, oikumeneaLocale: string, fallback: string): string {
-  return name[oikumeneaLocale] ?? name["eng"] ?? Object.values(name)[0] ?? fallback;
-}
-
 /**
- * Every non-excluded religion taxon, localized and sorted — for a plain <select>, same shape
- * register/page.tsx already uses for its own tradition picker (500 is that page's own bound too;
- * the real taxonomy is far smaller, seeded ~130 rows).
+ * Every non-excluded religion taxon, sorted — for a plain <select>, same shape register/page.tsx
+ * already uses for its own tradition picker (the real taxonomy is far smaller, seeded ~130 rows).
  */
-export async function listTaxaForPicker(locale: string): Promise<PickerOption[]> {
-  const oikumeneaLocale = OIKUMENEA_LOCALE[locale] ?? "eng";
-  const client = await oikumenea();
-  const taxaPage = await client.religion.listTaxa(undefined, undefined, undefined, undefined, undefined, 500);
-  return taxaPage.taxa
+export async function listTaxaForPicker(): Promise<PickerOption[]> {
+  const taxa = await core.listTaxa(undefined, 500);
+  return taxa
     .filter((taxon) => !EXCLUDED_TAXON_CODES.has(taxon.code))
-    .map((taxon) => ({ id: taxon.id, name: localizedName(taxon.name, oikumeneaLocale, taxon.code) }))
+    .map((taxon) => ({ id: taxon.id, name: taxon.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Every country, localized and sorted — same shape register/page.tsx already uses. */
 export async function listCountriesForPicker(locale: string): Promise<PickerOption[]> {
-  const oikumeneaLocale = OIKUMENEA_LOCALE[locale] ?? "eng";
-  const client = await oikumenea();
-  const countries = await client.geo.listCountries();
-  return countries.countries
-    .map((c) => ({ id: c.id, name: localizedName(c.name, oikumeneaLocale, c.code) }))
+  const countries = await core.listCountries();
+  return countries
+    .map((c) => ({ id: c.id, name: c.names[locale] ?? c.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

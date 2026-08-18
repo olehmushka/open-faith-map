@@ -1,12 +1,13 @@
 import { getTranslations } from "next-intl/server";
 
 import { auth, signOut } from "@/auth";
-import { oikumenea } from "@/lib/oikumenea";
+import { whoami } from "@/lib/core";
 import { Link, redirect } from "@/i18n/navigation";
 
-// The M1 exit-criterion proof artifact (docs/milestones.md): calls a real go-oikumenea endpoint
+// The M1 exit-criterion proof artifact (docs/milestones.md): calls a real openfaithmap-api endpoint
 // with the logged-in user's forwarded Google ID token, proving the session layer's token passthrough
-// works end-to-end, not just that login itself succeeds.
+// works end-to-end, not just that login itself succeeds. M10.7: repointed from go-oikumenea's
+// identityFederation.whoami() to this app's own core.conjure.yml (lib/core.ts).
 export default async function WhoamiPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   const session = await auth();
@@ -15,8 +16,7 @@ export default async function WhoamiPage({ params }: { params: Promise<{ locale:
   }
 
   const t = await getTranslations("WhoamiPage");
-  const client = await oikumenea();
-  const who = await client.identityFederation.whoami();
+  const who = await whoami();
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-4 px-6">

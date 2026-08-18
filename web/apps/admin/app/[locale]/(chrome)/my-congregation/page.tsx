@@ -1,18 +1,18 @@
 import { getTranslations } from "next-intl/server";
 
-import { oikumenea } from "@/lib/oikumenea";
+import { getPersons, getUnit, listMembershipsByUnit, whoami } from "@/lib/core";
 import { listRegistrations } from "@/lib/registration";
 import { Link, redirect } from "@/i18n/navigation";
 
 // The M2 "see their own roster" exit criterion. Finds the caller's own most recent APPROVED
 // registration (listRegistrations may return every request if the caller happens to also be an
 // operator, so filter to their own submissions explicitly rather than assuming scoping) and renders
-// membership.listMembers over its unit.
+// the unit's membership roster. M10.7: repointed from go-oikumenea (lib/oikumenea.ts, deleted this
+// milestone) to lib/core.ts; the per-member getPerson loop is now one batched getPersons call.
 export default async function MyCongregationPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   const t = await getTranslations("MyCongregationPage");
-  const client = await oikumenea();
-  const who = await client.identityFederation.whoami().catch(() => null);
+  const who = await whoami().catch(() => null);
   if (!who) return redirect({ href: "/login", locale });
 
   const { requests } = await listRegistrations();
@@ -33,17 +33,14 @@ export default async function MyCongregationPage({ params }: { params: Promise<{
   }
 
   const unitId = mine[0].createdUnitId!;
-  const [unit, memberPage] = await Promise.all([
-    client.tenant.getUnit(unitId),
-    client.membership.listMembers(unitId),
-  ]);
+  const [unit, memberships] = await Promise.all([getUnit(unitId), listMembershipsByUnit(unitId)]);
 
-  const members = await Promise.all(
-    memberPage.memberships.map(async (m) => {
-      const person = await client.person.getPerson(m.personId).catch(() => null);
-      return { ...m, displayName: person?.displayName ?? m.personId };
-    }),
-  );
+  const persons = await getPersons(memberships.map((m) => m.personId));
+  const personById = new Map(persons.map((p) => [p.id, p]));
+  const members = memberships.map((m) => ({
+    ...m,
+    displayName: personById.get(m.personId)?.displayName ?? m.personId,
+  }));
 
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 px-6 py-12">

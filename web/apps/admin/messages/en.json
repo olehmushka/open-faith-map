@@ -8,8 +8,8 @@
     "googleButton": "Sign in with Google"
   },
   "WhoamiPage": {
-    "heading": "Who am I (via go-oikumenea)",
-    "description": "Resolved by go-oikumenea's <code>identityFederation.whoami()</code> from the forwarded Google ID token — this is the M1 proof that login and token passthrough work end-to-end.",
+    "heading": "Who am I",
+    "description": "Resolved by openfaithmap-api's <code>core.whoami()</code> from the forwarded Google ID token — this is the M1 proof that login and token passthrough work end-to-end.",
     "registerLink": "Register a congregation (M2)",
     "reviewLink": "Review registration requests (operator)",
     "myCongregationLink": "My congregation",
@@ -70,7 +70,7 @@
   },
   "ReparentPage": {
     "heading": "Re-parent congregations",
-    "intro": "Move an already-approved congregation onto a different jurisdiction unit. This is a resumable, two-step move on go-oikumenea's side (add the new parent, then remove the old one) — re-submitting the same target for a congregation with a job already in progress resumes it rather than starting over.",
+    "intro": "Move an already-approved congregation onto a different jurisdiction unit. This is a resumable, two-step move (add the new parent, then remove the old one) — re-submitting the same target for a congregation with a job already in progress resumes it rather than starting over.",
     "jurisdictionUnitsHeading": "Jurisdiction units",
     "jurisdictionSearchPlaceholder": "Search jurisdiction units by name…",
     "search": "Search",
@@ -260,7 +260,7 @@
     "taxonAliasesHeading": "Taxon aliases",
     "taxonAliasesHint": "Free-text hint → religion taxon RID. Substring-matched against a candidate's scraped name.",
     "jurisdictionAliasesHeading": "Jurisdiction aliases",
-    "jurisdictionAliasesHint": "Free-text hint → go-oikumenea jurisdiction unit RID. Advisory only — never applied automatically at approval.",
+    "jurisdictionAliasesHint": "Free-text hint → jurisdiction unit RID. Advisory only — never applied automatically at approval.",
     "sourceCode": "Source code",
     "sourceCodeAllPlaceholder": "(all sources)",
     "aliasText": "Alias text",
