@@ -188,6 +188,43 @@ func TestReligionIntegration(t *testing.T) {
 	if !sawExact {
 		t.Errorf("SearchSites did not return the exact-precision site at the same point")
 	}
+
+	// --- M10.6: SearchSites' new Language/DayOfWeek filter — a site with a matching schedule row
+	// must be returned, a site with no schedule at all must not.
+	var mainServiceTypeID string
+	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.religion_service_types WHERE code = 'main' AND tradition_taxon_id IS NULL`).Scan(&mainServiceTypeID); err != nil {
+		t.Fatalf("lookup main service type: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO openfaithmap.religion_service_schedules (site_id, service_type_id, day_of_week, start_time, timezone, language)
+		VALUES ($1, $2, 0, '10:00', 'Europe/Kyiv', 'uk')`, exactSite.ID, mainServiceTypeID); err != nil {
+		t.Fatalf("insert schedule: %v", err)
+	}
+
+	uk := "uk"
+	sunday := 0
+	filtered, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Language: &uk, DayOfWeek: &sunday, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites(Language+DayOfWeek): %v", err)
+	}
+	var sawScheduled bool
+	for _, h := range filtered {
+		if h.ID == exactSite.ID {
+			sawScheduled = true
+		}
+	}
+	if !sawScheduled {
+		t.Errorf("SearchSites(Language=uk, DayOfWeek=0) did not return the site with a matching schedule")
+	}
+
+	es := "es" // no site has a Spanish-language schedule
+	noMatch, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Language: &es, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites(Language=es): %v", err)
+	}
+	if len(noMatch) != 0 {
+		t.Errorf("SearchSites(Language=es) = %+v, want no matches", noMatch)
+	}
 }
 
 func siteInput(unitID, locationID, siteTypeID string) adapters.CreateSiteInput {

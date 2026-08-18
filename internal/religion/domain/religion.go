@@ -89,12 +89,16 @@ type DiscoverySite struct {
 }
 
 // DiscoveryQuery is SearchSites' input: an optional spatial window (radius XOR bbox), an optional
-// taxon filter (via the taxonomy closure), and an optional text query over unit code/name/alias.
+// taxon filter (via the taxonomy closure), an optional text query over unit code/name/alias, and an
+// optional service-schedule filter (Language/DayOfWeek — matches a site with at least one
+// religion_service_schedules row satisfying each filter given, independently of one another).
 type DiscoveryQuery struct {
 	Lat, Lng, RadiusM              *float64
 	MinLat, MinLng, MaxLat, MaxLng *float64
 	Religion                       string // taxon id; "" = no filter
 	Query                          string
+	Language                       *string // religion_service_schedules.language; nil = no filter
+	DayOfWeek                      *int    // religion_service_schedules.day_of_week (0=Sunday..6=Saturday); nil = no filter
 	Limit                          int
 }
 

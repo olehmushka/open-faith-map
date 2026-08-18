@@ -3,23 +3,29 @@
 
 // Package application holds the discovery module's business logic: the cache-first/live-fallback
 // search, and the operator-only manual refresh tool. See docs/modules/discovery.md's redesign.
+//
+// M10.6 cutover: the live-fallback search and the operator refresh both call internal/religion's
+// SearchSites directly (in-process) instead of building a service-principal go-oikumenea client per
+// call — the "server's own call, never on behalf of the caller" framing stays true, it's just no
+// longer an HTTP round-trip. requireOperator decides against internal/authz.Require.
 package application
 
 import (
 	"context"
 	"math"
 
-	oikumenea "github.com/olehmushka/go-oikumenea/clients/go"
-	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/authorization"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
+	"github.com/olehmushka/open-faith-map/internal/authz"
+	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
 	"github.com/olehmushka/open-faith-map/internal/discovery/adapters"
 	"github.com/olehmushka/open-faith-map/internal/discovery/domain"
+	religionapplication "github.com/olehmushka/open-faith-map/internal/religion/application"
+	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
 )
 
 // operatorPermission mirrors registration's IsOperator (M2.3) and content's content.manage — the
-// same religionorg.manage grant, reused rather than minted as a new go-oikumenea permission, just
-// checked against the shared root unit instead of a single congregation's own unit.
-const operatorPermission = "religionorg.manage"
+// same religionorg.manage grant, checked against the shared root unit instead of a single
+// congregation's own unit.
+const operatorPermission = authzdomain.PermReligionOrgManage
 
 // ContentResolver looks up the published content_sites row for a congregation unit, if any — an
 // interface-call cross-module dependency (conventions.md), not a raw cross-module SQL query, even
@@ -30,38 +36,27 @@ type ContentResolver interface {
 }
 
 type Config struct {
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
 	// RootUnitID is the same shared root unit registration/content already use
-	// (scripts/bootstrap-registration-org) — the target of the operator-scoped Authorize check.
+	// (internal/platform/seed.RootUnitID) — the target of the operator-scoped Require check.
 	RootUnitID string
-	// ServicePrincipal configures the server's own go-oikumenea call for Search's cache-miss
-	// fallback — never a forwarded caller token, since GET /search has no caller token to forward.
-	ServicePrincipal coreintegration.Config
 }
 
 type Service struct {
-	store   *adapters.Store
-	content ContentResolver
-	cfg     Config
+	store    *adapters.Store
+	content  ContentResolver
+	religion *religionapplication.Service
+	authzSvc *authz.Service
+	cfg      Config
 }
 
-func NewService(store *adapters.Store, content ContentResolver, cfg Config) *Service {
-	return &Service{store: store, content: content, cfg: cfg}
-}
-
-func (s *Service) serviceClient(ctx context.Context) (*oikumenea.Client, error) {
-	return coreintegration.NewServiceClient(ctx, s.cfg.ServicePrincipal)
-}
-
-func (s *Service) userClient(token string) (*oikumenea.Client, error) {
-	return coreintegration.NewUserClient(s.cfg.OikumeneaBaseURL, token, s.cfg.OikumeneaInsecureSkipVerify)
+func NewService(store *adapters.Store, content ContentResolver, religionSvc *religionapplication.Service, authzSvc *authz.Service, cfg Config) *Service {
+	return &Service{store: store, content: content, religion: religionSvc, authzSvc: authzSvc, cfg: cfg}
 }
 
 // Search answers GET /search (DiscoveryPublicService — no token, D-AdminSurface). A bare or
 // lat/lng/radius-only query is served from discovery_site_cache when the cache has any rows at
-// all; anything else (a tradition/language/dayOfWeek/query filter, or an empty cache) goes live via
-// the service principal — the server's own call, never on behalf of the caller, who has no token.
+// all; anything else (a tradition/language/dayOfWeek/query filter, or an empty cache) goes live —
+// the server's own in-process call, never on behalf of any specific caller, who has no token.
 func (s *Service) Search(ctx context.Context, q domain.SearchQuery) ([]domain.CacheRow, error) {
 	if !q.BypassesCache() {
 		cached, err := s.store.SearchAll(ctx)
@@ -76,22 +71,26 @@ func (s *Service) Search(ctx context.Context, q domain.SearchQuery) ([]domain.Ca
 }
 
 func (s *Service) refreshFromLive(ctx context.Context, q domain.SearchQuery) ([]domain.CacheRow, error) {
-	c, err := s.serviceClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	page, err := c.Religion.SearchSites(ctx,
-		q.Lat, q.Lng, q.RadiusM, nil, nil, nil, nil, q.Tradition, q.Language, q.DayOfWeek, nil, q.Query, nil)
+	sites, err := s.religion.SearchSites(ctx, religiondomain.DiscoveryQuery{
+		Lat: q.Lat, Lng: q.Lng, RadiusM: q.RadiusM,
+		Religion:   derefOrEmpty(q.Tradition),
+		Query:      derefOrEmpty(q.Query),
+		Language:   q.Language,
+		DayOfWeek:  q.DayOfWeek,
+	})
 	if err != nil {
 		// Never blocks the anonymous caller on an upstream hiccup (discovery.md's invariants) —
 		// whatever is already cached, even nothing, is still a valid answer.
 		return s.store.SearchAll(ctx)
 	}
-	rows := make([]domain.CacheRow, 0, len(page.Sites))
-	for _, site := range page.Sites {
+	rows := make([]domain.CacheRow, 0, len(sites))
+	for _, site := range sites {
+		if site.Latitude == nil || site.Longitude == nil {
+			continue // hidden sites are already excluded by SearchSites; defensive, not expected
+		}
 		row := domain.CacheRow{
-			ReligionSiteRID:     site.Id,
-			CongregationUnitRID: site.OrgUnitId,
+			ReligionSiteRID:     site.ID,
+			CongregationUnitRID: site.OrgUnitID,
 			Latitude:            site.Latitude,
 			Longitude:           site.Longitude,
 		}
@@ -116,23 +115,23 @@ func (s *Service) enrichContentSite(ctx context.Context, row *domain.CacheRow) {
 
 // RefreshRegion answers POST /refresh (DiscoveryService — header auth, operator tool only, not
 // part of the public product surface).
-func (s *Service) RefreshRegion(ctx context.Context, token, callerPersonID string, region domain.RefreshRegion) (int, error) {
-	if err := s.requireOperator(ctx, token, callerPersonID); err != nil {
+func (s *Service) RefreshRegion(ctx context.Context, region domain.RefreshRegion) (int, error) {
+	if err := s.requireOperator(ctx); err != nil {
 		return 0, err
 	}
-	c, err := s.serviceClient(ctx)
+	sites, err := s.religion.SearchSites(ctx, religiondomain.DiscoveryQuery{
+		MinLat: &region.MinLat, MinLng: &region.MinLng, MaxLat: &region.MaxLat, MaxLng: &region.MaxLng,
+	})
 	if err != nil {
 		return 0, err
 	}
-	page, err := c.Religion.SearchSites(ctx,
-		nil, nil, nil, &region.MinLat, &region.MinLng, &region.MaxLat, &region.MaxLng, nil, nil, nil, nil, nil, nil)
-	if err != nil {
-		return 0, err
-	}
-	for _, site := range page.Sites {
+	for _, site := range sites {
+		if site.Latitude == nil || site.Longitude == nil {
+			continue
+		}
 		row := domain.CacheRow{
-			ReligionSiteRID:     site.Id,
-			CongregationUnitRID: site.OrgUnitId,
+			ReligionSiteRID:     site.ID,
+			CongregationUnitRID: site.OrgUnitID,
 			Latitude:            site.Latitude,
 			Longitude:           site.Longitude,
 		}
@@ -141,34 +140,28 @@ func (s *Service) RefreshRegion(ctx context.Context, token, callerPersonID strin
 			return 0, err
 		}
 	}
-	return len(page.Sites), nil
+	return len(sites), nil
 }
 
-// requireOperator asks go-oikumenea's real PDP whether the caller holds operatorPermission on
-// Config.RootUnitID specifically — the same target-scoped pattern registration's IsOperator (M2.3)
-// and content's requireManage already use, here targeting the shared root since a region refresh
-// has no single congregation unit of its own.
-func (s *Service) requireOperator(ctx context.Context, token, callerPersonID string) error {
-	c, err := s.userClient(token)
-	if err != nil {
-		return err
-	}
-	rootUnitID := s.cfg.RootUnitID
-	resp, err := c.Authorization.Authorize(ctx, authorization.AuthorizeRequest{
-		SubjectPersonId: callerPersonID,
-		Action:          operatorPermission,
-		UnitId:          &rootUnitID,
-	})
-	if err != nil {
-		if authorization.IsPermissionDenied(err) {
+// requireOperator asks internal/authz's PDP whether the request's subject (from ctx) holds
+// operatorPermission on Config.RootUnitID specifically — the same target-scoped pattern
+// registration's IsOperator (M2.3) and content's requireManage already use, here targeting the
+// shared root since a region refresh has no single congregation unit of its own.
+func (s *Service) requireOperator(ctx context.Context) error {
+	if err := s.authzSvc.Require(ctx, operatorPermission, s.cfg.RootUnitID); err != nil {
+		if err == authzdomain.ErrPermissionDenied {
 			return domain.ErrForbidden
 		}
 		return err
 	}
-	if !resp.Allow {
-		return domain.ErrForbidden
-	}
 	return nil
+}
+
+func derefOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func filterByRadius(rows []domain.CacheRow, q domain.SearchQuery) []domain.CacheRow {
@@ -189,7 +182,7 @@ func filterByRadius(rows []domain.CacheRow, q domain.SearchQuery) []domain.Cache
 
 // haversineMeters is a client-side, non-PostGIS distance calc — deliberate: D-Facade says
 // OpenFaithMap owns no location index of its own, so this cache is a flat disposable projection,
-// not a spatial index. go-oikumenea's own PostGIS search (via the live fallback) does real
+// not a spatial index. internal/religion's own PostGIS search (via the live fallback) does real
 // radius/bbox filtering server-side; this only ever filters an already-cache-hit result set.
 func haversineMeters(lat1, lng1, lat2, lng2 float64) float64 {
 	const earthRadiusM = 6371000.0

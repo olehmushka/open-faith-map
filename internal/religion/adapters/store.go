@@ -294,6 +294,15 @@ func (s *Store) SearchSites(ctx context.Context, q domain.DiscoveryQuery) ([]dom
 				WHERE u.id = s.org_unit_id AND (lower(u.code) LIKE `+like+` OR lower(u.name) LIKE `+like+`)))`)
 	}
 
+	if q.Language != nil {
+		conds = append(conds, `EXISTS (SELECT 1 FROM openfaithmap.religion_service_schedules sch
+				WHERE sch.site_id = s.id AND sch.deleted_at IS NULL AND sch.language = `+add(*q.Language)+`)`)
+	}
+	if q.DayOfWeek != nil {
+		conds = append(conds, `EXISTS (SELECT 1 FROM openfaithmap.religion_service_schedules sch
+				WHERE sch.site_id = s.id AND sch.deleted_at IS NULL AND sch.day_of_week = `+add(*q.DayOfWeek)+`)`)
+	}
+
 	limit := q.Limit
 	if limit <= 0 {
 		limit = 20
