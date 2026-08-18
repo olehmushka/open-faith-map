@@ -3,7 +3,9 @@
 
 package domain
 
-import "context"
+import (
+	"context"
+)
 
 // JurisdictionNode is one hierarchy-tree node from a JurisdictionSource — a prospective
 // jurisdiction-tier go-oikumenea Unit (country/province/diocese/eparchy/deanery, never a

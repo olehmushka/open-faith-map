@@ -3,7 +3,9 @@
 
 package middleware
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestGuardSymmetricIssuers(t *testing.T) {
 	hs256 := []IssuerConfig{{Issuer: "urn:test:hs256", Type: IssuerHS256}}

@@ -3,7 +3,9 @@
 
 package domain
 
-import "context"
+import (
+	"context"
+)
 
 // ActiveGrant is one active assignment with its role's resolved permission set — the PDP's per-grant
 // input (assembled by the application layer from the repository). GraphID/GraphCode are empty for

@@ -3,7 +3,9 @@
 
 package wikidatacatholic
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestQidFromURI(t *testing.T) {
 	tests := []struct {

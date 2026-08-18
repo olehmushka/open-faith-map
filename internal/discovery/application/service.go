@@ -73,10 +73,10 @@ func (s *Service) Search(ctx context.Context, q domain.SearchQuery) ([]domain.Ca
 func (s *Service) refreshFromLive(ctx context.Context, q domain.SearchQuery) ([]domain.CacheRow, error) {
 	sites, err := s.religion.SearchSites(ctx, religiondomain.DiscoveryQuery{
 		Lat: q.Lat, Lng: q.Lng, RadiusM: q.RadiusM,
-		Religion:   derefOrEmpty(q.Tradition),
-		Query:      derefOrEmpty(q.Query),
-		Language:   q.Language,
-		DayOfWeek:  q.DayOfWeek,
+		Religion:  derefOrEmpty(q.Tradition),
+		Query:     derefOrEmpty(q.Query),
+		Language:  q.Language,
+		DayOfWeek: q.DayOfWeek,
 	})
 	if err != nil {
 		// Never blocks the anonymous caller on an upstream hiccup (discovery.md's invariants) —

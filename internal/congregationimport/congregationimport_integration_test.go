@@ -56,9 +56,11 @@ type fakeConnector struct {
 	served  bool
 }
 
-func (c *fakeConnector) Code() string                     { return "m106-fake" }
-func (c *fakeConnector) Citation() domain.SourceCitation   { return domain.SourceCitation{} }
-func (c *fakeConnector) Clone() domain.Connector           { return &fakeConnector{records: c.records, byID: c.byID} }
+func (c *fakeConnector) Code() string                    { return "m106-fake" }
+func (c *fakeConnector) Citation() domain.SourceCitation { return domain.SourceCitation{} }
+func (c *fakeConnector) Clone() domain.Connector {
+	return &fakeConnector{records: c.records, byID: c.byID}
+}
 func (c *fakeConnector) Normalize(raw domain.RawRecord) (domain.NormalizedCandidate, error) {
 	return c.byID[raw.SourceRecordID], nil
 }
@@ -324,5 +326,5 @@ func isApprovableForTest(status domain.Status) bool {
 	}
 }
 
-func strPtr(s string) *string        { return &s }
-func float64Ptr(f float64) *float64  { return &f }
+func strPtr(s string) *string       { return &s }
+func float64Ptr(f float64) *float64 { return &f }

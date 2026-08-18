@@ -3,7 +3,9 @@
 
 package domain
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestLocationInputValidate(t *testing.T) {
 	tests := []struct {

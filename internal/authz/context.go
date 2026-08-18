@@ -8,7 +8,9 @@
 // background paths that have no human subject.
 package authz
 
-import "context"
+import (
+	"context"
+)
 
 // Subject is the resolved PDP subject attached to an authenticated request by the identity
 // middleware (internal/identity/middleware). Unlike go-oikumenea's own authn.Subject, there is no

@@ -3,7 +3,9 @@
 
 package domain
 
-import "time"
+import (
+	"time"
+)
 
 // JurisdictionUnitStatus matches migrations/0013_congregationimport_jurisdiction_units.sql's CHECK
 // constraint verbatim.

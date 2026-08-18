@@ -3,7 +3,9 @@
 
 package domain
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestCoarsen(t *testing.T) {
 	const lat, lng = 50.450123, 30.523456
