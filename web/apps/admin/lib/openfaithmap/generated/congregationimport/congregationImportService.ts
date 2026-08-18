@@ -7,8 +7,10 @@ import { IEditCandidateRequest } from "./editCandidateRequest";
 import { IImportRun } from "./importRun";
 import { IJurisdictionAlias } from "./jurisdictionAlias";
 import { IJurisdictionAliasList } from "./jurisdictionAliasList";
+import { IJurisdictionSyncResult } from "./jurisdictionSyncResult";
 import { IRejectCandidateRequest } from "./rejectCandidateRequest";
 import { IRunConnectorRequest } from "./runConnectorRequest";
+import { IRunJurisdictionSyncRequest } from "./runJurisdictionSyncRequest";
 import { IRunPage } from "./runPage";
 import { ISuggestCoordinatesResponse } from "./suggestCoordinatesResponse";
 import { ITaxonAlias } from "./taxonAlias";
@@ -66,6 +68,11 @@ export interface ICongregationImportService {
      *
      */
     createJurisdictionAlias(request: ICreateJurisdictionAliasRequest): Promise<IJurisdictionAlias>;
+    /**
+     * Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write in this module works: creates/resolves JURISDICTION-TIER go-oikumenea Units (never a congregation) under the deployment's configured anchor unit, fully automatically, using the SERVICE PRINCIPAL's own token rather than the caller's forwarded one. Idempotent by natural key (source code + the source's own external id) — a re-run only creates genuinely new/changed nodes. Suitable for an unattended scheduled trigger (an operator's own identity is still required to CALL this endpoint, same as runConnector, but performs no go-oikumenea write itself).
+     *
+     */
+    runJurisdictionSync(request: IRunJurisdictionSyncRequest): Promise<IJurisdictionSyncResult>;
     /**
      * Look up approximate coordinates for a candidate's address via the configured geocoding provider (application.Geocoder, Nominatim by default) — ADVISORY ONLY, never applied automatically; the operator must still call editCandidate to persist. Operator-only, and real per-provider rate-limiting is enforced server-side — never called in bulk from runConnector.
      *
@@ -302,6 +309,25 @@ export class CongregationImportService implements ICongregationImportService {
             "createJurisdictionAlias",
             "POST",
             "/congregation-import/v1/jurisdiction-aliases",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Trigger sourceCode's JurisdictionSource (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — a narrow, deliberate exception to how every other write in this module works: creates/resolves JURISDICTION-TIER go-oikumenea Units (never a congregation) under the deployment's configured anchor unit, fully automatically, using the SERVICE PRINCIPAL's own token rather than the caller's forwarded one. Idempotent by natural key (source code + the source's own external id) — a re-run only creates genuinely new/changed nodes. Suitable for an unattended scheduled trigger (an operator's own identity is still required to CALL this endpoint, same as runConnector, but performs no go-oikumenea write itself).
+     *
+     */
+    public runJurisdictionSync(request: IRunJurisdictionSyncRequest): Promise<IJurisdictionSyncResult> {
+        return this.bridge.call<IJurisdictionSyncResult>(
+            "CongregationImportService",
+            "runJurisdictionSync",
+            "POST",
+            "/congregation-import/v1/jurisdiction-sync/runs",
             request,
             __undefined,
             __undefined,
