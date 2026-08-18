@@ -286,7 +286,12 @@
     "commandPalette": "Командна панель",
     "commandPalettePlaceholder": "Пошук команд або сайту…",
     "commandPaletteNoResults": "Нічого не знайдено.",
-    "commandPaletteSites": "Сайти"
+    "commandPaletteSites": "Сайти",
+    "superAdminSection": "Суперадміністрування",
+    "people": "Люди",
+    "roleGrants": "Надання ролей",
+    "units": "Юніти",
+    "taxa": "Таксономія"
   },
   "AdminSitesPage": {
     "heading": "Сайти",
@@ -294,6 +299,71 @@
     "searchPlaceholder": "Пошук за назвою юрисдикційної одиниці…",
     "search": "Пошук",
     "noResults": "Нічого не знайдено."
+  },
+  "SuperAdminPeoplePage": {
+    "heading": "Люди",
+    "searchHeading": "Пошук людей",
+    "searchPlaceholder": "Пошук за іменем або кодом…",
+    "search": "Пошук",
+    "noResults": "Нічого не знайдено."
+  },
+  "SuperAdminPersonPage": {
+    "heading": "{name}",
+    "instanceAdminHeading": "Адміністратор інстансу",
+    "isInstanceAdminYes": "Надано права адміністратора інстансу {date}.",
+    "isInstanceAdminNo": "Не є адміністратором інстансу.",
+    "grantInstanceAdmin": "Надати права адміністратора інстансу",
+    "revokeInstanceAdmin": "Відкликати права адміністратора інстансу",
+    "grantRoleHeading": "Надати роль на юніт",
+    "roleLabel": "Роль",
+    "rolePlaceholder": "Обрати роль…",
+    "unitIdLabel": "ID юніту",
+    "unitIdPlaceholder": "Юніт, на який поширюється ця роль",
+    "grantRole": "Надати роль"
+  },
+  "SuperAdminRoleGrantsPage": {
+    "heading": "Надання ролей",
+    "unitHeading": "Призначення ролей за юнітом",
+    "unitIdPlaceholder": "ID юніту",
+    "load": "Завантажити",
+    "noAssignments": "На цьому юніті немає призначених ролей.",
+    "assignmentLine": "{person} — {role} ({scope})",
+    "revoke": "Відкликати",
+    "personIdLabel": "ID особи",
+    "personIdPlaceholder": "ID особи",
+    "grant": "Надати",
+    "instanceAdminsHeading": "Адміністратори інстансу",
+    "noInstanceAdmins": "Немає адміністраторів інстансу.",
+    "grantInstanceAdmin": "Надати права адміністратора інстансу"
+  },
+  "SuperAdminUnitsPage": {
+    "heading": "Юніти",
+    "searchHeading": "Пошук юнітів",
+    "searchPlaceholder": "Пошук за кодом або назвою…",
+    "search": "Пошук",
+    "noResults": "Нічого не знайдено."
+  },
+  "SuperAdminUnitPage": {
+    "detailsHeading": "Деталі",
+    "codeLabel": "Код",
+    "stateLabel": "Стан",
+    "orgProfileHeading": "Короткий код організації",
+    "ancestorsHeading": "Предки",
+    "noAncestors": "Це кореневий юніт."
+  },
+  "SuperAdminTaxaPage": {
+    "heading": "Таксономія",
+    "searchHeading": "Пошук у таксономії",
+    "searchPlaceholder": "Пошук за назвою або кодом…",
+    "search": "Пошук",
+    "noResults": "Нічого не знайдено."
+  },
+  "SuperAdminTaxonPage": {
+    "detailsHeading": "Деталі",
+    "codeLabel": "Код",
+    "rankLabel": "Ранг",
+    "parentLabel": "Батьківський",
+    "noParent": "Це кореневий таксон."
   },
   "AdminNotFoundPage": {
     "heading": "Сторінку не знайдено",

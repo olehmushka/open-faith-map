@@ -286,7 +286,12 @@
     "commandPalette": "Command palette",
     "commandPalettePlaceholder": "Search commands or jump to a site…",
     "commandPaletteNoResults": "No results found.",
-    "commandPaletteSites": "Sites"
+    "commandPaletteSites": "Sites",
+    "superAdminSection": "Super Admin",
+    "people": "People",
+    "roleGrants": "Role Grants",
+    "units": "Units",
+    "taxa": "Taxa"
   },
   "AdminSitesPage": {
     "heading": "Sites",
@@ -294,6 +299,71 @@
     "searchPlaceholder": "Search by jurisdiction unit name…",
     "search": "Search",
     "noResults": "No matches found."
+  },
+  "SuperAdminPeoplePage": {
+    "heading": "People",
+    "searchHeading": "Search people",
+    "searchPlaceholder": "Search by name or code…",
+    "search": "Search",
+    "noResults": "No matches found."
+  },
+  "SuperAdminPersonPage": {
+    "heading": "{name}",
+    "instanceAdminHeading": "Instance admin",
+    "isInstanceAdminYes": "Granted instance admin on {date}.",
+    "isInstanceAdminNo": "Not an instance admin.",
+    "grantInstanceAdmin": "Grant instance admin",
+    "revokeInstanceAdmin": "Revoke instance admin",
+    "grantRoleHeading": "Grant a unit role",
+    "roleLabel": "Role",
+    "rolePlaceholder": "Select a role…",
+    "unitIdLabel": "Unit ID",
+    "unitIdPlaceholder": "The unit this role applies to",
+    "grantRole": "Grant role"
+  },
+  "SuperAdminRoleGrantsPage": {
+    "heading": "Role Grants",
+    "unitHeading": "Role assignments by unit",
+    "unitIdPlaceholder": "Unit ID",
+    "load": "Load",
+    "noAssignments": "No role assignments on this unit.",
+    "assignmentLine": "{person} — {role} ({scope})",
+    "revoke": "Revoke",
+    "personIdLabel": "Person ID",
+    "personIdPlaceholder": "Person ID",
+    "grant": "Grant",
+    "instanceAdminsHeading": "Instance admins",
+    "noInstanceAdmins": "No instance admins.",
+    "grantInstanceAdmin": "Grant instance admin"
+  },
+  "SuperAdminUnitsPage": {
+    "heading": "Units",
+    "searchHeading": "Search units",
+    "searchPlaceholder": "Search by code or name…",
+    "search": "Search",
+    "noResults": "No matches found."
+  },
+  "SuperAdminUnitPage": {
+    "detailsHeading": "Details",
+    "codeLabel": "Code",
+    "stateLabel": "State",
+    "orgProfileHeading": "Org short code",
+    "ancestorsHeading": "Ancestors",
+    "noAncestors": "This is a root unit."
+  },
+  "SuperAdminTaxaPage": {
+    "heading": "Taxa",
+    "searchHeading": "Search the taxonomy",
+    "searchPlaceholder": "Search by name or code…",
+    "search": "Search",
+    "noResults": "No matches found."
+  },
+  "SuperAdminTaxonPage": {
+    "detailsHeading": "Details",
+    "codeLabel": "Code",
+    "rankLabel": "Rank",
+    "parentLabel": "Parent",
+    "noParent": "This is a root taxon."
   },
   "AdminNotFoundPage": {
     "heading": "Page not found",

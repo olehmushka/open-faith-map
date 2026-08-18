@@ -286,7 +286,12 @@
     "commandPalette": "Paleta de comandos",
     "commandPalettePlaceholder": "Buscar comandos o un sitio…",
     "commandPaletteNoResults": "No se encontraron resultados.",
-    "commandPaletteSites": "Sitios"
+    "commandPaletteSites": "Sitios",
+    "superAdminSection": "Super administración",
+    "people": "Personas",
+    "roleGrants": "Concesión de roles",
+    "units": "Unidades",
+    "taxa": "Taxonomía"
   },
   "AdminSitesPage": {
     "heading": "Sitios",
@@ -294,6 +299,71 @@
     "searchPlaceholder": "Buscar por nombre de la unidad jurisdiccional…",
     "search": "Buscar",
     "noResults": "No se encontraron coincidencias."
+  },
+  "SuperAdminPeoplePage": {
+    "heading": "Personas",
+    "searchHeading": "Buscar personas",
+    "searchPlaceholder": "Buscar por nombre o código…",
+    "search": "Buscar",
+    "noResults": "No se encontraron coincidencias."
+  },
+  "SuperAdminPersonPage": {
+    "heading": "{name}",
+    "instanceAdminHeading": "Administrador de instancia",
+    "isInstanceAdminYes": "Concedido como administrador de instancia el {date}.",
+    "isInstanceAdminNo": "No es administrador de instancia.",
+    "grantInstanceAdmin": "Conceder administrador de instancia",
+    "revokeInstanceAdmin": "Revocar administrador de instancia",
+    "grantRoleHeading": "Conceder un rol de unidad",
+    "roleLabel": "Rol",
+    "rolePlaceholder": "Seleccionar un rol…",
+    "unitIdLabel": "ID de la unidad",
+    "unitIdPlaceholder": "La unidad a la que se aplica este rol",
+    "grantRole": "Conceder rol"
+  },
+  "SuperAdminRoleGrantsPage": {
+    "heading": "Concesión de roles",
+    "unitHeading": "Asignaciones de roles por unidad",
+    "unitIdPlaceholder": "ID de la unidad",
+    "load": "Cargar",
+    "noAssignments": "No hay asignaciones de roles en esta unidad.",
+    "assignmentLine": "{person} — {role} ({scope})",
+    "revoke": "Revocar",
+    "personIdLabel": "ID de la persona",
+    "personIdPlaceholder": "ID de la persona",
+    "grant": "Conceder",
+    "instanceAdminsHeading": "Administradores de instancia",
+    "noInstanceAdmins": "No hay administradores de instancia.",
+    "grantInstanceAdmin": "Conceder administrador de instancia"
+  },
+  "SuperAdminUnitsPage": {
+    "heading": "Unidades",
+    "searchHeading": "Buscar unidades",
+    "searchPlaceholder": "Buscar por código o nombre…",
+    "search": "Buscar",
+    "noResults": "No se encontraron coincidencias."
+  },
+  "SuperAdminUnitPage": {
+    "detailsHeading": "Detalles",
+    "codeLabel": "Código",
+    "stateLabel": "Estado",
+    "orgProfileHeading": "Código corto de la organización",
+    "ancestorsHeading": "Ancestros",
+    "noAncestors": "Esta es una unidad raíz."
+  },
+  "SuperAdminTaxaPage": {
+    "heading": "Taxonomía",
+    "searchHeading": "Buscar en la taxonomía",
+    "searchPlaceholder": "Buscar por nombre o código…",
+    "search": "Buscar",
+    "noResults": "No se encontraron coincidencias."
+  },
+  "SuperAdminTaxonPage": {
+    "detailsHeading": "Detalles",
+    "codeLabel": "Código",
+    "rankLabel": "Rango",
+    "parentLabel": "Padre",
+    "noParent": "Este es un taxón raíz."
   },
   "AdminNotFoundPage": {
     "heading": "Página no encontrada",

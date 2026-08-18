@@ -286,7 +286,12 @@
     "commandPalette": "Paleta de comandos",
     "commandPalettePlaceholder": "Buscar comandos ou um site…",
     "commandPaletteNoResults": "Nenhum resultado encontrado.",
-    "commandPaletteSites": "Sites"
+    "commandPaletteSites": "Sites",
+    "superAdminSection": "Superadministração",
+    "people": "Pessoas",
+    "roleGrants": "Concessão de papéis",
+    "units": "Unidades",
+    "taxa": "Taxonomia"
   },
   "AdminSitesPage": {
     "heading": "Sites",
@@ -294,6 +299,71 @@
     "searchPlaceholder": "Buscar pelo nome da unidade jurisdicional…",
     "search": "Buscar",
     "noResults": "Nenhum resultado encontrado."
+  },
+  "SuperAdminPeoplePage": {
+    "heading": "Pessoas",
+    "searchHeading": "Buscar pessoas",
+    "searchPlaceholder": "Buscar por nome ou código…",
+    "search": "Buscar",
+    "noResults": "Nenhum resultado encontrado."
+  },
+  "SuperAdminPersonPage": {
+    "heading": "{name}",
+    "instanceAdminHeading": "Administrador da instância",
+    "isInstanceAdminYes": "Concedido como administrador da instância em {date}.",
+    "isInstanceAdminNo": "Não é administrador da instância.",
+    "grantInstanceAdmin": "Conceder administrador da instância",
+    "revokeInstanceAdmin": "Revogar administrador da instância",
+    "grantRoleHeading": "Conceder um papel de unidade",
+    "roleLabel": "Papel",
+    "rolePlaceholder": "Selecionar um papel…",
+    "unitIdLabel": "ID da unidade",
+    "unitIdPlaceholder": "A unidade à qual este papel se aplica",
+    "grantRole": "Conceder papel"
+  },
+  "SuperAdminRoleGrantsPage": {
+    "heading": "Concessão de papéis",
+    "unitHeading": "Atribuições de papéis por unidade",
+    "unitIdPlaceholder": "ID da unidade",
+    "load": "Carregar",
+    "noAssignments": "Nenhuma atribuição de papel nesta unidade.",
+    "assignmentLine": "{person} — {role} ({scope})",
+    "revoke": "Revogar",
+    "personIdLabel": "ID da pessoa",
+    "personIdPlaceholder": "ID da pessoa",
+    "grant": "Conceder",
+    "instanceAdminsHeading": "Administradores da instância",
+    "noInstanceAdmins": "Nenhum administrador da instância.",
+    "grantInstanceAdmin": "Conceder administrador da instância"
+  },
+  "SuperAdminUnitsPage": {
+    "heading": "Unidades",
+    "searchHeading": "Buscar unidades",
+    "searchPlaceholder": "Buscar por código ou nome…",
+    "search": "Buscar",
+    "noResults": "Nenhum resultado encontrado."
+  },
+  "SuperAdminUnitPage": {
+    "detailsHeading": "Detalhes",
+    "codeLabel": "Código",
+    "stateLabel": "Estado",
+    "orgProfileHeading": "Código curto da organização",
+    "ancestorsHeading": "Ancestrais",
+    "noAncestors": "Esta é uma unidade raiz."
+  },
+  "SuperAdminTaxaPage": {
+    "heading": "Taxonomia",
+    "searchHeading": "Buscar na taxonomia",
+    "searchPlaceholder": "Buscar por nome ou código…",
+    "search": "Buscar",
+    "noResults": "Nenhum resultado encontrado."
+  },
+  "SuperAdminTaxonPage": {
+    "detailsHeading": "Detalhes",
+    "codeLabel": "Código",
+    "rankLabel": "Categoria",
+    "parentLabel": "Superior",
+    "noParent": "Este é um táxon raiz."
   },
   "AdminNotFoundPage": {
     "heading": "Página não encontrada",

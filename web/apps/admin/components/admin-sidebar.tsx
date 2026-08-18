@@ -3,9 +3,13 @@
 import { useTranslations } from "next-intl";
 import {
   ArchiveRestore,
+  BookOpen,
+  Building2,
   Flag,
+  KeyRound,
   MapPinned,
   ShieldCheck,
+  UserCog,
   UserPlus,
 } from "lucide-react";
 
@@ -64,6 +68,58 @@ export const NAV: NavItem[] = [
   },
 ];
 
+// M10.8's four super-admin screens (D-SuperAdminFold) — a separate group, not merged into NAV, so
+// the sidebar visually distinguishes "every admin audience" from "instance-admin only" even though
+// (per D-SuperAdminFold's amendment) this list is NOT itself a security boundary: every item here is
+// shown unconditionally, exactly like every other NAV entry — a congregation-admin who clicks
+// "People" gets redirected by the (super-admin) route group's own layout, the same way a non-operator
+// who clicks "Registrations" today still sees the link but gets denied server-side, not a hidden one.
+export const SUPER_ADMIN_NAV: NavItem[] = [
+  { href: "/admin/people", icon: UserCog, labelKey: "people" },
+  { href: "/admin/role-grants", icon: KeyRound, labelKey: "roleGrants" },
+  { href: "/admin/units", icon: Building2, labelKey: "units" },
+  { href: "/admin/taxa", icon: BookOpen, labelKey: "taxa" },
+];
+
+function NavItems({
+  items,
+  pathname,
+  t,
+}: {
+  items: NavItem[];
+  pathname: string;
+  t: (key: string) => string;
+}) {
+  return (
+    <>
+      {items.map((item) => {
+        const active = pathname === item.href || pathname.startsWith(item.href + "/");
+        return (
+          <SidebarMenuItem key={item.href}>
+            <SidebarMenuButton asChild isActive={active} tooltip={t(item.labelKey)}>
+              <Link href={item.href}>
+                <item.icon className="size-4" />
+                <span>{t(item.labelKey)}</span>
+              </Link>
+            </SidebarMenuButton>
+            {item.children && (
+              <SidebarMenuSub>
+                {item.children.map((child) => (
+                  <SidebarMenuSubItem key={child.href}>
+                    <SidebarMenuSubButton asChild isActive={pathname === child.href}>
+                      <Link href={child.href}>{t(child.labelKey)}</Link>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                ))}
+              </SidebarMenuSub>
+            )}
+          </SidebarMenuItem>
+        );
+      })}
+    </>
+  );
+}
+
 export function AdminSidebar() {
   const pathname = usePathname();
   const t = useTranslations("AdminShell");
@@ -80,30 +136,15 @@ export function AdminSidebar() {
           <SidebarGroupLabel>{t("sections")}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href + "/");
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={active} tooltip={t(item.labelKey)}>
-                      <Link href={item.href}>
-                        <item.icon className="size-4" />
-                        <span>{t(item.labelKey)}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                    {item.children && (
-                      <SidebarMenuSub>
-                        {item.children.map((child) => (
-                          <SidebarMenuSubItem key={child.href}>
-                            <SidebarMenuSubButton asChild isActive={pathname === child.href}>
-                              <Link href={child.href}>{t(child.labelKey)}</Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    )}
-                  </SidebarMenuItem>
-                );
-              })}
+              <NavItems items={NAV} pathname={pathname} t={t} />
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>{t("superAdminSection")}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <NavItems items={SUPER_ADMIN_NAV} pathname={pathname} t={t} />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
