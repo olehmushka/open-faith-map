@@ -22,6 +22,7 @@ import (
 type Querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 type Store struct {
@@ -67,6 +68,122 @@ func (s *Store) InsertInstanceAdmin(ctx context.Context, personID, grantedBy str
 		VALUES ($1, $2)
 		RETURNING id`, personID, grantedByArg).Scan(&id)
 	return id, err
+}
+
+// ListRoles returns the grantable role catalog — M10.7's super-admin role-grants screen's role
+// picker.
+func (s *Store) ListRoles(ctx context.Context) ([]domain.Role, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, code, name, COALESCE(description, ''), is_base
+		FROM openfaithmap.authz_roles
+		WHERE deleted_at IS NULL
+		ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Role
+	for rows.Next() {
+		var r domain.Role
+		if err := rows.Scan(&r.ID, &r.Code, &r.Name, &r.Description, &r.IsBase); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ListRoleAssignmentsByUnit lists unitID's active role assignments, with the subject's display name
+// denormalized in — M10.7's super-admin role-grants screen.
+func (s *Store) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([]domain.RoleAssignment, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code, a.target_unit_id, a.scope, a.granted_at
+		FROM openfaithmap.authz_role_assignments a
+		JOIN openfaithmap.authz_roles r ON r.id = a.role_id
+		JOIN openfaithmap.identity_persons p ON p.id = a.subject_person_id
+		WHERE a.target_unit_id = $1 AND a.revoked_at IS NULL
+		ORDER BY a.granted_at DESC`, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.RoleAssignment
+	for rows.Next() {
+		var a domain.RoleAssignment
+		var scope string
+		if err := rows.Scan(&a.ID, &a.PersonID, &a.PersonName, &a.RoleID, &a.RoleCode, &a.TargetUnitID, &scope, &a.GrantedAt); err != nil {
+			return nil, err
+		}
+		a.Scope = domain.Scope(scope)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// RevokeRoleAssignment soft-revokes assignmentID — sets revoked_at/revoked_by, only if it is
+// currently active. Returns domain.ErrAssignmentNotFound if it was already revoked or never existed;
+// unlike InsertRoleAssignment's insert-side idempotency, a repeat revoke has no natural "already
+// done" success reading.
+func (s *Store) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) error {
+	var revokedByArg any
+	if revokedBy != "" {
+		revokedByArg = revokedBy
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE openfaithmap.authz_role_assignments
+		SET revoked_at = now(), revoked_by = $2
+		WHERE id = $1 AND revoked_at IS NULL`, assignmentID, revokedByArg)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrAssignmentNotFound
+	}
+	return nil
+}
+
+// ListInstanceAdmins returns every active instance-admin grant, with the subject's display name
+// denormalized in — M10.7's super-admin people/instance-admins screen.
+func (s *Store) ListInstanceAdmins(ctx context.Context) ([]domain.InstanceAdminGrant, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.person_id, p.display_name, a.granted_at
+		FROM openfaithmap.authz_instance_admins a
+		JOIN openfaithmap.identity_persons p ON p.id = a.person_id
+		WHERE a.revoked_at IS NULL
+		ORDER BY a.granted_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.InstanceAdminGrant
+	for rows.Next() {
+		var g domain.InstanceAdminGrant
+		if err := rows.Scan(&g.ID, &g.PersonID, &g.PersonName, &g.GrantedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// RevokeInstanceAdmin soft-revokes personID's active instance-admin grant, if any. Returns
+// domain.ErrInstanceAdminGrantNotFound if personID holds no active grant.
+func (s *Store) RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) error {
+	var revokedByArg any
+	if revokedBy != "" {
+		revokedByArg = revokedBy
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE openfaithmap.authz_instance_admins
+		SET revoked_at = now(), revoked_by = $2
+		WHERE person_id = $1 AND revoked_at IS NULL`, personID, revokedByArg)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrInstanceAdminGrantNotFound
+	}
+	return nil
 }
 
 // ActiveGrantsForSubject fetches every active, unexpired role assignment for personID with its

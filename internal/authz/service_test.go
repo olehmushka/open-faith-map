@@ -28,6 +28,24 @@ func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _ string) er
 	return nil
 }
 
+func (f fakeStore) ListRoles(context.Context) ([]domain.Role, error) { return nil, nil }
+
+func (f fakeStore) ListRoleAssignmentsByUnit(context.Context, string) ([]domain.RoleAssignment, error) {
+	return nil, nil
+}
+
+func (f fakeStore) RevokeRoleAssignment(context.Context, string, string) error { return nil }
+
+func (f fakeStore) ListInstanceAdmins(context.Context) ([]domain.InstanceAdminGrant, error) {
+	return nil, nil
+}
+
+func (f fakeStore) InsertInstanceAdmin(_ context.Context, _, _ string) (string, error) {
+	return "", nil
+}
+
+func (f fakeStore) RevokeInstanceAdmin(_ context.Context, _, _ string) error { return nil }
+
 type noopClosure struct{}
 
 func (noopClosure) IsAncestorOrSelf(context.Context, string, string, string) (bool, error) {
@@ -68,6 +86,40 @@ func TestServiceRequirePanicsOnSystemContext(t *testing.T) {
 		}
 	}()
 	_ = svc.Require(SystemContext(context.Background()), domain.PermUnitRead, "unit-a")
+}
+
+func TestServiceRequireInstanceAdminDeniesAbsentSubject(t *testing.T) {
+	svc := NewService(domain.NewPDP(noopClosure{}), fakeStore{})
+	err := svc.RequireInstanceAdmin(context.Background())
+	if !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Errorf("RequireInstanceAdmin with no subject in context = %v, want ErrPermissionDenied", err)
+	}
+}
+
+func TestServiceRequireInstanceAdminDeniesNonAdmin(t *testing.T) {
+	svc := NewService(domain.NewPDP(noopClosure{}), fakeStore{})
+	ctx := NewContext(context.Background(), Subject{PersonID: "p1"})
+	if err := svc.RequireInstanceAdmin(ctx); !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Errorf("RequireInstanceAdmin for a non-admin = %v, want ErrPermissionDenied", err)
+	}
+}
+
+func TestServiceRequireInstanceAdminAllowsInstanceAdmin(t *testing.T) {
+	svc := NewService(domain.NewPDP(noopClosure{}), fakeStore{admins: map[string]bool{"p1": true}})
+	ctx := NewContext(context.Background(), Subject{PersonID: "p1"})
+	if err := svc.RequireInstanceAdmin(ctx); err != nil {
+		t.Errorf("RequireInstanceAdmin for an instance admin = %v, want nil", err)
+	}
+}
+
+func TestServiceRequireInstanceAdminPanicsOnSystemContext(t *testing.T) {
+	svc := NewService(domain.NewPDP(noopClosure{}), fakeStore{})
+	defer func() {
+		if recover() == nil {
+			t.Error("RequireInstanceAdmin with a SystemContext did not panic")
+		}
+	}()
+	_ = svc.RequireInstanceAdmin(SystemContext(context.Background()))
 }
 
 func TestStripSystemMarkerRemovesTheMarker(t *testing.T) {

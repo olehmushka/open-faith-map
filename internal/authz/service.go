@@ -17,6 +17,17 @@ type GrantStore interface {
 	IsActiveInstanceAdmin(ctx context.Context, personID string) (bool, error)
 	ActiveGrantsForSubject(ctx context.Context, personID string) ([]domain.ActiveGrant, error)
 	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) error
+
+	// The M10.7 super-admin surface: the role catalog, per-unit assignment listing/revocation, and
+	// the instance-admin plane's own list/grant/revoke — all new at M10.7 (InsertInstanceAdmin
+	// already existed, for the boot seed; nothing else on the instance-admin plane had a Service
+	// wrapper until now).
+	ListRoles(ctx context.Context) ([]domain.Role, error)
+	ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([]domain.RoleAssignment, error)
+	RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) error
+	ListInstanceAdmins(ctx context.Context) ([]domain.InstanceAdminGrant, error)
+	InsertInstanceAdmin(ctx context.Context, personID, grantedBy string) (string, error)
+	RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) error
 }
 
 // Service is the module's composition: the pure PDP engine plus the store that fetches the authority
@@ -73,6 +84,63 @@ func (s *Service) enforce(ctx context.Context, subjectPersonID string, action do
 // very next Require call with no extra step.
 func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, grantedByPersonID string) error {
 	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, grantedByPersonID)
+}
+
+// RequireInstanceAdmin is the shared, hard-to-misuse enforcer for the instance-admin plane
+// (D-SuperAdminFold's amendment: "one shared, hard-to-misuse enforcer... not a sixth hand-copied
+// require*"). Mirrors Require's shape (subject from ctx, panics on SystemContext) but checks
+// IsActiveInstanceAdmin directly — there is no unit dimension to the instance-admin plane. Wired as
+// route-group middleware over CoreSuperAdminService (internal/authz/transport), not called
+// per-handler, so no future super-admin endpoint can be added without inheriting the check.
+func (s *Service) RequireInstanceAdmin(ctx context.Context) error {
+	if isSystemContext(ctx) {
+		panic("authz: RequireInstanceAdmin called with a SystemContext — system contexts must never reach a request-scoped authorization check")
+	}
+	subject, ok := SubjectFromContext(ctx)
+	if !ok || subject.PersonID == "" {
+		return domain.ErrPermissionDenied
+	}
+	isAdmin, err := s.store.IsActiveInstanceAdmin(ctx, subject.PersonID)
+	if err != nil {
+		return fmt.Errorf("authz: fetch instance-admin state: %w", err)
+	}
+	if !isAdmin {
+		return domain.ErrPermissionDenied
+	}
+	return nil
+}
+
+// ListRoles returns the grantable role catalog — M10.7's super-admin role-grants screen.
+func (s *Service) ListRoles(ctx context.Context) ([]domain.Role, error) {
+	return s.store.ListRoles(ctx)
+}
+
+// ListRoleAssignmentsByUnit lists unitID's active role assignments — M10.7's super-admin
+// role-grants screen.
+func (s *Service) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([]domain.RoleAssignment, error) {
+	return s.store.ListRoleAssignmentsByUnit(ctx, unitID)
+}
+
+// RevokeRoleAssignment revokes assignmentID, recording revokedByPersonID.
+func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedByPersonID string) error {
+	return s.store.RevokeRoleAssignment(ctx, assignmentID, revokedByPersonID)
+}
+
+// ListInstanceAdmins returns every active instance-admin grant — M10.7's super-admin people screen.
+func (s *Service) ListInstanceAdmins(ctx context.Context) ([]domain.InstanceAdminGrant, error) {
+	return s.store.ListInstanceAdmins(ctx)
+}
+
+// GrantInstanceAdmin grants personID the instance-admin plane, recording grantedByPersonID.
+// Callers must gate access to this method itself on RequireInstanceAdmin — it is not itself an
+// authorization check, same convention as DecideFor.
+func (s *Service) GrantInstanceAdmin(ctx context.Context, personID, grantedByPersonID string) (string, error) {
+	return s.store.InsertInstanceAdmin(ctx, personID, grantedByPersonID)
+}
+
+// RevokeInstanceAdmin revokes personID's active instance-admin grant, recording revokedByPersonID.
+func (s *Service) RevokeInstanceAdmin(ctx context.Context, personID, revokedByPersonID string) error {
+	return s.store.RevokeInstanceAdmin(ctx, personID, revokedByPersonID)
 }
 
 func (s *Service) decide(ctx context.Context, subjectPersonID string, action domain.Permission, unitID string, explain bool) (domain.Decision, error) {
