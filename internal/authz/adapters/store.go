@@ -11,7 +11,6 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/authz/domain"
 )
 
@@ -121,37 +120,4 @@ func (s *Store) ActiveGrantsForSubject(ctx context.Context, personID string) ([]
 		out = append(out, *byAssignment[id])
 	}
 	return out, nil
-}
-
-// ClosureStore implements domain.ClosurePort against directory's tables directly — a straight SQL
-// join, no Go dependency on internal/directory (D-InProcessAuthz amendment #4: internal/authz
-// imports no other module). Live until internal/directory registers its own adapter at M10.4; this
-// type is a placeholder callers may swap for one directory provides once that module exists.
-type ClosureStore struct {
-	pool *pgxpool.Pool
-}
-
-func NewClosureStore(pool *pgxpool.Pool) *ClosureStore {
-	return &ClosureStore{pool: pool}
-}
-
-func (c *ClosureStore) IsAncestorOrSelf(ctx context.Context, graphID, ancestorUnitID, descendantUnitID string) (bool, error) {
-	var reachable bool
-	err := c.pool.QueryRow(ctx, `
-		SELECT EXISTS(
-			SELECT 1 FROM openfaithmap.directory_unit_closure
-			WHERE graph_id = $1 AND ancestor_id = $2 AND descendant_id = $3
-		)`, graphID, ancestorUnitID, descendantUnitID).Scan(&reachable)
-	return reachable, err
-}
-
-func (c *ClosureStore) IsAuthorityBearing(ctx context.Context, graphID string) (bool, error) {
-	var bearing bool
-	err := c.pool.QueryRow(ctx, `
-		SELECT is_authority_bearing FROM openfaithmap.directory_graphs WHERE id = $1
-	`, graphID).Scan(&bearing)
-	if err == pgx.ErrNoRows {
-		return false, nil
-	}
-	return bearing, err
 }
