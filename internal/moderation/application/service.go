@@ -3,50 +3,41 @@
 
 // Package application holds the moderation module's business logic: the platform-moderator
 // target-scoped gate (authorize.go), report/action/appeal workflows (service.go), and the
-// standalone D-Exclusions dry-run (exclusion_check.go) — always deciding write authority against
-// go-oikumenea's real PDP with the CALLER's own forwarded token (D-Facade), except where the caller
-// is genuinely anonymous and has none to forward (the two ModerationPublicService endpoints), which
-// use the server's own service-principal token instead.
+// standalone D-Exclusions dry-run (exclusion_check.go).
+//
+// M10.6: write authority is decided by internal/authz.Require against the request's context-resolved
+// subject, not a per-call go-oikumenea client built from the caller's forwarded token. The two
+// genuinely-anonymous ModerationPublicService endpoints (FileReport, CheckExclusion) still have no
+// caller subject to check — CheckExclusion now runs its internal/religion read under
+// authz.SystemContext (exclusion_check.go), one of D-InProcessAuthz amendment #5's five named paths.
 package application
 
 import (
 	"context"
 	"time"
 
-	oikumenea "github.com/olehmushka/go-oikumenea/clients/go"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/moderation/adapters"
 	"github.com/olehmushka/open-faith-map/internal/moderation/domain"
+	religionapplication "github.com/olehmushka/open-faith-map/internal/religion/application"
 )
 
 type Config struct {
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
 	// RootUnitID is the same shared root unit registration/content/discovery already use
-	// (scripts/bootstrap-registration-org) — the target of the platform-moderator-scoped Authorize
+	// (internal/platform/seed.RootUnitID) — the target of the platform-moderator-scoped Require
 	// check.
 	RootUnitID string
-	// ServicePrincipal configures the server's own go-oikumenea call for CheckExclusion — never a
-	// forwarded caller token, since POST /exclusion-check has no caller token to forward (the caller
-	// is anonymous).
-	ServicePrincipal coreintegration.Config
 }
 
 type Service struct {
-	store *adapters.Store
-	cfg   Config
+	store    *adapters.Store
+	religion *religionapplication.Service
+	authzSvc *authz.Service
+	cfg      Config
 }
 
-func NewService(store *adapters.Store, cfg Config) *Service {
-	return &Service{store: store, cfg: cfg}
-}
-
-func (s *Service) userClient(token string) (*oikumenea.Client, error) {
-	return coreintegration.NewUserClient(s.cfg.OikumeneaBaseURL, token, s.cfg.OikumeneaInsecureSkipVerify)
-}
-
-func (s *Service) serviceClient(ctx context.Context) (*oikumenea.Client, error) {
-	return coreintegration.NewServiceClient(ctx, s.cfg.ServicePrincipal)
+func NewService(store *adapters.Store, religionSvc *religionapplication.Service, authzSvc *authz.Service, cfg Config) *Service {
+	return &Service{store: store, religion: religionSvc, authzSvc: authzSvc, cfg: cfg}
 }
 
 // ---- reports ----
@@ -73,8 +64,8 @@ func (s *Service) FileReport(ctx context.Context, in domain.FileReportInput) (do
 // ListReports queries pageSize+1 rows from the store — the standard keyset-pagination trick that
 // lets transport.Service tell whether a next page exists (and encode its cursor) without a second
 // round trip, by trimming the extra row before returning to the caller.
-func (s *Service) ListReports(ctx context.Context, token, callerPersonID string, scope *domain.QueueScope, status *domain.ReportStatus, pageSize int, after *domain.PageCursor) ([]domain.Report, error) {
-	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
+func (s *Service) ListReports(ctx context.Context, scope *domain.QueueScope, status *domain.ReportStatus, pageSize int, after *domain.PageCursor) ([]domain.Report, error) {
+	if err := s.requireModerate(ctx); err != nil {
 		return nil, err
 	}
 	return s.store.ListReports(ctx, scope, status, pageSize+1, after)
@@ -88,8 +79,8 @@ func (s *Service) ListReports(ctx context.Context, token, callerPersonID string,
 // (D-Moderation's Correction replacement invariant) — this module ships no real go-oikumenea-side
 // or content-side effect yet (moderation.md doesn't specify one in enough detail to build blind);
 // the row IS the recorded decision. Marks the report ACTIONED.
-func (s *Service) TakeActionOnReport(ctx context.Context, token, callerPersonID, reportID string, kind domain.ActionKind, reason string) (domain.Action, error) {
-	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
+func (s *Service) TakeActionOnReport(ctx context.Context, callerPersonID, reportID string, kind domain.ActionKind, reason string) (domain.Action, error) {
+	if err := s.requireModerate(ctx); err != nil {
 		return domain.Action{}, err
 	}
 	report, err := s.store.GetReportByID(ctx, reportID)
@@ -115,8 +106,8 @@ func (s *Service) TakeActionOnReport(ctx context.Context, token, callerPersonID,
 
 // TakeAction answers ModerationService.takeAction: a proactive action with no prior report (e.g.
 // enforcing D-Exclusions directly against an already-registered congregation).
-func (s *Service) TakeAction(ctx context.Context, token, callerPersonID string, kind domain.ActionKind, targetKind domain.TargetKind, targetRef, reason string) (domain.Action, error) {
-	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
+func (s *Service) TakeAction(ctx context.Context, callerPersonID string, kind domain.ActionKind, targetKind domain.TargetKind, targetRef, reason string) (domain.Action, error) {
+	if err := s.requireModerate(ctx); err != nil {
 		return domain.Action{}, err
 	}
 	return s.store.InsertAction(ctx, domain.TakeActionInput{
@@ -133,8 +124,8 @@ func (s *Service) TakeAction(ctx context.Context, token, callerPersonID string, 
 // edited. Rejects with domain.ErrActionNotReversible if the grace window has passed or a reversal
 // already exists (the store's unique index on reverses_action_id is the real guarantee; this check
 // gives a clean typed error instead of a raw constraint-violation).
-func (s *Service) ReverseAction(ctx context.Context, token, callerPersonID, actionID, reason string) (domain.Action, error) {
-	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
+func (s *Service) ReverseAction(ctx context.Context, callerPersonID, actionID, reason string) (domain.Action, error) {
+	if err := s.requireModerate(ctx); err != nil {
 		return domain.Action{}, err
 	}
 	original, err := s.store.GetActionByID(ctx, actionID)
@@ -165,7 +156,7 @@ func (s *Service) ReverseAction(ctx context.Context, token, callerPersonID, acti
 // module's own site->congregation-unit mapping first (a real cross-module lookup, same shape as
 // discovery's ContentResolver interface), which this PR doesn't wire up; appealing those returns
 // domain.ErrForbidden rather than silently succeeding or guessing a unit.
-func (s *Service) FileAppeal(ctx context.Context, token, callerPersonID, actionID, statement string) (domain.Appeal, error) {
+func (s *Service) FileAppeal(ctx context.Context, callerPersonID, actionID, statement string) (domain.Appeal, error) {
 	action, err := s.store.GetActionByID(ctx, actionID)
 	if err != nil {
 		return domain.Appeal{}, err
@@ -173,15 +164,15 @@ func (s *Service) FileAppeal(ctx context.Context, token, callerPersonID, actionI
 	if action.TargetKind != domain.TargetCongregation {
 		return domain.Appeal{}, domain.ErrForbidden
 	}
-	if err := s.requireCongregationAdmin(ctx, token, callerPersonID, action.TargetRef); err != nil {
+	if err := s.requireCongregationAdmin(ctx, action.TargetRef); err != nil {
 		return domain.Appeal{}, err
 	}
 	return s.store.InsertAppeal(ctx, action.ID, callerPersonID, statement)
 }
 
 // ListAppeals queries pageSize+1 rows from the store — see ListReports's doc comment for why.
-func (s *Service) ListAppeals(ctx context.Context, token, callerPersonID string, status *domain.AppealStatus, pageSize int, after *domain.PageCursor) ([]domain.Appeal, error) {
-	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
+func (s *Service) ListAppeals(ctx context.Context, status *domain.AppealStatus, pageSize int, after *domain.PageCursor) ([]domain.Appeal, error) {
+	if err := s.requireModerate(ctx); err != nil {
 		return nil, err
 	}
 	return s.store.ListAppeals(ctx, status, pageSize+1, after)
@@ -190,8 +181,8 @@ func (s *Service) ListAppeals(ctx context.Context, token, callerPersonID string,
 // DecideAppeal answers ModerationService.decideAppeal. Rejects with domain.ErrAppealActorConflict if
 // the caller is the original action's own actor — enforced here at write time, never left to
 // moderator discipline (moderation.md's invariant).
-func (s *Service) DecideAppeal(ctx context.Context, token, callerPersonID, appealID string, decision domain.AppealDecision) (domain.Appeal, error) {
-	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
+func (s *Service) DecideAppeal(ctx context.Context, callerPersonID, appealID string, decision domain.AppealDecision) (domain.Appeal, error) {
+	if err := s.requireModerate(ctx); err != nil {
 		return domain.Appeal{}, err
 	}
 	appeal, err := s.store.GetAppealByID(ctx, appealID)

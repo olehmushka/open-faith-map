@@ -1,16 +1,16 @@
 // Copyright 2026 Oleh Mushka
 // SPDX-License-Identifier: Apache-2.0
 
-package transport
+package ratelimit
 
 import (
 	"testing"
 )
 
-// TestRateLimiterAllow exercises rateLimiter.allow directly, not via HTTP — proves per-(ip,
-// endpoint) scoping without needing real time to pass (the provisional burst is 5, D-Hardening).
-func TestRateLimiterAllow(t *testing.T) {
-	rl := NewRateLimiter()
+// TestLimiterAllow exercises Limiter.allow directly, not via HTTP — proves per-(ip, endpoint)
+// scoping without needing real time to pass (the provisional burst is 5, D-Hardening).
+func TestLimiterAllow(t *testing.T) {
+	rl := NewLimiter("test.rate_limit_rejections")
 
 	for i := 0; i < 5; i++ {
 		if !rl.allow("1.2.3.4", "/reports") {

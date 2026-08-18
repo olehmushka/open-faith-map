@@ -1,13 +1,20 @@
 // Copyright 2026 Oleh Mushka
 // SPDX-License-Identifier: Apache-2.0
 
+// Package transport implements the generated moderation.ModerationService and
+// moderation.ModerationPublicService (Conjure server interfaces): translates Conjure structs <->
+// domain types and maps domain errors to this module's typed Conjure errors.
+//
+// M10.6: the caller's identity no longer arrives via a per-request whoami round-trip — it's resolved
+// from context (populated by internal/identity's authenticator middleware) via personID below, the
+// same pattern internal/registration/transport already uses.
 package transport
 
 import (
 	"context"
 
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	genmoderation "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/moderation"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
 	"github.com/olehmushka/open-faith-map/internal/moderation/application"
 	"github.com/olehmushka/open-faith-map/internal/moderation/domain"
 	"github.com/palantir/pkg/bearertoken"
@@ -21,35 +28,26 @@ const defaultPageSize = 50
 // real caller today; no bulk-export use case). Not data-tuned, same as the rate-limit thresholds.
 const maxPageSize = 200
 
-type Config struct {
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
-}
-
 type Service struct {
-	oikumeneaBaseURL  string
-	oikumeneaInsecure bool
-	appService        *application.Service
+	appService *application.Service
 }
 
-func NewService(appService *application.Service, cfg Config) *Service {
-	return &Service{appService: appService, oikumeneaBaseURL: cfg.OikumeneaBaseURL, oikumeneaInsecure: cfg.OikumeneaInsecureSkipVerify}
+func NewService(appService *application.Service) *Service {
+	return &Service{appService: appService}
 }
 
 var _ genmoderation.ModerationService = (*Service)(nil)
 
-// whoami resolves the caller's own go-oikumenea person RID from their forwarded token — never
-// trusts a client-supplied id (same pattern content/registration transport already use).
-func (s *Service) whoami(ctx context.Context, token bearertoken.Token) (string, error) {
-	c, err := coreintegration.NewUserClient(s.oikumeneaBaseURL, string(token), s.oikumeneaInsecure)
-	if err != nil {
-		return "", err
+// personID resolves the caller's own person RID from the request context, populated by
+// internal/identity's authenticator middleware — never trusted from a client-supplied value. Its
+// only failure mode here is defensive, matching internal/registration/transport's own personID
+// helper: the middleware already refuses any request with no valid subject before a handler runs.
+func personID(ctx context.Context) (string, error) {
+	subject, ok := authz.SubjectFromContext(ctx)
+	if !ok || subject.PersonID == "" {
+		return "", domain.ErrForbidden
 	}
-	who, err := c.IdentityFederation.Whoami(ctx)
-	if err != nil {
-		return "", err
-	}
-	return who.PersonId, nil
+	return subject.PersonID, nil
 }
 
 func pageSizeOrDefault(p *int) int {
@@ -63,8 +61,7 @@ func pageSizeOrDefault(p *int) int {
 }
 
 func (s *Service) ListReports(ctx context.Context, authHeader bearertoken.Token, scopeArg *genmoderation.QueueScope, statusArg *genmoderation.ReportStatus, pageSizeArg *int, pageTokenArg *string) (genmoderation.ReportPage, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
+	if _, err := personID(ctx); err != nil {
 		return genmoderation.ReportPage{}, err
 	}
 	var scope *domain.QueueScope
@@ -86,7 +83,7 @@ func (s *Service) ListReports(ctx context.Context, authHeader bearertoken.Token,
 		after = &c
 	}
 	pageSize := pageSizeOrDefault(pageSizeArg)
-	reports, err := s.appService.ListReports(ctx, string(authHeader), personID, scope, status, pageSize, after)
+	reports, err := s.appService.ListReports(ctx, scope, status, pageSize, after)
 	if err != nil {
 		return genmoderation.ReportPage{}, mapErr(err, errCtx{})
 	}
@@ -101,11 +98,11 @@ func (s *Service) ListReports(ctx context.Context, authHeader bearertoken.Token,
 }
 
 func (s *Service) TakeActionOnReport(ctx context.Context, authHeader bearertoken.Token, reportIdArg string, requestArg genmoderation.TakeActionOnReportRequest) (genmoderation.ModerationAction, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
 		return genmoderation.ModerationAction{}, err
 	}
-	action, err := s.appService.TakeActionOnReport(ctx, string(authHeader), personID, reportIdArg, domain.ActionKind(requestArg.ActionKind.Value()), requestArg.Reason)
+	action, err := s.appService.TakeActionOnReport(ctx, pid, reportIdArg, domain.ActionKind(requestArg.ActionKind.Value()), requestArg.Reason)
 	if err != nil {
 		return genmoderation.ModerationAction{}, mapErr(err, errCtx{ReportID: reportIdArg})
 	}
@@ -113,11 +110,11 @@ func (s *Service) TakeActionOnReport(ctx context.Context, authHeader bearertoken
 }
 
 func (s *Service) TakeAction(ctx context.Context, authHeader bearertoken.Token, requestArg genmoderation.TakeActionRequest) (genmoderation.ModerationAction, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
 		return genmoderation.ModerationAction{}, err
 	}
-	action, err := s.appService.TakeAction(ctx, string(authHeader), personID,
+	action, err := s.appService.TakeAction(ctx, pid,
 		domain.ActionKind(requestArg.ActionKind.Value()), domain.TargetKind(requestArg.TargetKind.Value()), requestArg.TargetRef, requestArg.Reason)
 	if err != nil {
 		return genmoderation.ModerationAction{}, mapErr(err, errCtx{})
@@ -126,11 +123,11 @@ func (s *Service) TakeAction(ctx context.Context, authHeader bearertoken.Token, 
 }
 
 func (s *Service) ReverseAction(ctx context.Context, authHeader bearertoken.Token, actionIdArg string, requestArg genmoderation.ReverseActionRequest) (genmoderation.ModerationAction, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
 		return genmoderation.ModerationAction{}, err
 	}
-	action, err := s.appService.ReverseAction(ctx, string(authHeader), personID, actionIdArg, requestArg.Reason)
+	action, err := s.appService.ReverseAction(ctx, pid, actionIdArg, requestArg.Reason)
 	if err != nil {
 		return genmoderation.ModerationAction{}, mapErr(err, errCtx{ActionID: actionIdArg})
 	}
@@ -138,11 +135,11 @@ func (s *Service) ReverseAction(ctx context.Context, authHeader bearertoken.Toke
 }
 
 func (s *Service) FileAppeal(ctx context.Context, authHeader bearertoken.Token, actionIdArg string, requestArg genmoderation.FileAppealRequest) (genmoderation.Appeal, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
 		return genmoderation.Appeal{}, err
 	}
-	appeal, err := s.appService.FileAppeal(ctx, string(authHeader), personID, actionIdArg, requestArg.Statement)
+	appeal, err := s.appService.FileAppeal(ctx, pid, actionIdArg, requestArg.Statement)
 	if err != nil {
 		return genmoderation.Appeal{}, mapErr(err, errCtx{ActionID: actionIdArg})
 	}
@@ -150,8 +147,7 @@ func (s *Service) FileAppeal(ctx context.Context, authHeader bearertoken.Token, 
 }
 
 func (s *Service) ListAppeals(ctx context.Context, authHeader bearertoken.Token, statusArg *genmoderation.AppealStatus, pageSizeArg *int, pageTokenArg *string) (genmoderation.AppealPage, error) {
-	personID, err := s.whoami(ctx, authHeader)
-	if err != nil {
+	if _, err := personID(ctx); err != nil {
 		return genmoderation.AppealPage{}, err
 	}
 	var status *domain.AppealStatus
@@ -168,7 +164,7 @@ func (s *Service) ListAppeals(ctx context.Context, authHeader bearertoken.Token,
 		after = &c
 	}
 	pageSize := pageSizeOrDefault(pageSizeArg)
-	appeals, err := s.appService.ListAppeals(ctx, string(authHeader), personID, status, pageSize, after)
+	appeals, err := s.appService.ListAppeals(ctx, status, pageSize, after)
 	if err != nil {
 		return genmoderation.AppealPage{}, mapErr(err, errCtx{})
 	}
@@ -183,11 +179,11 @@ func (s *Service) ListAppeals(ctx context.Context, authHeader bearertoken.Token,
 }
 
 func (s *Service) DecideAppeal(ctx context.Context, authHeader bearertoken.Token, appealIdArg string, requestArg genmoderation.DecideAppealRequest) (genmoderation.Appeal, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
 		return genmoderation.Appeal{}, err
 	}
-	appeal, err := s.appService.DecideAppeal(ctx, string(authHeader), personID, appealIdArg, domain.AppealDecision(requestArg.Decision.Value()))
+	appeal, err := s.appService.DecideAppeal(ctx, pid, appealIdArg, domain.AppealDecision(requestArg.Decision.Value()))
 	if err != nil {
 		return genmoderation.Appeal{}, mapErr(err, errCtx{AppealID: appealIdArg})
 	}
