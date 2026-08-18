@@ -28,7 +28,16 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit) | Platform-moderator authority is a go-oikumenea Role on the shared root unit, checked target-scoped — not an OpenFaithMap roster table |
 | [D-Hardening](#d-hardening--in-process-rate-limiting-on-anonymous-writes-reused-witchcraft-observability) | In-process per-IP rate limiting on moderation's two anonymous write endpoints; observability reuses witchcraft's already-wired stack, no new infrastructure |
 | [D-CongregationImport](#d-congregationimport--scraped-congregations-provision-as-real-admin-less-units-a-verifiedclaimed-overlay-tracks-their-status) | Scraped/imported congregations provision as real, admin-less go-oikumenea Units under the approving operator's own token; a verified/claimed overlay (proposal, not settled) tracks status. Resolves `DS-OFM-10` |
+| [D-CatholicJurisdictionSync](#d-catholicjurisdictionsync--automated-jurisdiction-tier-unit-creation-from-wikidata-narrowly-scoped) | Automated jurisdiction-tier Unit creation from Wikidata, narrowly scoped (added to this index 2026-08-17 — the block existed since M8 but was never indexed) |
 | [D-ProductionDeployment](#d-productiondeployment--single-cheap-vm-docker-compose-caddy-for-tls--provider-agnostic) | Single cheap VM, Docker Compose, Caddy for TLS — provider-agnostic; per-surface OAuth clients, WireGuard, backup, and the `ua-edr` re-run trigger all get scheduled here as M9's own build-phase work |
+| [D-OwnCore](#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed) | **Supersedes D-CoreDependency and D-Facade.** The core is absorbed into `openfaithmap-api` as in-repo modules; no oikumenea image, SDK, npm client, or sibling checkout remains |
+| [D-CorePortScope](#d-coreportscope--port-the-hierarchy-drop-the-tenancy) | Units, graphs, edges and the closure table are ported; organizations, domains, `pdp_scoped`, audit, RLS, service principals and ~26 unused verticals are not |
+| [D-InProcessAuthz](#d-inprocessauthz--the-pdp-runs-in-process-app-layer-only) | The PDP is in-process pure Go over pre-fetched grants; app-layer only, no Postgres RLS. Resolves `DS-OFM-1` as a deliberate no |
+| [D-DirectTokenVerification](#d-directtokenverification--google-id-tokens-verified-in-process-no-service-principal) | `openfaithmap-api` verifies Google ID tokens itself with a pinned audience; the GCP service account and the whole service-principal concept are deleted. Supersedes D-ServiceIdentities |
+| [D-OwnRIDs](#d-ownrids--uuidv8-resource-identifiers-owned-by-openfaithmap) | The UUIDv8 RID scheme is ported with its structural CHECKs; the registry tables are dropped; RIDs render as `ofm:<service>:<kind>:<type>:<uuid>` |
+| [D-SeedBootstrap](#d-seedbootstrap--bootstrap-becomes-deterministic-seed-migrations) | The root unit, base roles, org kinds, site types and the exclusion backstop become seed migrations with fixed RIDs; three instance-specific env vars disappear |
+| [D-SuperAdminFold](#d-superadminfold--super-admin-folds-into-openfaithmap-admin-behind-a-role) | **Supersedes D-InstanceAdminConsole.** The third surface is deleted; super-admin screens move into `openfaithmap-admin` behind a role |
+| [D-StaticRefData](#d-staticrefdata--reference-data-is-a-static-seed-hermenea-is-removed) | **Supersedes D-BulkImport.** Countries and their locale names ship as seed migrations; the `hermenea` service, database and binary are deleted |
 
 ---
 
@@ -182,6 +191,13 @@ go-oikumenea's own `docker-compose.yml` shape. A go-oikumenea version bump is a 
   "shared Keycloak realm" premise this decision originally carried is gone; Google is the sole
   issuer for both identity paths below.
 
+> **Superseded (M10) by [D-OwnCore](#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed).**
+> The dependency this decision establishes is removed entirely: the core's capabilities move into
+> `openfaithmap-api` as in-repo modules. The text above is left as written (append-only correction,
+> this doc set's convention) because the *reasoning* still holds for the period it governed — the
+> integration was correct, and reusing go-oikumenea's verified topology is exactly what made M1–M8
+> cheap. What changed is the cost side, not the design side: see D-OwnCore's **Why**.
+
 ---
 
 ### D-Facade — Thin on identity/tenant/person/RBAC/location/religion-taxonomy
@@ -210,6 +226,15 @@ backend with migrations and tests, not client-side or crammed into the facade's 
 API-shape-only doc pointing at the go-oikumenea module it delegates to
 ([core-integration.md](../modules/core-integration.md)), or (b) is a full module doc, same template
 go-oikumenea uses, for a domain OpenFaithMap actually owns (content, moderation, vouching).
+
+> **Superseded (M10) by [D-OwnCore](#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed).**
+> "Owns no tables and makes no independent decisions" no longer describes the system: identity,
+> authorization, the unit hierarchy, the religion taxonomy, sites, locations and membership all
+> become OpenFaithMap tables and OpenFaithMap decisions. One clause of this decision survives and
+> is worth restating, because it is the reason the port stays small: the **domains** listed under
+> (b) — content, discovery glue, moderation, vouching — were correctly identified as OpenFaithMap's
+> own, and none of them change. What changes is that category (a) stops being a delegation and
+> becomes an implementation.
 
 ---
 
@@ -460,6 +485,15 @@ OpenFaithMap-owned tables go-oikumenea's generic console has no knowledge of and
 
 ---
 
+> **Superseded (M10) by [D-SuperAdminFold](#d-superadminfold--super-admin-folds-into-openfaithmap-admin-behind-a-role).**
+> The third surface is deleted along with the rest of the oikumenea artifacts. Note that this
+> decision's central **Why not** — "blurring the line would mean a congregation-admin console
+> occasionally also being an instance-admin console depending on who's logged in" — is a real
+> objection that D-SuperAdminFold has to answer rather than ignore; it does, and the answer is that
+> the line moved, not that it stopped mattering.
+
+---
+
 ### D-BulkImport — hermenea replays the existing registration flow in bulk, no new write path
 
 **Correction (found while scoping M2.2 for real, before any code landed).** The decision and prose
@@ -546,6 +580,14 @@ real import volumes.
 
 ---
 
+> **Superseded (M10) by [D-StaticRefData](#d-staticrefdata--reference-data-is-a-static-seed-hermenea-is-removed).**
+> `hermenea` is deleted — service, binary, database and migration set. What it actually supplied to
+> OpenFaithMap was the country list, and that list was *already* a static 249-row seed in
+> go-oikumenea's own `0001_platform_core.sql`; hermenea only re-upserted it and added Who's-On-First
+> geometry OpenFaithMap never queried.
+
+---
+
 ### D-SharedDatabase — One Postgres instance, two schemas
 
 **Decision.** go-oikumenea and OpenFaithMap share **one** Postgres instance, separated by schema
@@ -593,6 +635,17 @@ because nothing crosses the schema boundary.
   `oikumenea-migrate` fails before `openfaithmap-migrate` ever runs a single statement, because the
   `postgis/postgis` base image bootstraps its own `tiger` schema, which Atlas's dirty-check flags
   regardless of `--revisions-schema`. The flag stays; the reason was wrong.
+
+---
+
+> **Narrowed (M10) by [D-OwnCore](#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed).**
+> One instance, **one** schema. The `oikumenea` schema and the `hermenea` database are both dropped;
+> everything lives under `openfaithmap.*`. This decision's core claim survives intact and is in fact
+> vindicated — "one backup target, one connection string family, one health check, one thing to
+> size" is now literally true, and the no-cross-schema-FK rule it defends becomes unnecessary rather
+> than violated, since there is no longer a second schema to point at. The least-privilege
+> `openfaithmap` role from `0003_least_privilege_role.sql` stays; its "no grants on the `oikumenea`
+> schema" assertion becomes moot.
 
 ---
 
@@ -878,6 +931,15 @@ invariant). Two roles keep that separable.
 > is the implementation; `moderation.read` and `moderation.act` both resolve to this one check —
 > there is no second go-oikumenea permission distinguishing read from act, matching how
 > `content`/`discovery` already collapse their own read/manage distinctions to one PDP call.
+
+---
+
+> **Amended (M10) by [D-OwnCore](#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed).**
+> Read "a go-oikumenea Role" as "a Role" throughout — the mechanism is unchanged, but the roles
+> table is now OpenFaithMap's own. The decision's substance (moderator authority is a
+> `subtree`-scoped role assignment on the shared root unit, checked target-scoped, **not** an
+> OpenFaithMap roster table) is one of the things the port is specifically obliged to preserve, and
+> is a named verification criterion in M10.9.
 
 ---
 
@@ -1344,3 +1406,729 @@ entries.
   timers (backup, `ua-edr` re-run). None of that is done by this decision itself.
 - `docker-compose.yml` itself is not rewritten by this decision — the production topology is an
   override/addition on top of the existing file, not a replacement.
+
+---
+
+### D-OwnCore — OpenFaithMap owns its core; go-oikumenea is removed
+
+**Supersedes [D-CoreDependency](#d-coredependency--go-oikumenea-is-the-headless-core-consumed-via-its-docker-image)
+and [D-Facade](#d-facade--thin-on-identitytenantpersonrbaclocationreligion-taxonomy).**
+
+**Decision.** OpenFaithMap absorbs the capabilities it used from go-oikumenea — identity,
+authorization, the unit hierarchy, the religion taxonomy, sites, locations, membership and country
+reference data — into `openfaithmap-api` as ordinary in-repo modules under `internal/`, following
+the same `transport → application → domain → adapters` convention every existing module uses. After
+this decision the repository contains **no** go-oikumenea Go SDK, **no** `oikumenea-client` npm
+package, **no** `docker.io/olegamysk/*` image, and **no** `OIKUMENEA_SRC` sibling checkout.
+
+The system becomes **one binary against one Postgres schema**. Calls that were HTTPS round-trips to
+`oikumenea-app:8443` become in-process Go function calls.
+
+**Why.** Three costs, all of which grew rather than shrank across M1–M8:
+
+1. **Authorization was a network dependency.** Every authenticated request made two round-trips —
+   one `Whoami`, one `Authorize` — to a service that had to be up for OpenFaithMap to serve any
+   authenticated page at all. There is no fallback and no degraded mode; an oikumenea outage is a
+   total outage.
+2. **Delivery velocity was gated on a second repository.** Six upstream issues (#33, #34, #36, #37,
+   #39, #41) were found *by this project* and had to be fixed upstream, released as a new image, and
+   pulled back in before the milestone that found them could close. #41 is still open. That is a
+   multi-repo change for what is, from the product's point of view, a one-line bug.
+3. **The artifact channels drifted.** Go SDK `v0.1.0`, npm SDK `0.0.1`, Docker images `0.0.7` —
+   three independently-versioned channels for one dependency, with no automated compatibility gate
+   between them.
+
+The port is affordable because the *useful* surface is small. go-oikumenea is ~267k LOC, but that is
+overwhelmingly generated Conjure transport, per-package duplicated sqlc `models.go` files, and ~26
+verticals OpenFaithMap never touches (audit, company, education, finance, order, rank, vehicle,
+document, …). The parts that carry the behaviour are tiny: the entire policy decision point is
+**260 lines of pure Go**. Total port is ~7–8k LOC of Go plus ~1.5k LOC of migrations — and most of
+that is only necessary because it becomes *our* code, not because it is hard.
+
+**Why not** keep the facade and fix the pain upstream: rejected, because the pain is structural. The
+network hop, the two-repo release cycle, and the three artifact channels are all consequences of the
+split itself, not of any particular upstream bug. Fixing #41 does not make the seventh issue cheaper.
+
+**Why not** a second in-repo service (`openfaithmap-core` + `openfaithmap-api`): rejected. It would
+preserve the boundary — and therefore the HTTP hop, two Conjure contract sets, and two deployments —
+while giving up the one thing the boundary bought, which was not having to maintain the core. A
+single VM running a single binary is also exactly what
+[D-ProductionDeployment](#d-productiondeployment--single-cheap-vm-docker-compose-caddy-for-tls--provider-agnostic)
+already assumes.
+
+**Why not** fork go-oikumenea wholesale: rejected. It would import the tenancy model, the 26 unused
+verticals, the audit partitioning, the RLS policy set, and ~28k LOC of generated transport for
+services nothing calls — most of the maintenance burden, with none of the simplification.
+
+**Consequences.**
+- [D-Stack](#d-stack--the-same-toolchain-as-go-oikumenea) is **unaffected**. Conjure, witchcraft,
+  gödel and Atlas all stay. Crucially, Conjure transport is generated only for the ~12 endpoints the
+  admin app actually calls (`api/core.conjure.yml`); everything else is in-process Go with no
+  transport layer at all. That is the single biggest reason the port is small rather than enormous.
+- `internal/coreintegration/` is deleted in full, along with the empty `clients/go/` placeholder.
+- The `oikumenea` schema and the `hermenea` database are dropped;
+  [D-SharedDatabase](#d-shareddatabase--one-postgres-instance-two-schemas) collapses to one schema.
+- Nine environment variables disappear (see [D-SeedBootstrap](#d-seedbootstrap--bootstrap-becomes-deterministic-seed-migrations)
+  and [D-DirectTokenVerification](#d-directtokenverification--google-id-tokens-verified-in-process-no-service-principal));
+  two are added.
+- `NODE_TLS_REJECT_UNAUTHORIZED=0` and `OIKUMENEA_INSECURE_SKIP_VERIFY=true` are removed from four
+  compose services. They existed only to tolerate `oikumenea-app`'s self-signed certificate; with no
+  internal TLS hop there is nothing left to skip verifying.
+- **One deliberate behaviour change, recorded here so it is not later rediscovered as a bug.**
+  Today `Authorize` is called with *the caller's own token*, so go-oikumenea's PDP additionally
+  requires the caller to hold `assignment.read` reaching the target unit, with no self-exemption —
+  which is why `scripts/bootstrap-registration-org` grants congregation-admin that permission
+  (documented at `internal/content/application/authorize.go:21-25`). In-process,
+  `Authorize(subject, action, unit)` is a pure function of the subject and that meta-permission is
+  meaningless. Role definitions simplify accordingly; `assignment.read` is no longer granted to
+  congregation-admin.
+- go-oikumenea remains a perfectly good project and this decision is not a judgement on it. The
+  facade was the right call for M1–M8: it is what let this project reach nine built modules without
+  ever writing an authorization system. This decision is about what the *next* nine cost.
+
+---
+
+> **Amended (2026-08-18) after two independent code-grounded reviews** (`docs/review-result-1.md`,
+> `docs/review-result-2.md`), each finding re-verified against the source before adoption. Two of
+> this block's numbers were wrong and are corrected here rather than edited above:
+>
+> - **The port is ~12–15k LOC of Go and ~3–3.5k of migrations, not ~7–8k and ~1.5k.** Hand-written
+>   Go in the six source modules, excluding tests and generated sqlc, totals ~21.5k; dropping every
+>   `transport/` layer still leaves ~18k before trimming orgs, kinds, clergy, facets and principals.
+>   `0008_religion.sql` alone is 1,299 lines and the four locale packs another 1,542. The
+>   *qualitative* claim — that the headline 267k is dominated by generated transport, duplicated
+>   sqlc models and ~26 unused verticals — is confirmed and unchanged.
+> - **`api/core.conjure.yml` is ~25 endpoints, not ~12.** The 9-operation figure was an exact count
+>   of what `openfaithmap-admin` calls oikumenea for *today*; it silently omitted the entire
+>   super-admin set that [D-SuperAdminFold](#d-superadminfold--super-admin-folds-into-openfaithmap-admin-behind-a-role)
+>   requires the same contract to serve — capability that today lives inside `oikumenea-console`
+>   and was never part of that survey.
+>
+> Neither correction changes the decision. "Conjure transport only where a client actually needs
+> it" is still the reason the port is tractable; the number attached to it was just too small. The
+> cutover remains straight-line on one branch — an informed bet at 12–15k LOC, mitigated by the
+> pre-cutover baselines and the authorization matrix in `milestones.md`'s M10.9, not by optimism.
+
+---
+
+### D-CorePortScope — Port the hierarchy, drop the tenancy
+
+**Decision.** The port is a deliberate subset, not a fork. What comes across, and what does not:
+
+| Ported | Dropped |
+|---|---|
+| `directory_units`, `directory_graphs`, `directory_unit_edges`, `directory_unit_closure`, `directory_closure_status` | `tenant_organizations`, `tenant_domains`, `tenant_unit_kinds`, all lifecycle/code-event tables |
+| `identity_persons` (one table), `identity_accounts` | the other 49 `person_*` tables; `personprofile`, `personsensitive` |
+| `authz_roles`, `authz_role_permissions`, `authz_role_assignments`, `authz_epoch` | `authz_principal_grants`, `authz_unit_org`, the `authz_readable_units` SQL pushdown helpers |
+| 13 `religion_*` tables (taxa + closure + classifications, org kinds/profiles/classifications, policies + policy kinds, sites + site types, schedules + service types, aliases) | the 4 clergy tables and 2 affiliation tables |
+| `location_locations`, `location_location_types` | `geo_places` (the Who's-On-First gazetteer) |
+| `membership_positions`, `membership_memberships` | `required_rank_id`, `order_item_id`, and all of `internal/rank` |
+| `refdata_countries`, `refdata_country_names` | `internal/localization`'s generic `i18n_translations` overlay |
+| — | `internal/audit`, all Postgres RLS, service principals, and ~26 unused verticals |
+
+`internal/person` is **rewritten (~500 LOC), not lifted** — upstream's 8,712-LOC package is
+structurally wired to `rank`, `order`, `personprofile`, `personsensitive` and `watchlistclient`,
+while OpenFaithMap needs exactly one table. The CLDR person-name field set and the trigram
+`search_text` column are worth copying verbatim; the package around them is not.
+
+**Why drop tenancy.** OpenFaithMap is one product with one tenant. Organizations and domains exist
+upstream to separate customers who share an instance; here they would be a single row that every
+query filters on identically.
+
+**Why keep the hierarchy.** It is load-bearing and irreducible:
+[D-JurisdictionUnits](#d-jurisdictionunits--denomination-aware-non-uniform-jurisdiction-layer-operator-assigned)
+requires variable-depth jurisdiction chains, `subtree`-scoped role assignments
+([D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit))
+require ancestor reach, and `congregationimport`'s jurisdiction sync builds real unit trees. None of
+that survives flattening.
+
+**Why not** flatten to congregation-specific tables and skip the generic Unit graph entirely:
+considered and rejected. It looks simpler until jurisdiction depth, moderation reach and the
+Catholic jurisdiction sync all need the same ancestor query, at which point the graph gets
+reinvented worse. The closure table is ~1,200 LOC and already debugged.
+
+**Consequences.**
+- Dropping organizations is a **design change, not a column drop**: `tenant_units.org_id` and
+  `domain_id` are `NOT NULL` upstream, and `pdp_scoped` (the "reference unit exempt from reach
+  checks" escape hatch) derives from a unit's domain. The ported schema has no equivalent, so every
+  unit is reach-scoped. Any future need for a reference unit is a new decision, not a flag.
+- Dropping `authz_principal_grants` removes the machine plane, which is coherent only because
+  [D-DirectTokenVerification](#d-directtokenverification--google-id-tokens-verified-in-process-no-service-principal)
+  removes machine callers entirely.
+- `pkg/{stats,facet,action,crypto,personalcode,events,config}` are not ported. `pkg/facet` alone is
+  3,061 LOC serving dashboard/facet endpoints OpenFaithMap has never called, and it drags migrations
+  0017–0024 (~800 LOC) with it.
+
+---
+
+> **Amended (2026-08-18) — the ported/dropped table above was incomplete, and one omission was a
+> build-stopper.**
+>
+> **`religion_*` — all 22, explicitly assigned.** The prose cell above named 13 kept + 6 dropped =
+> 19, and the bare word "classifications" was ambiguous between four differently-named tables. This
+> list supersedes it and is the source of truth for M10.1's migration.
+>
+> *Keep (15):* `religion_taxon_ranks` · `religion_classifications` · `religion_taxa` ·
+> `religion_taxa_closure` · `religion_taxon_classifications` · `religion_org_kinds` ·
+> `religion_org_profiles` · `religion_org_classifications` · `religion_policy_kinds` ·
+> `religion_org_policies` · `religion_site_types` · `religion_sites` · `religion_service_types` ·
+> `religion_service_schedules` · `religion_aliases`
+>
+> *Drop (6):* the 4 clergy tables (`religion_clergy_credentials`, `religion_clergy_grades`,
+> `religion_grade_categories`, `religion_office_types`) and the 2 affiliation tables
+> (`religion_affiliations`, `religion_affiliation_types`), with `pkg/crypto`.
+>
+> *Undecided, resolve before M10.1:* `religion_unit_classifications` — kept only if some path this
+> repo actually calls reaches it; otherwise dropped, in which case `religion_classifications` stays
+> anyway as `religion_taxon_classifications`' FK target.
+>
+> **`religion_taxon_ranks` is not optional.** `religion_taxa.rank_id uuid NOT NULL REFERENCES
+> oikumenea.religion_taxon_ranks(id)` (`../go-oikumenea/migrations/0008_religion.sql:140`). Omitting
+> it produces a migration that does not apply.
+>
+> **`authz_instance_admins` is ported**, and belongs in the ported column above. `PDP.Decide`'s
+> first two branches read `IsInstanceAdmin` (`pdp.go:82-87`); without the table, branch 1 is dead
+> code and branch 2 denies every instance-scope action to everyone, permanently. See
+> [D-InProcessAuthz](#d-inprocessauthz--the-pdp-runs-in-process-app-layer-only)'s own amendment.
+>
+> **Also dropped, named so the port does not copy a column without its logic:**
+> `tenant_units.visibility` and `ShadowGate`. OpenFaithMap has no shadow-unit concept — site-level
+> privacy is `religion_sites.visibility` + `public_precision`, which we keep. Inheriting the column
+> without the gate would silently enumerate shadow units to any authenticated caller through
+> `ListUnits`; inheriting neither is the decision. Likewise `ReachSet` (pages whole subtrees via
+> `DescendantUnitIDs` — for the registration operator's root subtree grant that is every
+> congregation in the product) and `scope/scope.go` (192 LOC serving unified search and link
+> traversal, neither of which exists here) are **not** ported.
+>
+> **The closure lock is a row lock, not an advisory lock.** `SELECT id FROM directory_graphs WHERE
+> id = $1 FOR NO KEY UPDATE` (`../go-oikumenea/internal/tenant/adapters/queries/tenant.sql:536-540`),
+> taken inside the caller's transaction and held to commit. `internal/platform/db/advisorylock.go`
+> is a *session-level* lock for boot seeding — a different thing, wanted for a different reason
+> (the first-admin seed, see [D-SeedBootstrap](#d-seedbootstrap--bootstrap-becomes-deterministic-seed-migrations)).
+>
+> Since OpenFaithMap has effectively one authority-bearing graph, every `CreateChildOrg`, `AddEdge`,
+> jurisdiction-sync node and candidate approval serialises on **a single row**. Binding invariant:
+> **the graph row lock is taken as late as possible, and no network call, geocode or external fetch
+> may occur while it is held.** The specific trap is the plausible in-process refactor — today
+> `ensureUnit` and `ensureSite` are separate HTTPS calls that lock independently; folding them into
+> one "now that it's atomic" transaction holds the lock across all of it, and moving geocoding
+> inside holds it across a 1-request/second external call.
+>
+> **`CreateUnitWithEdge`'s ordering is kept for a different reason than originally recorded.**
+> Upstream seeds closure rows before the unit INSERT so the RLS `WITH CHECK` finds a subtree match
+> on a brand-new unit. With RLS dropped that motivation is gone; the ordering is harmless and is
+> cheap insurance if RLS is ever revisited. Recording the real reason matters — otherwise the next
+> person to touch it reorders it and breaks the backstop if it ever comes back.
+>
+> **`SearchSites` gets one behaviour change, not a verbatim port** — see
+> [D-InProcessAuthz](#d-inprocessauthz--the-pdp-runs-in-process-app-layer-only)'s amendment for the
+> reasoning; the change itself: `public_precision = 'hidden'` sites are excluded from the public
+> search arm entirely, and other non-`exact` sites are filtered and ordered on a generated geometry
+> column snapped to their own precision, rather than on the exact geometry.
+
+---
+
+### D-InProcessAuthz — The PDP runs in-process, app-layer only
+
+**Decision.** Authorization is decided by an in-process policy decision point in `internal/authz`.
+`Authorize(ctx, subjectPersonID, action, unitID)` is a pure Go function over grants fetched once per
+request and cached against `authz_epoch`. There is **no** Postgres row-level security on any
+OpenFaithMap table. This resolves `DS-OFM-1` as a deliberate *no* rather than an open seam.
+
+The engine, ported from upstream's `domain/pdp.go`:
+
+1. instance admin → allow;
+2. action is instance-scoped and subject is not an instance admin → deny;
+3. otherwise, for each active grant carrying the action: `ScopeUnit` matches when
+   `target_unit_id == unitID`; `ScopeSubtree` requires the grant's graph to be authority-bearing,
+   then matches when `target_unit_id == unitID` or the closure table says target is an
+   ancestor-or-self of `unitID`.
+
+The only I/O during a decision is two point lookups against the closure table's primary key.
+
+**Why in-process rather than SQL.** It already is in-process upstream, and for good reason: the
+decision needs the subject's whole grant set anyway, so pushing it into SQL means either N queries
+or one large join per check. Fetch-once-and-loop is both faster and far easier to test — the engine
+becomes a pure function with no database in the way, which is what makes the table-driven test
+matrix in M10.9 possible at all.
+
+**Why permissions stay a closed Go catalog** of string constants rather than rows: a permission code
+that no code path checks is dead weight, and a code path checking a permission nobody can grant is a
+silent hole. Keeping the catalog in Go means the compiler is the integrity check. Upstream's 512-line
+catalog is trimmed to what OpenFaithMap actually uses.
+
+**Why not** RLS: rejected for now. Upstream's RLS is genuine defence-in-depth against the
+forgotten-`WHERE`-clause bug class, and its predicate (`authz_unit_in_reach`) is keyed on the
+authorization reach graph, not on a tenant — so it *would* port. But it needs session-GUC plumbing
+on every pooled connection (`app.person_id`, `app.is_instance_admin`, `app.principal_id`), it is
+explicitly documented upstream as non-authoritative, and the app-layer PDP it backstops is the same
+one we are porting. Adding it now would double the surface of the riskiest phase of this migration
+to duplicate a check we are already making. Recorded as a deferred seam, with the port path known.
+
+**Consequences.**
+- `Decision.Via []Contribution` (decision-explain) is ported. It is the difference between "403" and
+  "403 because grant X on unit Y is `unit`-scoped and you asked about a descendant", and
+  authorization bugs are otherwise close to undebuggable.
+- The grant cache is invalidated by an epoch counter bumped by every authority-mutating transaction,
+  validated with one single-row read. Ported as-is; a stale grant cache is a security bug, not a
+  performance bug.
+- Background paths that have no human subject (discovery cache refresh, `POST /exclusion-check`) use
+  an explicit `authz.SystemContext()` that bypasses the PDP — the in-process equivalent of upstream's
+  `RunAsSystem`. It is a named, greppable construct precisely so that "this code path skips
+  authorization" is never implicit.
+
+---
+
+> **Amended (2026-08-18) — five changes, one of which reverses a decision made above.**
+>
+> **1. No grant cache. Grants are read per request.** The block above says the epoch-invalidated
+> cache is "ported as-is; a stale grant cache is a security bug, not a performance bug." Porting it
+> as-is *is* the security bug, because "as-is" upstream includes a backstop this same decision
+> removes. Upstream's own package comment: *"The RLS backstop underneath is exact/live
+> (D-RLSLiveReach), so a stale ALLOW cannot read revoked-away rows on RLS-guarded tables"*
+> (`../go-oikumenea/internal/authorization/application/grantcache.go:15-17`; `grantCacheTTL = 2 *
+> time.Second` at :44). Drop RLS and the cache's 2-second window has no floor under it.
+>
+> The exposure is concrete: any authority change made *outside* the application bumps the epoch but
+> does not reset the local map — raw SQL of the shape `scripts/bootstrap-registration-org` already
+> emits, an incident-response `UPDATE`, or a migration editing a base role's permissions, which
+> [D-SeedBootstrap](#d-seedbootstrap--bootstrap-becomes-deterministic-seed-migrations) makes the
+> *normal* way to change roles. So: one indexed join on `authz_role_assignments` per authenticated
+> request. Revocation becomes instant, and ~142 LOC plus the epoch table, singleflight and five
+> metrics — all sized for a multi-replica deployment that does not exist — are not ported. Keeping
+> RLS instead was the other exit; it needs GUC plumbing on every pooled connection and would enlarge
+> the riskiest phase of the migration to duplicate a check we are already making.
+>
+> **2. Instance admin is a plane, not a role.** `authz_instance_admins` is ported.
+> `IsInstanceScope` exists upstream precisely to make instance-scope permissions unsatisfiable by
+> any unit-scoped role, so a "super-admin role" is incoherent — and the first admin must be able to
+> grant before any unit assignment exists. The permission catalog gains an instance-scope set; see
+> [D-SuperAdminFold](#d-superadminfold--super-admin-folds-into-openfaithmap-admin-behind-a-role).
+>
+> **3. The module-facing entry point takes its subject from context.** The block above proposes
+> `Authorize(subject, action, unit)` as "a pure function of the subject". Both reviews confirmed the
+> removal of the `assignment.read` meta-check is safe — at all seven call sites the subject argument
+> is already the `Whoami`-resolved caller — but the meta-check was also the only thing *binding the
+> answer to the authenticated caller*. A subject parameter makes `Authorize` an oracle over
+> arbitrary subjects, safe only by call-site convention. That is the same defect class this repo
+> already fixed twice (M2.3's untargeted `MyCapabilities`, M3's missing grant). So:
+> **`authz.Require(ctx, action, unitID)`** is the only form modules use, subject from context,
+> mirroring upstream's own PEP. `authz.DecideFor(ctx, subject, …)` exists solely for the super-admin
+> "what can this person do" screen and is itself gated on the instance-admin plane.
+>
+> **4. `internal/authz/domain` owns a `ClosurePort` interface; `internal/directory` implements it.**
+> This is what makes the phase ordering sound and what resolves the authz↔directory cycle — and it
+> was load-bearing but unstated. **`internal/authz` imports no other module, and `internal/directory`
+> must not import `internal/authz`** (directory's writes are gated at transport). Without this
+> written down, the natural implementation imports `internal/directory` from `internal/authz`,
+> inverting the dependency, violating this doc set's own cross-module rule, and turning the cycle
+> into a compile error found late. Construct the authz service before any route registration so
+> upstream's late-`Bind` pattern is unnecessary; if it survives for any reason, port `MustBeBound()`
+> and assert at boot — upstream added it after a forgotten `Bind` surfaced as a request-time nil.
+>
+> **5. `SystemContext()` covers five paths, not two.** The block above names discovery cache refresh
+> and `POST /exclusion-check`. A sweep of `coreintegration.NewServiceClient` call sites finds three
+> more, and one of them **writes**:
+>
+> | Path | Site | Kind |
+> |---|---|---|
+> | discovery cache refresh | `internal/discovery/application/service.go:53,79,123` | read |
+> | moderation `CheckExclusion` | `internal/moderation/application/exclusion_check.go:28` | read |
+> | `RunConnector` import loop | `internal/congregationimport/application/service.go:90,146` | read |
+> | `resolveCountryName` | `internal/congregationimport/application/geocode.go:92` | read |
+> | **`RunJurisdictionSync`** | `internal/congregationimport/application/jurisdictionsync.go:75` | **write** |
+>
+> `SystemContext` must be unforgeable, not merely conventional: a private type in `internal/authz`
+> with an unexported key, constructible only by `authz.SystemContext(parent)`; the authentication
+> middleware **strips** any system marker from every inbound request context unconditionally;
+> `authz.Require` **panics** rather than denies on a system context found in a request-scoped
+> context, so the failure is loud in dev and test; and a lint-enforced allowlist of the five files
+> permitted to call it.
+>
+> **`RunJurisdictionSync` additionally gains `requireOperator`**, matching every sibling write in
+> its module. Today its transport handler resolves `whoami` and stops
+> (`internal/congregationimport/transport/service.go:209-213`), so any authenticated Google account
+> can trigger real Unit writes that run under the service principal's instance-wide grant. It copied
+> `RunConnector`'s shape, but `RunConnector`'s stated justification — *"it makes no go-oikumenea
+> WRITE"* — does not carry over. Its writes stay system-context; its *trigger* stops being
+> any-authenticated-account. **This is a live gap on `main` and it stays open until M10.6 lands** —
+> a standalone fix first was recommended and deliberately declined in favour of folding it into the
+> port. Named in M10.9's refusal-proof list.
+>
+> **6. `SearchSites` leaks position through its filter, and the fix belongs here.** Coarsening the
+> *returned* coordinate does not protect the *predicate*: `ST_DWithin(l.geom, …)` and
+> `ORDER BY l.geom <-> pt` run on exact geometry
+> (`../go-oikumenea/internal/religion/adapters/discovery.go:354-356`) while `Coarsen` is applied
+> app-side afterwards (`internal/religion/application/discovery.go:251`). For a
+> `public_precision = 'hidden'` site — a house church, a congregation under harassment, exactly what
+> the field is for — membership in an anonymous `GET /search` result set is a boolean oracle on the
+> true position, and twenty or thirty varied radius queries binary-search it. KNN ordering leaks it
+> faster. This is an inherited upstream defect, not one the migration introduces, but the port must
+> not carry it while claiming the opposite property. Fix per
+> [D-CorePortScope](#d-coreportscope--port-the-hierarchy-drop-the-tenancy)'s amendment.
+
+---
+
+### D-DirectTokenVerification — Google ID tokens verified in-process, no service principal
+
+**Decision.** `openfaithmap-api` verifies Google ID tokens itself and resolves
+`(issuer, subject)` → `identity_accounts` → `identity_persons.id`. A single authentication
+middleware, registered via `wrouter.RouteMiddleware` (the same mechanism
+[D-Hardening](#d-hardening--in-process-rate-limiting-on-anonymous-writes-reused-witchcraft-observability)'s
+rate limiter already uses), does this once per request and puts the caller in the request context.
+
+The GCP service account, its mounted key file, `RegisterServicePrincipal`,
+`account_service_principals`, and the whole 473-LOC service-principal feature are **deleted**. This
+supersedes `D-ServiceIdentities`.
+
+[D-GoogleDirect](#d-googledirect--google-is-the-sole-identity-provider-no-keycloak) is **unchanged**:
+Google remains the sole IdP for humans. What changes is who validates the token.
+
+**Two boot guards are ported, and they are security requirements rather than niceties:**
+
+- **Pinned audience.** Refuse to start with an OIDC issuer configured without a pinned `aud`.
+  `https://accounts.google.com` is the same `iss` for *every* Google OAuth client on earth, and `sub`
+  identifies a Google account, not an application. Without a pinned audience, a token minted for any
+  unrelated Google app authenticates here.
+- **No symmetric issuers outside dev.** Refuse HS256 issuers unless the runtime environment is
+  local/dev. This is what keeps `scripts/mint-local-token`'s convenience path from becoming a
+  production hole.
+
+**Why delete the service principal.** It existed to give a *remote* caller a machine identity the
+core could resolve. With no remote caller there is nothing left to identify: background work runs in
+the same process, in the same binary, under the same operator's deployment. Keeping a machine
+principal would mean minting and verifying a token for a function call.
+
+**Why not** issue our own session JWTs instead of verifying Google's: rejected as scope. It buys real
+independence from Google at the cost of key rotation, refresh, and revocation — three things worth
+doing deliberately, later, not as a rider on this migration. `next-auth` already owns the browser
+session; only the API-side verification moves.
+
+**Consequences.**
+- `GOOGLE_APPLICATION_CREDENTIALS` and the mounted `var/service-account.json` are gone. Removing a
+  long-lived private key from the deployment is a security improvement independent of this
+  migration's other goals.
+- Six per-request `Whoami` round-trips collapse into one middleware.
+- New configuration: `GOOGLE_OAUTH_CLIENT_ID` (the audience to pin) and a dev-only
+  `DEV_ISSUER_HMAC_KEY`.
+- JIT account provisioning keeps upstream's `email_verified` requirement. An unverified email claim
+  is an account-takeover vector, not an edge case.
+- Background work becomes unattributable — there is no principal RID to record. Noted as a deferred
+  seam; it matters more once [D-OwnCore](#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed)'s
+  dropped audit log comes back.
+
+---
+
+> **Amended (2026-08-18) — "two boot guards" undercounts what has to come across, and the guard as
+> described has nothing to key on.**
+>
+> **Port `validator.go` and `authenticator.go` in full.** The risk is specifically the combination
+> of [D-OwnCore](#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed)'s "port freely,
+> simplifying as code lands" with a test list that would not catch an algorithm-confusion or
+> clock-skew regression introduced during that simplification. Beyond the two guards named above:
+>
+> - **`GuardReservedIssuer`** — a third guard, not mentioned. It stops an operator pointing a real
+>   IdP at the synthetic local issuer, which is exactly the attack invited once that issuer string
+>   is a constant in a public repository.
+> - `jwt.WithValidMethods` algorithm pinning, and `jwt.WithLeeway` clock skew — noting that upstream
+>   applies leeway only on the HS256 path and delegates the OIDC path to go-oidc with none. Whatever
+>   OpenFaithMap does should be a decision, not an accident of which branch got the option.
+> - `audienceAccepted` multi-audience matching. `SkipClientIDCheck: true` is safe **only** because
+>   that check runs unconditionally and the audience guard guarantees a non-empty set. Port the trio
+>   together or not at all — the verifier without the guard is a silent no-op audience check.
+> - JWKS caching and rotation are entirely go-oidc's, built lazily per issuer and never refreshed
+>   for discovery. A known property worth stating rather than assuming.
+> - `nonce` is correctly next-auth's job, not the API's. Say so rather than leaving it unaddressed.
+> - `azp` is projected but must never be an authorization input. If per-surface OAuth clients
+>   (`D-OAuthClients`) ever land, `aud` alone stops distinguishing the two surfaces — decide then,
+>   not by default.
+>
+> **`environment` becomes a real `config.Install` field**, and is the *only* input to the symmetric-
+> issuer guard. Upstream's `GuardSymmetricIssuers` fails closed on any environment that is not
+> `local`/`dev`, reading it from install config — but `internal/platform/config/config.go:22`
+> declares `Install` with **zero fields**, and its own doc comment records why: every setting is read
+> straight from the environment via `requireEnv`, bypassing the type. The natural implementation
+> ("register the HS256 issuer when `DEV_ISSUER_HMAC_KEY` is non-empty") makes the guard
+> self-authorizing — the dev key is permitted because the dev key is present. **Never derive "dev"
+> from the presence of a secret.** Boot fails on unknown or empty, exactly as upstream does; ship
+> `DEV_ISSUER_HMAC_KEY` commented out, never with a value, and refuse a known placeholder. This
+> repo's own track record is the argument: `docker-compose.yml` already carries
+> `OIKUMENEA_INSECURE_SKIP_VERIFY: "true"` and three `NODE_TLS_REJECT_UNAUTHORIZED: "0"`, each
+> marked DEV-ONLY, each inherited by any production override that does not explicitly unset it. This
+> also resolves `U12` for the one setting where it matters most.
+>
+> **Admin sessions will break at one hour unless Phase M10.2 also fixes the client.**
+> `web/apps/admin/auth.ts:41-48` captures `account.id_token` once at sign-in and never refreshes it.
+> Google ID tokens live one hour; the next-auth session lives far longer. Today the mismatch is
+> masked by the remote core; once `openfaithmap-api` owns the `exp` check it becomes this project's
+> problem. The sentence above — "next-auth already owns the browser session; only the API-side
+> verification moves" — is what hid it. Refresh-token handling is M10.2 scope, not a follow-up.
+>
+> **Replay posture, recorded rather than left implicit.** A valid Google ID token is accepted from
+> any client; there is no `jti` cache and no binding to a session. That is an acceptable posture for
+> this product. Note the migration *improves* on today by deleting a hop that currently runs with
+> certificate verification disabled.
+
+---
+
+### D-OwnRIDs — UUIDv8 resource identifiers, owned by OpenFaithMap
+
+**Decision.** Port go-oikumenea's UUIDv8 RID scheme: a native RFC 9562 §5.8 UUID carrying a
+millisecond timestamp in bytes 0–5 and app/service/kind/type discriminators in bytes 6–10, minted by
+a SQL column `DEFAULT new_id(service, kind, type)` and validated by a per-table structural `CHECK`.
+Keep the CHECKs. **Drop** the `platform_rid_services` / `platform_rid_types` registry tables. Render
+as `ofm:<service>:<kind>:<type>:<uuid>` at the API boundary only — never stored in that form.
+
+**Why keep the structure.** The timestamp prefix gives b-tree insert locality that random UUIDs
+don't, and the structural CHECK catches passing a unit RID into a site column at write time rather
+than as a confusing empty result later. In a codebase where cross-module references are deliberately
+opaque `TEXT` (`conventions.md`) and therefore *cannot* be foreign keys, that CHECK is the only
+type-safety left.
+
+**Why drop the registry tables.** They are documentation stored as rows. The service/kind/type
+codes are already Go constants; a second copy in Postgres is a thing to keep in sync, not a
+constraint.
+
+**Why not** plain UUIDv7: it is genuinely simpler, and it was a close call. Rejected because the
+CHECKs cost one line per table and pay for themselves the first time a RID is passed to the wrong
+query — which, with every cross-module reference being untyped `TEXT`, is a matter of when.
+
+**Consequences.** Every existing `*_rid TEXT` column and all six existing Conjure contracts are
+untouched — they always treated RIDs as opaque strings, which is exactly why this substitution is
+invisible to them. The rendered prefix changes from `oikumenea:` to `ofm:`, which is safe only
+because the cutover is greenfield
+([D-SeedBootstrap](#d-seedbootstrap--bootstrap-becomes-deterministic-seed-migrations)); there is no
+stored RID to rewrite.
+
+---
+
+> **Amended (2026-08-18) — the `ofm:` prefix is dropped; RIDs stay bare uuids on the wire.**
+>
+> This block claims both that RIDs render as `ofm:<service>:<kind>:<type>:<uuid>` at the API
+> boundary *and* that "every existing `*_rid TEXT` column and all six existing Conjure contracts are
+> untouched". Those cannot both hold. The *types* are untouched; every *value* changes. Today
+> `content_sites.congregation_unit_rid` stores a bare uuid, the admin app round-trips that string,
+> and `web/apps/web/app/[locale]/congregations/[unitId]/page.tsx` puts it in a **URL path segment**,
+> where `ofm:4:1:1:<uuid>` needs escaping.
+>
+> So: **keep the UUIDv8 structure and the per-table structural CHECKs — that is where the value
+> actually is — and store and expose the plain uuid, exactly as today.** No parse/format boundary,
+> no escaping, no value churn, and the type-confusion net this decision exists for is unaffected.
+> The human-readable form remains available as a debugging helper in logs; it is never a wire or
+> storage value.
+>
+> One consequence worth naming: with no prefix and no cross-module foreign keys
+> ([conventions.md](conventions.md)), a well-formed RID carries no authority and no referential
+> integrity. The structural CHECKs catch a unit RID in a site column; they never catch an
+> unauthorized one. Every `*_rid` parameter must be authorized, not merely validated — which is what
+> [D-InProcessAuthz](#d-inprocessauthz--the-pdp-runs-in-process-app-layer-only)'s
+> `authz.Require(ctx, …)` is for.
+
+---
+
+### D-SeedBootstrap — Bootstrap becomes deterministic seed migrations
+
+**Decision.** The root unit, the base roles and their permission sets, org kinds, site types, the
+`canonical` graph, the exclusion backstop, and the 249-row country list ship as **Atlas seed
+migrations with fixed, hard-coded RIDs** — not as output of manually-run scripts.
+`scripts/bootstrap-{service-principal,admin-person,registration-org,exclusion-backstop}` are deleted.
+
+**Why.** Today these are instance-specific RIDs produced by four manual script runs, then pasted
+into `.env` as `REGISTRATION_ROOT_UNIT_ID`, `REGISTRATION_CONGREGATION_ADMIN_ROLE_ID` and
+`CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID`. That is precisely why environments are not reproducible:
+two developers running the documented steps get different identifiers, and no test can name a unit.
+Owning the tables makes the values ours to choose, so we choose them once.
+
+**Why not** keep scripts and have them emit deterministic RIDs: rejected — that is a seed migration
+with extra steps, and it keeps the "did you remember to run the four scripts, in order" failure mode
+that `docs/milestones.md` records as a recurring source of broken local stacks.
+
+**Consequences.**
+- Three required environment variables disappear. `docker compose up --build` becomes genuinely
+  one-shot: no sibling checkout, no service-account JSON, no manual bootstrap sequence.
+- Fixed RIDs become referenceable constants in Go and in tests, which is what makes the M10.9
+  authorization matrix expressible.
+- The seed is a migration, so changing a base role's permissions is a reviewed, versioned schema
+  change rather than an undocumented production `UPDATE`.
+- Genuine trade-off: seeded RIDs are identical across every deployment. That is fine here — they
+  identify structural rows, not secrets, and OpenFaithMap is a single-instance product — but it
+  would need revisiting if the project ever ran multiple independent instances that federate.
+
+---
+
+> **Amended (2026-08-18) — as written, this decision produces an instance nobody can administer.
+> Identity is the one place determinism must not apply.**
+>
+> The block above deletes `scripts/bootstrap-admin-person` and seeds the root unit, base roles, org
+> kinds, site types, the exclusion backstop and the country list. It seeds **no person, no account,
+> and no instance admin** — and go-oikumenea's JIT is link-on-match-only: *"on no match, reject. JIT
+> never creates a person"* (`scripts/bootstrap-admin-person/main.go:4-11`). On a clean volume, the
+> first human to sign in with Google is refused, there is no shell account for their identity to
+> link onto, and no instance admin exists to grant the first assignment. The instance is
+> unadministrable, and M10.9's "`whoami` resolves to the seeded admin person" could not pass.
+>
+> **The obvious fix is worse than the bug.** Seeding a shell account with a fixed email combines
+> badly with this decision's deterministic RIDs: a committed seed email in an open-source repo means
+> every deployment that boots the migration unmodified ships the same pre-linked admin address, and
+> whoever controls that address — or later registers the domain — is instance admin everywhere.
+> `email_verified` does not help; the address is verified, just not yours.
+>
+> **So: the first admin is seeded at boot from install config, never by a migration.** An
+> `environment`-validated install-config field (see
+> [D-DirectTokenVerification](#d-directtokenverification--google-id-tokens-verified-in-process-no-service-principal)),
+> applied idempotently at startup under the session-level advisory lock
+> `internal/platform/db/advisorylock.go` exists for, a no-op once `authz_instance_admins` has any
+> active row, and boot **refused** on the placeholder value the way the symmetric-issuer guard
+> refuses HS256. A migration is structurally the wrong place regardless of the backdoor problem: the
+> admin's email is deployment-specific and the Google `sub` is unknowable until first login.
+>
+> **Email matching must be exact and normalised identically at write and read.** Port upstream's
+> `citext` column and state the normalisation. Google treats `foo@gmail.com`, `f.o.o@gmail.com` and
+> `foo+x@gmail.com` as one mailbox but returns the address as registered — a case-insensitive-but-
+> not-dot-insensitive match is either safe or a takeover depending on details nobody wrote down.
+> Once linked, `(issuer, subject)` — never the email — is the identity key thereafter, so an email
+> change at Google cannot re-target the link.
+>
+> **The rest of this decision stands, and gains an argument it did not make.** Structural RIDs as
+> fixed constants are correct, and they are what makes M10.9's table-driven authorization matrix
+> expressible at all — a test cannot name a unit whose identifier differs per environment. That is
+> the strongest case for this decision and it was missing from the block above. The split is:
+> structural RIDs deterministic, **identity RIDs never**.
+
+---
+
+### D-SuperAdminFold — Super-admin folds into openfaithmap-admin behind a role
+
+**Supersedes [D-InstanceAdminConsole](#d-instanceadminconsole--reuse-go-oikumeneas-own-console-as-the-third-super-admin-only-surface).**
+
+**Decision.** The `oikumenea-console` service is deleted. The super-admin capabilities OpenFaithMap
+actually uses — managing people, role grants, units and taxa — become screens inside
+`openfaithmap-admin`, gated on a super-admin role, served by the same `api/core.conjure.yml`
+endpoints. There are now **two** UI surfaces, not three.
+
+**Why.** D-InstanceAdminConsole's entire rationale was "it already exists and is already maintained
+as part of go-oikumenea." Once [D-OwnCore](#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed)
+removes go-oikumenea, that rationale evaporates: keeping the surface would mean *building* a third
+Next.js app to replace a free one, to administer tables we now own, for a handful of screens.
+
+**Answering the objection D-InstanceAdminConsole raised**, because it was a good one. That decision
+rejected exactly this fold, on the grounds that it would make "a congregation-admin console
+occasionally also an instance-admin console depending on who's logged in." The objection was
+correct **against instance-wide authority over a shared, general-purpose core** — a tenant graph and
+service-principal issuance spanning consumers beyond OpenFaithMap. That core no longer exists. The
+widest authority in the system is now super-admin over OpenFaithMap's own tables, which is a
+difference of degree from platform-moderator (already an `openfaithmap-admin` audience under
+[D-AdminSurface](#d-adminsurface--the-adminmoderator-console-is-a-separate-deployment-from-the-public-site)),
+not a difference of kind. The public/admin split D-AdminSurface actually defends — anonymous surface
+versus session-holding surface — is untouched.
+
+**Why not** build `openfaithmap-console` as a third app: rejected. It is a whole deployment,
+Dockerfile, OAuth client and CI matrix entry for a screen count in the single digits, and it would
+reintroduce the WireGuard requirement this decision otherwise retires.
+
+**Consequences.**
+- `DS-OFM-14`'s WireGuard half is resolved by deletion: there is no surface left that must not have
+  a public port. Per-surface OAuth clients
+  ([D-OAuthClients](#d-oauthclients--one-google-oauth-client-today-one-per-surface-as-the-target))
+  narrow from three surfaces to two, and the shared-client problem disappears with
+  `oikumenea-console`.
+- `openfaithmap-admin` now holds the highest authority in the system, so its own hardening matters
+  more than before. Super-admin screens must be role-gated server-side, not merely hidden in
+  navigation — a named M10.9 verification criterion, proven with a refused congregation-admin token.
+- `OIKUMENEA_CONSOLE_AUTH_SECRET` and the console's compose service, port 3003, and Google callback
+  registration all go away.
+
+---
+
+> **Amended (2026-08-18) — "gated on a super-admin role" is incoherent, and the server-side gate
+> this decision promises does not exist to be reused.**
+>
+> **Read "super-admin role" as "the instance-admin plane" throughout.** Instance admin is
+> deliberately *not* a role: `IsInstanceScope` exists upstream precisely to make instance-scope
+> permissions unsatisfiable by any unit-scoped role, and the first admin must be able to grant
+> before any unit assignment exists. `authz_instance_admins` is ported
+> ([D-InProcessAuthz](#d-inprocessauthz--the-pdp-runs-in-process-app-layer-only)); the fold is onto
+> that plane, not onto a role.
+>
+> **This decision's consequences section requires that "super-admin screens must be role-gated
+> server-side, not merely hidden in navigation" — but there is no such mechanism in
+> `openfaithmap-admin` to follow.** Its admin layout says so in its own comment: it *"only removes
+> duplicated 'is anyone logged in' boilerplate — it adds no role/permission gate"*
+> (`web/apps/admin/app/[locale]/admin/layout.tsx:11-15`). Every authorization check in the product
+> today is a per-call backend gate, and `content`, `moderation`, `vouching`, `discovery` and
+> `congregationimport` each maintain their own hand-copied `require*` function. Betting the
+> widest-blast-radius surface in the system on a sixth hand-copy, with no tests, is the single worst
+> place to do it.
+>
+> So M10.8 builds **two gates, both required**:
+> 1. one **shared, hard-to-misuse enforcer** in the API, used by every super-admin handler — not a
+>    per-file copy;
+> 2. a `requireInstanceAdmin()` check in the super-admin route group's layout, for cosmetic gating
+>    only, with the API gate remaining the real one.
+>
+> Both are proven in M10.9 with a refused congregation-admin token — the layout check and the
+> handler check tested separately, because a passing layout with an ungated handler is the failure
+> mode that matters.
+>
+> The objection inherited from `D-InstanceAdminConsole` is answered above and is unchanged by this
+> amendment: the line moved because the shared general-purpose core moved, not because it stopped
+> mattering.
+
+---
+
+### D-StaticRefData — Reference data is a static seed; hermenea is removed
+
+**Supersedes [D-BulkImport](#d-bulkimport--hermenea-replays-the-existing-registration-flow-in-bulk-no-new-write-path).**
+
+**Decision.** Country reference data ships as two seed tables: `refdata_countries` (the 249-row
+ISO-3166-1 alpha-2 list) and `refdata_country_names` (flat `code, locale, name` rows for en/es/pt/uk,
+lifted from go-oikumenea's locale-pack migrations). The `hermenea` service, its binary, its separate
+database and its migration set are deleted, along with the weekly cron and the two shared-token
+environment variables.
+
+**Why.** What hermenea supplied to OpenFaithMap was the country list — and that list was *already* a
+static 249-row `INSERT` in go-oikumenea's `0001_platform_core.sql`. Hermenea re-upserted the same
+alpha-2 codes and additionally enriched rows with Who's-On-First geometry, `wof_id`, `iso_a3` and
+`numeric_code`, none of which OpenFaithMap ever queried. The remaining mappers (Glottolog, CLDR,
+Wikidata orgs, Factbook ethnicities, Interpol/sanctions) feed upstream verticals this project does
+not have.
+
+Deleting it removes 4,621 LOC, a second database, a second binary, a cron, a job queue, five
+`olehmushka/go-*-client` dependencies, and five recurring outbound fetches to
+raw.githubusercontent.com, iso639-3.sil.org and query.wikidata.org.
+
+**Why not** port hermenea's importers into the existing `congregationimport` connector pattern:
+rejected as speculative. Country codes change on a timescale of years, and the mechanism to refresh
+them is "edit a migration and open a PR" — which is *better* than a cron, because it is reviewed and
+versioned. Build an importer when there is data that actually moves.
+
+**Why a flat `refdata_country_names` table** rather than porting `internal/localization`'s generic
+`i18n_translations` overlay: the generic mechanism exists upstream to translate arbitrary entity
+types across an open-ended locale set. OpenFaithMap translates exactly one entity type into exactly
+four locales. A two-column lookup is the whole requirement.
+
+**Consequences.**
+- The compose stack loses `init-hermenea-db`, `migrate-hermenea` and `hermenea` — three of the seven
+  services this migration removes — plus ports 9443/9444 and the
+  `HERMENEA_OIKUMENEA_TOKEN`/`OIKUMENEA_HERMENEA_TOKEN` pair (which shipped with committed
+  `dev-*-change-me` placeholder defaults).
+- Country geometry is no longer available. Nothing uses it; if spatial country lookup is ever
+  wanted, `refdata_countries` has room for a `geom` column and the WOF import is a known quantity.
+- `D-BulkImport`'s underlying principle is untouched and worth restating, since it long outlived the
+  hermenea mechanism it was written about: bulk paths reuse the ordinary write path and never invent
+  a second one. `congregationimport` still provisions through the same religion/directory/location
+  calls registration uses.
+
+> **Amended (2026-08-18) — one constraint on the seed, surfaced by review.** Nothing in this
+> decision was challenged; both reviewers independently confirmed that hermenea's country mapper
+> emits `code`/`name`/`alpha3`/`numeric` into a table that already holds 249 static rows, and that
+> OpenFaithMap reads only `Id` and `Name`. It goes.
+>
+> The constraint is on **fidelity of the port, not the decision**: the four locale packs must
+> survive **byte-for-byte**. `matchCountry` does exact-string comparison against *every* locale name
+> of every country (`internal/congregationimport/application/countrymatch.go:44-50`), and the `osm`
+> connector's `CountryHint` is deliberately built to match those strings exactly
+> (`adapters/connectors/osm/connector.go:115-127`). A single re-typed diacritic silently breaks
+> country matching for one country in one locale — and M10.9's `ua-edr` re-run exercises Ukraine
+> only, so it would not be caught there. M10.9 therefore diffs the whole `refdata_country_names`
+> table against a pre-cutover `ListCountries()` capture: all four locales, 249 rows.

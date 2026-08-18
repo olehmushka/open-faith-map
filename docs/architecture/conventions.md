@@ -20,9 +20,11 @@ of choices specific to OpenFaithMap.
 - Cross-module queries inside `openfaithmap-api` are direct interface calls; cross-module
   mutations are domain events — same rule go-oikumenea applies inside its own monolith.
 - Conjure-first: `api/<module>.conjure.yml` is the source of truth, generated Go/TypeScript code is
-  never hand-edited. *(Generated **Go** is real today. Generated **TypeScript** does not exist —
+  never hand-edited. *(~~Generated **Go** is real today. Generated **TypeScript** does not exist —
   there is no codegen pipeline for `openfaithmap-api` yet, so `web/apps/admin/lib/registration.ts`
-  is hand-written. [milestones.md](../milestones.md)'s M2.6.)*
+  is hand-written.~~ **Corrected 2026-08-18:** stale since M2.6 shipped the pipeline. Both exist —
+  `scripts/gen-ts-client.sh` generates into `web/apps/{admin,web}/lib/openfaithmap/generated/`, and
+  `make sdk-verify` fails on drift. [milestones.md](../milestones.md)'s M2.6.)*
 - Atlas versioned migrations, one repo-root `migrations/` directory, expand/contract releases, a
   boot-time schema-version check. *(The boot-time check is not implemented —
   `cmd/openfaithmap-api` reads `DATABASE_URL` and opens a pool with no schema-version assertion.
@@ -46,7 +48,17 @@ of choices specific to OpenFaithMap.
   instance boundary. `openfaithmap-api` connects as a least-privilege role scoped to the
   `openfaithmap` schema (M2.4, D-SharedDatabase) — the boundary is now enforced at the database
   level, not just by convention.
-- **Primary keys are plain `uuid` (`gen_random_uuid()`), not composed URN RIDs — decided at M3,
+- > **Superseded (2026-08-18) by [D-OwnRIDs](decisions.md#d-ownrids--uuidv8-resource-identifiers-owned-by-openfaithmap)
+  > and its amendment.** M10 ports go-oikumenea's `new_id(service, kind, type)` function and its
+  > per-table structural CHECKs into the `openfaithmap` schema, so new core tables get bit-packed
+  > UUIDv8 primary keys rather than `gen_random_uuid()`. The bullet below is still right about the
+  > thing it was correcting — the composed-URN-`TEXT` scheme was never go-oikumenea's real
+  > convention and is not adopted now either. **Values on the wire stay bare uuids**; D-OwnRIDs'
+  > original `ofm:` prefix rendering was dropped precisely because existing `*_rid TEXT` columns and
+  > the public congregation URL path segment round-trip bare uuids today. Existing
+  > `registration_*`/`content_*`/`moderation_*` tables keep their plain `uuid` PKs unchanged.
+
+  **Primary keys are plain `uuid` (`gen_random_uuid()`), not composed URN RIDs — decided at M3,
   2026-08-10, correcting a premise this bullet held until then.** The prior text described
   OpenFaithMap minting "RIDs" in go-oikumenea's composed-URN-`TEXT` style
   (`urn:oikumenea:<service>:<env>:<entity_type>:<uuid>`, via a `new_rid()` function) and flagged
@@ -68,9 +80,18 @@ of choices specific to OpenFaithMap.
   OpenFaithMap treats a dangling reference as "the unit/person no longer exists" and handles it at
   read time (soft 404, not a crash).
 - **Authorization for OpenFaithMap-owned tables is a target-scoped capability check** against
-  go-oikumenea's PDP — "does this caller hold *this authority* over *this unit*" — never an
-  untargeted "holds P anywhere" check, and never a successful read treated as proof of write
-  standing. Both anti-patterns have already occurred in this repo; see
+  ~~go-oikumenea's PDP~~ **OpenFaithMap's own in-process PDP from M10 onward
+  ([D-InProcessAuthz](decisions.md#d-inprocessauthz--the-pdp-runs-in-process-app-layer-only)) —
+  same rule, same shape, no network hop** — "does this caller hold *this authority* over *this
+  unit*" — never an untargeted "holds P anywhere" check, and never a successful read treated as
+  proof of write standing.
+
+  **Added 2026-08-18:** the check is `authz.Require(ctx, action, unitID)`, which takes its subject
+  from the request context. A subject-parameter form exists (`authz.DecideFor`) for the super-admin
+  "what can this person do" screen only, and is itself gated on the instance-admin plane. This is
+  not a style preference — a subject parameter makes the PDP an oracle over arbitrary subjects,
+  safe only by call-site convention, which is the same defect class as the two worked examples
+  below. Both anti-patterns have already occurred in this repo; see
   [D-PlatformModerator](decisions.md) and
   [core-integration.md](../modules/core-integration.md#authorization-touchpoints) for the pattern
   and the two worked examples.
@@ -82,9 +103,18 @@ of choices specific to OpenFaithMap.
   RID column, but access control for that column is enforced at the application layer against
   go-oikumenea's PDP response (see [core-integration.md](../modules/core-integration.md)) — there
   is no Postgres RLS policy keyed on it, because OpenFaithMap's database has no notion of "which
-  unit can this connection see" the way go-oikumenea's `app.readable_units` GUC does. This is a
-  **known, accepted gap** relative to go-oikumenea's defense-in-depth posture — see
+  unit can this connection see" the way go-oikumenea's `app.readable_units` GUC does. ~~This is a
+  **known, accepted gap** relative to go-oikumenea's defense-in-depth posture~~ — see
   [open-questions.md](../open-questions.md).
+
+  **Settled 2026-08-18 (`DS-OFM-1` closed): no longer a gap relative to anything, because there is
+  no longer a second posture to be relative to.** From M10, OpenFaithMap owns every table, and
+  [D-InProcessAuthz](decisions.md#d-inprocessauthz--the-pdp-runs-in-process-app-layer-only) chooses
+  app-layer-only deliberately. The choice is only sound because that decision's amendment **also
+  drops the grant cache** and reads grants per request: upstream's cache is documented as safe
+  precisely because an exact/live RLS backstop sits underneath it, so keeping the cache while
+  dropping RLS would have left a 2-second stale-ALLOW window with no floor. App-layer-only plus
+  no cache is coherent; app-layer-only plus a cache would not have been.
 - **i18n.** Content translation groups (see [content.md](../modules/content.md)) are OpenFaithMap's
   own mechanism, not go-oikumenea's `locale → text` translation store — a content translation is a
   *separate document*, not a label on one row, since a page's blocks differ per locale, not just

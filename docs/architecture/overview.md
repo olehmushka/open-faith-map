@@ -79,10 +79,26 @@ no host port published, reachable only over the compose-internal network.
 **Build status.** All five services above exist in `docker-compose.yml` and run:
 `openfaithmap-api` (M1/M2), `openfaithmap-web` and `openfaithmap-admin` (split at M2.1 —
 [web-facade.md](../modules/web-facade.md) and [web-admin.md](../modules/web-admin.md)),
-`oikumenea-console` (M1.2), and `hermenea` (M2.2). What is *not* built is most of what
+`oikumenea-console` (M1.2), and `hermenea` (M2.2). ~~What is *not* built is most of what
 `openfaithmap-api` is eventually for: it owns exactly one module today, `registration`. `content`,
-`discovery`, `moderation`, and `vouching` are designed only — see the
+`discovery`, `moderation`, and `vouching` are designed only~~ — see the
 [stage board](../milestones.md#stage-board), which is authoritative for stage.
+
+> **Corrected 2026-08-17.** The struck sentence was accurate around M2.2 and went stale as the build
+> ran ahead of this doc. `openfaithmap-api` owns **nine** modules: `registration` (M2), `content`
+> (M3), `discovery` (M4), `moderation` (M5), `vouching` (M6), `congregationimport` (M8), plus
+> `coreintegration` and the platform/conjure scaffolding. M7 (hardening) and M8 are built but not
+> yet Verified; M9 is a docs-only deployment design with nothing provisioned. The stage board was
+> correct throughout — this paragraph simply was not updated alongside it.
+
+> **Scheduled for reversal (M10, decided 2026-08-17).** Most of the topology described in this
+> document is deliberately temporary.
+> [D-OwnCore](decisions.md#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed) absorbs
+> go-oikumenea's capabilities into `openfaithmap-api` as in-repo modules and deletes the
+> `oikumenea-app`, `hermenea` and `oikumenea-console` services along with the SDK, the npm client
+> and the `OIKUMENEA_SRC` sibling checkout. The request paths below — every one of which crosses an
+> HTTPS boundary into the core — become in-process Go calls. This document is not rewritten in
+> advance; it is accurate for the system as it stands today, and gets rewritten when M10.6 lands.
 
 ## Request paths
 

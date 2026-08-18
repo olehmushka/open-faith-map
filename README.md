@@ -46,30 +46,41 @@ vs. new — lives in [docs/architecture/overview.md](docs/architecture/overview.
 
 ## Status
 
-The [stage board](docs/milestones.md#stage-board) is authoritative. In short: **M0–M2.2 are built,
-M3–M6 are designed, M7 is an idea.**
+The [stage board](docs/milestones.md#stage-board) is authoritative.
+
+> **Corrected 2026-08-17.** This section previously read "M0–M2.2 are built, M3–M6 are designed, M7
+> is an idea" and listed `content`/`discovery`/`moderation`/`vouching` as not built. That was
+> accurate around M2.2 and went stale as the build ran ahead of it. Nine modules are built.
+
+In short: **M0–M6 are Verified, M7 and M8 are built but not yet Verified, M9 is a docs-only
+deployment design with nothing provisioned, and M10 — absorbing the go-oikumenea core into this
+repo — is decided but not started.**
 
 Running today:
 
-- **`openfaithmap-api`** with its first real module, `registration` — congregation self-service
-  submission, the D-Exclusions taxon check, and operator approval that performs real go-oikumenea
-  writes with the operator's own forwarded token. Plus `api/registration.conjure.yml`,
-  `migrations/0001_registration.sql`, and `internal/conjure/` generated server code.
+- **`openfaithmap-api`** with nine modules: `registration`, `content`, `discovery`, `moderation`,
+  `vouching`, `congregationimport`, plus `coreintegration` and the platform/conjure scaffolding.
+  Six Conjure contracts under `api/`, thirteen Atlas migrations under `migrations/`, and generated
+  server code in `internal/conjure/`.
 - **Two Next.js apps** (D-AdminSurface): `web/apps/web` (anonymous, no session, ever) and
   `web/apps/admin` (the only surface that ever holds a credential — login, registration wizard,
-  operator console, roster).
-- **`docker-compose.yml`**: a real go-oikumenea instance from its published image, plus
+  operator console, roster, moderation queue, import review).
+- **`docker-compose.yml`**: a real go-oikumenea instance from its published image (`0.0.7`), plus
   `oikumenea-console`, `hermenea`, and both OpenFaithMap apps. One shared Postgres, two schemas
   (D-SharedDatabase). **No Keycloak** — Google is the sole IdP (D-GoogleDirect).
-- **`internal/coreintegration`**: a proven service-principal client — a GCP service account mints
-  its own Google ID token per call, which go-oikumenea validates and resolves by
-  `(issuer, subject)`. Proven against `connector.read`, **not** the `religion.read` grant these docs
-  describe needing: every religion-module read endpoint denies machine subjects outright
-  (`RequireAnywhere`, a person-only PEP path). That's a real go-oikumenea gap, tracked as M2.5.
+- **Four import connectors**: `ua-edr` (Ukraine's ЄДР, HTTP-streaming, 30,721 records at full
+  scale), `ar-rnc` (Argentina), `osm` (Overpass, scoped to UY/PY/CO/CL), and a `wikidata-catholic`
+  jurisdiction-tree sync — plus a pluggable Nominatim geocoder.
 
-Not built: `content`, `discovery`, `moderation`, `vouching` — designed only, see
-[docs/](docs/). A 2026-08-09 audit also opened M2.3–M2.6 and M4.1 ahead of M3; **M2.3 and M2.4 both
-carry defects in already-shipped code**, so read those before extending anything.
+**Where this is heading.** M10 (decided 2026-08-17, not started) removes the go-oikumenea dependency
+entirely: its identity, authorization, unit-hierarchy, religion-taxonomy, site, location and
+membership capabilities move into this repo as in-repo modules, and `openfaithmap-api` becomes a
+single self-contained binary. See
+[D-OwnCore](docs/architecture/decisions.md#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed)
+for the reasoning and the [stage board](docs/milestones.md#stage-board) for the M10.x breakdown.
+Much of what this README describes below — the `oikumenea-app` service, `internal/coreintegration`,
+the `OIKUMENEA_SRC` sibling checkout, the mounted service-account key — is scheduled for removal
+there.
 
 ## Repository layout
 

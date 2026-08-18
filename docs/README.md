@@ -104,21 +104,32 @@ vouching). See [D-Facade](architecture/decisions.md) for the full rationale and
 
 The [stage board](milestones.md#stage-board) is authoritative; this is the summary.
 
-**Built and running:** M0 (this doc set) · M1 (go-oikumenea integration, service principal, session
-layer) · M1.1 (doc corrections) · M1.2 (`oikumenea-console`) · M2 (congregation self-service —
-`internal/registration`, `migrations/0001_registration.sql`, the wizard/operator/roster pages) ·
-M2.1 (the `openfaithmap-web` / `openfaithmap-admin` split) · M2.2 (`hermenea` deploy wiring).
+> **Corrected 2026-08-17.** This section listed M3–M6 as "designed, not built" and told readers that
+> "find the code that does X" would have no answer for them. That was true around M2.2 and went
+> stale; all four have been built and Verified since. Corrected rather than left standing, because
+> the stale version actively misdirected anyone searching the codebase.
 
-**Designed, not built:** M3 (content) · M4 (discovery) · M5 (moderation) · M6 (vouching). When
-asked to "find the code that does X" for any of these, the answer is still "it does not exist yet
-— the design is here."
+**Built and Verified:** M0 (this doc set) · M1 + M1.1 (go-oikumenea integration, service principal,
+session layer) · M2.2 (`hermenea` deploy wiring) · M2.4 (CI repair) · M2.5 (discovery reachability
+spike) · M2.6 (TypeScript codegen) · M3 (content / site builder) · M4 (public discovery) · M4.1
+(jurisdiction units) · M5 (moderation) · M6 (vouching) · M9 (production-deployment *design* only —
+nothing is provisioned).
 
-**Opened by the 2026-08-09 audit, ahead of M3:** M2.3 (registration hardening — three real defects
-in M2's shipped code) · M2.4 (CI has been red on `main` since M2.1, plus deployment hygiene) ·
-M2.5 (a reachability spike M4's whole design depends on) · M2.6 (TypeScript codegen) · M4.1
-(jurisdiction units, which M5 needs).
+**Built, not yet Verified:** M7 (hardening — rate limiting, metrics) · M8 (congregation import —
+four connectors and a jurisdiction sync; blocked on a browser click-through and a green CI run at
+the merge commit).
 
-**Build order:** M0 → M1 → M2 → **M2.3–M2.6** → M3 → M2.5-gated M4 → M4.1 → M5 → M6 → M7.
+**Built, blocked on an external action nobody in this repo can perform** (a Google OAuth redirect
+URI): M1.2 (`oikumenea-console`) · M2 (congregation self-service) · M2.1 (the
+`openfaithmap-web` / `openfaithmap-admin` split) · M2.3 (registration hardening).
+
+**Decided, not started:** M10 — absorbing the go-oikumenea core into this repo
+([D-OwnCore](architecture/decisions.md#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed)).
+Note that this supersedes [D-Facade](architecture/decisions.md), cited a few lines above: the
+delegation described there becomes an implementation. The *domains* D-Facade assigns to
+OpenFaithMap — content, discovery glue, moderation, vouching — are unchanged.
+
+**Build order:** M0 → M1 → M2 → M2.3–M2.6 → M3 → M4 → M4.1 → M5 → M6 → M7 → M8 → M9 → **M10.1–M10.9**.
 
 > **Before building anything, read
 > [milestones.md's unresolved-unknowns index](milestones.md#unresolved-unknowns--read-this-before-building-anything).**

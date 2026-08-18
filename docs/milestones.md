@@ -95,6 +95,18 @@ real, closure-confirmed `tenant_unit_edges`, idempotent on retry); this session 
 Verified (admin-UI browser click-through and a green CI run at the merge commit still block that).** D-CongregationImport (`architecture/decisions.md`), `modules/congregationimport.md`. Resolves `DS-OFM-10`. A module stages congregations from external sources (v1 connector: Ukraine's ЄДР open-data export, live-verified at full real scale — the true full-scale count is **30,721**, not the originally-reported 3,000, a real bug in the connector's cursor arithmetic, found live and fixed) for operator review; approval provisions a real, deliberately admin-less go-oikumenea Unit under the approving operator's own token, confirmed live under a genuinely non-admin identity. `ua-edr` can now stream directly from HTTP with no local file ever written to disk (`UAEDR_SOURCE_URL`, for a memory-constrained cloud deployment), and a positive Christian-name keyword filter auto-rejects out-of-scope (Muslim/Jewish/etc.) candidates that the source's own institutional-form filter can't distinguish. Review-queue + alias-management UI in `web/apps/admin`, real keyset pagination, alias-management API, automated tests, metrics. **`Verified` blocked on:** the admin UI's browser click-through (no OAuth session in this environment) and a green CI run at the merge commit. See prose for full live-verification detail. |
 | M9 · Production deployment (single cheap VM) | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified (2026-08-14), a docs-only milestone — mirrors M0's own shape.** D-ProductionDeployment (`architecture/decisions.md`). Resolves `DS-OFM-14`/`U13`'s "no deployment milestone exists" gap. Single Linux VM (~500MB–1GB RAM), Docker Compose, Caddy for TLS — deliberately provider-agnostic, the concrete VM provider left undecided at the owner's own direction. Schedules two already-decided items (per-surface OAuth clients, WireGuard for `oikumenea-console`) as real build-phase work for the first time, and makes three new calls: `pg_dump` on a systemd timer for backup (none exists today), `restart:` policies + a systemd unit for process supervision (none exists today), and a weekly systemd timer calling `POST /runs` as the `ua-edr` periodic re-run trigger — the item M8's own memory left explicitly open. **`Verified`** needs the new doc set (this row, D-ProductionDeployment, the struck `DS-OFM-14`/`U13` entries) coherence-checked — no dangling links, no contradiction with the decisions it inherits from. **No VM is provisioned and no compose/Caddy/systemd files are written this milestone** — that is explicitly a follow-up build milestone (numbering TBD, likely M9.1) once a provider is picked. |
 
+| M10 · Core absorption — decisions & docs | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | **Verified (2026-08-18).** **Decided (2026-08-17); amended 2026-08-18 after review.** Eight new decisions in `architecture/decisions.md`: D-OwnCore (supersedes D-CoreDependency + D-Facade), D-CorePortScope, D-InProcessAuthz, D-DirectTokenVerification, D-OwnRIDs, D-SeedBootstrap, D-SuperAdminFold (supersedes D-InstanceAdminConsole), D-StaticRefData. Resolves `DS-OFM-1`/`DS-OFM-8`, reframes `DS-OFM-3`, supersedes `DS-OFM-12`, halves `DS-OFM-14`, opens `DS-OFM-15`/`DS-OFM-16`. **Amendment pass (2026-08-18):** two independent code-grounded reviews (`review-result-1.md`, `review-result-2.md`) found six substantive errors, each re-verified in source before adoption — a missing `NOT NULL` FK target that would have made M10.1's migration fail to apply, an unported `authz_instance_admins` the PDP branches on first, an unadministrable fresh instance, a grant cache ported without the RLS backstop it documents depending on, a coordinate oracle in `SearchSites`, and a row lock described as an advisory lock. All eight decision blocks carry amendment notes; `architecture/conventions.md` corrected (four stale statements the first pass missed). Estimate revised from ~7–8k to **~12–15k LOC Go + ~3–3.5k migrations**. **`Verified`** needs the doc set coherence-checked. |
+| M10.1 · Core schema + deterministic seeds | ⬜ | ⬜ | ➖ | ⬜ | ➖ | ⬜ | **Not started.** D-CorePortScope, D-OwnRIDs, D-SeedBootstrap and their amendments. PostGIS, ported `new_id()`, migrations for identity/authz (**including `authz_instance_admins`**)/directory/religion (**the 15 explicitly-named tables, not "13"** — `religion_taxon_ranks` is a `NOT NULL` FK target of `religion_taxa.rank_id` and its omission would have broken the migration)/location/membership/refdata, plus seed migrations with fixed **structural** RIDs. `visibility`/shadow units deliberately not ported. **Blocked on one check:** whether any path this repo calls reaches `religion_unit_classifications`. Purely additive — nothing calls these tables yet. |
+| M10.2 · Identity + authentication middleware | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Not started.** D-DirectTokenVerification + amendment. Port `validator.go`/`authenticator.go` **in full** — three boot guards not two (the third, `GuardReservedIssuer`, stops an operator pointing a real IdP at the synthetic local issuer), plus algorithm pinning, clock skew, multi-audience matching and JWKS handling. A real `environment` field on `config.Install` as the **only** input to the symmetric-issuer guard — never derive "dev" from the presence of a secret. Boot-time first-admin seed from config, idempotent, refusing the placeholder. One auth middleware. **Also client work:** admin sessions break at the one-hour mark once this service owns the `exp` check, so next-auth refresh-token handling is in scope here, not a follow-up. |
+| M10.3 · The policy decision point | ⬜ | ⬜ | ⬜ | ➖ | ➖ | ⬜ | **Not started.** D-InProcessAuthz + amendment. `internal/authz`: the in-memory PDP, the closed Go permission catalog **including the instance-scope set**, the instance-admin plane, decision-explain, `authz.Require(ctx, action, unitID)` (subject from context) with `DecideFor` reserved for one super-admin screen, and an unforgeable `SystemContext` covering **five** paths. **No grant cache** — grants are read per request. `internal/authz/domain` owns `ClosurePort` and imports no other module; that is what makes this milestone independent of M10.4. Highest-risk unit of work; gets a real table-driven test matrix. |
+| M10.4 · Directory (units, graphs, closure) | ⬜ | ⬜ | ⬜ | ➖ | ➖ | ⬜ | **Not started.** D-CorePortScope. Adjacency plus the incrementally-maintained materialized closure under advisory lock, with `WITH RECURSIVE` confined to rebuild/verify/re-derive. Keeps `directory_closure_status` and the verify endpoint — the drift check is what makes the denormalisation safe. Preserves `CreateUnitWithEdge`'s atomicity (upstream's GH-36 fix). |
+| M10.5 · Religion, location, membership, refdata | ⬜ | ⬜ | ⬜ | ➖ | ➖ | ⬜ | **Not started.** The 15 named religion tables (clergy and affiliation dropped), locations without the `wgs84` coordinate-conversion dependency, membership's two tables, and the country seed — whose four locale packs must survive **byte-for-byte**, since `matchCountry` does exact-string comparison against every locale name and `osm`'s `CountryHint` is built to match them. Includes the ported `SearchSites` PostGIS query with one deliberate behaviour change: `public_precision = 'hidden'` sites are excluded from the public search arm and other non-`exact` sites are filtered and ordered on a snapped geometry column, because coarsening the returned coordinate never protected the predicate. The text-arm index fix from the first draft was wrong three ways (needs an **expression** index for `lower(...)`, covers `code` as well as `name`, and cannot serve patterns under three characters) — and the real cost is probably the outer scan, so **measure before indexing**. |
+| M10.5.5 · Split the composition root | ⬜ | ⬜ | ⬜ | ➖ | ➖ | ⬜ | **Not started.** `cmd/openfaithmap-api/main.go` is 393 lines wiring 6 modules, with `pool.Close()` repeated at 16 early returns; the honest end state at 13 modules plus cross-module interfaces, a `ClosurePort` adapter, an auth middleware and a boot seed is 900–1,100. Split `initServer` into per-module `register(ctx, info, deps)` functions **before** the cutover, not after — doing it afterwards means refactoring the composition root while it is the thing most likely to be wrong. |
+| M10.6 · Consumer cutover | ⬜ | ⬜ | ⬜ | ➖ | ➖ | ⬜ | **Not started.** Six modules flip from SDK round-trips to in-process calls, `registration` first. `internal/coreintegration` deleted. Carries three behaviour changes: the `Authorize` meta-check disappears and `assignment.read` is no longer granted to congregation-admin; **`RunJurisdictionSync` gains `requireOperator`** (today its transport resolves `whoami` only, so any authenticated account triggers real Unit writes under the service principal's instance-wide grant — a live gap on `main` until this lands); and the anonymous discovery search gains the in-process rate limiter. Also fixes the N+1s the HTTP cost was hiding (`matchCountry` fetches all 249 countries **per record**). |
+| M10.7 · `core.conjure.yml` + SDK + admin app | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Not started.** **~25 endpoints, not ~12** — the 9 the admin app calls oikumenea for today, plus the super-admin set replacing `oikumenea-console`, plus a batch `GetPersons` (`my-congregation` calls `GetPerson` in a loop). Regenerate the Go server and both TS SDK copies; rewrite the six contracts' `docs:` strings, which describe a system that will not exist and propagate into three copies of generated code; drop `oikumenea-client` and regenerate `package-lock.json` in the same commit. Wires `make sdk-verify` into CI. |
+| M10.8 · Super-admin screens + teardown | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Not started.** D-SuperAdminFold + amendment — the fold is onto the **instance-admin plane**, not a role. Two gates, both required: one shared, hard-to-misuse API enforcer (not a sixth hand-copied `require*`) and a `requireInstanceAdmin()` layout check, because `openfaithmap-admin` has **no** server-side role gate today and its own layout comment says so. Then the full teardown, which is larger than first recorded: `lib/oikumenea.ts` itself, user-visible i18n strings in four locales, three `.env.example` files, the codegen pipeline scripts, `var/conf/install.yml`, `atlas.hcl`, and a **contract-phase migration** to drop the `oikumenea` schema (migrations are expand-only). |
+| M10.9 · Verification | ⬜ | ➖ | ➖ | ➖ | ➖ | ⬜ | **Not started.** Headline: `docker compose up --build` with no sibling checkout, no service-account JSON, no `docker.io/olegamysk/*` pull. The single highest-value gate is a **table-driven authorization matrix** — {anonymous, congregation-admin@own, congregation-admin@other, registration-operator, platform-moderator, instance-admin} × every guarded endpoint → allow/deny, ~240 assertions, expressible only because D-SeedBootstrap makes structural RIDs constants. Plus refusal proofs (now including `RunJurisdictionSync`), the first-admin proof on a clean volume, an unforgeable-`SystemContext` proof, a `hidden`-site oracle proof, discovery and country parity against **baselines captured before M10.6**, the `ua-edr` 30,721 re-run, lock-contention timing, and an admin session surviving past one hour. |
+
 ## Per-milestone detail
 
 ### M0 · Scope & core-dependency
@@ -2399,3 +2411,163 @@ decisions it inherits from. Done directly, same pass (2026-08-14): every new cro
 (`D-OAuthClients`, `D-InstanceAdminConsole`, `D-SharedDatabase`, `D-BulkImport`,
 `D-CongregationImport`, and the `M9`/`DS-OFM-14`/`U13` anchors themselves) resolved correctly, and
 the stage-board row's gate marks match this section's own prose.
+
+---
+
+### M10 · Core absorption — decisions & docs
+
+**Depends on:** nothing in code — a docs milestone, same shape as M0 and M9. **Leaves deployable:**
+trivially yes (no code changes). **Blocks:** every M10.x below.
+
+Reverses this project's founding architectural bet. M0 established go-oikumenea as the headless
+core (D-CoreDependency) and OpenFaithMap as a thin facade over it (D-Facade); M10 absorbs that core
+into `openfaithmap-api` and deletes the dependency — image, SDK, npm client, sibling checkout and
+all.
+
+**Why now, and why not earlier.** The facade was the right call for M1–M8 and this milestone is not
+a repudiation of it: it is what let the project reach nine built modules without ever writing an
+authorization system. What changed is the cost side, and it changed in three measurable ways the
+build itself surfaced:
+
+1. **Authorization was a network dependency with no degraded mode.** Every authenticated request
+   made two round-trips — one `Whoami`, one `Authorize`. An `oikumenea-app` outage is a total
+   outage.
+2. **Delivery was gated on a second repository.** Six upstream issues (#33, #34, #36, #37, #39,
+   #41) were found *by this project*, each blocking the milestone that found it until it was fixed
+   upstream, released as a new image, and pulled back in. Read M8's own stage-board row as the
+   evidence — it is largely a chronicle of that loop.
+3. **Three artifact channels drifted.** Go SDK `v0.1.0`, npm SDK `0.0.1`, images `0.0.7`,
+   independently versioned with no compatibility gate.
+
+**Why it is affordable.** go-oikumenea is ~267k LOC, but that number is misleading: it is dominated
+by generated Conjure transport, per-package duplicated sqlc `models.go` files, and ~26 verticals
+this project never touches. The behaviour-carrying parts are small — the entire PDP is **260 lines
+of pure Go** over pre-fetched grants, and `geo_countries` was already a static 249-row seed. The
+estimate is ~7–8k LOC of Go plus ~1.5k LOC of migrations, and the single biggest reason it is not
+far larger is that Conjure transport is generated only for the ~12 endpoints `openfaithmap-admin`
+actually calls (M10.7). Everything else is in-process Go with no transport layer at all.
+
+**The eight decisions**, in `architecture/decisions.md`: D-OwnCore (supersedes D-CoreDependency and
+D-Facade), D-CorePortScope, D-InProcessAuthz, D-DirectTokenVerification, D-OwnRIDs, D-SeedBootstrap,
+D-SuperAdminFold (supersedes D-InstanceAdminConsole), D-StaticRefData (supersedes D-BulkImport).
+D-Stack is deliberately **untouched** — the Palantir toolchain stays.
+
+**Two findings recorded up front**, so neither is rediscovered later as a bug:
+
+- **The `Authorize` meta-check disappears, and that is correct.** Today `Authorize` is called with
+  the caller's own token, so go-oikumenea's PDP additionally requires the caller to hold
+  `assignment.read` reaching the target unit — which is why `scripts/bootstrap-registration-org`
+  grants congregation-admin that permission (see `internal/content/application/authorize.go:21-25`,
+  and M2.3/M3 where the same defect class was fixed twice). In-process,
+  `Authorize(subject, action, unit)` is a pure function of the subject; the meta-permission is
+  meaningless and the grant goes away.
+- **Bootstrap RIDs become deterministic seed data.** `REGISTRATION_ROOT_UNIT_ID`,
+  `REGISTRATION_CONGREGATION_ADMIN_ROLE_ID` and `CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID` are
+  instance-specific values produced by four manual script runs — which is exactly why environments
+  are not reproducible today. Owning the tables makes them ours to fix once (D-SeedBootstrap).
+
+**Cutover shape.** Greenfield and straight-line, on one long-lived branch — nothing is deployed and
+there is no production data, so there is no dual code path, no feature flag, and no migration of
+existing rows. The `oikumenea` schema and the `hermenea` database are dropped outright. M10.1–M10.5
+are purely additive (new modules nothing calls yet) and can land as separate commits; only M10.6
+onward is irreversible in the branch's own history.
+
+**Explicitly out of scope** — named, not silently dropped:
+
+- **Collapsing `discovery_site_cache`.** Once `SearchSites` is in-process the cache table is
+  arguably redundant — it exists precisely because that join used to cross a network boundary
+  (M2.5, M4). A real opportunity, deliberately deferred: widening M10 to include it would put the
+  product's most manually-verified feature at risk during its riskiest refactor.
+- Postgres RLS (D-InProcessAuthz), the audit log (D-OwnCore, now `DS-OFM-15`), the Palantir
+  toolchain (D-Stack, unchanged), and the `go-uaedr`/`go-arrnc`/`go-nominatim` libraries — those
+  are standalone parsers with no oikumenea coupling and are not part of this dependency.
+- M9's production deployment. M10 makes it materially cheaper — no WireGuard, two surfaces instead
+  of three, no `OIKUMENEA_SRC`, one database instead of two, and one fewer long-lived private key
+  on the VM — but provisioning remains M9's inherited build-phase work.
+
+**`Verified`** — the same exit criterion M0 and M9 used: the new and changed doc set (this section,
+the ten stage-board rows, the eight new decisions, the four superseded ones, and the amended
+`DS-OFM-1`/`3`/`8`/`12`/`14` plus new `DS-OFM-15`/`16`) coherence-checked. No dangling relative
+link, no contradiction between a new decision and the one it supersedes, and every superseded block
+left in place with an append-only note rather than edited away — this doc set's own convention.
+
+---
+
+#### M10 amendment pass — 2026-08-18
+
+The plan was sent to two models for independent review against this repo and `../go-oikumenea`
+(`docs/review-result-1.md`, `docs/review-result-2.md`). Every finding below was re-verified in the
+source before being adopted; the reviews are point-in-time opinions and bind nothing on their own.
+
+Six substantive errors, in rough order of how much damage each would have done:
+
+1. **`religion_taxa.rank_id uuid NOT NULL REFERENCES religion_taxon_ranks(id)`**
+   (`0008_religion.sql:140`). The scope table named 13 kept + 6 dropped = 19 of 22, and its bare
+   word "classifications" was ambiguous between four differently-named tables. M10.1 would have
+   produced a migration that does not apply. Replaced with an explicit 15-name list.
+2. **`authz_instance_admins` was never ported**, though `PDP.Decide` branches on it first
+   (`pdp.go:82`). Branch 1 would have been dead code and branch 2 would have denied every
+   instance-scope action to everyone, permanently. It also made `D-SuperAdminFold`'s "super-admin
+   role" incoherent: instance admin is a separate authority plane precisely because
+   `assignment.grant` is unit-scoped and the first admin must grant before any assignment exists.
+3. **A freshly seeded instance would have been unadministrable.** M10 deletes
+   `bootstrap-admin-person`, seeds no person or account, and go-oikumenea's JIT is
+   link-on-match-only. Nobody could ever log in. The obvious fix — a seeded shell account with a
+   fixed email — is worse: combined with `D-SeedBootstrap`'s deterministic RIDs it would ship the
+   same pre-linked admin address to every deployment of an open-source repo. Resolved as a
+   boot-time seed from install config, with identity carved out as the one exception to
+   determinism.
+4. **The grant cache was ported without the backstop it documents depending on.** Upstream:
+   *"The RLS backstop underneath is exact/live, so a stale ALLOW cannot read revoked-away rows"*
+   (`grantcache.go:15-17`, TTL 2s). M10 drops RLS, so the window would have had no floor — and
+   `D-SeedBootstrap` makes "a migration edits a base role" the *normal* path for authority changes,
+   which is exactly the out-of-band case the epoch bump does not cover locally. Resolved by
+   dropping the cache and reading grants per request. The two reviews disagreed here; the source
+   settled it.
+5. **`SearchSites` leaks position through its filter.** `ST_DWithin` and the KNN ordering run on
+   exact geometry while `Coarsen` is applied app-side, so result-set membership is a boolean oracle
+   on a `hidden` site's true position. Inherited from upstream, but M10 would have ported it while
+   claiming the opposite property, and its verification step checked the wrong invariant — the
+   coordinates genuinely never leave the process; the answers derived from them do.
+6. **The closure lock is a row lock, not an advisory lock** —
+   `SELECT id FROM tenant_graphs WHERE id = $1 FOR NO KEY UPDATE`, held to commit. With one
+   authority-bearing graph, every unit creation in the product serialises on a single row. Recorded
+   with a binding invariant: no network call, geocode or external fetch while it is held.
+
+Also corrected: the estimate (**~12–15k LOC Go and ~3–3.5k migrations**, not ~7–8k and ~1.5k — the
+qualitative claim about generated code dominating the headline 267k is confirmed and unchanged);
+the Conjure surface (**~25 endpoints**, since the 9-operation figure counted only what the admin app
+calls *today* and omitted the entire super-admin set); the RID wire format (the `ofm:` prefix is
+dropped — bare uuids, since a prefixed value cannot both render at the boundary and leave existing
+contracts untouched, and one such value is a public URL path segment); `ClosurePort` (named
+explicitly — it is what makes M10.3 independent of M10.4 and resolves the authz↔directory cycle);
+the authorization entry point (`authz.Require(ctx, …)`, subject from context, because a subject
+parameter is an oracle safe only by call-site convention — the same defect class this repo already
+fixed at M2.3 and M3); and the teardown checklist, which had missed `lib/oikumenea.ts` itself,
+user-visible i18n strings in four locales, two of three `.env.example` files, the codegen pipeline
+scripts, and the fact that dropping the `oikumenea` schema needs its own contract-phase migration.
+
+**One live gap is knowingly left open.** `RunJurisdictionSync`'s transport resolves `whoami` and
+stops (`congregationimport/transport/service.go:209-213`), so any authenticated Google account can
+trigger real Unit writes running under the service principal's instance-wide grant. It copied
+`RunConnector`'s shape, but `RunConnector`'s justification — *"it makes no go-oikumenea WRITE"* —
+does not carry over. A standalone fix ahead of the migration was recommended and deliberately
+declined; it is folded into M10.6 and named in M10.9's refusal-proof list. Until M10.6 lands, the
+gap is open on `main`.
+
+Finally, `architecture/conventions.md` was corrected — it was not touched by the first Phase 0 pass
+and had gone stale in four places (plain-`uuid` PKs, no-RLS as an "accepted gap", authorization
+"against go-oikumenea's PDP", and "generated TypeScript does not exist", false since M2.6).
+
+> **`Verified` (2026-08-18).** Coherence-checked per this milestone's own exit criterion, same shape
+> as M0/M9: every `[text](path#anchor)` link across the nine changed/added files
+> (`README.md`, `docs/README.md`, `docs/architecture/{conventions,decisions,overview}.md`,
+> `docs/milestones.md`, `docs/open-questions.md`, `docs/review-result-{1,2}.md`) resolves — checked
+> programmatically, both file existence and heading-anchor slugs, not just eyeballed. All four
+> decision blocks M10 supersedes (D-CoreDependency, D-Facade, D-InstanceAdminConsole, D-BulkImport)
+> carry an append-only `Superseded (M10) by [...]` note with original text left untouched.
+> `open-questions.md`'s amended entries (`DS-OFM-1` resolved, `DS-OFM-3` reframed, `DS-OFM-8`
+> resolved by deletion, `DS-OFM-12` superseded by new `DS-OFM-15`, `DS-OFM-14` halved, `DS-OFM-15`/
+> `16` opened) match this section's own summary paragraph. No dangling reference, no contradiction
+> between a new decision and the one it supersedes. M10.1–M10.9 remain `⬜ Not started` — this row's
+> `Verified` covers the doc set only, not the code that removes go-oikumenea.
