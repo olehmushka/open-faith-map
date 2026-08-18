@@ -14,6 +14,7 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	identitymiddleware "github.com/olehmushka/open-faith-map/internal/identity/middleware"
 	"github.com/olehmushka/open-faith-map/internal/platform/config"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
@@ -38,12 +39,28 @@ func run(args []string) int {
 	}
 }
 
+// serve builds the identity authenticator UNBOUND and registers its Handle method on the server
+// before Start — the late-binding pattern internal/identity/middleware.Authenticator's own doc
+// comment describes. Bind (wiring the real validator/resolver) happens inside initServer, once the
+// DB pool and services exist; server.WithMiddleware(authenticator.Handle) is a method value closing
+// over this same pointer, so the request path calls into whatever authenticator.bound holds by the
+// time the first request arrives, not a snapshot taken here.
+//
+// M10.6: this attachment is now load-bearing for real traffic — all six consumer modules read the
+// subject this middleware puts in context, and isBypassPath's extended (method, path) allowlist
+// (internal/identity/middleware/authenticator.go) is what keeps every still-anonymous product
+// endpoint reachable anyway.
 func serve() int {
+	authenticator := identitymiddleware.NewUnbound()
+
 	server := witchcraft.NewServer().
 		WithInstallConfigType(config.Install{}).
 		WithRuntimeConfigType(config.Runtime{}).
 		WithSelfSignedCertificate().
-		WithInitFunc(initServer)
+		WithMiddleware(authenticator.Handle).
+		WithInitFunc(func(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
+			return initServer(ctx, info, authenticator)
+		})
 
 	if err := server.Start(); err != nil {
 		// witchcraft already logged the structured error; signal non-zero exit.
@@ -78,7 +95,7 @@ var registerOrder = []struct {
 // register<Module> function in registerOrder. pool.Close() is now called from exactly one place —
 // here, on the error path — collapsing what was 19 repeated call sites in the pre-M10.5.5 flat
 // function.
-func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
+func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *identitymiddleware.Authenticator) (func(), error) {
 	databaseURL := requireEnv("DATABASE_URL")
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -87,6 +104,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 
 	install, _ := info.InstallConfig.(config.Install)
 	deps := newDeps(pool, install)
+	deps.Authenticator = authenticator
 
 	for _, r := range registerOrder {
 		if err := r.fn(ctx, info, deps); err != nil {

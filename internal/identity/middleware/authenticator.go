@@ -93,7 +93,7 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 	// must never survive from one request into another's context chain (authz.SystemContext's doc).
 	r = r.WithContext(authz.StripSystemMarker(r.Context()))
 
-	if isBypassPath(r.URL.Path) {
+	if isBypassPath(r.Method, r.URL.Path) {
 		next.ServeHTTP(rw, r)
 		return
 	}
@@ -180,10 +180,47 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
-// isBypassPath reports whether a path belongs to the management/diagnostic surface that must remain
-// reachable without authentication (readiness/liveness/health, debug diagnostics).
-func isBypassPath(path string) bool {
-	return strings.HasPrefix(path, "/status") || strings.HasPrefix(path, "/debug")
+// anonymousRoute is one exact (method, path) pair a real anonymous product endpoint uses — not a
+// path prefix, because DiscoveryPublicService/DiscoveryService share /discovery/v1 and
+// ModerationPublicService/ModerationService share /moderation/v1 (a prefix bypass could not tell
+// the anonymous arm from the authenticated one sharing its base path). Sourced directly from each
+// contract's own http: line (api/discovery.conjure.yml, api/moderation.conjure.yml) — not
+// rediscovered by guessing at runtime behaviour.
+type anonymousRoute struct {
+	method string
+	path   string
+}
+
+// anonymousRoutes is the M10.6 resolution of the deliberately-deferred middleware/bypass-list
+// blocker: attaching server.WithMiddleware(Handle) needed visibility into all six consumer modules'
+// route shapes at once, which only existed once every module was cut over. Every entry here is a
+// genuinely anonymous product endpoint (D-AdminSurface: openfaithmap-web holds no session to
+// forward) — content's own public arm doesn't need an entry because /content/v1/public already has
+// a distinct path prefix (isBypassPath's own prefix check below), the only one of the three
+// affected modules where that was true.
+var anonymousRoutes = []anonymousRoute{
+	{http.MethodGet, "/discovery/v1/search"},
+	{http.MethodPost, "/moderation/v1/reports"},
+	{http.MethodPost, "/moderation/v1/exclusion-check"},
+}
+
+// isBypassPath reports whether (method, path) belongs to either the management/diagnostic surface
+// (readiness/liveness/health, debug diagnostics — a path prefix is safe here, nothing else lives
+// under /status or /debug) or a genuinely anonymous product endpoint (method+path exact match, or
+// content's own distinct /content/v1/public prefix).
+func isBypassPath(method, path string) bool {
+	if strings.HasPrefix(path, "/status") || strings.HasPrefix(path, "/debug") {
+		return true
+	}
+	if strings.HasPrefix(path, "/content/v1/public") {
+		return true
+	}
+	for _, r := range anonymousRoutes {
+		if r.method == method && r.path == path {
+			return true
+		}
+	}
+	return false
 }
 
 // unauthorized writes a uniform 401 (no detail about which check failed).

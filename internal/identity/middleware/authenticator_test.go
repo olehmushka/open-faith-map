@@ -153,11 +153,31 @@ func TestBearerToken(t *testing.T) {
 
 func TestIsBypassPath(t *testing.T) {
 	for _, p := range []string{"/status/liveness", "/debug/pprof"} {
-		if !isBypassPath(p) {
-			t.Errorf("isBypassPath(%q) = false, want true", p)
+		if !isBypassPath(http.MethodGet, p) {
+			t.Errorf("isBypassPath(GET, %q) = false, want true", p)
 		}
 	}
-	if isBypassPath("/api/registration") {
+	if isBypassPath(http.MethodGet, "/api/registration") {
 		t.Error("isBypassPath should not treat an app route as a bypass path")
+	}
+
+	// M10.6: the extended, method+path-exact anonymous allowlist — resolves the deferred
+	// middleware/bypass-list blocker now that all six consumer modules' route shapes are known.
+	for _, tt := range []struct {
+		method, path string
+		want         bool
+	}{
+		{http.MethodGet, "/discovery/v1/search", true},
+		{http.MethodPost, "/discovery/v1/refresh", false}, // shares a base path with search, but is header-authed
+		{http.MethodPost, "/moderation/v1/reports", true},
+		{http.MethodGet, "/moderation/v1/reports", false}, // ModerationService.listReports shares the PATH, not the method
+		{http.MethodPost, "/moderation/v1/exclusion-check", true},
+		{http.MethodPost, "/moderation/v1/reports/abc/actions", false},
+		{http.MethodGet, "/content/v1/public/sites/abc", true},
+		{http.MethodPost, "/content/v1/sites", false},
+	} {
+		if got := isBypassPath(tt.method, tt.path); got != tt.want {
+			t.Errorf("isBypassPath(%s, %q) = %v, want %v", tt.method, tt.path, got, tt.want)
+		}
 	}
 }

@@ -17,13 +17,15 @@ import (
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
 
-// registerIdentity builds M10.2's (D-DirectTokenVerification, D-SeedBootstrap) JWT-validation
-// middleware and runs the boot-time first-admin seed. Additive only, matching M10.1's own
-// precedent — the authenticator is built, Bind-wired, and unit-tested (internal/identity/middleware),
-// but NOT attached via server.WithMiddleware here: identity_persons/authz_role_assignments are empty
-// except the boot-seeded admin until M10.6 cuts the six consumer modules over from go-oikumenea's own
-// Whoami/Authorize SDK calls. Wiring it live before then would 401 every existing authenticated flow.
-// Registers no HTTP routes — identity has no Conjure surface until M10.7.
+// registerIdentity binds M10.2's (D-DirectTokenVerification, D-SeedBootstrap) JWT-validation
+// middleware — deps.Authenticator is the SAME instance main.go's serve() already registered on the
+// server via server.WithMiddleware(Authenticator.Handle), before Start; Bind here wires its real
+// validator/resolver now that the DB pool and services exist, completing the late-binding pattern
+// the Authenticator type's own doc comment describes. M10.6: this is now real, load-bearing traffic
+// gating for all six consumer modules, not additive-only — see isBypassPath's extended allowlist
+// (internal/identity/middleware/authenticator.go) for what stays reachable anonymously. Also runs
+// the boot-time first-admin seed. Registers no HTTP routes — identity has no Conjure surface until
+// M10.7.
 func registerIdentity(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	identityStore := identityadapters.NewStore(deps.Pool)
 	identitySvc := identityapplication.NewService(identityStore)
@@ -54,9 +56,8 @@ func registerIdentity(ctx context.Context, info witchcraft.InitInfo, deps *Deps)
 		Issuers: issuers, ClockSkew: 60 * time.Second,
 		JITEnabled: jitEnabled, JITClaim: os.Getenv("IDENTITY_JIT_CLAIM"), JITMatch: os.Getenv("IDENTITY_JIT_MATCH"),
 	})
-	authenticator := identitymiddleware.NewUnbound()
-	authenticator.Bind(validator, identitySvc, identitySvc, jitEnabled)
-	if err := authenticator.MustBeBound(); err != nil {
+	deps.Authenticator.Bind(validator, identitySvc, identitySvc, jitEnabled)
+	if err := deps.Authenticator.MustBeBound(); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "identity: authenticator not bound")
 	}
 

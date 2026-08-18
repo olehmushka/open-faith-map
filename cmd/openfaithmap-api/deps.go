@@ -17,6 +17,7 @@ import (
 	contentapplication "github.com/olehmushka/open-faith-map/internal/content/application"
 	contentdomain "github.com/olehmushka/open-faith-map/internal/content/domain"
 	directoryapplication "github.com/olehmushka/open-faith-map/internal/directory/application"
+	identitymiddleware "github.com/olehmushka/open-faith-map/internal/identity/middleware"
 	locationapplication "github.com/olehmushka/open-faith-map/internal/location/application"
 	membershipapplication "github.com/olehmushka/open-faith-map/internal/membership/application"
 	moderationapplication "github.com/olehmushka/open-faith-map/internal/moderation/application"
@@ -37,6 +38,14 @@ import (
 type Deps struct {
 	Pool    *pgxpool.Pool
 	Install config.Install
+
+	// Authenticator is the UNBOUND identity middleware instance main.go's serve() already
+	// registered on the server via server.WithMiddleware(Authenticator.Handle), before Start —
+	// registerIdentity calls Bind on this exact same pointer once its validator/resolver exist, the
+	// late-binding pattern the Authenticator type's own doc comment describes. Must never be
+	// replaced with a fresh instance here; doing so would leave the one actually wired to the
+	// server permanently unbound.
+	Authenticator *identitymiddleware.Authenticator
 
 	// CoreRootUnitID/CoreCongregationAdminRoleID are fixed structural RIDs from
 	// internal/platform/seed (migrations/0022_core_seed.sql) — every one of the six consumer
