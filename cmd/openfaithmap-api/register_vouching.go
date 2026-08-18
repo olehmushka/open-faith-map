@@ -14,24 +14,20 @@ import (
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
 
-// registerVouching depends on deps.ModerationAppSvc, set by registerModeration — see registerOrder
-// in main.go for the enforced ordering. M6: vouching has no genuinely-anonymous endpoint (unlike
-// content/discovery/moderation), so it gets a single authenticated service, and no ServicePrincipal
-// config at all. Its moderation.read/moderation.act gates reuse the same RootUnitID as moderation's
-// own requireModerate; RevokeGuarantor's moderation-report fan-out is wired through
-// moderationVouchReporter (deps.go), an in-process call into the moderationAppSvc registerModeration
-// already constructed.
+// registerVouching depends on deps.ModerationAppSvc (set by registerModeration) and deps.AuthzSvc
+// (set by registerCore) — see registerOrder in main.go for the enforced ordering.
+//
+// M10.6: vouching has no genuinely-anonymous endpoint (unlike content/discovery/moderation), so it
+// gets a single authenticated service. Its moderation.read/moderation.act gates reuse the same
+// deps.CoreRootUnitID as moderation's own requireModerate; RevokeGuarantor's moderation-report
+// fan-out is wired through moderationVouchReporter (deps.go), an in-process call into the
+// moderationAppSvc registerModeration already constructed.
 func registerVouching(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	vouchingStore := vouchingadapters.NewStore(deps.Pool)
-	vouchingAppSvc := vouchingapplication.NewService(vouchingStore, &moderationVouchReporter{moderation: deps.ModerationAppSvc}, vouchingapplication.Config{
-		OikumeneaBaseURL:            deps.OikumeneaBaseURL,
-		OikumeneaInsecureSkipVerify: deps.OikumeneaInsecureSkipVerify,
-		RootUnitID:                  deps.RootUnitID,
+	vouchingAppSvc := vouchingapplication.NewService(vouchingStore, &moderationVouchReporter{moderation: deps.ModerationAppSvc}, deps.AuthzSvc, vouchingapplication.Config{
+		RootUnitID: deps.CoreRootUnitID,
 	})
-	vouchingTransportSvc := vouchingtransport.NewService(vouchingAppSvc, vouchingtransport.Config{
-		OikumeneaBaseURL:            deps.OikumeneaBaseURL,
-		OikumeneaInsecureSkipVerify: deps.OikumeneaInsecureSkipVerify,
-	})
+	vouchingTransportSvc := vouchingtransport.NewService(vouchingAppSvc)
 
 	if err := genvouching.RegisterRoutesVouchingService(info.Router, vouchingTransportSvc); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "register vouching routes")

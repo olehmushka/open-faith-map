@@ -3,27 +3,27 @@
 
 // Package application holds the vouching module's business logic: the target-scoped
 // congregation-standing and platform-moderator gates (authorize.go), and the vouch/guarantor
-// workflows (this file) — always deciding write authority against go-oikumenea's real PDP with the
-// CALLER's own forwarded token (D-Facade); vouching has no genuinely-anonymous endpoint, unlike
-// moderation/content/discovery, so there is no service-principal path here at all.
+// workflows (this file).
+//
+// M10.6: write authority is decided by internal/authz.Require against the request's context-resolved
+// subject, not a per-call go-oikumenea client built from the caller's forwarded token. vouching has
+// no genuinely-anonymous endpoint, unlike moderation/content/discovery, so every path goes through
+// this same gate.
 package application
 
 import (
 	"context"
 	"errors"
 
-	oikumenea "github.com/olehmushka/go-oikumenea/clients/go"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/vouching/adapters"
 	"github.com/olehmushka/open-faith-map/internal/vouching/domain"
 )
 
 type Config struct {
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
 	// RootUnitID is the same shared root unit registration/content/discovery/moderation already
-	// use (scripts/bootstrap-registration-org) — the target of the platform-moderator-scoped
-	// Authorize check.
+	// use (internal/platform/seed.RootUnitID) — the target of the platform-moderator-scoped
+	// Require check.
 	RootUnitID string
 }
 
@@ -51,15 +51,12 @@ type ModerationReporter interface {
 type Service struct {
 	store      *adapters.Store
 	moderation ModerationReporter
+	authzSvc   *authz.Service
 	cfg        Config
 }
 
-func NewService(store *adapters.Store, moderation ModerationReporter, cfg Config) *Service {
-	return &Service{store: store, moderation: moderation, cfg: cfg}
-}
-
-func (s *Service) userClient(token string) (*oikumenea.Client, error) {
-	return coreintegration.NewUserClient(s.cfg.OikumeneaBaseURL, token, s.cfg.OikumeneaInsecureSkipVerify)
+func NewService(store *adapters.Store, moderation ModerationReporter, authzSvc *authz.Service, cfg Config) *Service {
+	return &Service{store: store, moderation: moderation, authzSvc: authzSvc, cfg: cfg}
 }
 
 // CreateVouch answers VouchingService.createVouch: the caller (guarantor) must hold
@@ -67,8 +64,8 @@ func (s *Service) userClient(token string) (*oikumenea.Client, error) {
 // independent of in.CongregationUnitID (the claim) — and must not currently hold REVOKED status,
 // checked live against the store on every call (core-integration.md's no-shadow-authorization-state
 // invariant: never cached).
-func (s *Service) CreateVouch(ctx context.Context, token, callerPersonID string, in domain.CreateVouchInput) (domain.Vouch, error) {
-	if err := s.requireCongregationStanding(ctx, token, callerPersonID, in.GuarantorCongregationUnitID); err != nil {
+func (s *Service) CreateVouch(ctx context.Context, callerPersonID string, in domain.CreateVouchInput) (domain.Vouch, error) {
+	if err := s.requireCongregationStanding(ctx, in.GuarantorCongregationUnitID); err != nil {
 		return domain.Vouch{}, err
 	}
 	status, err := s.store.GetGuarantorStatus(ctx, callerPersonID)
@@ -82,15 +79,15 @@ func (s *Service) CreateVouch(ctx context.Context, token, callerPersonID string,
 	return s.store.InsertVouch(ctx, in)
 }
 
-func (s *Service) ListVouches(ctx context.Context, token, callerPersonID string, claimant, congregation *string, pageSize int) ([]domain.Vouch, error) {
-	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
+func (s *Service) ListVouches(ctx context.Context, claimant, congregation *string, pageSize int) ([]domain.Vouch, error) {
+	if err := s.requireModerate(ctx); err != nil {
 		return nil, err
 	}
 	return s.store.ListVouches(ctx, claimant, congregation, pageSize)
 }
 
-func (s *Service) GetGuarantorStatus(ctx context.Context, token, callerPersonID, targetPersonRID string) (domain.GuarantorStatus, error) {
-	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
+func (s *Service) GetGuarantorStatus(ctx context.Context, targetPersonRID string) (domain.GuarantorStatus, error) {
+	if err := s.requireModerate(ctx); err != nil {
 		return domain.GuarantorStatus{}, err
 	}
 	return s.store.GetGuarantorStatus(ctx, targetPersonRID)
@@ -103,8 +100,8 @@ func (s *Service) GetGuarantorStatus(ctx context.Context, token, callerPersonID,
 // vouch by this guarantor gets one moderation report queued for review; a failure partway through
 // does not roll back the revocation, and is surfaced by wrapping
 // domain.ErrGuarantorRevokeFanoutIncomplete around the already-committed status.
-func (s *Service) RevokeGuarantor(ctx context.Context, token, callerPersonID, targetPersonRID, reason string) (domain.GuarantorStatus, error) {
-	if err := s.requireModerate(ctx, token, callerPersonID); err != nil {
+func (s *Service) RevokeGuarantor(ctx context.Context, callerPersonID, targetPersonRID, reason string) (domain.GuarantorStatus, error) {
+	if err := s.requireModerate(ctx); err != nil {
 		return domain.GuarantorStatus{}, err
 	}
 	status, err := s.store.UpsertRevoked(ctx, targetPersonRID, reason, callerPersonID)
