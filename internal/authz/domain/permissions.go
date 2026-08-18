@@ -1,0 +1,79 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
+package domain
+
+// Permission is a closed vocabulary of action codes (D-InProcessAuthz): a permission no code path
+// checks is dead weight, and a code path checking a permission nobody can grant is a silent hole.
+// Keeping the catalog in Go means the compiler is the integrity check, not a DB row.
+//
+// Trimmed relative to go-oikumenea's own ~140-entry catalog to exactly what this repo seeds
+// (migrations/0022_core_seed.sql's three base roles) plus the minimal instance-admin-plane set —
+// extend opportunistically as later M10.x milestones need new codes, not ahead of them.
+type Permission string
+
+const (
+	// Unit-scoped — grantable via a role assignment (migrations/0022_core_seed.sql).
+	PermReligionOrgManage Permission = "religionorg.manage"
+	PermSiteManage        Permission = "site.manage"
+	PermScheduleManage    Permission = "schedule.manage"
+	PermAssignmentGrant   Permission = "assignment.grant"
+	PermAssignmentRevoke  Permission = "assignment.revoke"
+	PermPersonCreate      Permission = "person.create"
+	PermPersonUpdate      Permission = "person.update"
+	PermPersonRead        Permission = "person.read"
+	PermMembershipCreate  Permission = "membership.create"
+	PermMembershipUpdate  Permission = "membership.update"
+	PermMembershipRead    Permission = "membership.read"
+	PermPositionCreate    Permission = "position.create"
+	PermPositionUpdate    Permission = "position.update"
+	PermPositionRead      Permission = "position.read"
+	PermUnitRead          Permission = "unit.read"
+	PermUnitLifecycle     Permission = "unit.lifecycle"
+	PermUnitEdgesManage   Permission = "unit.edges.manage"
+	PermReligionRead      Permission = "religion.read"
+	PermLocationCreate    Permission = "location.create"
+	PermRoleRead          Permission = "role.read"
+
+	// Instance-scope — satisfiable only on the instance-admin plane (PDP.Decide step 2), never via a
+	// role assignment. Minimal set: granting/revoking the plane itself, and managing the custom-role
+	// catalog those grants are made of (needed once M10.8's super-admin screens exist).
+	PermInstanceAdminManage Permission = "instance.admin.manage"
+	PermRoleCreate          Permission = "role.create"
+	PermRoleUpdate          Permission = "role.update"
+	PermRoleDelete          Permission = "role.delete"
+)
+
+// instanceScope is the closed set of instance-plane-only permissions. Everything in catalog but not
+// here is unit-scoped by construction — there is no separate positive unit-scoped set.
+var instanceScope = map[Permission]struct{}{
+	PermInstanceAdminManage: {},
+	PermRoleCreate:          {},
+	PermRoleUpdate:          {},
+	PermRoleDelete:          {},
+}
+
+// catalog is the full closed vocabulary.
+var catalog = map[Permission]struct{}{
+	PermReligionOrgManage: {}, PermSiteManage: {}, PermScheduleManage: {},
+	PermAssignmentGrant: {}, PermAssignmentRevoke: {},
+	PermPersonCreate: {}, PermPersonUpdate: {}, PermPersonRead: {},
+	PermMembershipCreate: {}, PermMembershipUpdate: {}, PermMembershipRead: {},
+	PermPositionCreate: {}, PermPositionUpdate: {}, PermPositionRead: {},
+	PermUnitRead: {}, PermUnitLifecycle: {}, PermUnitEdgesManage: {},
+	PermReligionRead: {}, PermLocationCreate: {}, PermRoleRead: {},
+	PermInstanceAdminManage: {}, PermRoleCreate: {}, PermRoleUpdate: {}, PermRoleDelete: {},
+}
+
+// IsKnownPermission reports whether code is in the closed catalog.
+func IsKnownPermission(code string) bool {
+	_, ok := catalog[Permission(code)]
+	return ok
+}
+
+// IsInstanceScope reports whether code is an instance-plane-only permission. The PDP satisfies these
+// only via the instance-admin plane (authz_instance_admins), never via a role assignment.
+func IsInstanceScope(code string) bool {
+	_, ok := instanceScope[Permission(code)]
+	return ok
+}

@@ -2,6 +2,10 @@
 product-name: openfaithmap-api
 product-version: 0.0.0-dev
 use-console-log: true
+# GuardSymmetricIssuers' only input (M10.2, D-DirectTokenVerification's amendment): local | dev |
+# staging | prod. Any value other than local/dev refuses HS256 issuers at boot. Never derive
+# dev-ness from a secret's presence — set this explicitly per deployment.
+environment: local
 server:
   address: "0.0.0.0"
   # 3000/3001, not go-oikumenea's own 8443/8444 default — oikumenea-app occupies those on the

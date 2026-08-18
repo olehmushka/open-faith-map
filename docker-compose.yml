@@ -254,6 +254,25 @@ services:
       # already uses on the host (.env.example); this container needs its own copy mounted in to
       # mint Google ID tokens for GET /search's cache-miss fallback.
       GOOGLE_APPLICATION_CREDENTIALS: "/app/var/service-account.json"
+      # M10.2 (D-DirectTokenVerification): the audience GuardIssuerAudience requires be pinned on
+      # the Google OIDC issuer. Same client id openfaithmap-admin's own AUTH_GOOGLE_ID already uses
+      # below (one Google OAuth client, two relying parties) — a token minted for this client is
+      # what both the admin app's sign-in flow and this service's own validator must agree on.
+      GOOGLE_OAUTH_CLIENT_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
+      # DEV_ISSUER_HMAC_KEY: intentionally unset here. GuardSymmetricIssuers only permits an HS256
+      # issuer in local/dev, but the guard is not why this stays empty — ship it commented out,
+      # never with a value (D-DirectTokenVerification's amendment), so a copied compose override
+      # can't accidentally carry a real secret into a non-dev environment.
+      # DEV_ISSUER_HMAC_KEY: ""
+      # BOOTSTRAP_ADMIN_*: unset here deliberately — the new M10.2 middleware is built and
+      # Bind-wired but not yet attached (server.WithMiddleware), so nothing in this stack consumes
+      # identity_persons/authz_instance_admins yet. ValidateSeedForEnvironment treats an unset seed
+      # in local/dev as "nothing to seed" and boot proceeds normally. Set these once M10.6 makes the
+      # new identity module the operative one.
+      BOOTSTRAP_ADMIN_ISSUER: "${BOOTSTRAP_ADMIN_ISSUER:-}"
+      BOOTSTRAP_ADMIN_SUBJECT: "${BOOTSTRAP_ADMIN_SUBJECT:-}"
+      BOOTSTRAP_ADMIN_EMAIL: "${BOOTSTRAP_ADMIN_EMAIL:-}"
+      BOOTSTRAP_ADMIN_DISPLAY_NAME: "${BOOTSTRAP_ADMIN_DISPLAY_NAME:-}"
       # congregationimport (D-CongregationImport, docs/modules/congregationimport.md): optional —
       # the ЄДР connector only registers if one of these is set. Real weekly bulk download is an
       # operator's own out-of-band step (data.gov.ua dataset 03cc1239-3988-4451-aa0d-aadb77448714,

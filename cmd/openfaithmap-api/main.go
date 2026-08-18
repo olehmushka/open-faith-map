@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	congregationimportadapters "github.com/olehmushka/open-faith-map/internal/congregationimport/adapters"
@@ -39,11 +40,16 @@ import (
 	discoveryadapters "github.com/olehmushka/open-faith-map/internal/discovery/adapters"
 	discoveryapplication "github.com/olehmushka/open-faith-map/internal/discovery/application"
 	discoverytransport "github.com/olehmushka/open-faith-map/internal/discovery/transport"
+	identityadapters "github.com/olehmushka/open-faith-map/internal/identity/adapters"
+	identityapplication "github.com/olehmushka/open-faith-map/internal/identity/application"
+	identitybootstrap "github.com/olehmushka/open-faith-map/internal/identity/bootstrap"
+	identitymiddleware "github.com/olehmushka/open-faith-map/internal/identity/middleware"
 	moderationadapters "github.com/olehmushka/open-faith-map/internal/moderation/adapters"
 	moderationapplication "github.com/olehmushka/open-faith-map/internal/moderation/application"
 	moderationdomain "github.com/olehmushka/open-faith-map/internal/moderation/domain"
 	moderationtransport "github.com/olehmushka/open-faith-map/internal/moderation/transport"
 	"github.com/olehmushka/open-faith-map/internal/platform/config"
+	platformdb "github.com/olehmushka/open-faith-map/internal/platform/db"
 	regadapters "github.com/olehmushka/open-faith-map/internal/registration/adapters"
 	regapplication "github.com/olehmushka/open-faith-map/internal/registration/application"
 	regtransport "github.com/olehmushka/open-faith-map/internal/registration/transport"
@@ -146,6 +152,80 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		return nil, werror.WrapWithContextParams(ctx, err, "dial postgres")
+	}
+
+	// M10.2 (D-DirectTokenVerification, D-SeedBootstrap): identity's JWT-validation middleware and
+	// the boot-time first-admin seed. Additive only, matching M10.1's own precedent — the
+	// authenticator is built, Bind-wired, and unit-tested (internal/identity/middleware), but NOT
+	// attached via server.WithMiddleware here: identity_persons/authz_role_assignments are empty
+	// except the boot-seeded admin until M10.6 cuts the six consumer modules below over from
+	// go-oikumenea's own Whoami/Authorize SDK calls. Wiring it live before then would 401 every
+	// existing authenticated flow.
+	install, _ := info.InstallConfig.(config.Install)
+
+	identityStore := identityadapters.NewStore(pool)
+	identitySvc := identityapplication.NewService(identityStore)
+
+	issuers := []identitymiddleware.IssuerConfig{
+		{
+			Issuer: "https://accounts.google.com", Type: identitymiddleware.IssuerOIDC,
+			Audiences: []string{requireEnv("GOOGLE_OAUTH_CLIENT_ID")},
+		},
+	}
+	if devHMACKey := os.Getenv("DEV_ISSUER_HMAC_KEY"); devHMACKey != "" {
+		issuers = append(issuers, identitymiddleware.IssuerConfig{
+			Issuer: identitymiddleware.ReservedLocalIssuer + ":dev", Type: identitymiddleware.IssuerHS256, HMACKey: devHMACKey,
+		})
+	}
+	if err := identitymiddleware.GuardSymmetricIssuers(issuers, install.Environment); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "identity: symmetric issuer guard")
+	}
+	if err := identitymiddleware.GuardReservedIssuer(issuers); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "identity: reserved issuer guard")
+	}
+	if err := identitymiddleware.GuardIssuerAudience(issuers); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "identity: issuer audience guard")
+	}
+
+	jitEnabled := os.Getenv("IDENTITY_JIT_ENABLED") == "true"
+	validator := identitymiddleware.NewValidator(identitymiddleware.Config{
+		Issuers: issuers, ClockSkew: 60 * time.Second,
+		JITEnabled: jitEnabled, JITClaim: os.Getenv("IDENTITY_JIT_CLAIM"), JITMatch: os.Getenv("IDENTITY_JIT_MATCH"),
+	})
+	authenticator := identitymiddleware.NewUnbound()
+	authenticator.Bind(validator, identitySvc, identitySvc, jitEnabled)
+	if err := authenticator.MustBeBound(); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "identity: authenticator not bound")
+	}
+
+	// Boot-time first-admin seed. Refused outside local/dev on an unset or placeholder value
+	// (ValidateSeedForEnvironment), same fail-closed shape as GuardSymmetricIssuers; a genuinely
+	// unset seed in local/dev is fine (a fresh checkout with no admin configured yet) and simply
+	// skips seeding. Serialized under the boot-seed advisory lock so a restart or future multi-
+	// replica boot can't race the seed.
+	adminSeed := identitybootstrap.AdminSeed{
+		Issuer:      os.Getenv("BOOTSTRAP_ADMIN_ISSUER"),
+		Subject:     os.Getenv("BOOTSTRAP_ADMIN_SUBJECT"),
+		Email:       os.Getenv("BOOTSTRAP_ADMIN_EMAIL"),
+		DisplayName: os.Getenv("BOOTSTRAP_ADMIN_DISPLAY_NAME"),
+	}
+	if err := identitybootstrap.ValidateSeedForEnvironment(adminSeed, install.Environment); err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "identity: bootstrap admin seed")
+	}
+	if adminSeed.Issuer != "" && adminSeed.Subject != "" {
+		seedErr := platformdb.WithAdvisoryLock(ctx, pool, platformdb.LockBootSeed, func(ctx context.Context) error {
+			_, err := identitybootstrap.Run(ctx, pool, adminSeed)
+			return err
+		})
+		if seedErr != nil {
+			pool.Close()
+			return nil, werror.WrapWithContextParams(ctx, seedErr, "identity: bootstrap admin seed run")
+		}
 	}
 
 	store := regadapters.NewStore(pool)
