@@ -174,7 +174,14 @@ func (s *Store) InsertEdge(ctx context.Context, graphID, parentID, childID strin
 		VALUES ($1, $2, $3)
 		RETURNING id, parent_id, child_id, created_at`, graphID, parentID, childID,
 	).Scan(&e.ID, &e.ParentID, &e.ChildID, &e.CreatedAt)
-	return e, err
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "directory_unit_edges_unique" {
+			return domain.Edge{}, domain.ErrEdgeExists
+		}
+		return domain.Edge{}, err
+	}
+	return e, nil
 }
 
 // DeleteEdge hard-deletes the edge, returning the number of rows removed (0 or 1 — the unique index

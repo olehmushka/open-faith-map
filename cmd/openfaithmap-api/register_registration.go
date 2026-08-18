@@ -14,18 +14,15 @@ import (
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
 
+// registerRegistration depends on deps.ReligionSvc/LocationSvc/MembershipSvc/DirectorySvc/AuthzSvc,
+// all populated by registerCore (M10.6) before registerOrder (main.go) reaches this function.
 func registerRegistration(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	store := regadapters.NewStore(deps.Pool)
-	appSvc := regapplication.NewService(store, regapplication.Config{
-		OikumeneaBaseURL:            deps.OikumeneaBaseURL,
-		OikumeneaInsecureSkipVerify: deps.OikumeneaInsecureSkipVerify,
-		RootUnitID:                  deps.RootUnitID,
-		CongregationAdminRoleID:     deps.CongregationAdminRoleID,
+	appSvc := regapplication.NewService(store, deps.ReligionSvc, deps.LocationSvc, deps.MembershipSvc, deps.DirectorySvc, deps.AuthzSvc, regapplication.Config{
+		RootUnitID:              deps.CoreRootUnitID,
+		CongregationAdminRoleID: deps.CoreCongregationAdminRoleID,
 	})
-	transportSvc := regtransport.NewService(appSvc, regtransport.Config{
-		OikumeneaBaseURL:            deps.OikumeneaBaseURL,
-		OikumeneaInsecureSkipVerify: deps.OikumeneaInsecureSkipVerify,
-	})
+	transportSvc := regtransport.NewService(appSvc)
 
 	if err := genregistration.RegisterRoutesRegistrationService(info.Router, transportSvc); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "register registration routes")

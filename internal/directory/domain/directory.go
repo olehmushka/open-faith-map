@@ -19,6 +19,10 @@ var (
 	// ErrEdgeCycle: a self-loop, or a new parent->child edge whose child already reaches the parent
 	// in the same graph.
 	ErrEdgeCycle = errors.New("edge would create a cycle in its graph")
+	// ErrEdgeExists: this exact (graph, parent, child) edge already exists — distinct from
+	// ErrEdgeCycle so a caller doing resumable multi-step work (internal/registration's re-parenting
+	// state machine) can treat a repeat AddEdge as success rather than a real cycle rejection.
+	ErrEdgeExists = errors.New("edge already exists")
 )
 
 // State is a unit's lifecycle state.

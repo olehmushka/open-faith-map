@@ -9,8 +9,10 @@ package adapters
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/olehmushka/open-faith-map/internal/authz/domain"
 )
 
@@ -120,4 +122,31 @@ func (s *Store) ActiveGrantsForSubject(ctx context.Context, personID string) ([]
 		out = append(out, *byAssignment[id])
 	}
 	return out, nil
+}
+
+// InsertRoleAssignment grants personID roleID on targetUnitID with scope "unit" (M10.6's own
+// callers — registration's congregation-admin grant, the boot-time first-admin's future role
+// grants — never need "subtree"; add a graphID param the day one does). Idempotent: a repeat grant
+// identical to an existing active one (the unique index on subject/role/unit/scope/graph WHERE
+// revoked_at IS NULL) is treated as success, not an error — matching go-oikumenea's own
+// IsAssignmentConflict-as-success behaviour this replaces (registration/application/service.go's
+// ensureGrant).
+func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) error {
+	var grantedByArg any
+	if grantedBy != "" {
+		grantedByArg = grantedBy
+	}
+	var id string
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, granted_by)
+		VALUES ($1, $2, $3, 'unit', $4)
+		RETURNING id`, personID, roleID, targetUnitID, grantedByArg).Scan(&id)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "authz_role_assignments_active_idx" {
+			return nil
+		}
+		return err
+	}
+	return nil
 }

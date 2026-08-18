@@ -24,6 +24,10 @@ func (f fakeStore) ActiveGrantsForSubject(_ context.Context, personID string) ([
 	return f.grants[personID], nil
 }
 
+func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+
 type noopClosure struct{}
 
 func (noopClosure) IsAncestorOrSelf(context.Context, string, string, string) (bool, error) {

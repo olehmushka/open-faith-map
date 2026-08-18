@@ -3,15 +3,16 @@
 
 // Package transport implements the generated registration.RegistrationService (Conjure server
 // interface): translates Conjure structs <-> domain types, resolves the caller's own person RID
-// from their forwarded token (never a client-supplied id — always asked of go-oikumenea itself via
-// whoami), and maps domain errors to the module's typed Conjure errors.
+// from the request context (M10.6: the identity middleware already resolved and verified it —
+// server.WithMiddleware(authenticator.Handle) is attached; there is no separate whoami round-trip
+// any more), and maps domain errors to the module's typed Conjure errors.
 package transport
 
 import (
 	"context"
 
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	genregistration "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/registration"
-	"github.com/olehmushka/open-faith-map/internal/coreintegration"
 	"github.com/olehmushka/open-faith-map/internal/registration/application"
 	"github.com/olehmushka/open-faith-map/internal/registration/domain"
 	"github.com/palantir/pkg/bearertoken"
@@ -19,42 +20,34 @@ import (
 )
 
 type Service struct {
-	oikumeneaBaseURL  string
-	oikumeneaInsecure bool
-	appService        *application.Service
+	appService *application.Service
 }
 
-type Config struct {
-	OikumeneaBaseURL            string
-	OikumeneaInsecureSkipVerify bool
-}
-
-func NewService(appService *application.Service, cfg Config) *Service {
-	return &Service{appService: appService, oikumeneaBaseURL: cfg.OikumeneaBaseURL, oikumeneaInsecure: cfg.OikumeneaInsecureSkipVerify}
+func NewService(appService *application.Service) *Service {
+	return &Service{appService: appService}
 }
 
 var _ genregistration.RegistrationService = (*Service)(nil)
 
-// whoami resolves the caller's own go-oikumenea person RID from their forwarded token — never
-// trusts a client-supplied id.
-func (s *Service) whoami(ctx context.Context, token bearertoken.Token) (string, error) {
-	c, err := coreintegration.NewUserClient(s.oikumeneaBaseURL, string(token), s.oikumeneaInsecure)
-	if err != nil {
-		return "", err
+// personID resolves the caller's own person RID from the request context, populated by
+// internal/identity's authenticator middleware — never trusted from a client-supplied value. Its
+// only failure mode here is defensive: server.WithMiddleware(authenticator.Handle) already refuses
+// any request with no valid subject before a handler ever runs, so a missing subject at this point
+// means the middleware isn't actually wired, not a normal per-request condition.
+func personID(ctx context.Context) (string, error) {
+	subject, ok := authz.SubjectFromContext(ctx)
+	if !ok || subject.PersonID == "" {
+		return "", domain.ErrNotFound
 	}
-	who, err := c.IdentityFederation.Whoami(ctx)
-	if err != nil {
-		return "", err
-	}
-	return who.PersonId, nil
+	return subject.PersonID, nil
 }
 
 func (s *Service) SubmitRequest(ctx context.Context, authHeader bearertoken.Token, requestArg genregistration.SubmitRegistrationRequest) (genregistration.RegistrationRequest, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return genregistration.RegistrationRequest{}, mapUpstreamErr(err)
+		return genregistration.RegistrationRequest{}, mapErr(err, "", "")
 	}
-	req, err := s.appService.Submit(ctx, string(authHeader), personID, toDomainSubmit(requestArg))
+	req, err := s.appService.Submit(ctx, pid, toDomainSubmit(requestArg))
 	if err != nil {
 		return genregistration.RegistrationRequest{}, mapErr(err, "", "")
 	}
@@ -62,16 +55,16 @@ func (s *Service) SubmitRequest(ctx context.Context, authHeader bearertoken.Toke
 }
 
 func (s *Service) ListRequests(ctx context.Context, authHeader bearertoken.Token, statusArg *string, pageSizeArg *int, pageTokenArg *string) (genregistration.RegistrationRequestPage, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return genregistration.RegistrationRequestPage{}, mapUpstreamErr(err)
+		return genregistration.RegistrationRequestPage{}, mapErr(err, "", "")
 	}
 	var status *domain.Status
 	if statusArg != nil {
 		st := domain.Status(*statusArg)
 		status = &st
 	}
-	reqs, err := s.appService.List(ctx, string(authHeader), personID, status)
+	reqs, err := s.appService.List(ctx, pid, status)
 	if err != nil {
 		return genregistration.RegistrationRequestPage{}, mapErr(err, "", "")
 	}
@@ -83,11 +76,11 @@ func (s *Service) ListRequests(ctx context.Context, authHeader bearertoken.Token
 }
 
 func (s *Service) GetRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string) (genregistration.RegistrationRequest, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return genregistration.RegistrationRequest{}, mapUpstreamErr(err)
+		return genregistration.RegistrationRequest{}, mapErr(err, "", "")
 	}
-	req, err := s.appService.Get(ctx, string(authHeader), personID, requestIdArg)
+	req, err := s.appService.Get(ctx, pid, requestIdArg)
 	if err != nil {
 		return genregistration.RegistrationRequest{}, mapErr(err, requestIdArg, "")
 	}
@@ -95,11 +88,11 @@ func (s *Service) GetRequest(ctx context.Context, authHeader bearertoken.Token, 
 }
 
 func (s *Service) ApproveRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg genregistration.ApproveRegistrationRequest) (genregistration.RegistrationRequest, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return genregistration.RegistrationRequest{}, mapUpstreamErr(err)
+		return genregistration.RegistrationRequest{}, mapErr(err, "", "")
 	}
-	req, err := s.appService.Approve(ctx, string(authHeader), personID, requestIdArg, requestArg.UnitCode, requestArg.JurisdictionUnitId)
+	req, err := s.appService.Approve(ctx, pid, requestIdArg, requestArg.UnitCode, requestArg.JurisdictionUnitId)
 	if err != nil {
 		return genregistration.RegistrationRequest{}, mapErr(err, requestIdArg, string(domain.StatusPending))
 	}
@@ -107,11 +100,11 @@ func (s *Service) ApproveRequest(ctx context.Context, authHeader bearertoken.Tok
 }
 
 func (s *Service) RejectRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg genregistration.RejectRegistrationRequest) (genregistration.RegistrationRequest, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return genregistration.RegistrationRequest{}, mapUpstreamErr(err)
+		return genregistration.RegistrationRequest{}, mapErr(err, "", "")
 	}
-	req, err := s.appService.Reject(ctx, personID, requestIdArg, requestArg.Reason)
+	req, err := s.appService.Reject(ctx, pid, requestIdArg, requestArg.Reason)
 	if err != nil {
 		return genregistration.RegistrationRequest{}, mapErr(err, requestIdArg, string(domain.StatusPending))
 	}
@@ -119,11 +112,11 @@ func (s *Service) RejectRequest(ctx context.Context, authHeader bearertoken.Toke
 }
 
 func (s *Service) ReparentRequest(ctx context.Context, authHeader bearertoken.Token, requestIdArg string, requestArg genregistration.ReparentRegistrationRequest) (genregistration.ReparentingJob, error) {
-	personID, err := s.whoami(ctx, authHeader)
+	pid, err := personID(ctx)
 	if err != nil {
-		return genregistration.ReparentingJob{}, mapUpstreamErr(err)
+		return genregistration.ReparentingJob{}, mapErr(err, "", "")
 	}
-	job, err := s.appService.Reparent(ctx, string(authHeader), personID, requestIdArg, requestArg.NewParentUnitId)
+	job, err := s.appService.Reparent(ctx, pid, requestIdArg, requestArg.NewParentUnitId)
 	if err != nil {
 		return genregistration.ReparentingJob{}, mapErr(err, requestIdArg, string(domain.StatusApproved))
 	}
@@ -131,8 +124,8 @@ func (s *Service) ReparentRequest(ctx context.Context, authHeader bearertoken.To
 }
 
 func (s *Service) GetReparentStatus(ctx context.Context, authHeader bearertoken.Token, requestIdArg string) (*genregistration.ReparentingJob, error) {
-	if _, err := s.whoami(ctx, authHeader); err != nil {
-		return nil, mapUpstreamErr(err)
+	if _, err := personID(ctx); err != nil {
+		return nil, mapErr(err, "", "")
 	}
 	job, err := s.appService.GetReparentStatus(ctx, requestIdArg)
 	if err != nil {

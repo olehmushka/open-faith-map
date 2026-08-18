@@ -11,10 +11,12 @@ import (
 )
 
 // GrantStore fetches a subject's authority state, freshly, per call (D-InProcessAuthz's amendment:
-// no grant cache — a stale ALLOW with no RLS backstop underneath it is the security bug this avoids).
+// no grant cache — a stale ALLOW with no RLS backstop underneath it is the security bug this avoids)
+// — and, since M10.6, writes new unit-scoped grants (the module's own tables, so it owns the write).
 type GrantStore interface {
 	IsActiveInstanceAdmin(ctx context.Context, personID string) (bool, error)
 	ActiveGrantsForSubject(ctx context.Context, personID string) ([]domain.ActiveGrant, error)
+	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) error
 }
 
 // Service is the module's composition: the pure PDP engine plus the store that fetches the authority
@@ -63,6 +65,14 @@ func (s *Service) enforce(ctx context.Context, subjectPersonID string, action do
 		return domain.ErrPermissionDenied
 	}
 	return nil
+}
+
+// GrantUnitRole grants personID roleID on unitID, scope "unit" — M10.6's registration cutover is
+// the first caller (approval-time congregation-admin grant). No epoch bump, no cache to invalidate
+// (D-InProcessAuthz's amendment: grants are read fresh per request), so a grant is visible to the
+// very next Require call with no extra step.
+func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, grantedByPersonID string) error {
+	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, grantedByPersonID)
 }
 
 func (s *Service) decide(ctx context.Context, subjectPersonID string, action domain.Permission, unitID string, explain bool) (domain.Decision, error) {

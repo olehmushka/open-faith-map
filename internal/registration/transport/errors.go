@@ -11,9 +11,10 @@ import (
 )
 
 // mapErr maps a domain/store error to this module's typed Conjure error. requestID/status fill in
-// the safe-args domain.ErrNotFound/ErrNotPending don't carry themselves. Any other error (including
-// a go-oikumenea call failure during Approve) passes through unchanged — the caller sees exactly
-// what go-oikumenea's PDP said, per this module's own docs.
+// the safe-args domain.ErrNotFound/ErrNotPending don't carry themselves. Any other error — a write
+// failure inside Approve, or authzdomain.ErrPermissionDenied from requireOperator — passes through
+// unchanged, the same "surface the real failure" default this module has always had (pre-cutover
+// that meant go-oikumenea's own PDP error; post-cutover it means internal/authz's).
 func mapErr(err error, requestID, status string) error {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
@@ -29,10 +30,4 @@ func mapErr(err error, requestID, status string) error {
 	default:
 		return err
 	}
-}
-
-// mapUpstreamErr wraps a failure resolving the caller's own identity (whoami) — always an upstream
-// go-oikumenea/network error, never one of this module's own typed errors.
-func mapUpstreamErr(err error) error {
-	return err
 }

@@ -52,16 +52,18 @@ func serve() int {
 	return 0
 }
 
-// registerOrder is every module's register<Module> function, in the order M10.5.5 requires:
+// registerOrder is every module's register<Module> function, in the order M10.5.5/M10.6 require:
+// registerIdentity first (builds the boot-time authenticator and runs the first-admin seed, no
+// routes of its own), registerCore second (M10.1-M10.5's in-process modules — directory/authz/
+// religion/location/membership/refdata — every consumer module below depends on directly),
 // registerContent before registerDiscovery (discovery's constructor needs content's app service via
 // deps.ContentAppSvc), registerModeration before registerVouching (same shape, deps.ModerationAppSvc).
-// registerIdentity runs first — it builds the boot-time authenticator and runs the first-admin seed,
-// though it registers no HTTP routes of its own yet (identity has no Conjure surface until M10.7).
 var registerOrder = []struct {
 	name string
 	fn   registerFunc
 }{
 	{"identity", registerIdentity},
+	{"core", registerCore},
 	{"registration", registerRegistration},
 	{"content", registerContent},
 	{"discovery", registerDiscovery},
