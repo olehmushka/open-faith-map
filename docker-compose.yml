@@ -1,32 +1,9 @@
-# Local stack (docs/architecture/overview.md's deployment topology; M1, D-CoreDependency).
-#
-# ONE shared Postgres instance for both go-oikumenea and OpenFaithMap, separated by SCHEMA
-# (`oikumenea` vs `openfaithmap` — conventions.md already named these as schemas, one level down in
-# each project's own database; running them as two schemas in the same database rather than two
-# separate database instances is a simplification for local dev, decided over chat, not yet written
-# up as its own D-<Name> in architecture/decisions.md). Still no cross-schema FKs (conventions.md) —
-# OpenFaithMap's tables still only ever store a go-oikumenea RID as an opaque TEXT foreign value.
-#
-# go-oikumenea's own four-service bootstrap sequence (postgres / oikumenea-migrate /
-# oikumenea-init-role / oikumenea-app), reused from its own docker-compose.yml shape, image pulled
-# from its published registry (docker.io/olegamysk/oikumenea) rather than built from source.
-# `oikumenea-app` publishes NO host port (D-HeadlessTopology) — reachable only from other containers
-# on this network; openfaithmap-api reaches it at https://oikumenea-app:8443.
-#
-# No Keycloak: OpenFaithMap authenticates directly against Google (see deploy/oikumenea-install.yml's
-# header comment for the full rationale and how the service-principal bootstrap works without a
-# browser-based OAuth flow). This deviates from architecture/decisions.md's original shared-Keycloak
-# sketch — that doc still needs an update pass to record the change as a real D-<Name> decision.
-#
-# go-oikumenea's migrations aren't published as a standalone artifact yet, so oikumenea-migrate reads
-# them from a sibling checkout of the go-oikumenea repo (OIKUMENEA_SRC, default ../go-oikumenea) —
-# make sure its migrations/ matches the image tag below. The same sibling checkout is now also used
-# for migrate-hermenea (M2.2, D-BulkImport), whose migration set is read from OIKUMENEA_SRC's
-# migrations/hermenea/. The hermenea SERVICE itself, unlike its migrations, now has a published
-# image (docker.io/olegamysk/hermenea) and is pulled like oikumenea-app rather than built from
-# OIKUMENEA_SRC's Dockerfile.hermenea. See docs/modules/import.md.
-#
-#   OIKUMENEA_SRC=/path/to/go-oikumenea docker compose up --build
+# Local stack (docs/architecture/overview.md's deployment topology). Everything here is
+# OpenFaithMap's own — M10 (D-OwnCore) absorbed go-oikumenea's core into openfaithmap-api as
+# in-process Go modules and M10.8 tore down the separate go-oikumenea/hermenea/oikumenea-console
+# stack this file used to run alongside it (a full sibling-repo checkout, a second Postgres schema,
+# a second published-image service, a reference-data companion service, and a third UI surface —
+# all deleted, not replaced). One Postgres instance, one schema (`openfaithmap`).
 
 services:
   postgres:
@@ -44,148 +21,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # --- go-oikumenea (D-CoreDependency) ---
-  # --allow-dirty (here and on openfaithmap-migrate below): NOT about the two schemas sharing one
-  # database (M2.4 checked — each already has its own --revisions-schema, and that alone isn't why).
-  # Verified against a genuinely fresh volume: the postgis/postgis image itself bootstraps a `tiger`
-  # schema before any migration ever runs, and Atlas's dirty-check flags that regardless of
-  # --revisions-schema. Permanent, not a M2.1-era leftover to clean up later.
-  oikumenea-migrate:
-    image: arigaio/atlas:latest
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: >-
-      migrate apply --allow-dirty
-      --url "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable"
-      --dir "file:///migrations"
-      --revisions-schema oikumenea
-    volumes:
-      - ${OIKUMENEA_SRC:-../go-oikumenea}/migrations:/migrations:ro
-
-  oikumenea-init-role:
-    image: postgres:16
-    depends_on:
-      oikumenea-migrate:
-        condition: service_completed_successfully
-    entrypoint: ["sh", "-c"]
-    command:
-      - |
-        psql "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -c "
-          DO \$\$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'oikumenea') THEN
-              CREATE ROLE oikumenea LOGIN PASSWORD 'dev' IN ROLE oikumenea_app;
-            END IF;
-          END \$\$;"
-
-  oikumenea-app:
-    # 0.0.4 fixes go-oikumenea#36: tenant_units RLS was structurally unsatisfiable at a new unit's
-    # first INSERT for any person-shaped, non-admin caller (CreateChildOrg inserted the unit before
-    # tenant_unit_closure was seeded, so the person-arm RLS predicate could never pass). Fixed by
-    # seeding closure before the INSERT.
-    # 0.0.5 fixes go-oikumenea#37: GeoService's country.read reads (ListCountries/ListPlaces/
-    # ResolveCoordinate) were gated with RequireAnywhere, a person-shaped PEP path that denied a
-    # service-principal caller outright regardless of grants — found live via congregationimport's
-    # matchCountry (scripts/bootstrap-service-principal now grants country.read for real). Both
-    # re-verified live after bumping.
-    # 0.0.6 fixes go-oikumenea#39: Religion.CreateChildOrg's pep.Require also structurally denied a
-    # service-principal caller (same class as 0.0.5's fix, this time on a WRITE) — found live via
-    # D-CatholicJurisdictionSync's RunJurisdictionSync. Fixed with a new RequireServiceOrTarget gate,
-    # not a straight RequireServiceOrPerson swap: a person keeps the existing target-scoped Require
-    # check unchanged, only a machine subject gets a new door (checked against its flat, INSTANCE-WIDE
-    # grant set — go-oikumenea's principal grants still carry no unit/subtree scope, a deliberate,
-    # documented open question, not something this bump narrows).
-    # 0.0.7 fixes go-oikumenea#41: CreateChildOrg's tenant_unit_edges insert (via CreateUnitWithEdge)
-    # still failed RLS for a service principal holding only an org-scoped religionorg.manage grant,
-    # even though the preceding tenant_units insert succeeded — root-caused live to InsertEdge's sqlc
-    # query using RETURNING, which needs the row's implicit read reach in addition to its WITH CHECK
-    # (write) pass; a manage-only grant satisfies the write side but not the read side. Not a policy
-    # or GUC-propagation bug, as GH-41 originally suspected. Fix: document/require religion.read
-    # alongside religionorg.manage for a service principal doing this write (same manage+read pairing
-    # a person caller already needed). Closes out D-CatholicJurisdictionSync's own last open blocker —
-    # see docs/architecture/decisions.md and docs/milestones.md's M8 entry.
-    image: docker.io/olegamysk/oikumenea:0.0.7
-    depends_on:
-      oikumenea-init-role:
-        condition: service_completed_successfully
-    volumes:
-      - ./deploy/oikumenea-install.yml:/app/var/conf/install.yml:ro
-    environment:
-      # Two trust directions, two secrets (M2.2, D-BulkImport). HERMENEA_OIKUMENEA_TOKEN is the
-      # bearer go-oikumenea requires on inbound POST /import/{objectType} calls from hermenea
-      # (authenticates the hermenea-importer service principal, import.manage only).
-      # OIKUMENEA_HERMENEA_TOKEN is what go-oikumenea presents outbound when proxying a
-      # UI-triggered sync call to hermenea's own control API. Read as env-var overlays only (no
-      # install-config field) — see go-oikumenea's internal/platform/config's Hermenea struct.
-      # Values come from .env (see .env.example) — INSECURE local-dev defaults there, matching
-      # go-oikumenea's own docker-compose.yml literally so both repos interoperate out of the box;
-      # replace for any real deployment.
-      HERMENEA_OIKUMENEA_TOKEN: "${HERMENEA_OIKUMENEA_TOKEN}"
-      OIKUMENEA_HERMENEA_TOKEN: "${OIKUMENEA_HERMENEA_TOKEN}"
-    # No published ports (D-HeadlessTopology) — internal-only, reached by openfaithmap-api over the
-    # compose network at https://oikumenea-app:8443.
-
-  # hermenea (M2.2, D-BulkImport) — go-oikumenea's own reference-data companion service, deployed
-  # unmodified, not built by OpenFaithMap (docs/modules/import.md). Owns a SEPARATE Postgres
-  # database (named `hermenea`, not a schema inside `oikumenea`/`openfaithmap`) with its own
-  # migration set. Its migrations still aren't published as a standalone artifact, so
-  # migrate-hermenea below still reads them from the OIKUMENEA_SRC sibling checkout — but the
-  # service itself now has a published image (docker.io/olegamysk/hermenea), so it's pulled rather
-  # than built from that checkout's Dockerfile.hermenea (was: `build: {context: OIKUMENEA_SRC,
-  # dockerfile: Dockerfile.hermenea}` — no other field changed by this switch, same ENTRYPOINT,
-  # config-mount path, and `command: ["serve"]` override).
-  init-hermenea-db:
-    image: postgres:16
-    depends_on:
-      postgres:
-        condition: service_healthy
-    entrypoint: ["sh", "-c"]
-    command:
-      - |
-        psql "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -tc \
-          "SELECT 1 FROM pg_database WHERE datname='hermenea'" | grep -q 1 || \
-        psql "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -c \
-          "CREATE DATABASE hermenea;"
-
-  migrate-hermenea:
-    image: arigaio/atlas:latest
-    depends_on:
-      init-hermenea-db:
-        condition: service_completed_successfully
-    command: >-
-      migrate apply
-      --url "postgres://postgres:postgres@postgres:5432/hermenea?sslmode=disable"
-      --dir "file:///migrations"
-      --revisions-schema hermenea
-    volumes:
-      - ${OIKUMENEA_SRC:-../go-oikumenea}/migrations/hermenea:/migrations:ro
-
-  hermenea:
-    image: docker.io/olegamysk/hermenea:0.0.7
-    command: ["serve"]
-    depends_on:
-      migrate-hermenea:
-        condition: service_completed_successfully
-      oikumenea-app:
-        condition: service_started
-    volumes:
-      - ./deploy/hermenea-install.docker.yml:/app/var/conf/hermenea-install.yml:ro
-    environment:
-      # Same two secrets as oikumenea-app above (M2.2, D-BulkImport) — values from .env.
-      HERMENEA_OIKUMENEA_TOKEN: "${HERMENEA_OIKUMENEA_TOKEN}"
-      OIKUMENEA_HERMENEA_TOKEN: "${OIKUMENEA_HERMENEA_TOKEN}"
-    # Lets an enabled source point at a dist served from the host (e.g. a local test fixture) —
-    # inert unless such a source is enabled in deploy/hermenea-install.docker.yml.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    # Published directly, unlike oikumenea-app's D-HeadlessTopology no-port rule: hermenea holds no
-    # OpenFaithMap-sensitive data of its own, and local dev triggers it from the host
-    # (docs/modules/import.md's "Operating hermenea" curl example targets localhost:9443).
-    ports:
-      - "9443:9443"
-      - "9444:9444"
-
-  # --- OpenFaithMap's own services ---
   openfaithmap-migrate:
     image: arigaio/atlas:latest
     depends_on:
@@ -199,9 +34,12 @@ services:
     volumes:
       - ./migrations:/migrations:ro
 
-  # M2.4, D-SharedDatabase: mirrors oikumenea-init-role above — creates the LOGIN role
-  # openfaithmap-api actually connects as, a member of migration 0003's openfaithmap_app group role.
-  # A role with a password has no business being version-controlled Atlas DDL.
+  # M2.4, D-SharedDatabase: creates the LOGIN role openfaithmap-api actually connects as, a member of
+  # migration 0003's openfaithmap_app group role. A role with a password has no business being
+  # version-controlled Atlas DDL. --allow-dirty above: NOT about a second schema sharing this database
+  # (that's gone now) — verified against a genuinely fresh volume, the postgis/postgis image itself
+  # bootstraps a `tiger` schema before any migration ever runs, and Atlas's dirty-check flags that
+  # regardless of --revisions-schema. Permanent, not a leftover to clean up later.
   openfaithmap-init-role:
     image: postgres:16
     depends_on:
@@ -220,10 +58,10 @@ services:
   openfaithmap-api:
     build: .
     # 3000 (the app port) is NOT published (M2.4): openfaithmap-admin is the only caller and reaches
-    # it internally at https://openfaithmap-api:3000, same D-HeadlessTopology rule oikumenea-app
-    # already follows — this service accepts and forwards bearer tokens, so it has no business being
-    # host-reachable. 3001 (witchcraft's management/health port, no auth) stays published for local
-    # debugging (curl localhost:3001/status/liveness).
+    # it internally at https://openfaithmap-api:3000 (D-HeadlessTopology) — this service accepts and
+    # forwards bearer tokens, so it has no business being host-reachable. 3001 (witchcraft's
+    # management/health port, no auth) stays published for local debugging
+    # (curl localhost:3001/status/liveness).
     ports:
       - "3001:3001"
     depends_on:
@@ -233,27 +71,9 @@ services:
         condition: service_completed_successfully
       openfaithmap-init-role:
         condition: service_completed_successfully
-      oikumenea-app:
-        condition: service_started
     environment:
-      # M2.4, D-SharedDatabase: the least-privilege role above, not the postgres superuser — has no
-      # grant of any kind on the oikumenea schema (verify: SELECT against oikumenea.* from inside this
-      # container fails with a permission error).
+      # M2.4, D-SharedDatabase: the least-privilege role above, not the postgres superuser.
       DATABASE_URL: "postgres://openfaithmap:dev@postgres:5432/postgres?sslmode=disable"
-      OIKUMENEA_BASE_URL: "https://oikumenea-app:8443"
-      # oikumenea-app serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
-      OIKUMENEA_INSECURE_SKIP_VERIFY: "true"
-      # M2 registration module — the single shared root unit + the role granted to a newly approved
-      # congregation admin, both produced by scripts/bootstrap-registration-org. Instance-specific
-      # RIDs, not committed elsewhere — set per environment.
-      REGISTRATION_ROOT_UNIT_ID: "${REGISTRATION_ROOT_UNIT_ID}"
-      REGISTRATION_CONGREGATION_ADMIN_ROLE_ID: "${REGISTRATION_CONGREGATION_ADMIN_ROLE_ID}"
-      # M4, discovery: the service principal's own credentials — first production use of
-      # coreintegration.NewServiceClient (M1 built it, only an integration test called it until
-      # now). Same GOOGLE_APPLICATION_CREDENTIALS convention scripts/bootstrap-service-principal
-      # already uses on the host (.env.example); this container needs its own copy mounted in to
-      # mint Google ID tokens for GET /search's cache-miss fallback.
-      GOOGLE_APPLICATION_CREDENTIALS: "/app/var/service-account.json"
       # M10.2 (D-DirectTokenVerification): the audience GuardIssuerAudience requires be pinned on
       # the Google OIDC issuer. Same client id openfaithmap-admin's own AUTH_GOOGLE_ID already uses
       # below (one Google OAuth client, two relying parties) — a token minted for this client is
@@ -264,11 +84,10 @@ services:
       # never with a value (D-DirectTokenVerification's amendment), so a copied compose override
       # can't accidentally carry a real secret into a non-dev environment.
       # DEV_ISSUER_HMAC_KEY: ""
-      # BOOTSTRAP_ADMIN_*: unset here deliberately — the new M10.2 middleware is built and
-      # Bind-wired but not yet attached (server.WithMiddleware), so nothing in this stack consumes
-      # identity_persons/authz_instance_admins yet. ValidateSeedForEnvironment treats an unset seed
-      # in local/dev as "nothing to seed" and boot proceeds normally. Set these once M10.6 makes the
-      # new identity module the operative one.
+      # BOOTSTRAP_ADMIN_*: the M10.2 middleware's first-admin boot seed (D-SeedBootstrap). Unset here
+      # by default — ValidateSeedForEnvironment treats an unset seed in local/dev as "nothing to
+      # seed" and boot proceeds normally. Set these (via .env) to seed the first instance admin on a
+      # fresh volume.
       BOOTSTRAP_ADMIN_ISSUER: "${BOOTSTRAP_ADMIN_ISSUER:-}"
       BOOTSTRAP_ADMIN_SUBJECT: "${BOOTSTRAP_ADMIN_SUBJECT:-}"
       BOOTSTRAP_ADMIN_EMAIL: "${BOOTSTRAP_ADMIN_EMAIL:-}"
@@ -277,10 +96,8 @@ services:
       # the ЄДР connector only registers if one of these is set. Real weekly bulk download is an
       # operator's own out-of-band step (data.gov.ua dataset 03cc1239-3988-4451-aa0d-aadb77448714,
       # resource uo.zip); UAEDR_UO_FILE_PATH needs an extra `volumes:` entry when actually used, same
-      # shape as GOOGLE_APPLICATION_CREDENTIALS above — UAEDR_SOURCE_URL needs no mount at all. Both
-      # left unset here — no file is bundled or auto-downloaded by this compose file. UAEDR_SOURCE_URL
-      # itself was previously documented (.env.example) but never actually forwarded into this
-      # container's environment — found live while wiring ar-rnc below and fixed here too.
+      # shape as any bind-mounted credential — UAEDR_SOURCE_URL needs no mount at all. Both left
+      # unset here — no file is bundled or auto-downloaded by this compose file.
       UAEDR_UO_FILE_PATH: "${UAEDR_UO_FILE_PATH:-}"
       UAEDR_SOURCE_URL: "${UAEDR_SOURCE_URL:-}"
       # ar-rnc (Argentina's Registro Nacional de Cultos) — same optional pattern as ua-edr above.
@@ -293,23 +110,14 @@ services:
       OSM_COUNTRY_CODES: "${OSM_COUNTRY_CODES:-}"
       OSM_OVERPASS_BASE_URL: "${OSM_OVERPASS_BASE_URL:-}"
       # wikidata-catholic (D-CatholicJurisdictionSync, docs/architecture/decisions.md) — optional,
-      # only registers once CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID is set (a real go-oikumenea Unit an
-      # operator must create ONCE, out-of-band, through the admin "Create unit" modal — this connector
-      # never creates or touches anything above or outside that unit's own subtree).
+      # only registers once CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID is set (a real Unit an operator must
+      # create ONCE, out-of-band, through the admin "Create unit" modal — this connector never
+      # creates or touches anything above or outside that unit's own subtree).
       # CATHOLIC_JURISDICTION_COUNTRY_QIDS optionally scopes the sync to specific Wikidata country
-      # QIDs (e.g. "Q212" for Ukraine); empty means every country worldwide. Also needs
-      # religionorg.manage granted to THIS service principal in scripts/bootstrap-service-principal —
-      # currently blocked upstream (CreateChildOrg's PEP gate structurally denies a machine subject;
-      # see the D-CatholicJurisdictionSync decision for the filed go-oikumenea issue) — the endpoint
-      # is wired but will 403 until that upstream fix ships.
+      # QIDs (e.g. "Q212" for Ukraine); empty means every country worldwide.
       CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID: "${CATHOLIC_JURISDICTION_ANCHOR_UNIT_ID:-}"
       CATHOLIC_JURISDICTION_COUNTRY_QIDS: "${CATHOLIC_JURISDICTION_COUNTRY_QIDS:-}"
       CATHOLIC_JURISDICTION_WIKIDATA_BASE_URL: "${CATHOLIC_JURISDICTION_WIKIDATA_BASE_URL:-}"
-    volumes:
-      # The leading "./" is load-bearing: Compose treats a bare relative path as a named-volume
-      # reference, not a bind mount, and fails with "undefined volume" otherwise — found by
-      # actually running `docker compose ps`, not by review.
-      - "./${GOOGLE_APPLICATION_CREDENTIALS}:/app/var/service-account.json:ro"
 
   # openfaithmap-web (M2.1, D-AdminSurface; M4 adds its first real data-reading pages) — the
   # anonymous public surface. Holds no session, no Auth.js, no credential of any kind
@@ -324,79 +132,40 @@ services:
       - "3002:3000"
     environment:
       # openfaithmap-api (M4: discovery + content public reads) — reached over the compose
-      # network, self-signed cert in local dev (D-HeadlessTopology). Never oikumenea-app directly
-      # — this app has no token to forward and every religion read 401s an anonymous caller (M2.5).
+      # network, self-signed cert in local dev (D-HeadlessTopology). Every religion read 401s an
+      # anonymous caller unless it's on the anonymous allowlist (M2.5, M10.6).
       OPENFAITHMAP_API_BASE_URL: "https://openfaithmap-api:3000"
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
 
   # openfaithmap-admin (M2.1, D-AdminSurface) — the only surface that ever holds a session: the
-  # registration wizard, operator-approval console, congregation-admin console, moderator console
-  # (docs/modules/web-admin.md). Forwards the logged-in user's Google ID token as the bearer on
-  # every go-oikumenea / openfaithmap-api call (no Keycloak — docs/architecture/decisions.md's
-  # D-CoreDependency).
+  # registration wizard, operator-approval console, congregation-admin console, moderator console,
+  # and (M10.8, D-SuperAdminFold) the super-admin screens (docs/modules/web-admin.md). Forwards the
+  # logged-in user's Google ID token as the bearer on every openfaithmap-api call.
   openfaithmap-admin:
     build:
       context: ./web/apps/admin
     depends_on:
-      oikumenea-app:
-        condition: service_started
       openfaithmap-api:
         condition: service_started
     ports:
       - "3004:3000"
     environment:
-      OIKUMENEA_BASE_URL: "https://oikumenea-app:8443"
       # openfaithmap-api (M2) — reached over the compose network, same self-signed-cert caveat.
       OPENFAITHMAP_API_BASE_URL: "https://openfaithmap-api:3000"
-      # oikumenea-app / openfaithmap-api both serve self-signed certs in local dev (D-HeadlessTopology). DEV ONLY.
+      # openfaithmap-api serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
       AUTH_SECRET: "${OPENFAITHMAP_ADMIN_AUTH_SECRET}"
       AUTH_URL: "http://localhost:3004"
       AUTH_TRUST_HOST: "true"
-      # Non-secret: matches the audience deploy/oikumenea-install.yml's Google issuer entry pins.
-      # Reuses the same Google OAuth client oikumenea-console already uses — needs
-      # http://localhost:3004/api/auth/callback/google added as an authorized redirect URI on that
-      # client in Google Cloud Console (external step, same treatment M1.2 gave oikumenea-console).
       AUTH_GOOGLE_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
       AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET}"
-      # M4.1, D-JurisdictionUnits: the JurisdictionPicker calls go-oikumenea's Tenant/Religion
-      # services directly (no new openfaithmap-api endpoint for browsing/creating jurisdiction
-      # units), so it needs the same root unit id openfaithmap-api's own Config.RootUnitID carries —
-      # scripts/bootstrap-registration-org's output, duplicated here rather than fetched from the
-      # backend (there is no config-echo endpoint, and adding one for a single id felt like more new
-      # API surface than the value justified).
+      # M4.1, D-JurisdictionUnits: congregation-import/page.tsx, registrations/page.tsx, and
+      # registrations/reparent/page.tsx each read this directly as their own jurisdiction-picker
+      # root. Non-secret: internal/platform/seed.RootUnitID, the fixed structural RID
+      # migrations/0022_core_seed.sql seeds — this repo's own root unit, not go-oikumenea's (M10.6
+      # cut the API side over; M10.7 confirmed the frontend still needs its own copy since there's
+      # no config-echo endpoint and adding one for a single id isn't worth new API surface).
       REGISTRATION_ROOT_UNIT_ID: "${REGISTRATION_ROOT_UNIT_ID}"
-
-  # oikumenea-console (M1.2, D-InstanceAdminConsole) — go-oikumenea's own published admin console,
-  # reused unmodified. Super-admin-only: manages the religion_taxa catalog, tenant/org structure
-  # instance-wide, service-principal registration, and other instance admins — nothing
-  # OpenFaithMap-specific. Reaches oikumenea-app the same way openfaithmap-api does (compose-internal
-  # network, self-signed cert). Published on a normal host port for local dev only — a real
-  # deployment restricts this behind a WireGuard VPN instead (decided, not yet implemented — see
-  # D-InstanceAdminConsole's consequences in docs/architecture/decisions.md).
-  oikumenea-console:
-    image: docker.io/olegamysk/oikumenea-console:0.0.7
-    depends_on:
-      oikumenea-app:
-        condition: service_started
-    ports:
-      - "3003:3000"
-    environment:
-      API_BASE_URL: "https://oikumenea-app:8443"
-      # oikumenea-app serves a self-signed cert in local dev (D-HeadlessTopology). DEV ONLY.
-      NODE_TLS_REJECT_UNAUTHORIZED: "0"
-      # Auth.js session secret — DISTINCT from openfaithmap-admin's OPENFAITHMAP_ADMIN_AUTH_SECRET
-      # above (two independent sessions). See .env.example.
-      AUTH_SECRET: "${OIKUMENEA_CONSOLE_AUTH_SECRET}"
-      AUTH_URL: "http://localhost:3003"
-      AUTH_TRUST_HOST: "true"
-      # Reuses the same shared Google OAuth client openfaithmap-admin uses (same client id/secret)
-      # rather than provisioning a new one or reintroducing Keycloak — deploy/oikumenea-install.yml's
-      # Google issuer entry already trusts this audience, so no install-config change is needed.
-      # Manual, out-of-repo step required: add http://localhost:3003/api/auth/callback/google as an
-      # authorized redirect URI on that same Google Cloud OAuth client.
-      AUTH_GOOGLE_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
-      AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET}"
 
 volumes:
   postgres-data:
