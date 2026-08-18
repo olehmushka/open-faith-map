@@ -21,6 +21,9 @@ type Store interface {
 	ResolveBySubject(ctx context.Context, issuer, subject string) (domain.Resolution, error)
 	InsertIdentity(ctx context.Context, accountID, issuer, subject string) (domain.ExternalIdentity, error)
 	GetActivePersonByCode(ctx context.Context, code string) (domain.Person, error)
+	GetPerson(ctx context.Context, id string) (domain.Person, error)
+	GetPersons(ctx context.Context, ids []string) ([]domain.Person, error)
+	SearchPersons(ctx context.Context, query string, limit int) ([]domain.Person, error)
 }
 
 type Service struct {
@@ -103,4 +106,20 @@ func (s *Service) PersonIDByCode(ctx context.Context, code string) (string, bool
 		return "", false, err
 	}
 	return p.ID, true, nil
+}
+
+// GetPerson reads a single person by id — M10.7's core.conjure.yml CoreService.GetPerson.
+func (s *Service) GetPerson(ctx context.Context, id string) (domain.Person, error) {
+	return s.store.GetPerson(ctx, id)
+}
+
+// GetPersons is the batched read backing my-congregation's member roster (M10.7) — one round trip
+// instead of a per-member GetPerson loop.
+func (s *Service) GetPersons(ctx context.Context, ids []string) ([]domain.Person, error) {
+	return s.store.GetPersons(ctx, ids)
+}
+
+// SearchPersons backs the M10.7 super-admin people screen's search box.
+func (s *Service) SearchPersons(ctx context.Context, query string, limit int) ([]domain.Person, error) {
+	return s.store.SearchPersons(ctx, query, limit)
 }

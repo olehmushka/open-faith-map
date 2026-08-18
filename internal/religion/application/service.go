@@ -56,6 +56,11 @@ func (s *Service) GetTaxon(ctx context.Context, id string) (religiondomain.Taxon
 	return adapters.NewStore(s.pool).GetTaxon(ctx, id)
 }
 
+// ListTaxa searches the seeded taxa catalog by code/name — M10.7's core.conjure.yml surface.
+func (s *Service) ListTaxa(ctx context.Context, query string, limit int) ([]religiondomain.Taxon, error) {
+	return adapters.NewStore(s.pool).ListTaxa(ctx, query, limit)
+}
+
 // GetOrgProfile reads unitID's profile plus its classifications.
 func (s *Service) GetOrgProfile(ctx context.Context, unitID string) (religiondomain.OrgProfile, error) {
 	store := adapters.NewStore(s.pool)

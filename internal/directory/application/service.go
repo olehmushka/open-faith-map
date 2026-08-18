@@ -48,6 +48,11 @@ func (s *Service) GetUnit(ctx context.Context, id string) (domain.Unit, error) {
 	return adapters.NewStore(s.pool).GetUnit(ctx, id)
 }
 
+// ListUnits searches units by code/name — M10.7's core.conjure.yml ListUnits, read-only, pool-bound.
+func (s *Service) ListUnits(ctx context.Context, query string, limit int) ([]domain.Unit, error) {
+	return adapters.NewStore(s.pool).SearchUnits(ctx, query, limit)
+}
+
 // CreateUnit creates a root unit — no parent, no closure work. Use CreateUnitWithEdge when the
 // caller already has a parent at creation time.
 func (s *Service) CreateUnit(ctx context.Context, u domain.Unit) (domain.Unit, error) {

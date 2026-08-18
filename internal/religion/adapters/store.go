@@ -55,6 +55,39 @@ func (s *Store) GetTaxon(ctx context.Context, id string) (domain.Taxon, error) {
 	return t, nil
 }
 
+// ListTaxa is M10.7's core.conjure.yml ListTaxa — a plain ILIKE search over code/name (mirrors
+// ListSiteTypes'/ListOrgKinds' catalog-read shape), capped at limit (default/max 50). Replaces the
+// pre-cutover admin app's religion.listTaxa call (lib/dictionaries.ts).
+func (s *Store) ListTaxa(ctx context.Context, query string, limit int) ([]domain.Taxon, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 50
+	}
+	rows, err := s.q.Query(ctx, `
+		SELECT t.id, t.parent_id, t.rank_id, rk.code, t.code, t.name, t.sort_order
+		FROM openfaithmap.religion_taxa t
+		JOIN openfaithmap.religion_taxon_ranks rk ON rk.id = t.rank_id
+		WHERE t.deleted_at IS NULL
+		  AND ($1 = '' OR t.code ILIKE '%' || $1 || '%' OR t.name ILIKE '%' || $1 || '%')
+		ORDER BY t.sort_order NULLS LAST, t.code
+		LIMIT $2`, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Taxon
+	for rows.Next() {
+		var t domain.Taxon
+		var parentID *string
+		var sortOrder *int
+		if err := rows.Scan(&t.ID, &parentID, &t.RankID, &t.RankCode, &t.Code, &t.Name, &sortOrder); err != nil {
+			return nil, err
+		}
+		t.ParentID, t.SortOrder = parentID, sortOrder
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // ---------------------------------------------------------------- org profile + classifications
 
 func (s *Store) GetOrgProfileRow(ctx context.Context, unitID string) (domain.OrgProfile, error) {

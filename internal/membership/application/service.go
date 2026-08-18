@@ -29,6 +29,11 @@ func (s *Service) ListPositionsByUnit(ctx context.Context, unitID string) ([]dom
 	return adapters.NewStore(s.pool).ListPositionsByUnit(ctx, unitID)
 }
 
+// ListMembershipsByUnit lists unitID's active memberships — M10.7's core.conjure.yml surface.
+func (s *Service) ListMembershipsByUnit(ctx context.Context, unitID string) ([]domain.Membership, error) {
+	return adapters.NewStore(s.pool).ListMembershipsByUnit(ctx, unitID)
+}
+
 // FillPosition creates an active membership filling positionID for personID. unitID is the
 // position's own owning unit — callers already have it from CreatePosition/ListPositionsByUnit, so
 // this does not re-derive it from positionID to save a lookup.

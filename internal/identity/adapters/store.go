@@ -18,6 +18,7 @@ import (
 // person+account+identity+instance-admin write (internal/identity/bootstrap).
 type Querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 type Store struct {
@@ -59,6 +60,68 @@ func (s *Store) scanPerson(row pgx.Row) (domain.Person, error) {
 		p.Code = *code
 	}
 	return p, nil
+}
+
+// GetPerson reads a single person by id — M10.7's core.conjure.yml GetPerson/detail-screen read.
+func (s *Store) GetPerson(ctx context.Context, id string) (domain.Person, error) {
+	return s.scanPerson(s.pool.QueryRow(ctx, `
+		SELECT id, code, display_name, created_at, updated_at
+		FROM openfaithmap.identity_persons
+		WHERE id = $1 AND deleted_at IS NULL`, id))
+}
+
+// GetPersons is the batched form of GetPerson — replaces admin's my-congregation page N+1
+// per-member GetPerson loop with one round trip (M10.7). Returns whatever subset of ids exists;
+// callers must not assume the result is ordered like or the same length as ids.
+func (s *Store) GetPersons(ctx context.Context, ids []string) ([]domain.Person, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, code, display_name, created_at, updated_at
+		FROM openfaithmap.identity_persons
+		WHERE id = ANY($1) AND deleted_at IS NULL`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Person
+	for rows.Next() {
+		p, err := s.scanPerson(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SearchPersons is the M10.7 super-admin people screen's search — case-insensitive substring match
+// on display name or code, capped at limit (default/max 50).
+func (s *Store) SearchPersons(ctx context.Context, query string, limit int) ([]domain.Person, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 50
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, code, display_name, created_at, updated_at
+		FROM openfaithmap.identity_persons
+		WHERE deleted_at IS NULL
+		  AND ($1 = '' OR display_name ILIKE '%' || $1 || '%' OR code ILIKE '%' || $1 || '%')
+		ORDER BY display_name
+		LIMIT $2`, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Person
+	for rows.Next() {
+		p, err := s.scanPerson(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) GetActiveAccountByPerson(ctx context.Context, personID string) (domain.Account, error) {

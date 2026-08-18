@@ -90,6 +90,37 @@ func (s *Store) scanUnit(row pgx.Row) (domain.Unit, error) {
 	return u, nil
 }
 
+// SearchUnits is M10.7's core.conjure.yml ListUnits — a plain ILIKE search over code/name, capped at
+// limit (default/max 50). Replaces the pre-cutover admin app's org-then-list-units dance
+// (lib/jurisdiction.ts): this port has no organizations/domains dimension to filter by (single-tenant
+// product, D-CorePortScope), so a direct search is not just a repoint but strictly simpler than what
+// it replaces.
+func (s *Store) SearchUnits(ctx context.Context, query string, limit int) ([]domain.Unit, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 50
+	}
+	rows, err := s.q.Query(ctx, `
+		SELECT id, code, name, level, state, metadata, created_at, updated_at
+		FROM openfaithmap.directory_units
+		WHERE deleted_at IS NULL
+		  AND ($1 = '' OR code ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
+		ORDER BY name
+		LIMIT $2`, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Unit
+	for rows.Next() {
+		u, err := s.scanUnit(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 // ---------------------------------------------------------------- graphs
 
 func (s *Store) GetGraphByCode(ctx context.Context, code string) (domain.Graph, error) {

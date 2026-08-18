@@ -88,6 +88,37 @@ func (s *Store) ListPositionsByUnit(ctx context.Context, unitID string) ([]domai
 	return out, rows.Err()
 }
 
+const membershipCols = `id, person_id, unit_id, position_id, status, effective_from`
+
+func scanMembership(row pgx.Row) (domain.Membership, error) {
+	var m domain.Membership
+	err := row.Scan(&m.ID, &m.PersonID, &m.UnitID, &m.PositionID, &m.Status, &m.EffectiveFrom)
+	return m, err
+}
+
+// ListMembershipsByUnit lists unitID's active memberships — M10.7's core.conjure.yml
+// ListMembershipsByUnit, replacing my-congregation's own pre-cutover
+// client.membership.listMembers call.
+func (s *Store) ListMembershipsByUnit(ctx context.Context, unitID string) ([]domain.Membership, error) {
+	rows, err := s.q.Query(ctx, `
+		SELECT `+membershipCols+` FROM openfaithmap.membership_memberships
+		WHERE unit_id = $1 AND status = 'active' AND deleted_at IS NULL
+		ORDER BY effective_from`, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Membership
+	for rows.Next() {
+		m, err := scanMembership(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // InsertMembershipFillingPosition creates an active, position-filling membership for personID on
 // positionID. positionID's owning unit_id backs unitID directly (no separate lookup) since the
 // caller (application.Service.FillPosition) already resolved the position.

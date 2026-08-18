@@ -225,6 +225,21 @@ func TestReligionIntegration(t *testing.T) {
 	if len(noMatch) != 0 {
 		t.Errorf("SearchSites(Language=es) = %+v, want no matches", noMatch)
 	}
+
+	// --- ListTaxa (M10.7): a code/name search finds the seeded "christianity" taxon.
+	taxa, err := rel.ListTaxa(ctx, "christianity", 10)
+	if err != nil {
+		t.Fatalf("ListTaxa: %v", err)
+	}
+	var sawChristianity bool
+	for _, tx := range taxa {
+		if tx.ID == taxonID {
+			sawChristianity = true
+		}
+	}
+	if !sawChristianity {
+		t.Errorf("ListTaxa(%q) = %+v, want it to include taxon %s", "christianity", taxa, taxonID)
+	}
 }
 
 func siteInput(unitID, locationID, siteTypeID string) adapters.CreateSiteInput {

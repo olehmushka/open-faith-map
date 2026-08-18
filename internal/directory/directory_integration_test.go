@@ -191,6 +191,21 @@ func TestDirectoryClosureIntegration(t *testing.T) {
 	if len(drifted) != 1 || !drifted[0].InDrift || drifted[0].MissingCount != 1 {
 		t.Errorf("VerifyClosure (after corruption) = %+v, want InDrift=true, MissingCount=1", drifted)
 	}
+
+	// --- ListUnits (M10.7): a code/name ILIKE search finds the grandchild by its distinctive name.
+	found, err := svc.ListUnits(ctx, "Grandchild", 10)
+	if err != nil {
+		t.Fatalf("ListUnits: %v", err)
+	}
+	var sawGrandchild bool
+	for _, u := range found {
+		if u.ID == grandchild.ID {
+			sawGrandchild = true
+		}
+	}
+	if !sawGrandchild {
+		t.Errorf("ListUnits(%q) = %+v, want it to include the grandchild unit", "Grandchild", found)
+	}
 }
 
 // createTestGraph inserts a throwaway authority-bearing graph directly via SQL — Service exposes no

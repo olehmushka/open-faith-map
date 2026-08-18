@@ -89,4 +89,13 @@ func TestMembershipIntegration(t *testing.T) {
 	if _, err := mem.FillPosition(ctx, personID, unit.ID, pos.ID); err != domain.ErrPositionAlreadyFilled {
 		t.Errorf("FillPosition(already filled) error = %v, want ErrPositionAlreadyFilled", err)
 	}
+
+	// --- ListMembershipsByUnit (M10.7): the just-filled membership is returned.
+	memberships, err := mem.ListMembershipsByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("ListMembershipsByUnit: %v", err)
+	}
+	if len(memberships) != 1 || memberships[0].PersonID != personID || memberships[0].PositionID != pos.ID {
+		t.Errorf("ListMembershipsByUnit = %+v, want exactly one membership for person=%s position=%s", memberships, personID, pos.ID)
+	}
 }
