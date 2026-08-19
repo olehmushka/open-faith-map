@@ -98,6 +98,15 @@ services:
       BOOTSTRAP_ADMIN_SUBJECT: "${BOOTSTRAP_ADMIN_SUBJECT:-}"
       BOOTSTRAP_ADMIN_EMAIL: "${BOOTSTRAP_ADMIN_EMAIL:-}"
       BOOTSTRAP_ADMIN_DISPLAY_NAME: "${BOOTSTRAP_ADMIN_DISPLAY_NAME:-}"
+      # IDENTITY_JIT_*: D-JIT link-on-match (internal/identity/middleware/validator.go's Config).
+      # Existed in Go since M10.2 but was never wired through compose until now (a real gap — JIT was
+      # unconditionally disabled in this stack no matter what .env set). Unset by default, same
+      # posture as BOOTSTRAP_ADMIN_* above; set IDENTITY_JIT_ENABLED=true plus CLAIM=email/
+      # MATCH=account-email to let a first real login link onto a bootstrap-seeded person by verified
+      # email instead of only an exact pre-linked (issuer, subject).
+      IDENTITY_JIT_ENABLED: "${IDENTITY_JIT_ENABLED:-}"
+      IDENTITY_JIT_CLAIM: "${IDENTITY_JIT_CLAIM:-}"
+      IDENTITY_JIT_MATCH: "${IDENTITY_JIT_MATCH:-}"
       # congregationimport (D-CongregationImport, docs/modules/congregationimport.md): optional —
       # the ЄДР connector only registers if one of these is set. Real weekly bulk download is an
       # operator's own out-of-band step (data.gov.ua dataset 03cc1239-3988-4451-aa0d-aadb77448714,
