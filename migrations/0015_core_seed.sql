@@ -1,4 +1,4 @@
--- 0022_core_seed — M10.1 (D-SeedBootstrap). Deterministic seed data with fixed RIDs, replacing four
+-- 0015_core_seed — M10.1 (D-SeedBootstrap). Deterministic seed data with fixed RIDs, replacing four
 -- manual script runs (scripts/bootstrap-{registration-org,exclusion-backstop}; the other two,
 -- bootstrap-service-principal and bootstrap-admin-person, are deleted outright at M10.2/M10.6 — the
 -- service principal concept goes away with D-DirectTokenVerification, and the first admin becomes a
@@ -9,9 +9,18 @@
 -- bit-packing with a fixed base timestamp instead of clock_timestamp()) and hardcoded — calling
 -- new_id() itself here would produce a different value on every fresh deployment, exactly what
 -- D-SeedBootstrap exists to avoid for these specific rows. Every other seed row in this migration
--- (org kinds, site types — already seeded by 0018_core_religion.sql) is looked up by `code`, not by
+-- (org kinds, site types — already seeded by 0011_core_religion.sql) is looked up by `code`, not by
 -- RID, so it did not need a fixed literal; only rows a future Go constant or the M10.9 authorization
 -- matrix must name by ID do.
+--
+-- **Trimmed 2026-08-19** (docs/milestones.md's migration-collapse session, same pass that trimmed
+-- 0011_core_religion.sql to Christianity-only): the exclusion backstop below originally seeded three
+-- placeholder units, one per D-Exclusions denomination. Since `lds_church`/`jehovahs_witnesses` are
+-- now hard-deleted from the taxonomy entirely (no religion_taxa row exists for either), their
+-- placeholder org-level backstop units are dead weight — nothing can ever reference a denomination
+-- that no longer exists in the taxon picker or anywhere else. Only the `russian_orthodox_church`
+-- placeholder remains (its taxon row, and its app-code exclusion in
+-- internal/registration/domain.ExcludedTaxonCodes, both stay — political, not doctrinal, exclusion).
 
 -- ===================================================================================================
 -- Root unit + canonical graph.
@@ -75,33 +84,23 @@ INSERT INTO openfaithmap.authz_role_permissions (role_id, permission_code) VALUE
 
 -- ===================================================================================================
 -- Exclusion backstop (D-Exclusions' org-level second layer, behind checkNotExcluded's taxon-ancestor
--- walk). Three placeholder units under root, each carrying an excludes_child_creation policy —
--- scripts/bootstrap-exclusion-backstop/main.go's excludedBodies, kept in sync with
--- internal/registration/domain.ExcludedTaxonCodes.
+-- walk). One placeholder unit under root, carrying an excludes_child_creation policy — kept in sync
+-- with internal/registration/domain.ExcludedTaxonCodes (russian_orthodox_church only, see this file's
+-- header for why the other two are gone).
 -- ===================================================================================================
 
 INSERT INTO openfaithmap.directory_units (id, code, name, state) VALUES
   ('01989e26-ce02-8101-8301-029daab7c4d1', 'excluded-russian_orthodox_church',
-   'Russian Orthodox Church (excluded — D-Exclusions)', 'active'),
-  ('01989e26-ce03-8101-8301-03a4b1becbd8', 'excluded-jehovahs_witnesses',
-   'Jehovah''s Witnesses (excluded — D-Exclusions)', 'active'),
-  ('01989e26-ce04-8101-8301-04abb8c5d2df', 'excluded-lds_church',
-   'LDS Church (excluded — D-Exclusions)', 'active');
+   'Russian Orthodox Church (excluded — D-Exclusions)', 'active');
 
 INSERT INTO openfaithmap.directory_unit_edges (graph_id, parent_id, child_id) VALUES
-  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', '01989e26-ce02-8101-8301-029daab7c4d1'),
-  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', '01989e26-ce03-8101-8301-03a4b1becbd8'),
-  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', '01989e26-ce04-8101-8301-04abb8c5d2df');
+  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', '01989e26-ce02-8101-8301-029daab7c4d1');
 
--- Closure over the seed edges above (root -> each placeholder, plus the 4 reflexive rows).
+-- Closure over the seed edge above (root -> the placeholder, plus its own reflexive row).
 INSERT INTO openfaithmap.directory_unit_closure (graph_id, ancestor_id, descendant_id, depth) VALUES
   ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', 0),
   ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce02-8101-8301-029daab7c4d1', '01989e26-ce02-8101-8301-029daab7c4d1', 0),
-  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce03-8101-8301-03a4b1becbd8', '01989e26-ce03-8101-8301-03a4b1becbd8', 0),
-  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce04-8101-8301-04abb8c5d2df', '01989e26-ce04-8101-8301-04abb8c5d2df', 0),
-  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', '01989e26-ce02-8101-8301-029daab7c4d1', 1),
-  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', '01989e26-ce03-8101-8301-03a4b1becbd8', 1),
-  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', '01989e26-ce04-8101-8301-04abb8c5d2df', 1);
+  ('01989e26-ce01-8101-8302-0196a3b0bdca', '01989e26-ce01-8101-8301-0196a3b0bdca', '01989e26-ce02-8101-8301-029daab7c4d1', 1);
 
 INSERT INTO openfaithmap.directory_closure_status (graph_id) VALUES
   ('01989e26-ce01-8101-8302-0196a3b0bdca');
@@ -109,9 +108,7 @@ INSERT INTO openfaithmap.directory_closure_status (graph_id) VALUES
 INSERT INTO openfaithmap.religion_org_policies (unit_id, policy_kind_id, reason)
 SELECT v.id_val, pk.id, 'D-Exclusions permanent exclusion — see internal/registration/domain.ExcludedTaxonCodes'
 FROM (VALUES
-  ('01989e26-ce02-8101-8301-029daab7c4d1'::uuid),
-  ('01989e26-ce03-8101-8301-03a4b1becbd8'::uuid),
-  ('01989e26-ce04-8101-8301-04abb8c5d2df'::uuid)
+  ('01989e26-ce02-8101-8301-029daab7c4d1'::uuid)
 ) AS v(id_val)
 CROSS JOIN openfaithmap.religion_policy_kinds pk
 WHERE pk.code = 'excludes_child_creation';

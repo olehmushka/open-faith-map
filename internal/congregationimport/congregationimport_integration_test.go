@@ -5,7 +5,7 @@
 //   - requireOperator denied for a non-operator and allowed for a real operator (EditCandidate,
 //     RejectCandidate).
 //   - RunConnector's D-Exclusions check and matchCountry both work in-process under
-//     authz.SystemContext — a jehovahs_witnesses-aliased record ends REJECTED_EXCLUDED, a real
+//     authz.SystemContext — a russian_orthodox_church-aliased record ends REJECTED_EXCLUDED, a real
 //     Christian record gets its country hint resolved.
 //   - ApproveCandidate performs the real writes (CreateChildOrg/CreateLocation/CreateSite) under the
 //     operator's own subject.
@@ -95,19 +95,19 @@ func TestCongregationImportIntegration(t *testing.T) {
 	store := congregationimportadapters.NewStore(pool)
 
 	christianTaxonHint := "M10.6 Fake Christian Church"
-	jwTaxonHint := "M10.6 Fake Jehovahs Witnesses Hall"
+	rocTaxonHint := "M10.6 Fake Russian Orthodox Church Hall"
 	connector := &fakeConnector{
 		records: []domain.RawRecord{
 			{SourceRecordID: "christian-1", RawPayload: json.RawMessage(`{}`), FetchedAt: time.Now()},
-			{SourceRecordID: "jw-1", RawPayload: json.RawMessage(`{}`), FetchedAt: time.Now()},
+			{SourceRecordID: "roc-1", RawPayload: json.RawMessage(`{}`), FetchedAt: time.Now()},
 		},
 		byID: map[string]domain.NormalizedCandidate{
 			"christian-1": {
 				Name: christianTaxonHint, TaxonHint: &christianTaxonHint, CountryHint: strPtr("Ukraine"),
 				Latitude: float64Ptr(50.45), Longitude: float64Ptr(30.52),
 			},
-			"jw-1": {
-				Name: jwTaxonHint, TaxonHint: &jwTaxonHint,
+			"roc-1": {
+				Name: rocTaxonHint, TaxonHint: &rocTaxonHint,
 			},
 		},
 	}
@@ -224,23 +224,23 @@ func TestCongregationImportIntegration(t *testing.T) {
 	}
 
 	// --- Taxon aliases so matchTaxon resolves both fake records (real writes, as the operator).
-	var christianityTaxonID, jwTaxonID string
+	var christianityTaxonID, rocTaxonID string
 	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.religion_taxa WHERE code = 'christianity' AND deleted_at IS NULL`).Scan(&christianityTaxonID); err != nil {
 		t.Fatalf("lookup christianity taxon: %v", err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.religion_taxa WHERE code = 'jehovahs_witnesses' AND deleted_at IS NULL`).Scan(&jwTaxonID); err != nil {
-		t.Fatalf("lookup jehovahs_witnesses taxon: %v", err)
+	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.religion_taxa WHERE code = 'russian_orthodox_church' AND deleted_at IS NULL`).Scan(&rocTaxonID); err != nil {
+		t.Fatalf("lookup russian_orthodox_church taxon: %v", err)
 	}
 	christianAlias, err := congImportSvc.CreateTaxonAlias(opCtx, operatorID, nil, christianTaxonHint, christianityTaxonID)
 	if err != nil {
 		t.Fatalf("CreateTaxonAlias(christian): %v", err)
 	}
 	aliasIDs = append(aliasIDs, christianAlias.ID)
-	jwAlias, err := congImportSvc.CreateTaxonAlias(opCtx, operatorID, nil, jwTaxonHint, jwTaxonID)
+	rocAlias, err := congImportSvc.CreateTaxonAlias(opCtx, operatorID, nil, rocTaxonHint, rocTaxonID)
 	if err != nil {
-		t.Fatalf("CreateTaxonAlias(jw): %v", err)
+		t.Fatalf("CreateTaxonAlias(roc): %v", err)
 	}
-	aliasIDs = append(aliasIDs, jwAlias.ID)
+	aliasIDs = append(aliasIDs, rocAlias.ID)
 
 	// --- RunConnector: proves the D-Exclusions check and matchCountry both work in-process under
 	// authz.SystemContext — a background pipeline call with no ctx subject at all.
@@ -256,18 +256,18 @@ func TestCongregationImportIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListCandidates: %v", err)
 	}
-	var christianCand, jwCand *domain.Candidate
+	var christianCand, rocCand *domain.Candidate
 	for i := range candidates {
 		candidateIDs = append(candidateIDs, candidates[i].ID)
 		switch candidates[i].SourceRecordID {
 		case "christian-1":
 			christianCand = &candidates[i]
-		case "jw-1":
-			jwCand = &candidates[i]
+		case "roc-1":
+			rocCand = &candidates[i]
 		}
 	}
-	if jwCand == nil || jwCand.Status != domain.StatusRejectedExcluded {
-		t.Fatalf("jw candidate = %+v, want status REJECTED_EXCLUDED (D-Exclusions check must run in-process)", jwCand)
+	if rocCand == nil || rocCand.Status != domain.StatusRejectedExcluded {
+		t.Fatalf("roc candidate = %+v, want status REJECTED_EXCLUDED (D-Exclusions check must run in-process)", rocCand)
 	}
 	if christianCand == nil {
 		t.Fatalf("christian candidate not found in ListCandidates result")

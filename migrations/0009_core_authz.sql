@@ -1,4 +1,4 @@
--- 0016_core_authz — M10.1 (D-InProcessAuthz, D-CorePortScope's amendment). Ports the authz portion
+-- 0009_core_authz — M10.1 (D-InProcessAuthz, D-CorePortScope's amendment). Ports the authz portion
 -- of ../go-oikumenea/migrations/0004_authz_identity.sql (the authz_* section). No Postgres RLS
 -- anywhere (D-InProcessAuthz) — the in-process PDP (M10.3) is the sole authority. No grant cache
 -- table either (the amendment drops it; grants are read per request), so authz_role_assignments and
@@ -12,7 +12,7 @@ CREATE TABLE openfaithmap.authz_roles (
   code        text NOT NULL,                 -- stable, locale-agnostic; unique among active
   name        text NOT NULL,
   description text,
-  is_base     boolean NOT NULL DEFAULT false, -- seeded base roles (0022_core_seed.sql); not instance-editable
+  is_base     boolean NOT NULL DEFAULT false, -- seeded base roles (0015_core_seed.sql); not instance-editable
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
   deleted_at  timestamptz,
@@ -41,9 +41,9 @@ CREATE TABLE openfaithmap.authz_role_assignments (
   id                uuid PRIMARY KEY DEFAULT openfaithmap.new_id(2,2,1),  -- authz / link / has_role
   subject_person_id uuid NOT NULL REFERENCES openfaithmap.identity_persons(id) ON DELETE RESTRICT,
   role_id           uuid NOT NULL REFERENCES openfaithmap.authz_roles(id) ON DELETE RESTRICT,
-  target_unit_id    uuid NOT NULL,  -- REFERENCES openfaithmap.directory_units(id); FK added in 0017_core_directory.sql
+  target_unit_id    uuid NOT NULL,  -- REFERENCES openfaithmap.directory_units(id); FK added in 0010_core_directory.sql
   scope             text NOT NULL CHECK (scope IN ('unit','subtree')),
-  graph_id          uuid,           -- REFERENCES openfaithmap.directory_graphs(id); FK added in 0017_core_directory.sql
+  graph_id          uuid,           -- REFERENCES openfaithmap.directory_graphs(id); FK added in 0010_core_directory.sql
   granted_by        uuid REFERENCES openfaithmap.identity_persons(id) ON DELETE SET NULL,  -- NULL for bootstrap
   granted_at        timestamptz NOT NULL DEFAULT now(),
   revoked_at        timestamptz,

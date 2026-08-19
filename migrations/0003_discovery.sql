@@ -1,4 +1,4 @@
--- 0005_discovery — M4 (docs/modules/discovery.md). discovery_site_cache: a disposable,
+-- 0003_discovery — M4 (docs/modules/discovery.md). discovery_site_cache: a disposable,
 -- read-through cache of go-oikumenea's religion discovery search, refreshed lazily on a cache
 -- miss (no scheduled job — DS-OFM-2 resolved for MVP). religion_site_rid/congregation_unit_rid are
 -- opaque go-oikumenea RIDs (TEXT, no cross-schema FK — conventions.md). content_site_id IS a real

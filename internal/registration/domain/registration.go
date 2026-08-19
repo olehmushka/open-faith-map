@@ -107,12 +107,16 @@ var (
 )
 
 // ExcludedTaxonCodes is D-Exclusions' named, permanent denomination exclusion list
-// (architecture/decisions.md), by go-oikumenea religion_taxa.code — verified against the actual
-// seed data (go-oikumenea's deploy/religion-presets/gen-presets.py). Reopening this list means
-// editing architecture/decisions.md's D-Exclusions block first (the same governance weight as the
-// original FaithMap ADR-0001), then this constant to match.
+// (architecture/decisions.md), by religion_taxa.code. Reopening this list means editing
+// architecture/decisions.md's D-Exclusions block first (the same governance weight as the original
+// FaithMap ADR-0001), then this constant to match.
+//
+// jehovahs_witnesses/lds_church (both doctrinal, non-Nicene-Trinitarian exclusions) were hard-deleted
+// from religion_taxa entirely at the 2026-08-19 migration-collapse session (migrations/
+// 0011_core_religion.sql's own header) rather than left soft-excluded — no taxon row exists for
+// either anymore, so there is nothing left for this map to name. russian_orthodox_church is the one
+// exclusion still enforced here: it stays a real taxon row (Nicene/Trinitarian), excluded for
+// political, not doctrinal, reasons.
 var ExcludedTaxonCodes = map[string]bool{
 	"russian_orthodox_church": true, // ROC — political exclusion
-	"jehovahs_witnesses":      true, // doctrinal exclusion (non-Trinitarian)
-	"lds_church":              true, // Mormons — doctrinal exclusion (non-Nicene Trinitarian)
 }

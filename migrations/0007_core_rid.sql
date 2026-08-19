@@ -1,4 +1,4 @@
--- 0014_core_rid — M10.1 (D-OwnRIDs, D-CorePortScope). First of the "core absorption" migrations:
+-- 0007_core_rid — M10.1 (D-OwnRIDs, D-CorePortScope). First of the "core absorption" migrations:
 -- ports go-oikumenea's UUIDv8 resource-identifier scheme (../go-oikumenea/migrations/0001_platform_core.sql:22-84)
 -- into the openfaithmap schema, under this repo's own service/kind/type numbering — not upstream's
 -- (there is no compatibility requirement; this is a fresh mint, not a shim). Every later 00NN_core_*
@@ -21,7 +21,7 @@
 -- Reads no GUC (service/kind/type are caller-supplied literals), so seed migrations may call this
 -- directly or use precomputed literals for values that must stay fixed across every deployment
 -- (D-SeedBootstrap) — new_id() itself is only for tables whose PRIMARY KEY value need not be
--- deterministic (i.e. everything except the handful of seed rows 0022_core_seed.sql inserts by literal).
+-- deterministic (i.e. everything except the handful of seed rows 0015_core_seed.sql inserts by literal).
 
 CREATE OR REPLACE FUNCTION openfaithmap.new_id(service int, kind int, type_code int) RETURNS uuid
   LANGUAGE plpgsql VOLATILE PARALLEL SAFE AS $$
@@ -56,13 +56,5 @@ CREATE OR REPLACE FUNCTION openfaithmap.rid_type(id uuid) RETURNS int
   LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT get_byte(uuid_send(id), 9) | (((get_byte(uuid_send(id), 10) >> 4) & 15) << 8) $$;
 
--- reject_mutation(): BEFORE UPDATE OR DELETE guard for append-only tables (lifecycle-event ledgers,
--- identity_external_identities' no-UPDATE rule). openfaithmap.set_updated_at() already exists
--- (0001_registration.sql); this is its append-only counterpart, not otherwise ported yet.
-CREATE OR REPLACE FUNCTION openfaithmap.reject_mutation() RETURNS trigger
-  LANGUAGE plpgsql AS $$
-BEGIN
-  RAISE EXCEPTION 'append-only table %.%: % is not permitted',
-    TG_TABLE_SCHEMA, TG_TABLE_NAME, TG_OP USING ERRCODE = 'restrict_violation';
-END;
-$$;
+-- openfaithmap.reject_mutation() (the append-only-table guard) is NOT redefined here — it already
+-- exists from 0004_moderation.sql, which always runs before this file in the squashed sequence.

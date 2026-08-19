@@ -15,7 +15,7 @@ import * as core from "./core";
 // internal/registration/domain.ExcludedTaxonCodes — the authoritative check runs server-side in
 // openfaithmap-api/congregationimport regardless; filtering them out of a picker is a UX nicety
 // only. Shared across every picker in this app (register/page.tsx used to keep its own copy).
-export const EXCLUDED_TAXON_CODES = new Set(["russian_orthodox_church", "jehovahs_witnesses", "lds_church"]);
+export const EXCLUDED_TAXON_CODES = new Set(["russian_orthodox_church"]);
 
 export type PickerOption = { id: string; name: string };
 

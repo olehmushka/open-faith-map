@@ -1,4 +1,4 @@
--- 0021_core_refdata — M10.1 (D-StaticRefData). Country reference data as two static seed
+-- 0014_core_refdata — M10.1 (D-StaticRefData). Country reference data as two static seed
 -- tables, replacing both go-oikumenea's geo_countries (which itself just wraps an ISO-3166-1
 -- alpha-2 seed with no locale names of its own) and hermenea's country mapper + weekly cron
 -- entirely. Extracted directly from the live running stack's oikumenea.geo_countries /
@@ -1292,7 +1292,7 @@ INSERT INTO openfaithmap.refdata_country_names (code, locale, name) VALUES
   ('ZW', 'ukr', 'Зімбабве');
 
 -- Now that refdata_countries exists, close the FK location_locations.country_id deferred
--- (0019_core_location.sql).
+-- (0012_core_location.sql).
 ALTER TABLE openfaithmap.location_locations
   ADD CONSTRAINT location_locations_country_fk
     FOREIGN KEY (country_id) REFERENCES openfaithmap.refdata_countries(id) ON DELETE RESTRICT;

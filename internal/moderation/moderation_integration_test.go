@@ -186,14 +186,14 @@ func TestModerationIntegration(t *testing.T) {
 	// --- CheckExclusion is genuinely anonymous and runs its internal/religion read under
 	// authz.SystemContext — proves the in-process GetTaxon call works with no ctx subject at all.
 	var taxonID string
-	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.religion_taxa WHERE code = 'jehovahs_witnesses' AND deleted_at IS NULL`).Scan(&taxonID); err != nil {
-		t.Fatalf("lookup jehovahs_witnesses taxon: %v", err)
+	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.religion_taxa WHERE code = 'russian_orthodox_church' AND deleted_at IS NULL`).Scan(&taxonID); err != nil {
+		t.Fatalf("lookup russian_orthodox_church taxon: %v", err)
 	}
 	excluded, code, err := modSvc.CheckExclusion(context.Background(), taxonID)
 	if err != nil {
 		t.Fatalf("CheckExclusion: %v", err)
 	}
-	if !excluded || code != "jehovahs_witnesses" {
-		t.Errorf("CheckExclusion(jehovahs_witnesses) = (%v, %s), want (true, jehovahs_witnesses)", excluded, code)
+	if !excluded || code != "russian_orthodox_church" {
+		t.Errorf("CheckExclusion(russian_orthodox_church) = (%v, %s), want (true, russian_orthodox_church)", excluded, code)
 	}
 }

@@ -1,4 +1,6 @@
--- 0007_moderation — M5 (docs/milestones.md), docs/modules/moderation.md.
+-- 0004_moderation — M5/M7 (docs/milestones.md), docs/modules/moderation.md, D-Hardening. Squashed
+-- from the original 0007/0009 into final shape directly — the keyset-pagination composite indexes
+-- land as the real index set from the start, no "old index left in place" expand-only artifact.
 --
 -- Three tables: moderation_reports (mutable, soft-deletable), moderation_actions (append-only —
 -- this platform's ledger of record for moderation decisions, per D-Moderation's Correction:
@@ -7,10 +9,10 @@
 -- actor_person_id, congregation_admin_person_id, assigned_moderator_person_id) is an opaque TEXT
 -- foreign value — no cross-database FKs (architecture/conventions.md).
 --
--- openfaithmap.reject_mutation() is the first real use of this repo's own append-only guard
--- (named in conventions.md/moderation.md/decisions.md/vouching.md but never previously
--- instantiated) — ported from go-oikumenea's own migrations/0001_platform_core.sql pattern,
--- schema-qualified to openfaithmap the same way set_updated_at() already is.
+-- openfaithmap.reject_mutation() is this repo's own append-only guard (named in
+-- conventions.md/moderation.md/decisions.md/vouching.md), first defined here — ported from
+-- go-oikumenea's own migrations/0001_platform_core.sql pattern, schema-qualified to openfaithmap the
+-- same way set_updated_at() already is (0001_registration.sql).
 
 CREATE OR REPLACE FUNCTION openfaithmap.reject_mutation() RETURNS trigger
   LANGUAGE plpgsql AS $$
@@ -34,8 +36,8 @@ CREATE TABLE openfaithmap.moderation_reports (
   deleted_at           timestamptz
 );
 
-CREATE INDEX moderation_reports_scope_status_idx
-  ON openfaithmap.moderation_reports (queue_scope, status, created_at DESC);
+CREATE INDEX moderation_reports_scope_status_created_id_idx
+  ON openfaithmap.moderation_reports (queue_scope, status, created_at DESC, id DESC);
 CREATE INDEX moderation_reports_target_idx
   ON openfaithmap.moderation_reports (target_kind, target_ref);
 
@@ -98,8 +100,9 @@ CREATE TABLE openfaithmap.moderation_appeals (
   updated_at                     timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE INDEX moderation_appeals_status_created_id_idx
+  ON openfaithmap.moderation_appeals (status, created_at DESC, id DESC);
 CREATE INDEX moderation_appeals_action_idx ON openfaithmap.moderation_appeals (action_id);
-CREATE INDEX moderation_appeals_status_idx ON openfaithmap.moderation_appeals (status, created_at DESC);
 
 CREATE TRIGGER moderation_appeals_set_updated_at
   BEFORE UPDATE ON openfaithmap.moderation_appeals

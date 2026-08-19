@@ -58,8 +58,9 @@ Running today:
   `location`, `membership`, `refdata` (the absorbed core, D-OwnCore/D-CorePortScope), plus
   `registration`, `content`, `discovery`, `moderation`, `vouching`, `congregationimport`, and
   `core` (the admin app's own session-gated + super-admin Conjure surface, D-SuperAdminFold). Seven
-  Conjure contracts under `api/`, twenty-three Atlas migrations under `migrations/`, and generated
-  server code in `internal/conjure/`.
+  Conjure contracts under `api/`, fifteen Atlas migrations under `migrations/` (collapsed by domain
+  from twenty-three at the 2026-08-19 migration-collapse session — see docs/milestones.md), and
+  generated server code in `internal/conjure/`.
 - **Two Next.js apps** (D-AdminSurface): `web/apps/web` (anonymous, no session, ever) and
   `web/apps/admin` (the only surface that ever holds a credential — login, registration wizard,
   operator console, roster, moderation queue, import review, and the four instance-admin screens

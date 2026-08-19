@@ -1,4 +1,4 @@
--- 0017_core_directory — M10.1 (D-CorePortScope, amendment). Ports the kept slice of
+-- 0010_core_directory — M10.1 (D-CorePortScope, amendment). Ports the kept slice of
 -- ../go-oikumenea/migrations/0002_tenant_rank.sql's tenant module: tenant_units/graphs/unit_edges/
 -- unit_closure/closure_status, renamed directory_*. Dropped per D-CorePortScope: tenant_domains,
 -- tenant_unit_kinds, tenant_organizations, tenant_org_lifecycle_events, tenant_unit_lifecycle_events,
@@ -9,7 +9,7 @@
 -- logic"): tenant_units.org_id/domain_id/kind_id (organizations are gone), .visibility + ShadowGate
 -- (OpenFaithMap has no shadow-unit concept — site-level privacy is religion_sites.public_precision).
 --
--- Retroactively adds the FKs 0016_core_authz.sql's authz_role_assignments left as bare uuid columns
+-- Retroactively adds the FKs 0009_core_authz.sql's authz_role_assignments left as bare uuid columns
 -- (directory_units/directory_graphs didn't exist yet when that file ran).
 --
 -- The closure lock (D-CorePortScope's amendment): FOR NO KEY UPDATE on directory_graphs is a ROW
@@ -62,7 +62,7 @@ CREATE TRIGGER directory_graphs_set_updated_at
   BEFORE UPDATE ON openfaithmap.directory_graphs
   FOR EACH ROW EXECUTE FUNCTION openfaithmap.set_updated_at();
 
--- Now that both tables exist, close the FKs 0016_core_authz.sql's authz_role_assignments deferred.
+-- Now that both tables exist, close the FKs 0009_core_authz.sql's authz_role_assignments deferred.
 ALTER TABLE openfaithmap.authz_role_assignments
   ADD CONSTRAINT authz_role_assignments_target_unit_fk
     FOREIGN KEY (target_unit_id) REFERENCES openfaithmap.directory_units(id) ON DELETE RESTRICT,

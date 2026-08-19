@@ -1,15 +1,25 @@
--- 0018_core_religion — M10.1 (D-CorePortScope's amendment: the explicit 15-name list). Ports the
+-- 0011_core_religion — M10.1 (D-CorePortScope's amendment: the explicit 15-name list). Ports the
 -- kept slice of ../go-oikumenea/migrations/0008_religion.sql. Confirmed this session: grepped this
 -- repo (not go-oikumenea) for any reference to religion_unit_classifications — zero matches — so it
 -- is dropped, along with the 4 clergy tables and 2 affiliation tables D-CorePortScope always named.
 -- religion_taxon_ranks is kept even though the amendment's prose sometimes drops it in headline
 -- counts: religion_taxa.rank_id is a NOT NULL FK to it, so omitting it breaks this file outright.
 --
--- No Postgres RLS (D-InProcessAuthz). The taxonomy seed (waves 0-4 + closure + theism tags) is
--- ported verbatim from upstream's curated, Wikidata-anchored data (deploy/religion-presets) — static
--- reference data, not project-specific, and this repo's own D-Exclusions taxon codes
--- (russian_orthodox_church / jehovahs_witnesses / lds_church — internal/registration/domain)
--- depend on exact code matches within it.
+-- No Postgres RLS (D-InProcessAuthz).
+--
+-- **Taxonomy trimmed to Christianity-only, decided and executed 2026-08-19** (docs/milestones.md's
+-- migration-collapse session): the original taxonomy seed carried go-oikumenea's full multi-religion
+-- tree (16 root religions), inconsistent with D-Scope's Christian-only commitment. This migration now
+-- seeds only the `christianity` root and its subtree — every other root (islam, judaism, hinduism,
+-- buddhism, sikhism, jainism, bahai, shinto, taoism, confucianism, zoroastrianism, atheism,
+-- agnosticism, traditional, other) and everything under them is gone. Within Christianity, the two
+-- denominations that don't confess the Nicene Creed — `lds_church` (Mormons) and `jehovahs_witnesses`
+-- — are hard-deleted too (going further than the app-code-only soft exclusion
+-- internal/registration/domain.ExcludedTaxonCodes still applies to `russian_orthodox_church`, which
+-- stays: Nicene/Trinitarian, excluded for political, not doctrinal, reasons). Since that empties the
+-- `restorationism` branch (its only two children), that now-childless branch is dropped too. Verified
+-- safe before executing: zero live congregationimport_candidates/registration_requests resolved to a
+-- non-Christian taxon.
 
 -- ===================================================================================================
 -- Catalogs
@@ -122,34 +132,23 @@ CREATE TABLE openfaithmap.religion_taxon_classifications (
   PRIMARY KEY (taxon_id, classification_id)
 );
 
--- Curated taxonomy seed (Wikidata-anchored, ported verbatim from deploy/religion-presets). Inserted
--- in waves by level so each row's parent already exists; codes are globally unique so parents
--- resolve by code.
+-- Curated taxonomy seed (Wikidata-anchored, ported from deploy/religion-presets, trimmed to
+-- Christianity-only per this file's header). Inserted in waves by level so each row's parent already
+-- exists; codes are globally unique so parents resolve by code.
 
--- Wave 0 — religions (root; parent NULL).
+-- Wave 0 — the religion root. Every other root go-oikumenea's preset carried (islam, judaism,
+-- hinduism, buddhism, sikhism, jainism, bahai, shinto, taoism, confucianism, zoroastrianism, atheism,
+-- agnosticism, traditional, other) is deliberately not seeded — see this file's header.
 INSERT INTO openfaithmap.religion_taxa (code, name, rank_id, wikidata_id, sort_order, source, source_version)
 SELECT v.code, v.name, r.id, v.qid, v.so, 'religion-presets', '2026.06'
 FROM (VALUES
-  ('christianity','Christianity','Q5043',10),
-  ('islam','Islam','Q432',20),
-  ('judaism','Judaism','Q9268',30),
-  ('hinduism','Hinduism','Q9089',40),
-  ('buddhism','Buddhism','Q748',50),
-  ('sikhism','Sikhism','Q9554',60),
-  ('jainism','Jainism','Q9163',70),
-  ('bahai','Bahá''í Faith','Q43066',80),
-  ('shinto','Shinto','Q1409',90),
-  ('taoism','Taoism','Q9598',100),
-  ('confucianism','Confucianism','Q9581',110),
-  ('zoroastrianism','Zoroastrianism','Q9601',120),
-  ('atheism','Atheism','Q7066',124),
-  ('agnosticism','Agnosticism','Q41719',126),
-  ('traditional','Traditional & indigenous religions',NULL,130),
-  ('other','Other / unclassified',NULL,140)
+  ('christianity','Christianity','Q5043',10)
 ) AS v(code,name,qid,so)
 JOIN openfaithmap.religion_taxon_ranks r ON r.code='religion';
 
--- Wave 1 — branches (parent = a religion).
+-- Wave 1 — branches (parent = christianity). `restorationism` ("Restorationism & nontrinitarian",
+-- Q1140229) is not seeded: its only two historic members, lds_church and jehovahs_witnesses, are both
+-- excluded per this file's header, which leaves it permanently childless.
 INSERT INTO openfaithmap.religion_taxa (code, name, rank_id, parent_id, wikidata_id, sort_order, source, source_version)
 SELECT v.code, v.name, rk.id, p.id, v.qid, v.so, 'religion-presets', '2026.06'
 FROM (VALUES
@@ -158,32 +157,12 @@ FROM (VALUES
   ('christianity','oriental_orthodoxy','Oriental Orthodoxy','Q156954',30),
   ('christianity','church_of_the_east','Church of the East','Q470330',40),
   ('christianity','protestantism','Protestantism','Q23540',50),
-  ('christianity','restorationism','Restorationism & nontrinitarian','Q1140229',60),
-  ('christianity','independent_christianity','Independent / nondenominational',NULL,70),
-  ('islam','sunni','Sunni Islam','Q7444',10),
-  ('islam','shia','Shia Islam','Q9585',20),
-  ('islam','ibadi','Ibadi Islam','Q319540',30),
-  ('islam','sufism','Sufism','Q9622',40),
-  ('islam','ahmadiyya','Ahmadiyya','Q170027',50),
-  ('judaism','orthodox_judaism','Orthodox Judaism','Q170238',10),
-  ('judaism','conservative_judaism','Conservative Judaism','Q188476',20),
-  ('judaism','reform_judaism','Reform Judaism','Q102045',30),
-  ('judaism','reconstructionist_judaism','Reconstructionist Judaism','Q1150985',40),
-  ('judaism','karaite_judaism','Karaite Judaism','Q484591',50),
-  ('hinduism','vaishnavism','Vaishnavism','Q842337',10),
-  ('hinduism','shaivism','Shaivism','Q319183',20),
-  ('hinduism','shaktism','Shaktism','Q1132099',30),
-  ('hinduism','smartism','Smartism','Q707348',40),
-  ('buddhism','theravada','Theravāda','Q49003',10),
-  ('buddhism','mahayana','Mahāyāna','Q43361',20),
-  ('buddhism','vajrayana','Vajrayāna','Q489704',30),
-  ('jainism','digambara','Digambara','Q1189537',10),
-  ('jainism','svetambara','Śvetāmbara','Q726177',20)
+  ('christianity','independent_christianity','Independent / nondenominational',NULL,70)
 ) AS v(parent_code,code,name,qid,so)
 JOIN openfaithmap.religion_taxon_ranks rk ON rk.code='branch'
 JOIN openfaithmap.religion_taxa p ON p.code=v.parent_code AND p.deleted_at IS NULL;
 
--- Wave 2 — traditions / movements (parent = a branch).
+-- Wave 2 — traditions / movements (parent = a branch). All Christian already.
 INSERT INTO openfaithmap.religion_taxa (code, name, rank_id, parent_id, wikidata_id, sort_order, source, source_version)
 SELECT v.code, v.name, rk.id, p.id, v.qid, v.so, 'religion-presets', '2026.06'
 FROM (VALUES
@@ -204,20 +183,11 @@ FROM (VALUES
 JOIN openfaithmap.religion_taxon_ranks rk ON rk.code='tradition'
 JOIN openfaithmap.religion_taxa p ON p.code=v.parent_code AND p.deleted_at IS NULL;
 
--- Wave 3 — sub-traditions (rite / school / madhhab; parent = a tradition or branch).
+-- Wave 3 — sub-traditions (rite / school; parent = a tradition). The non-Christian sub-traditions
+-- go-oikumenea's preset carried (sunni's/shia's/orthodox_judaism's) are gone with their roots.
 INSERT INTO openfaithmap.religion_taxa (code, name, rank_id, parent_id, wikidata_id, sort_order, source, source_version)
 SELECT v.code, v.name, rk.id, p.id, v.qid, v.so, 'religion-presets', '2026.06'
 FROM (VALUES
-  ('sunni','hanafi','Hanafi','Q223097',10),
-  ('sunni','maliki','Maliki','Q207922',20),
-  ('sunni','shafii','Shafiʿi','Q220910',30),
-  ('sunni','hanbali','Hanbali','Q200671',40),
-  ('shia','twelver','Twelver (Ithnāʿasharī)','Q170382',10),
-  ('shia','ismailism','Ismailism','Q179872',20),
-  ('shia','zaidiyyah','Zaidiyyah','Q319618',30),
-  ('orthodox_judaism','hasidic','Hasidic Judaism','Q170581',10),
-  ('orthodox_judaism','modern_orthodox','Modern Orthodox Judaism','Q1426764',20),
-  ('orthodox_judaism','haredi','Haredi Judaism','Q208163',30),
   ('reformed','presbyterianism','Presbyterianism','Q178169',10),
   ('reformed','congregationalism','Congregationalism','Q1062789',20),
   ('reformed','continental_reformed','Continental Reformed','Q1129121',30)
@@ -225,7 +195,8 @@ FROM (VALUES
 JOIN openfaithmap.religion_taxon_ranks rk ON rk.code='sub_tradition'
 JOIN openfaithmap.religion_taxa p ON p.code=v.parent_code AND p.deleted_at IS NULL;
 
--- Wave 4 — denominations: the globally-significant historic churches/bodies.
+-- Wave 4 — denominations: the globally-significant historic churches/bodies. lds_church and
+-- jehovahs_witnesses (both would have been parent='restorationism') are not seeded — see header.
 INSERT INTO openfaithmap.religion_taxa (code, name, rank_id, parent_id, wikidata_id, sort_order, source, source_version)
 SELECT v.code, v.name, rk.id, p.id, v.qid, v.so, 'religion-presets', '2026.06'
 FROM (VALUES
@@ -258,9 +229,7 @@ FROM (VALUES
   ('anglicanism','church_of_england','Church of England','Q82708',10),
   ('anglicanism','episcopal_church_usa','Episcopal Church (USA)','Q1366000',20),
   ('pentecostalism','assemblies_of_god','Assemblies of God','Q598397',10),
-  ('adventism','seventh_day_adventist_church','Seventh-day Adventist Church','Q104319',10),
-  ('restorationism','lds_church','Church of Jesus Christ of Latter-day Saints','Q19595',10),
-  ('restorationism','jehovahs_witnesses','Jehovah''s Witnesses','Q35269',20)
+  ('adventism','seventh_day_adventist_church','Seventh-day Adventist Church','Q104319',10)
 ) AS v(parent_code,code,name,qid,so)
 JOIN openfaithmap.religion_taxon_ranks rk ON rk.code='denomination'
 JOIN openfaithmap.religion_taxa p ON p.code=v.parent_code AND p.deleted_at IS NULL;
@@ -287,33 +256,11 @@ FROM (
 ) root
 WHERE root.descendant_id = t.id;
 
--- Theism tags, seeded at the religion level (overridable lower down via the closure resolution).
+-- Theism tag, seeded at the religion level (overridable lower down via the closure resolution).
 INSERT INTO openfaithmap.religion_taxon_classifications (taxon_id, classification_id)
 SELECT t.id, c.id
 FROM (VALUES
-  ('christianity','monotheistic'),
-  ('islam','monotheistic'),
-  ('judaism','monotheistic'),
-  ('sikhism','monotheistic'),
-  ('bahai','monotheistic'),
-  ('zoroastrianism','monotheistic'),
-  ('zoroastrianism','dualistic'),
-  ('hinduism','monotheistic'),
-  ('hinduism','polytheistic'),
-  ('hinduism','henotheistic'),
-  ('hinduism','monistic'),
-  ('buddhism','nontheistic'),
-  ('jainism','nontheistic'),
-  ('jainism','polytheistic'),
-  ('shinto','polytheistic'),
-  ('shinto','animistic'),
-  ('taoism','pantheistic'),
-  ('taoism','polytheistic'),
-  ('confucianism','nontheistic'),
-  ('atheism','atheistic'),
-  ('agnosticism','agnostic'),
-  ('traditional','animistic'),
-  ('traditional','polytheistic')
+  ('christianity','monotheistic')
 ) AS v(taxon_code, class_code)
 JOIN openfaithmap.religion_taxa t ON t.code=v.taxon_code AND t.deleted_at IS NULL
 JOIN openfaithmap.religion_classifications c ON c.code=v.class_code;
@@ -443,7 +390,7 @@ CREATE TRIGGER religion_org_policies_set_updated_at
 
 -- ===================================================================================================
 -- religion_sites / schedules / aliases — the discovery substrate. religion_sites references
--- location_locations (0019_core_location.sql, applied after this file — see its own header) and
+-- location_locations (0012_core_location.sql, applied after this file — see its own header) and
 -- religion_site_types (this file); the location FK is added there, not here, since location doesn't
 -- exist yet at this point in the migration sequence.
 -- ===================================================================================================
@@ -478,12 +425,7 @@ FROM (VALUES
   ('christianity','church','Church',10),
   ('christianity','cathedral','Cathedral',20),
   ('christianity','chapel','Chapel',30),
-  ('christianity','monastery','Monastery',40),
-  ('islam','mosque','Mosque',10),
-  ('judaism','synagogue','Synagogue',10),
-  ('hinduism','temple','Temple',10),
-  ('buddhism','temple','Temple',10),
-  ('sikhism','gurdwara','Gurdwara',10)
+  ('christianity','monastery','Monastery',40)
 ) AS v(tradition_code, code, name, so)
 JOIN openfaithmap.religion_taxa t ON t.code = v.tradition_code AND t.deleted_at IS NULL;
 
@@ -514,20 +456,16 @@ INSERT INTO openfaithmap.religion_service_types (tradition_taxon_id, code, name,
 INSERT INTO openfaithmap.religion_service_types (tradition_taxon_id, code, name, sort_order)
 SELECT t.id, v.code, v.name, v.so
 FROM (VALUES
-  ('christianity','daily_mass','Daily Mass',50),
-  ('islam','jumua','Friday (Jumuʿah) prayer',50),
-  ('judaism','shabbat','Shabbat service',50),
-  ('hinduism','puja','Puja',50),
-  ('buddhism','meditation','Meditation',50)
+  ('christianity','daily_mass','Daily Mass',50)
 ) AS v(tradition_code, code, name, so)
 JOIN openfaithmap.religion_taxa t ON t.code = v.tradition_code AND t.deleted_at IS NULL;
 
 -- religion_sites: the reified Unit<->Location link. location_id's FK is added in
--- 0019_core_location.sql once location_locations exists.
+-- 0012_core_location.sql once location_locations exists.
 CREATE TABLE openfaithmap.religion_sites (
   id               uuid PRIMARY KEY DEFAULT openfaithmap.new_id(4,2,2),  -- religion / link / site_of
   org_unit_id      uuid NOT NULL REFERENCES openfaithmap.directory_units(id) ON DELETE RESTRICT,
-  location_id      uuid NOT NULL,  -- REFERENCES openfaithmap.location_locations(id); FK added in 0019_core_location.sql
+  location_id      uuid NOT NULL,  -- REFERENCES openfaithmap.location_locations(id); FK added in 0012_core_location.sql
   site_type_id     uuid NOT NULL REFERENCES openfaithmap.religion_site_types(id) ON DELETE RESTRICT,
   visibility       text NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','unlisted','private')),
   public_precision text NOT NULL DEFAULT 'exact'

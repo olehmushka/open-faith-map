@@ -1,4 +1,4 @@
--- 0004_content — M3 (docs/modules/content.md). Sites, documents (pages only in M3 — post/event are
+-- 0002_content — M3 (docs/modules/content.md). Sites, documents (pages only in M3 — post/event are
 -- schema-ready, app-rejected until M4), blocks, and the block-type catalog, seeded with the MVP set.
 -- congregation_unit_rid is an opaque go-oikumenea Unit RID (TEXT, no cross-schema FK —
 -- conventions.md). U6 resolved: plain uuid PKs, matching registration_requests' precedent, not the

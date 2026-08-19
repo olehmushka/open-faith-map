@@ -1,7 +1,7 @@
--- 0008_vouching — M6 (docs/milestones.md), docs/modules/vouching.md, D-Vouching.
+-- 0005_vouching — M6 (docs/milestones.md), docs/modules/vouching.md, D-Vouching.
 --
 -- Two tables: vouching_edges (append-only event log — a vouch, once filed, is never edited or
--- deleted; reject_mutation()-guarded, reusing the function 0007_moderation.sql already created,
+-- deleted; reject_mutation()-guarded, reusing the function 0004_moderation.sql already created,
 -- not redefined here) and vouching_guarantor_status (a mutable one-row-per-guarantor overlay
 -- recording whether a guarantor is currently trusted). guarantor_person_rid, claimant_person_rid,
 -- and congregation_unit_rid are opaque TEXT foreign values referencing go-oikumenea Person/Unit

@@ -59,6 +59,18 @@ next, then the rest of EU/LATAM/Africa/Asia.
 > underlying decision — narrow, named markets, expanded deliberately rather than pivoting to
 > "everywhere" — is unchanged; only the sequence is.
 
+> **Update (2026-08-19): the seed data now actually matches this decision.** `migrations/`'s
+> `religion_taxa` seed (ported at M10.1) had carried go-oikumenea's full multi-religion taxonomy —
+> islam, judaism, hinduism, and 12 more root religions alongside christianity — since the port was a
+> straight lift of upstream's curated reference data, not a scope-filtered one. This was a real,
+> unnoticed drift from this decision's own "Nicene-affirming Christian traditions" eligibility line,
+> caught and fixed in the same session as M10's migration-collapse pass (`docs/milestones.md`'s
+> M10.9 row): `migrations/0011_core_religion.sql` now seeds only `christianity`'s subtree, and the
+> two denominations that don't confess the Nicene Creed — LDS/Mormon and Jehovah's Witnesses — are
+> hard-deleted from the taxonomy, not just excluded at the application layer
+> ([D-Exclusions](#d-exclusions--a-named-permanent-denomination-exclusion-list) still covers
+> Russian Orthodox Church, whose exclusion is political, not doctrinal — it stays a real taxon).
+
 **Five audiences** (the original three, plus two the build surfaced — see
 [glossary.md](../glossary.md) for each one's definition):
 
@@ -136,6 +148,22 @@ for a single already-registered body (`religion_org_policies.excludes_child_crea
    Before M4.1 this was designed-not-real (no per-body root units existed under
    [D-FlatRoot](#d-flatroot--one-flat-root-organization-now-real-jurisdiction-units-before-m5)), so
    the taxon-level gate was the *only* enforcement — now both layers are real.
+
+> **Update (2026-08-19): JW/LDS's mechanism changed from exclusion to non-existence.** Same session
+> as [D-Scope](#d-scope--christian-only-discovery--presence-ukraine--usa-first)'s update above:
+> `jehovahs_witnesses`/`lds_church` are now hard-deleted from `religion_taxa` entirely
+> (`migrations/0011_core_religion.sql`), not merely gated by the two layers this decision describes
+> — there is no taxon left to select (layer 1 moot) and their org-level backstop placeholder units
+> are removed too (`migrations/0015_core_seed.sql`; layer 2 moot for these two specifically). The
+> **outcome this decision requires — registration never permitted under either body — still holds,
+> now by a stronger mechanism** (not selectable at all, rather than selectable-then-rejected).
+> **Russian Orthodox Church is unaffected** — its exclusion is political, not doctrinal (Nicene/
+> Trinitarian), so its taxon row and both mechanism layers stay exactly as documented above. If a
+> future session ever needs to name a *new* non-Nicene body for this list, the taxon-deletion
+> approach is not available (there is no upstream taxon to delete for a hypothetical future case) —
+> that case would need the original two-layer mechanism, or a documented reason to delete a live
+> taxon with real classified organizations under it, which today's JW/LDS deletion did not have to
+> weigh (both were 0-row `religion_org_classifications` per the live check at deletion time).
 
 **Why.** The taxon-level check is the *product* decision and belongs where OpenFaithMap's scope is
 decided, not inside a general-purpose directory core that intentionally hard-codes no faith

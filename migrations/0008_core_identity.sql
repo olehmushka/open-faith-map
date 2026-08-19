@@ -1,4 +1,4 @@
--- 0015_core_identity — M10.1 (D-CorePortScope, D-OwnCore). Ports the one kept table of
+-- 0008_core_identity — M10.1 (D-CorePortScope, D-OwnCore). Ports the one kept table of
 -- go-oikumenea's ~50-table person module (../go-oikumenea/migrations/0003_person_membership.sql,
 -- the person_persons definition) plus its identity-federation login/account tables
 -- (../go-oikumenea/migrations/0004_authz_identity.sql, the account_* section, renamed identity_*).
