@@ -1,5 +1,17 @@
 # Module: web-admin
 
+> **Partially superseded (M10.7–M10.8, 2026-08-18) by
+> [D-OwnCore](../architecture/decisions.md#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed)
+> and [D-SuperAdminFold](../architecture/decisions.md#d-superadminfold--super-admin-folds-into-openfaithmap-admin-behind-a-role).**
+> Every "go-oikumenea" reference below (the SDK, `deploy/oikumenea-install.yml`, calls to a separate
+> core) describes the pre-M10.7 architecture — `openfaithmap-admin` now calls only
+> `openfaithmap-api`'s own `lib/core.ts`/generated SDK (M10.7), and gained a fifth surface this
+> section doesn't yet list: the instance-admin console (people/role-grants/units/taxa,
+> D-SuperAdminFold, M10.8), gated by `api/core.conjure.yml`'s `CoreSuperAdminService` route-group
+> middleware plus a cosmetic redirect in the admin app's own `(super-admin)` route group. Kept below
+> largely as written rather than rewritten in full — the session/identity mechanics (Auth.js, Google
+> ID token forwarding, no anonymous paths) are still accurate, only their destination changed.
+>
 > Reads: [glossary](../glossary.md) · [architecture/overview](../architecture/overview.md) ·
 > [core-integration](core-integration.md) · [web-facade](web-facade.md)
 > Owns no schema — a consumer, not a backend module. New at D-AdminSurface, split out of

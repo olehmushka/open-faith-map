@@ -1,7 +1,7 @@
-// Atlas configuration for open-faith-map (M2, D-Stack — same toolchain as go-oikumenea).
-// Versioned migrations in migrations/, applied to the openfaithmap schema of the shared Postgres
-// instance (docker-compose.yml's header comment: one shared instance, oikumenea/openfaithmap
-// schemas, no cross-schema FKs — conventions.md).
+// Atlas configuration for open-faith-map (M2, D-Stack — same toolchain go-oikumenea itself used).
+// Versioned migrations in migrations/, applied to the one openfaithmap schema in this stack's one
+// Postgres instance (docker-compose.yml's header comment — M10.8 dropped the second, oikumenea,
+// schema this comment used to describe).
 //
 //   set -a; . ./.env; set +a
 //   atlas migrate hash  --env local

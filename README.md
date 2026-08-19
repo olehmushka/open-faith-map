@@ -4,83 +4,76 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A free, open-source, **Christian** church-discovery-and-presence platform — a **map** (discovery)
-and a per-congregation **site builder** (presence) — built as a facade on top of
-[go-oikumenea](https://github.com/olehmushka/go-oikumenea), consumed as a headless internal core
-via its docker image. go-oikumenea supplies identity, authorization, the organizational graph,
-location, and the multi-faith religion taxonomy; OpenFaithMap supplies everything a general
-directory/authz core has no reason to own: site content, public discovery UX, moderation, and a
-web-of-trust vouching layer.
+and a per-congregation **site builder** (presence). `openfaithmap-api` is a single self-contained Go
+binary: identity, authorization, the unit hierarchy, location, and the multi-faith religion taxonomy
+all live in-process (`internal/{identity,authz,directory,location,religion,membership,refdata}`,
+D-OwnCore), alongside the OpenFaithMap-specific modules a general directory/authz core would have no
+reason to own: site content, public discovery UX, moderation, and a web-of-trust vouching layer.
 
 Two audiences: **visitors** (anonymous, use the map and read congregation sites) and
 **congregation admins** (verified, manage one or more congregations' presence and roster). A small
 platform-wide **moderator** roster handles reports, appeals, and the denomination-exclusion policy.
+An **instance-admin** plane (D-SuperAdminFold) manages people, role grants, units, and taxa.
 Geographic rollout: Ukraine + USA first, then Poland/UK, then the rest of EU/LATAM/Africa/Asia.
 
 ## Architecture
 
-Three services, split by who can talk to them and whether they can ever hold a credential
-(D-AdminSurface): an anonymous public UI, a verified admin UI, and a Go backend, all in front of an
-unmodified, headless go-oikumenea core.
+Two services, split by who can talk to them and whether they can ever hold a credential
+(D-AdminSurface): an anonymous public UI and a verified admin/super-admin UI, both in front of one
+Go backend with its own Postgres database — no external core, no sibling checkout, no second
+published image.
 
 ```mermaid
 flowchart LR
     browser(("Browser"))
     web["openfaithmap-web\nanonymous · no session"]
-    admin["openfaithmap-admin\nGoogle login · session"]
-    api["openfaithmap-api\nGo · own Postgres"]
-    core["go-oikumenea\nheadless core"]
+    admin["openfaithmap-admin\nGoogle login · session\n(incl. super-admin screens)"]
+    api["openfaithmap-api\nGo · own Postgres\nidentity/authz/directory/religion in-process"]
 
     browser -- "anonymous" --> web
     browser -- "Google login" --> admin
     web -- "public reads, no token" --> api
-    web -- "public reads, no token" --> core
     admin -- "user bearer token" --> api
-    admin -- "user bearer token" --> core
-    api -- "SDK" --> core
 ```
 
-Plus two surfaces OpenFaithMap deploys but does not build: `oikumenea-console` (go-oikumenea's own
-super-admin console, D-InstanceAdminConsole) and `hermenea` (its reference-data companion service,
-D-BulkImport). Full detail — request paths, deployment topology, what's inherited from go-oikumenea
-vs. new — lives in [docs/architecture/overview.md](docs/architecture/overview.md).
+Full detail — request paths, deployment topology, module boundaries — lives in
+[docs/architecture/overview.md](docs/architecture/overview.md).
 
 ## Status
 
 The [stage board](docs/milestones.md#stage-board) is authoritative.
 
-> **Corrected 2026-08-17.** This section previously read "M0–M2.2 are built, M3–M6 are designed, M7
-> is an idea" and listed `content`/`discovery`/`moderation`/`vouching` as not built. That was
-> accurate around M2.2 and went stale as the build ran ahead of it. Nine modules are built.
+> **Corrected 2026-08-18.** This section previously described a go-oikumenea-dependent architecture
+> with M10 "decided but not started." M10 (D-OwnCore) is now built: the core it once depended on
+> is absorbed in-process and the separate go-oikumenea/hermenea/oikumenea-console stack is deleted
+> (M10.8's teardown).
 
-In short: **M0–M6 are Verified, M7 and M8 are built but not yet Verified, M9 is a docs-only
-deployment design with nothing provisioned, and M10 — absorbing the go-oikumenea core into this
-repo — is decided but not started.**
+In short: **M0–M9 are Verified or built, and M10 — absorbing go-oikumenea's core into this repo as
+in-process Go modules and folding its super-admin console into `openfaithmap-admin` — is built
+through M10.8 (M10.9's verification pass is the remaining gate before M10 itself is Verified).**
 
 Running today:
 
-- **`openfaithmap-api`** with nine modules: `registration`, `content`, `discovery`, `moderation`,
-  `vouching`, `congregationimport`, plus `coreintegration` and the platform/conjure scaffolding.
-  Six Conjure contracts under `api/`, thirteen Atlas migrations under `migrations/`, and generated
+- **`openfaithmap-api`**, one self-contained binary: `identity`, `authz`, `directory`, `religion`,
+  `location`, `membership`, `refdata` (the absorbed core, D-OwnCore/D-CorePortScope), plus
+  `registration`, `content`, `discovery`, `moderation`, `vouching`, `congregationimport`, and
+  `core` (the admin app's own session-gated + super-admin Conjure surface, D-SuperAdminFold). Seven
+  Conjure contracts under `api/`, twenty-three Atlas migrations under `migrations/`, and generated
   server code in `internal/conjure/`.
 - **Two Next.js apps** (D-AdminSurface): `web/apps/web` (anonymous, no session, ever) and
   `web/apps/admin` (the only surface that ever holds a credential — login, registration wizard,
-  operator console, roster, moderation queue, import review).
-- **`docker-compose.yml`**: a real go-oikumenea instance from its published image (`0.0.7`), plus
-  `oikumenea-console`, `hermenea`, and both OpenFaithMap apps. One shared Postgres, two schemas
-  (D-SharedDatabase). **No Keycloak** — Google is the sole IdP (D-GoogleDirect).
+  operator console, roster, moderation queue, import review, and the four instance-admin screens
+  under People/Role Grants/Units/Taxa).
+- **`docker-compose.yml`**: one Postgres instance, one schema (`openfaithmap`), and both OpenFaithMap
+  apps — no external image, no sibling checkout, no second published service. **No Keycloak** —
+  Google is the sole IdP (D-GoogleDirect), verified in-process (D-DirectTokenVerification).
 - **Four import connectors**: `ua-edr` (Ukraine's ЄДР, HTTP-streaming, 30,721 records at full
   scale), `ar-rnc` (Argentina), `osm` (Overpass, scoped to UY/PY/CO/CL), and a `wikidata-catholic`
   jurisdiction-tree sync — plus a pluggable Nominatim geocoder.
 
-**Where this is heading.** M10 (decided 2026-08-17, not started) removes the go-oikumenea dependency
-entirely: its identity, authorization, unit-hierarchy, religion-taxonomy, site, location and
-membership capabilities move into this repo as in-repo modules, and `openfaithmap-api` becomes a
-single self-contained binary. See
-[D-OwnCore](docs/architecture/decisions.md#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed)
-for the reasoning and the [stage board](docs/milestones.md#stage-board) for the M10.x breakdown.
-Much of what this README describes below — the `oikumenea-app` service, `internal/coreintegration`,
-the `OIKUMENEA_SRC` sibling checkout, the mounted service-account key — is scheduled for removal
-there.
+See [D-OwnCore](docs/architecture/decisions.md#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed)
+for the reasoning behind the absorption and the [stage board](docs/milestones.md#stage-board) for
+the full M10.x breakdown.
 
 ## Repository layout
 
@@ -89,25 +82,25 @@ cmd/openfaithmap-api/   composition root — the openfaithmap-api binary
 api/                    Conjure IDL contracts — the API source of truth
 internal/conjure/       generated server code — never hand-edited
 internal/               hexagonal modules (transport → application → domain → adapters),
-                         one directory per docs/modules/*.md. Today: registration,
-                         coreintegration, platform/config; content/discovery/moderation/
-                         vouching are doc-only stubs.
+                         one directory per docs/modules/*.md: the absorbed core
+                         (identity/authz/directory/religion/location/membership/refdata,
+                         D-OwnCore) plus registration/content/discovery/moderation/
+                         vouching/congregationimport/core (the admin app's own surface).
 migrations/             Atlas versioned migrations (openfaithmap schema)
-scripts/                one-off bootstrap commands (service principal, admin person,
-                         registration org) — the reproducible/CI path
+scripts/                one-off local-dev tooling (e.g. mint-local-token)
 docs/                   the binding design doc set — read this first
 var/conf/               local-dev install.yml / runtime.yml
 web/apps/web/           openfaithmap-web — anonymous public site, no session
-web/apps/admin/         openfaithmap-admin — the only surface with a credential
-deploy/                 install configs for the services this repo deploys but doesn't build
+web/apps/admin/         openfaithmap-admin — the only surface with a credential,
+                         including the instance-admin screens (D-SuperAdminFold)
 ```
 
 ## Toolchain (D-Stack)
 
-Same stack as go-oikumenea: Go + [gödel](https://github.com/palantir/godel) +
-[Conjure](https://github.com/palantir/conjure) +
+Go + [gödel](https://github.com/palantir/godel) + [Conjure](https://github.com/palantir/conjure) +
 [witchcraft-go-server](https://github.com/palantir/witchcraft-go-server) + pgx/sqlc + Atlas
-migrations, Next.js (App Router) for the web tier. See
+migrations, Next.js (App Router) for the web tier — the same toolchain go-oikumenea itself used,
+kept even after its core was absorbed in-process (D-Stack). See
 [docs/architecture/decisions.md#d-stack--the-same-toolchain-as-go-oikumenea](docs/architecture/decisions.md).
 
 ## Quickstart
@@ -135,7 +128,7 @@ folder's `README.md`).
 
 Running an app standalone (above) is enough to check routing/switching and any
 backend-free page (e.g. openfaithmap-admin's `/en/login`, `/uk/login`, …) — pages that
-call `openfaithmap-api`/go-oikumenea will error without a live backend, same as
+call `openfaithmap-api` will error without a live backend, same as
 without i18n. `openfaithmap-admin` also needs NextAuth's env vars just to boot:
 
 ```sh
@@ -148,22 +141,18 @@ registration wizard's tradition/country dropdowns, sign-in/sign-out staying on t
 current locale — use the full stack below and visit `/en`, `/uk`, `/es`, `/pt` on each
 app.
 
-To bring up the full stack — needs a sibling checkout of
-[go-oikumenea](https://github.com/olehmushka/go-oikumenea) for its migrations and `hermenea`'s
-Dockerfile (neither is published as a standalone artifact yet), a GCP service-account key for the
-service principal, and a populated `.env` (copy `.env.example`):
+To bring up the full stack — no sibling checkout, no service-account key, no
+`docker.io/olegamysk/*` pull (D-OwnCore's teardown, M10.8) — just a populated `.env`
+(copy `.env.example`):
 
 ```sh
-OIKUMENEA_SRC=../go-oikumenea docker compose up --build
-docker run --rm --network open-faith-map_default -v "$PWD":/src -w /src golang:1.26-bookworm \
-  go run ./scripts/bootstrap-service-principal -subject <google-service-account-numeric-sub>
+docker compose up --build
 ```
 
 Host ports: `3001` openfaithmap-api (management/health only — `curl -sk
 https://localhost:3001/status/liveness`; its app port 3000 is compose-internal only, reached solely
-by openfaithmap-web/openfaithmap-admin, same D-HeadlessTopology rule as oikumenea-app) · `3002`
-openfaithmap-web · `3003` oikumenea-console · `3004` openfaithmap-admin · `5432` postgres ·
-`9443`/`9444` hermenea. `oikumenea-app` publishes none at all (D-HeadlessTopology).
+by openfaithmap-web/openfaithmap-admin, D-HeadlessTopology) · `3002` openfaithmap-web · `3004`
+openfaithmap-admin · `5432` postgres.
 
 ## Contributing
 

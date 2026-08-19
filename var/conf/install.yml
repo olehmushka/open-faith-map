@@ -8,13 +8,11 @@ use-console-log: true
 environment: local
 server:
   address: "0.0.0.0"
-  # 3000/3001, not go-oikumenea's own 8443/8444 default — oikumenea-app occupies those on the
-  # compose network, so openfaithmap-api takes the 300x range that openfaithmap-web (3002),
-  # oikumenea-console (3003), and openfaithmap-admin (3004) continue.
-  #
-  # (This comment previously justified the choice by a collision with go-oikumenea's dev Keycloak
-  # on 8080. There is no Keycloak in this stack — Google is the sole IdP, D-GoogleDirect. The port
-  # choice stands; the reason given for it did not.)
+  # 3000/3001 — openfaithmap-api takes the 300x range that openfaithmap-web (3002) and
+  # openfaithmap-admin (3004) continue (3003 was oikumenea-console's, retired at M10.8's teardown).
+  # Originally chosen to avoid colliding with go-oikumenea's own 8443/8444 default and dev Keycloak
+  # on 8080 — neither service exists in this stack anymore (D-OwnCore, D-GoogleDirect), but the
+  # port numbers themselves are unchanged.
   port: 3000
   management-port: 3001
   context-path: ""

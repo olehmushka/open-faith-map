@@ -91,14 +91,20 @@ no host port published, reachable only over the compose-internal network.
 > yet Verified; M9 is a docs-only deployment design with nothing provisioned. The stage board was
 > correct throughout — this paragraph simply was not updated alongside it.
 
-> **Scheduled for reversal (M10, decided 2026-08-17).** Most of the topology described in this
-> document is deliberately temporary.
-> [D-OwnCore](decisions.md#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed) absorbs
-> go-oikumenea's capabilities into `openfaithmap-api` as in-repo modules and deletes the
-> `oikumenea-app`, `hermenea` and `oikumenea-console` services along with the SDK, the npm client
-> and the `OIKUMENEA_SRC` sibling checkout. The request paths below — every one of which crosses an
-> HTTPS boundary into the core — become in-process Go calls. This document is not rewritten in
-> advance; it is accurate for the system as it stands today, and gets rewritten when M10.6 lands.
+> **Reversed (M10.8, 2026-08-18) — the promised rewrite below is now overdue, not upcoming.**
+> [D-OwnCore](decisions.md#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed) has
+> absorbed go-oikumenea's capabilities into `openfaithmap-api` as in-repo modules
+> (`internal/{identity,authz,directory,religion,location,membership,refdata}`, M10.1–M10.6) and
+> M10.8 has deleted the `oikumenea-app`, `hermenea` and `oikumenea-console` services, the SDK, the
+> npm client, and the `OIKUMENEA_SRC` sibling checkout — all for real, not just decided. Every
+> HTTPS request path this document describes below (Postgres/service topology, the compose service
+> table, the go-oikumenea-vs-OpenFaithMap comparison table) is now a stale description of a deleted
+> system, not "temporary." The prior version of this note said the document "gets rewritten when
+> M10.6 lands"; that didn't happen at M10.6, M10.7, or this M10.8 session either — a full accurate
+> rewrite of the topology/request-path sections below is real, still-owed follow-up work, not
+> attempted in this session's own cosmetic-cleanup pass. Until that rewrite lands, treat
+> [README.md](../../README.md)'s Architecture section, `docker-compose.yml` itself, and the stage
+> board as the accurate current sources — not this document's body text below.
 
 ## Request paths
 

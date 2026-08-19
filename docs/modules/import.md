@@ -1,5 +1,13 @@
 # Module: import
 
+> **Superseded (M10.8, 2026-08-18) by
+> [D-StaticRefData](../architecture/decisions.md#d-staticrefdata--reference-data-is-a-static-seed-hermenea-is-removed).**
+> `hermenea` — the service this entire document is about deploying — is deleted. Country reference
+> data is now a static seed (`internal/refdata`, `migrations/0021_core_refdata.sql`), read
+> byte-for-byte from what `hermenea` itself had synced before teardown (M10.1, sanity-checked again
+> at M10.8's baseline capture — see `internal/refdata/testdata/README.md`). Kept below as historical
+> record of why this module existed and what it did, not as current deployment guidance.
+>
 > Reads: [glossary](../glossary.md) · [core-integration](core-integration.md) ·
 > [architecture/decisions](../architecture/decisions.md)
 > Owns no schema, no code, no service of its own — this doc describes **deploying** a service
