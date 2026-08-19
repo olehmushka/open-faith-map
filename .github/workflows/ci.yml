@@ -31,6 +31,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # A serial download before godel's own lint task, which runs several analyzers concurrently:
+      # on the first-ever CI run (cold module cache, no restore available), concurrent extraction of
+      # the same module from multiple linters raced and left one package unresolved
+      # ("undefined: werror" across every conjure-generated file importing witchcraft-go-error),
+      # reproduced identically on a retry (setup-go's cache-save post-step is skipped on job
+      # failure, so every retry was equally cold) but never locally, where the module cache is warm.
+      - run: go mod download
       - run: ./godelw verify --skip-test
 
   web:
