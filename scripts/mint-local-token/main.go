@@ -1,26 +1,25 @@
 // Copyright 2026 Oleh Mushka
 // SPDX-License-Identifier: Apache-2.0
 
-// Command mint-local-token is a local-dev-only operator tool: mints an HS256 token for go-oikumenea's
-// local-dev issuer (deploy/oikumenea-install.yml), for an ARBITRARY (email, subject) pair rather than
-// the fixed "local-admin" bootstrap identity scripts/bootstrap-admin-person, bootstrap-service-principal,
-// and bootstrap-registration-org each mint for themselves.
+// Command mint-local-token is a local-dev-only operator tool: mints an HS256 token for
+// openfaithmap-api's own synthetic local-dev issuer (internal/platform/devtoken), for an ARBITRARY
+// (email, subject) pair. Target server must be booted with DEV_ISSUER_HMAC_KEY set to the same
+// -hmac-key value (docker-compose.override.yml, never committed — D-DirectTokenVerification's
+// amendment ships the committed config with this unset).
 //
-// This exists to authenticate as a second, genuinely non-admin test person headlessly — for example
-// scripts/bootstrap-admin-person's own moderator-test@example.com shell account — so that a
-// "non-moderator refused, moderator allowed" or "guarantor with standing vs. without" proof can be run
-// against a real docker compose stack without a real browser Google OAuth session. go-oikumenea's
-// HS256 validator (../go-oikumenea's internal/identityfederation/middleware/validator.go) has no
-// subject allowlist: any (issuer, subject) signed with the known local-dev key is accepted, and JIT
-// (idp.jit, match: account-email) links it onto an EXISTING person's account by email, never creating
-// one — so -email here must already have a shell account (run scripts/bootstrap-admin-person first).
-// Instance-admin status is a separate DB fact keyed by person_id, not by token subject, so the person
-// this resolves to is a real, non-admin, PDP-checked identity distinct from local-admin.
+// This exists to authenticate as a test person headlessly — e.g. a real congregation-admin/
+// registration-operator/platform-moderator/instance-admin grant, or a plain authenticated-but-
+// ungranted person — so a "denied for X, allowed for Y" proof can be run against a real docker
+// compose stack without a real browser Google OAuth session. The token alone resolves to nothing:
+// -subject must already have a matching identity_external_identities row (issuer=devtoken.Issuer)
+// pointing at a real identity_persons row, either via IDENTITY_JIT_ENABLED's link-on-match or a row
+// inserted directly — the same requirement a real IdP's JIT path has.
 //
 // Prints only the signed token to stdout (no API calls, no side effects) so it composes with curl or
 // any client — e.g.:
 //
-//	go run ./scripts/mint-local-token -email moderator-test@example.com
+//	go run ./scripts/mint-local-token -subject test-operator -email operator@example.com \
+//	  -hmac-key "$DEV_ISSUER_HMAC_KEY"
 package main
 
 import (
@@ -29,22 +28,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-)
-
-// Matches deploy/oikumenea-install.yml exactly — the same constants
-// scripts/bootstrap-admin-person/bootstrap-service-principal/bootstrap-registration-org already use,
-// local-dev only, safe to keep in source (see deploy/oikumenea-install.yml's own comment: anyone who
-// knows this key can mint a token for any subject on this issuer, fine for a throwaway local stack).
-const (
-	localIssuer  = "https://local-dev.oikumenea.test"
-	localAud     = "oikumenea"
-	localHMACKey = "local-dev-insecure-signing-key-change-me"
+	"github.com/olehmushka/open-faith-map/internal/platform/devtoken"
 )
 
 func main() {
-	email := flag.String("email", "", "email of an existing shell account to JIT-link onto (required — see scripts/bootstrap-admin-person)")
-	subject := flag.String("subject", "", "the token's sub claim (defaults to \"test-<email>\" — any value not already bound to another identity)")
+	email := flag.String("email", "", "email claim on the minted token (required)")
+	subject := flag.String("subject", "", "the token's sub claim — must already resolve via a real identity_external_identities row (required)")
+	hmacKey := flag.String("hmac-key", "", "must match the target server's own DEV_ISSUER_HMAC_KEY (required)")
 	ttl := flag.Duration("ttl", 5*time.Minute, "token lifetime")
 	flag.Parse()
 
@@ -53,28 +43,18 @@ func main() {
 		os.Exit(2)
 	}
 	if *subject == "" {
-		*subject = "test-" + *email
+		fmt.Fprintln(os.Stderr, "missing required -subject")
+		os.Exit(2)
+	}
+	if *hmacKey == "" {
+		fmt.Fprintln(os.Stderr, "missing required -hmac-key")
+		os.Exit(2)
 	}
 
-	tok, err := mintToken(*subject, *email, *ttl)
+	tok, err := devtoken.Mint(*subject, *email, *ttl, *hmacKey)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mint token:", err)
 		os.Exit(1)
 	}
 	fmt.Println(tok)
-}
-
-func mintToken(subject, email string, ttl time.Duration) (string, error) {
-	now := time.Now()
-	claims := jwt.MapClaims{
-		"iss":            localIssuer,
-		"sub":            subject,
-		"aud":            localAud,
-		"iat":            now.Unix(),
-		"exp":            now.Add(ttl).Unix(),
-		"email":          email,
-		"email_verified": true,
-	}
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return tok.SignedString([]byte(localHMACKey))
 }
