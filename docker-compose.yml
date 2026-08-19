@@ -15,6 +15,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # Mounted as a single file, NOT the whole directory — postgis/postgis ships its own
+      # docker-entrypoint-initdb.d scripts (creates the postgis/postgis_tiger_geocoder/fuzzystrmatch
+      # extensions on a fresh volume); bind-mounting a directory over that path hides the image's own
+      # scripts entirely, confirmed live (postgis extension silently never got created). A single-file
+      # mount adds to the image's init scripts instead of replacing them.
+      - ./postgres-initdb/01-extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
