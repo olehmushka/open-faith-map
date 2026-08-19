@@ -47,9 +47,15 @@ func mapRunErr(err error, sourceCode string) error {
 }
 
 // mapJurisdictionSyncErr is mapErr's counterpart for runJurisdictionSync, which needs sourceCode
-// (not a candidateId/status) filled into JurisdictionSourceNotFound's own safe-arg.
+// (not a candidateId/status) filled into JurisdictionSourceNotFound's own safe-arg. Real bug found
+// live by M10.9's authorization matrix, not anticipated by any prior session: this arm never mapped
+// domain.ErrForbidden (requireOperator's own denial, application/provision.go), so a non-operator's
+// runJurisdictionSync call fell through to a raw, unmapped error — a 500, not a clean 403 — the same
+// defect class as registration's pre-M10.8 approveRequest gap.
 func mapJurisdictionSyncErr(err error, sourceCode string) error {
 	switch {
+	case errors.Is(err, domain.ErrForbidden):
+		return gencongregationimport.NewForbidden()
 	case errors.Is(err, domain.ErrJurisdictionSourceNotFound):
 		return gencongregationimport.NewJurisdictionSourceNotFound(sourceCode)
 	default:
