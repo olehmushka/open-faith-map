@@ -384,7 +384,13 @@
     "revoke": "Відкликати",
     "personIdLabel": "ID особи",
     "personIdPlaceholder": "ID особи",
+    "roleLabel": "Роль",
+    "rolePlaceholder": "Оберіть роль",
     "grant": "Надати",
+    "bulkHeading": "Масове надання",
+    "personSearchPlaceholder": "Пошук осіб за іменем",
+    "noPersonResults": "Немає осіб, що відповідають пошуку.",
+    "assignToSelected": "Надати роль {count} обраним",
     "instanceAdminsHeading": "Адміністратори інстансу",
     "noInstanceAdmins": "Немає адміністраторів інстансу.",
     "grantInstanceAdmin": "Надати права адміністратора інстансу"

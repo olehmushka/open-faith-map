@@ -489,6 +489,8 @@ type CoreSuperAdminService interface {
 	ListRoles(ctx context.Context, authHeader bearertoken.Token) (RolePage, error)
 	ListRoleAssignmentsByUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (RoleAssignmentPage, error)
 	GrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg GrantUnitRoleRequest) error
+	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
+	BulkGrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context, authHeader bearertoken.Token) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
@@ -527,6 +529,9 @@ func RegisterRoutesCoreSuperAdminService(router wrouter.Router, impl CoreSuperAd
 	}
 	if err := resource.Post("GrantUnitRole", "/core/v1/super-admin/role-assignments", httpserver.NewJSONHandler(handler.HandleGrantUnitRole, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add grantUnitRole route")
+	}
+	if err := resource.Post("BulkGrantUnitRole", "/core/v1/super-admin/bulk-role-assignments", httpserver.NewJSONHandler(handler.HandleBulkGrantUnitRole, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add bulkGrantUnitRole route")
 	}
 	if err := resource.Delete("RevokeRoleAssignment", "/core/v1/super-admin/role-assignments/{assignmentId}", httpserver.NewJSONHandler(handler.HandleRevokeRoleAssignment, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeRoleAssignment route")
@@ -638,6 +643,22 @@ func (c *coreSuperAdminServiceHandler) HandleGrantUnitRole(rw http.ResponseWrite
 		return errors.WrapWithInvalidArgument(err)
 	}
 	if err := c.impl.GrantUnitRole(req.Context(), bearertoken.Token(authHeader), requestArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (c *coreSuperAdminServiceHandler) HandleBulkGrantUnitRole(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg BulkGrantUnitRoleRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	if err := c.impl.BulkGrantUnitRole(req.Context(), bearertoken.Token(authHeader), requestArg); err != nil {
 		return err
 	}
 	rw.WriteHeader(http.StatusNoContent)

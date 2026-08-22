@@ -13,6 +13,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
@@ -212,6 +213,7 @@ const (
 	auditActionRevokeSession        = "REVOKE_SESSION"
 	auditActionUpdateProfile        = "UPDATE_PROFILE"
 	auditActionCreateInvite         = "CREATE_INVITE"
+	auditActionBulkGrantUnitRole    = "BULK_GRANT_UNIT_ROLE"
 
 	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
 	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
@@ -231,6 +233,30 @@ func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID st
 	}
 	return s.auditLog.Record(ctx, auditActionGrantUnitRole, auditTargetRoleAssignment, assignmentID,
 		nil, map[string]any{"personId": personID, "roleId": roleID, "unitId": unitID})
+}
+
+// BulkGrantUnitRole grants roleID on unitID to every id in personIDs, atomically — M11.7. The store
+// call is the entire transaction: it either returns every resulting assignment id (all committed) or
+// a non-nil error with nothing committed, so the audit loop below only ever runs over already-durable
+// rows. Best-effort across the loop (not abort-on-first-failure) so one transient Record failure
+// doesn't blank out audit rows for the rest of an already-successful batch.
+func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID string) error {
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return err
+	}
+	assignmentIDs, err := s.authz.BulkGrantUnitRole(ctx, personIDs, roleID, unitID, subject.PersonID)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for i, assignmentID := range assignmentIDs {
+		if err := s.auditLog.Record(ctx, auditActionBulkGrantUnitRole, auditTargetRoleAssignment, assignmentID,
+			nil, map[string]any{"personId": personIDs[i], "roleId": roleID, "unitId": unitID}); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID string) error {

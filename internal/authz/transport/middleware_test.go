@@ -27,6 +27,9 @@ func (f fakeGrantStore) ActiveGrantsForSubject(context.Context, string) ([]domai
 func (f fakeGrantStore) InsertRoleAssignment(context.Context, string, string, string, string) (string, error) {
 	return "", nil
 }
+func (f fakeGrantStore) BulkInsertRoleAssignments(context.Context, []string, string, string, string) ([]string, error) {
+	return nil, nil
+}
 func (f fakeGrantStore) ListRoles(context.Context) ([]domain.Role, error) { return nil, nil }
 func (f fakeGrantStore) ListRoleAssignmentsByUnit(context.Context, string) ([]domain.RoleAssignment, error) {
 	return nil, nil

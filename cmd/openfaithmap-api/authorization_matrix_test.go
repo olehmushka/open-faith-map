@@ -271,6 +271,12 @@ func TestAuthorizationMatrix(t *testing.T) {
 			// proving the handler was reached with no new person/account/invite row left behind for
 			// every repeated run of this test.
 			{"invitePerson", http.MethodPost, "/core/v1/super-admin/invites", []int{http.StatusConflict}, map[string]any{"email": "matrix-instance-admin@example.com", "displayName": "Matrix Test Invitee"}},
+			// M11.7 — same reasoning: bulkGrantUnitRole must be refused by the same route-group gate
+			// too. An empty personIds list is side-effect-free (never touches the DB) and reliably
+			// 400s on Core:EmptyPersonIdsList past the gate, proving the handler was reached with no
+			// fixture needed.
+			{"bulkGrantUnitRole", http.MethodPost, "/core/v1/super-admin/bulk-role-assignments", []int{http.StatusBadRequest},
+				map[string]any{"personIds": []string{}, "roleId": "00000000-0000-8000-8000-000000000000", "unitId": "00000000-0000-8000-8000-000000000000"}},
 		}
 		for _, ep := range endpoints {
 			t.Run(ep.name, func(t *testing.T) {

@@ -384,7 +384,13 @@
     "revoke": "Revocar",
     "personIdLabel": "ID de la persona",
     "personIdPlaceholder": "ID de la persona",
+    "roleLabel": "Rol",
+    "rolePlaceholder": "Selecciona un rol",
     "grant": "Conceder",
+    "bulkHeading": "Asignación masiva",
+    "personSearchPlaceholder": "Buscar personas por nombre",
+    "noPersonResults": "Ninguna persona coincide con esta búsqueda.",
+    "assignToSelected": "Conceder rol a {count} seleccionados",
     "instanceAdminsHeading": "Administradores de instancia",
     "noInstanceAdmins": "No hay administradores de instancia.",
     "grantInstanceAdmin": "Conceder administrador de instancia"

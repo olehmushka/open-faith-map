@@ -83,6 +83,13 @@ func (s *SuperAdminService) GrantUnitRole(ctx context.Context, _ bearertoken.Tok
 	return nil
 }
 
+func (s *SuperAdminService) BulkGrantUnitRole(ctx context.Context, _ bearertoken.Token, requestArg gencore.BulkGrantUnitRoleRequest) error {
+	if err := s.app.BulkGrantUnitRole(ctx, requestArg.PersonIds, requestArg.RoleId, requestArg.UnitId); err != nil {
+		return mapErr(err, errCtx{UnitID: requestArg.UnitId})
+	}
+	return nil
+}
+
 func (s *SuperAdminService) RevokeRoleAssignment(ctx context.Context, _ bearertoken.Token, assignmentIdArg string) error {
 	if err := s.app.RevokeRoleAssignment(ctx, assignmentIdArg); err != nil {
 		return mapErr(err, errCtx{AssignmentID: assignmentIdArg})

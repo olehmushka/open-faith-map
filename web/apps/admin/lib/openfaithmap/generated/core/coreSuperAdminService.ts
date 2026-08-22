@@ -1,5 +1,6 @@
 import { IAccountStatus } from "./accountStatus";
 import { IAuditLogPage } from "./auditLogPage";
+import { IBulkGrantUnitRoleRequest } from "./bulkGrantUnitRoleRequest";
 import { IGrantInstanceAdminRequest } from "./grantInstanceAdminRequest";
 import { IGrantUnitRoleRequest } from "./grantUnitRoleRequest";
 import { IInstanceAdminGrant } from "./instanceAdminGrant";
@@ -24,6 +25,11 @@ export interface ICoreSuperAdminService {
     listRoles(): Promise<IRolePage>;
     listRoleAssignmentsByUnit(unitId: string): Promise<IRoleAssignmentPage>;
     grantUnitRole(request: IGrantUnitRoleRequest): Promise<void>;
+    /**
+     * M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
+     *
+     */
+    bulkGrantUnitRole(request: IBulkGrantUnitRoleRequest): Promise<void>;
     revokeRoleAssignment(assignmentId: string): Promise<void>;
     listInstanceAdmins(): Promise<IInstanceAdminPage>;
     grantInstanceAdmin(request: IGrantInstanceAdminRequest): Promise<IInstanceAdminGrant>;
@@ -110,6 +116,25 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
             "grantUnitRole",
             "POST",
             "/core/v1/super-admin/role-assignments",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
+     *
+     */
+    public bulkGrantUnitRole(request: IBulkGrantUnitRoleRequest): Promise<void> {
+        return this.bridge.call<void>(
+            "CoreSuperAdminService",
+            "bulkGrantUnitRole",
+            "POST",
+            "/core/v1/super-admin/bulk-role-assignments",
             request,
             __undefined,
             __undefined,

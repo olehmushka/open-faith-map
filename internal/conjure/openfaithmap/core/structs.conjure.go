@@ -105,6 +105,50 @@ func (o *AuditLogPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M11.7 — the batch variant of GrantUnitRoleRequest: the same role and unit, granted to every id in personIds at once, atomically.
+type BulkGrantUnitRoleRequest struct {
+	PersonIds []string `json:"personIds"`
+	RoleId    string   `json:"roleId"`
+	UnitId    string   `json:"unitId"`
+}
+
+func (o BulkGrantUnitRoleRequest) MarshalJSON() ([]byte, error) {
+	if o.PersonIds == nil {
+		o.PersonIds = make([]string, 0)
+	}
+	type _tmpBulkGrantUnitRoleRequest BulkGrantUnitRoleRequest
+	return safejson.Marshal(_tmpBulkGrantUnitRoleRequest(o))
+}
+
+func (o *BulkGrantUnitRoleRequest) UnmarshalJSON(data []byte) error {
+	type _tmpBulkGrantUnitRoleRequest BulkGrantUnitRoleRequest
+	var rawBulkGrantUnitRoleRequest _tmpBulkGrantUnitRoleRequest
+	if err := safejson.Unmarshal(data, &rawBulkGrantUnitRoleRequest); err != nil {
+		return err
+	}
+	if rawBulkGrantUnitRoleRequest.PersonIds == nil {
+		rawBulkGrantUnitRoleRequest.PersonIds = make([]string, 0)
+	}
+	*o = BulkGrantUnitRoleRequest(rawBulkGrantUnitRoleRequest)
+	return nil
+}
+
+func (o BulkGrantUnitRoleRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *BulkGrantUnitRoleRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Country struct {
 	Id string `json:"id"`
 	// ISO-3166-1 alpha-2.

@@ -45,6 +45,8 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewAssignmentNotFound(c.AssignmentID)
 	case errors.Is(err, authzdomain.ErrInstanceAdminGrantNotFound):
 		return gencore.NewInstanceAdminGrantNotFound(c.PersonID)
+	case errors.Is(err, authzdomain.ErrEmptyPersonIDs):
+		return gencore.NewEmptyPersonIdsList()
 	case errors.Is(err, identitydomain.ErrSessionNotFound):
 		return gencore.NewSessionNotFound(c.SessionID)
 	case errors.Is(err, identitydomain.ErrAccountAlreadyExists):

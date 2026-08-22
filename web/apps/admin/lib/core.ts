@@ -232,6 +232,12 @@ export async function revokeRoleAssignment(assignmentId: string): Promise<void> 
   return unwrap((await client()).coreSuperAdmin.revokeRoleAssignment(assignmentId));
 }
 
+// M11.7 — the batch variant of grantUnitRole: the same role and unit, granted to every id in
+// personIds at once, atomically.
+export async function bulkGrantUnitRole(personIds: string[], roleId: string, unitId: string): Promise<void> {
+  return unwrap((await client()).coreSuperAdmin.bulkGrantUnitRole({ personIds, roleId, unitId }));
+}
+
 export async function listInstanceAdmins(): Promise<InstanceAdminGrant[]> {
   const page = await unwrap((await client()).coreSuperAdmin.listInstanceAdmins());
   return page.admins;

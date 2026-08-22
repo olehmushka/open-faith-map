@@ -17,6 +17,10 @@ type GrantStore interface {
 	IsActiveInstanceAdmin(ctx context.Context, personID string) (bool, error)
 	ActiveGrantsForSubject(ctx context.Context, personID string) ([]domain.ActiveGrant, error)
 	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) (string, error)
+	// BulkInsertRoleAssignments is M11.7's batch variant: the same grant, for many personIDs, one
+	// role, one unit, all inside a single transaction — no per-row idempotent-conflict error, see the
+	// adapter's own doc comment for why it can't just loop InsertRoleAssignment.
+	BulkInsertRoleAssignments(ctx context.Context, personIDs []string, roleID, targetUnitID, grantedBy string) ([]string, error)
 
 	// The M10.7 super-admin surface: the role catalog, per-unit assignment listing/revocation, and
 	// the instance-admin plane's own list/grant/revoke — all new at M10.7 (InsertInstanceAdmin
@@ -89,6 +93,18 @@ func (s *Service) enforce(ctx context.Context, subjectPersonID string, action do
 // use it as the audit log's target_id).
 func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, grantedByPersonID string) (string, error) {
 	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, grantedByPersonID)
+}
+
+// BulkGrantUnitRole grants roleID on unitID to every personID in one batch, atomically (M11.7).
+// Returns the resulting assignment ids in the same order as personIDs, so callers can pair each id
+// back to the person it belongs to (e.g. for per-row audit logging) with no extra lookup. No dedup
+// of personIDs: the store's upsert already absorbs a duplicate id harmlessly, and a same-order,
+// same-length 1:1 pairing with the input is simpler to reason about than reordering logic.
+func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID, grantedByPersonID string) ([]string, error) {
+	if len(personIDs) == 0 {
+		return nil, domain.ErrEmptyPersonIDs
+	}
+	return s.store.BulkInsertRoleAssignments(ctx, personIDs, roleID, unitID, grantedByPersonID)
 }
 
 // RequireInstanceAdmin is the shared, hard-to-misuse enforcer for the instance-admin plane

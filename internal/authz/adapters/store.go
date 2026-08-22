@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/authz/domain"
 )
 
@@ -315,4 +316,51 @@ func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targ
 		return "", err
 	}
 	return id, nil
+}
+
+// BulkInsertRoleAssignments grants roleID on targetUnitID to every personID in one batch, all inside
+// a single transaction (M11.7's own explicit ask). Deliberately does NOT reuse InsertRoleAssignment's
+// catch-23505-then-SELECT body: once multiple statements share one explicit pgx.Tx, a caught 23505
+// aborts the whole transaction (Postgres error 25P02, "current transaction is aborted") — every
+// subsequent statement, including the rest of the batch, would fail until rollback. Uses a real
+// upsert instead, so the idempotent-conflict path never raises an error at all. The ON CONFLICT
+// target must match authz_role_assignments_active_idx's own partial-index predicate exactly
+// (migrations/0009_core_authz.sql) — that index is a bare CREATE UNIQUE INDEX, not a named
+// constraint, so ON CONFLICT ON CONSTRAINT can't resolve it. DO UPDATE (not DO NOTHING) is required
+// so RETURNING id still fires on the conflict branch. Requires a pool-bound Store, same as
+// InsertPersonAccountInvite (internal/identity/adapters/store.go).
+func (s *Store) BulkInsertRoleAssignments(ctx context.Context, personIDs []string, roleID, targetUnitID, grantedBy string) ([]string, error) {
+	pool, ok := s.pool.(*pgxpool.Pool)
+	if !ok {
+		return nil, errors.New("BulkInsertRoleAssignments requires a pool-bound Store")
+	}
+	var grantedByArg any
+	if grantedBy != "" {
+		grantedByArg = grantedBy
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	ids := make([]string, 0, len(personIDs))
+	for _, personID := range personIDs {
+		var id string
+		err := tx.QueryRow(ctx, `
+			INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, granted_by)
+			VALUES ($1, $2, $3, 'unit', $4)
+			ON CONFLICT (subject_person_id, role_id, target_unit_id, scope, graph_id) WHERE revoked_at IS NULL
+			DO UPDATE SET updated_at = now()
+			RETURNING id`, personID, roleID, targetUnitID, grantedByArg).Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }

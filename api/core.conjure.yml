@@ -185,6 +185,14 @@ types:
           personId: string
           roleId: string
           unitId: string
+      BulkGrantUnitRoleRequest:
+        docs: >
+          M11.7 — the batch variant of GrantUnitRoleRequest: the same role and unit, granted to every
+          id in personIds at once, atomically.
+        fields:
+          personIds: list<string>
+          roleId: string
+          unitId: string
 
       InstanceAdminGrant:
         fields:
@@ -345,6 +353,11 @@ types:
         code: NOT_FOUND
         safe-args:
           personId: string
+      EmptyPersonIdsList:
+        docs: M11.7 — bulkGrantUnitRole's personIds must contain at least one id.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
       InvalidPageToken:
         docs: >
           M11.2 — listAuditLog's pageToken query argument is malformed or tampered — never silently
@@ -572,6 +585,16 @@ services:
         http: POST /role-assignments
         args:
           request: GrantUnitRoleRequest
+      bulkGrantUnitRole:
+        docs: >
+          M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A
+          fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's
+          POST /persons/invite collided with an existing {personId} wildcard sibling and caused a
+          boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as
+          a wildcard sibling here, so this avoids the same class of collision.
+        http: POST /bulk-role-assignments
+        args:
+          request: BulkGrantUnitRoleRequest
       revokeRoleAssignment:
         http: DELETE /role-assignments/{assignmentId}
         args:

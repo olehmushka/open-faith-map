@@ -612,6 +612,154 @@ func (e *ChildCreationExcluded) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type emptyPersonIdsList struct{}
+
+func (o emptyPersonIdsList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *emptyPersonIdsList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewEmptyPersonIdsList returns new instance of EmptyPersonIdsList error.
+func NewEmptyPersonIdsList() *EmptyPersonIdsList {
+	return &EmptyPersonIdsList{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), emptyPersonIdsList: emptyPersonIdsList{}}
+}
+
+// WrapWithEmptyPersonIdsList returns new instance of EmptyPersonIdsList error wrapping an existing error.
+func WrapWithEmptyPersonIdsList(err error) *EmptyPersonIdsList {
+	return &EmptyPersonIdsList{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, emptyPersonIdsList: emptyPersonIdsList{}}
+}
+
+// EmptyPersonIdsList is an error type.
+// M11.7 — bulkGrantUnitRole's personIds must contain at least one id.
+type EmptyPersonIdsList struct {
+	errorInstanceID uuid.UUID
+	emptyPersonIdsList
+	cause error
+	stack werror.StackTrace
+}
+
+// IsEmptyPersonIdsList returns true if err is an instance of EmptyPersonIdsList.
+func IsEmptyPersonIdsList(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*EmptyPersonIdsList)
+	return ok
+}
+
+func (e *EmptyPersonIdsList) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Core:EmptyPersonIdsList (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *EmptyPersonIdsList) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *EmptyPersonIdsList) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *EmptyPersonIdsList) Message() string {
+	return "INVALID_ARGUMENT Core:EmptyPersonIdsList"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *EmptyPersonIdsList) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *EmptyPersonIdsList) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *EmptyPersonIdsList) Name() string {
+	return "Core:EmptyPersonIdsList"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *EmptyPersonIdsList) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *EmptyPersonIdsList) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *EmptyPersonIdsList) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *EmptyPersonIdsList) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *EmptyPersonIdsList) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *EmptyPersonIdsList) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e EmptyPersonIdsList) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.emptyPersonIdsList)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Core:EmptyPersonIdsList", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *EmptyPersonIdsList) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters emptyPersonIdsList
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.emptyPersonIdsList = parameters
+	return nil
+}
+
 type forbidden struct{}
 
 func (o forbidden) MarshalYAML() (interface{}, error) {
@@ -2252,6 +2400,7 @@ func init() {
 	conjureerrors.RegisterErrorType("Core:AccountNotFound", reflect.TypeOf(AccountNotFound{}))
 	conjureerrors.RegisterErrorType("Core:AssignmentNotFound", reflect.TypeOf(AssignmentNotFound{}))
 	conjureerrors.RegisterErrorType("Core:ChildCreationExcluded", reflect.TypeOf(ChildCreationExcluded{}))
+	conjureerrors.RegisterErrorType("Core:EmptyPersonIdsList", reflect.TypeOf(EmptyPersonIdsList{}))
 	conjureerrors.RegisterErrorType("Core:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("Core:InstanceAdminGrantNotFound", reflect.TypeOf(InstanceAdminGrantNotFound{}))
 	conjureerrors.RegisterErrorType("Core:InvalidPageToken", reflect.TypeOf(InvalidPageToken{}))

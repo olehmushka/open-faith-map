@@ -28,6 +28,10 @@ func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _ string) (s
 	return "", nil
 }
 
+func (f fakeStore) BulkInsertRoleAssignments(_ context.Context, _ []string, _, _, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func (f fakeStore) ListRoles(context.Context) ([]domain.Role, error) { return nil, nil }
 
 func (f fakeStore) ListRoleAssignmentsByUnit(context.Context, string) ([]domain.RoleAssignment, error) {

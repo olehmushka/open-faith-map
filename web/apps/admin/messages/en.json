@@ -384,7 +384,13 @@
     "revoke": "Revoke",
     "personIdLabel": "Person ID",
     "personIdPlaceholder": "Person ID",
+    "roleLabel": "Role",
+    "rolePlaceholder": "Select a role",
     "grant": "Grant",
+    "bulkHeading": "Bulk assign",
+    "personSearchPlaceholder": "Search people by name",
+    "noPersonResults": "No people match this search.",
+    "assignToSelected": "Assign role to {count} selected",
     "instanceAdminsHeading": "Instance admins",
     "noInstanceAdmins": "No instance admins.",
     "grantInstanceAdmin": "Grant instance admin"

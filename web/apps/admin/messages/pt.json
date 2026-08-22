@@ -384,7 +384,13 @@
     "revoke": "Revogar",
     "personIdLabel": "ID da pessoa",
     "personIdPlaceholder": "ID da pessoa",
+    "roleLabel": "Papel",
+    "rolePlaceholder": "Selecione um papel",
     "grant": "Conceder",
+    "bulkHeading": "Atribuição em massa",
+    "personSearchPlaceholder": "Pesquisar pessoas por nome",
+    "noPersonResults": "Nenhuma pessoa corresponde a esta pesquisa.",
+    "assignToSelected": "Conceder papel a {count} selecionados",
     "instanceAdminsHeading": "Administradores da instância",
     "noInstanceAdmins": "Nenhum administrador da instância.",
     "grantInstanceAdmin": "Conceder administrador da instância"

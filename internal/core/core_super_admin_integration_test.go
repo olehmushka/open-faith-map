@@ -435,6 +435,213 @@ func TestLastActiveIntegration(t *testing.T) {
 	}
 }
 
+// TestBulkGrantUnitRoleIntegration proves M11.7's own explicit "in a transaction" requirement against
+// a real Postgres instance: a batch either fully applies (every person gets the assignment, one audit
+// row each) or fully rolls back (a bad id anywhere in the batch leaves zero new assignments and zero
+// new audit rows for every id in that batch, not just the bad one) — plus the specific regression this
+// milestone's own store method exists to avoid: an in-batch idempotent conflict (a duplicate/
+// pre-existing grant) must not abort the surrounding transaction.
+//
+//	DATABASE_URL="postgres://openfaithmap:dev@localhost:5432/postgres?sslmode=disable" \
+//	  go test ./internal/core/... -run TestBulkGrantUnitRoleIntegration -v
+func TestBulkGrantUnitRoleIntegration(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set DATABASE_URL to run against a live Postgres instance")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	dir := directoryapplication.NewService(pool)
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, nil, nil, authzSvc, auditLogSvc)
+
+	var actorID string
+	var unit directorydomain.Unit
+	var personIDs []string
+	t.Cleanup(func() {
+		bg := context.Background()
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log DISABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: disable reject_mutation: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_audit_log WHERE actor_person_id = $1`, actorID); err != nil {
+			t.Errorf("cleanup: delete audit rows: %v", err)
+		}
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log ENABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: re-enable reject_mutation: %v", err)
+		}
+		if unit.ID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_role_assignments WHERE target_unit_id = $1`, unit.ID); err != nil {
+				t.Errorf("cleanup: delete assignments: %v", err)
+			}
+		}
+		for _, id := range append([]string{actorID}, personIDs...) {
+			if id == "" {
+				continue
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_persons WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete person %s: %v", id, err)
+			}
+		}
+		if unit.ID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_units WHERE id = $1`, unit.ID); err != nil {
+				t.Errorf("cleanup: delete unit: %v", err)
+			}
+		}
+	})
+
+	unit, err = dir.CreateUnit(ctx, directorydomain.Unit{Name: "M11.7 bulk grant test unit"})
+	if err != nil {
+		t.Fatalf("CreateUnit: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_persons (display_name, given, surname)
+		VALUES ('M11.7 Bulk Actor', 'M11.7', 'Actor') RETURNING id`).Scan(&actorID); err != nil {
+		t.Fatalf("insert actor person: %v", err)
+	}
+
+	insertPerson := func(name string) string {
+		var id string
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO openfaithmap.identity_persons (display_name, given, surname)
+			VALUES ($1, 'M11.7', 'Bulk') RETURNING id`, name).Scan(&id); err != nil {
+			t.Fatalf("insert person %s: %v", name, err)
+		}
+		personIDs = append(personIDs, id)
+		return id
+	}
+
+	roles, err := authzSvc.ListRoles(ctx)
+	if err != nil {
+		t.Fatalf("ListRoles: %v", err)
+	}
+	var roleID string
+	for _, r := range roles {
+		if r.Code == "registration-operator" {
+			roleID = r.ID
+		}
+	}
+	if roleID == "" {
+		t.Fatalf("ListRoles = %+v, want it to include the seeded registration-operator role", roles)
+	}
+
+	actorCtx := authz.NewContext(ctx, authz.Subject{PersonID: actorID})
+
+	countAssignments := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*) FROM openfaithmap.authz_role_assignments
+			WHERE target_unit_id = $1 AND revoked_at IS NULL`, unit.ID).Scan(&n); err != nil {
+			t.Fatalf("count assignments: %v", err)
+		}
+		return n
+	}
+	countAuditRows := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*) FROM openfaithmap.identity_audit_log
+			WHERE action = 'BULK_GRANT_UNIT_ROLE' AND actor_person_id = $1`, actorID).Scan(&n); err != nil {
+			t.Fatalf("count audit rows: %v", err)
+		}
+		return n
+	}
+
+	// --- requireSubject gate: no subject in context must fail loud, nothing written.
+	p0 := insertPerson("M11.7 NoSubject")
+	if err := coreApp.BulkGrantUnitRole(ctx, []string{p0}, roleID, unit.ID); !errorsIs(err, authzdomain.ErrPermissionDenied) {
+		t.Errorf("BulkGrantUnitRole with no subject = %v, want ErrPermissionDenied", err)
+	}
+	if n := countAssignments(); n != 0 {
+		t.Errorf("after no-subject call: %d assignments, want 0", n)
+	}
+
+	// --- Happy path: 3 persons -> 3 new active assignments, 3 audit rows.
+	p1, p2, p3 := insertPerson("M11.7 Happy One"), insertPerson("M11.7 Happy Two"), insertPerson("M11.7 Happy Three")
+	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p1, p2, p3}, roleID, unit.ID); err != nil {
+		t.Fatalf("BulkGrantUnitRole happy path: %v", err)
+	}
+	if n := countAssignments(); n != 3 {
+		t.Errorf("after happy-path batch: %d active assignments, want 3", n)
+	}
+	if n := countAuditRows(); n != 3 {
+		t.Errorf("after happy-path batch: %d BULK_GRANT_UNIT_ROLE audit rows, want 3", n)
+	}
+	assignments, err := authzSvc.ListRoleAssignmentsByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit: %v", err)
+	}
+	byPerson := map[string]string{}
+	for _, a := range assignments {
+		byPerson[a.PersonID] = a.ID
+	}
+	row := mustAuditRow(ctx, t, pool, "BULK_GRANT_UNIT_ROLE", byPerson[p1])
+	if row.actorPersonID != actorID || row.targetKind != "ROLE_ASSIGNMENT" || row.before != nil {
+		t.Errorf("BULK_GRANT_UNIT_ROLE audit row = %+v, want actor=%s target_kind=ROLE_ASSIGNMENT before=nil", row, actorID)
+	}
+	assertJSONField(t, row.after, "personId", p1)
+	assertJSONField(t, row.after, "roleId", roleID)
+	assertJSONField(t, row.after, "unitId", unit.ID)
+
+	// --- Real rollback proof: a batch with one nonexistent person id must roll back entirely, not
+	// partially apply — this is the ticket's explicit "in a transaction" requirement.
+	p4, p5 := insertPerson("M11.7 Rollback Four"), insertPerson("M11.7 Rollback Five")
+	const nonexistentPersonID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	before := countAssignments()
+	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5, nonexistentPersonID}, roleID, unit.ID); err == nil {
+		t.Fatal("BulkGrantUnitRole with a nonexistent person id = nil error, want a real error (FK violation)")
+	}
+	if n := countAssignments(); n != before {
+		t.Errorf("after rolled-back batch: %d active assignments, want unchanged %d (no partial apply)", n, before)
+	}
+	for _, p := range []string{p4, p5} {
+		var n int
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*) FROM openfaithmap.authz_role_assignments
+			WHERE target_unit_id = $1 AND subject_person_id = $2`, unit.ID, p).Scan(&n); err != nil {
+			t.Fatalf("count assignments for %s: %v", p, err)
+		}
+		if n != 0 {
+			t.Errorf("person %s has %d assignment rows after a rolled-back batch, want 0", p, n)
+		}
+	}
+	if n := countAuditRows(); n != 3 {
+		t.Errorf("after rolled-back batch: %d total BULK_GRANT_UNIT_ROLE audit rows, want still 3 (unchanged from the happy path)", n)
+	}
+
+	// --- In-batch idempotent-conflict proof: a pre-existing active grant inside a batch must not
+	// abort the transaction (the regression this milestone's ON CONFLICT DO UPDATE design exists to
+	// prevent — see internal/authz/adapters/store.go's BulkInsertRoleAssignments doc comment).
+	if err := coreApp.GrantUnitRole(actorCtx, p4, roleID, unit.ID); err != nil {
+		t.Fatalf("pre-grant for idempotent-conflict case: %v", err)
+	}
+	auditBefore := countAuditRows()
+	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5}, roleID, unit.ID); err != nil {
+		t.Fatalf("BulkGrantUnitRole with an in-batch pre-existing grant: %v", err)
+	}
+	for _, p := range []string{p4, p5} {
+		var n int
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*) FROM openfaithmap.authz_role_assignments
+			WHERE target_unit_id = $1 AND subject_person_id = $2 AND revoked_at IS NULL`, unit.ID, p).Scan(&n); err != nil {
+			t.Fatalf("count active assignments for %s: %v", p, err)
+		}
+		if n != 1 {
+			t.Errorf("person %s has %d active assignment rows after idempotent-conflict batch, want exactly 1", p, n)
+		}
+	}
+	// GrantUnitRole's own single-grant call above already wrote one BULK_GRANT_UNIT_ROLE-unrelated
+	// GRANT_UNIT_ROLE row; the batch call adds one row per person in it (p4's re-touch included).
+	if n := countAuditRows(); n != auditBefore+2 {
+		t.Errorf("after idempotent-conflict batch: %d BULK_GRANT_UNIT_ROLE audit rows, want %d (+2)", n, auditBefore+2)
+	}
+}
+
 func errorsIs(err, target error) bool {
 	for err != nil {
 		if err == target {

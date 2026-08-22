@@ -676,6 +676,8 @@ type CoreSuperAdminServiceClient interface {
 	ListRoles(ctx context.Context, authHeader bearertoken.Token) (RolePage, error)
 	ListRoleAssignmentsByUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (RoleAssignmentPage, error)
 	GrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg GrantUnitRoleRequest) error
+	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
+	BulkGrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context, authHeader bearertoken.Token) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
@@ -772,6 +774,19 @@ func (c *coreSuperAdminServiceClient) GrantUnitRole(ctx context.Context, authHea
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Post(ctx, requestParams...); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "grantUnitRole failed")
+	}
+	return nil
+}
+
+func (c *coreSuperAdminServiceClient) BulkGrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg BulkGrantUnitRoleRequest) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("BulkGrantUnitRole"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/bulk-role-assignments"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "bulkGrantUnitRole failed")
 	}
 	return nil
 }
@@ -979,6 +994,8 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	ListRoles(ctx context.Context) (RolePage, error)
 	ListRoleAssignmentsByUnit(ctx context.Context, unitIdArg string) (RoleAssignmentPage, error)
 	GrantUnitRole(ctx context.Context, requestArg GrantUnitRoleRequest) error
+	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
+	BulkGrantUnitRole(ctx context.Context, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
@@ -1022,6 +1039,10 @@ func (c *coreSuperAdminServiceClientWithAuth) ListRoleAssignmentsByUnit(ctx cont
 
 func (c *coreSuperAdminServiceClientWithAuth) GrantUnitRole(ctx context.Context, requestArg GrantUnitRoleRequest) error {
 	return c.client.GrantUnitRole(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) BulkGrantUnitRole(ctx context.Context, requestArg BulkGrantUnitRoleRequest) error {
+	return c.client.BulkGrantUnitRole(ctx, c.authHeader, requestArg)
 }
 
 func (c *coreSuperAdminServiceClientWithAuth) RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error {
@@ -1107,6 +1128,14 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) GrantUnitRole(ctx context
 		return err
 	}
 	return c.client.GrantUnitRole(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) BulkGrantUnitRole(ctx context.Context, requestArg BulkGrantUnitRoleRequest) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.BulkGrantUnitRole(ctx, bearertoken.Token(token), requestArg)
 }
 
 func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error {
