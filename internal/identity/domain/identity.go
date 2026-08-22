@@ -15,6 +15,8 @@ var (
 	ErrIdentityNotFound  = errors.New("external identity not found")
 	ErrIdentityConflict  = errors.New("external identity already linked to a different person")
 	ErrInvalidExternalID = errors.New("external identity requires both issuer and subject")
+	ErrSessionNotFound   = errors.New("session not found")
+	ErrSessionRevoked    = errors.New("session is revoked")
 )
 
 // Account status values — must match identity_accounts' CHECK constraint literals
@@ -69,4 +71,17 @@ type Resolution struct {
 	PersonID  string
 	AccountID string
 	Email     string
+}
+
+// Session is identity_sessions (M11.3, D-SessionTracking) — one row per NextAuth sign-in on the
+// admin app. Mutable, unlike ExternalIdentity: LastSeenAt is bumped on the request path (throttled,
+// see adapters.sessionTouchThrottle) and RevokedAt is set by RevokeSession.
+type Session struct {
+	ID          string
+	AccountID   string
+	Issuer      string
+	DeviceLabel string // best-effort User-Agent captured at sign-in; may be empty
+	CreatedAt   time.Time
+	LastSeenAt  time.Time
+	RevokedAt   *time.Time
 }

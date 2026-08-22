@@ -30,8 +30,9 @@ func TestHandleStripsSystemContextUnconditionally(t *testing.T) {
 	resolver := &fakeResolver{byIssuerSubject: map[[2]string]domain.Resolution{
 		{issuer, "sub-1"}: {PersonID: "p1", AccountID: "a1", Email: "a@example.com"},
 	}}
+	sessions := fakeSessionChecker{bySessionID: map[string]string{"sess-1": "a1"}}
 	auth := NewUnbound()
-	auth.Bind(validator, resolver, fakePersonDirectory{}, false)
+	auth.Bind(validator, resolver, fakePersonDirectory{}, sessions, false)
 
 	claims := jwt.MapClaims{"iss": issuer, "sub": "sub-1", "exp": time.Now().Add(time.Minute).Unix()}
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -41,6 +42,7 @@ func TestHandleStripsSystemContextUnconditionally(t *testing.T) {
 	}
 
 	req := newRequestWithAuth("Bearer " + signed)
+	req.Header.Set(SessionIDHeader, "sess-1")
 	// An attacker (or a bug elsewhere) cannot construct this marker directly — systemMarker/systemKey
 	// are unexported to this package's sibling internal/authz — but simulate the one way a system
 	// context COULD arrive on a request context: a caller that (wrongly) reused a background

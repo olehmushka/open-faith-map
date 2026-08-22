@@ -200,8 +200,9 @@ types:
         docs: >
           M11.2 — one append-only row of identity_audit_log. targetKind/targetId is an opaque
           discriminator+ref pair (mirrors Moderation's target_kind/target_ref) since targets span
-          role assignments, instance-admin grants, and accounts today, and will span sessions/persons
-          later. before/after are optional — absent for a create/delete side respectively.
+          role assignments, instance-admin grants, accounts, and (M11.3) sessions today, and will
+          span persons (M11.8 merge) later. before/after are optional — absent for a create/delete
+          side respectively.
         fields:
           id: string
           actorPersonId:
@@ -220,6 +221,31 @@ types:
         fields:
           entries: list<AuditLogEntry>
           nextPageToken: optional<string>
+
+      RegisterSessionRequest:
+        docs: >
+          M11.3 — issuer is deliberately NOT a field here: the backend records the caller's own
+          already-verified bearer issuer (authz.Subject.Issuer), not a client-supplied value.
+        fields:
+          deviceLabel: optional<string>
+      Session:
+        docs: >
+          M11.3 — one row of identity_sessions: a NextAuth sign-in the backend can revoke
+          independently of every other session on the same account (D-SessionTracking — the reason
+          this exists at all rather than reusing account-status-disable's all-or-nothing shape).
+        fields:
+          id: string
+          deviceLabel:
+            type: optional<string>
+            docs: Best-effort User-Agent captured at sign-in; absent if it couldn't be read.
+          createdAt: datetime
+          lastSeenAt: datetime
+          isCurrent:
+            type: boolean
+            docs: True for the one session the caller's own request is presently authenticated with.
+      SessionPage:
+        fields:
+          sessions: list<Session>
 
     errors:
       PersonNotFound:
@@ -279,6 +305,12 @@ types:
         namespace: Core
         code: INVALID_ARGUMENT
         safe-args: {}
+      SessionNotFound:
+        docs: M11.3 — sessionId doesn't exist, or belongs to a different person's/caller's account.
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          sessionId: string
 
 services:
   CoreService:
@@ -294,6 +326,29 @@ services:
       whoami:
         http: GET /whoami
         returns: Whoami
+
+      registerSession:
+        docs: >
+          M11.3 — creates the identity_sessions row backing a just-completed NextAuth sign-in.
+          Exempt from the per-request session-id check every other endpoint now requires
+          (internal/identity/middleware's sessionExemptRoutes) — this is what creates that row, so
+          it cannot itself require one to already exist.
+        http: POST /sessions
+        args:
+          request: RegisterSessionRequest
+        returns: Session
+      listMySessions:
+        docs: M11.3 — the caller's own active sessions, self-scoped.
+        http: GET /sessions
+        returns: SessionPage
+      revokeMySession:
+        docs: M11.3 — revokes one of the caller's own sessions, self-scoped.
+        http: DELETE /sessions/{sessionId}
+        args:
+          sessionId:
+            type: string
+            param-type: path
+
       getUnit:
         http: GET /units/{unitId}
         args:
@@ -459,6 +514,25 @@ services:
             type: string
             param-type: path
         returns: AccountStatus
+
+      listSessions:
+        docs: M11.3 — personId's active sessions, admin-scoped.
+        http: GET /persons/{personId}/sessions
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: SessionPage
+      revokeSession:
+        docs: M11.3 — revokes one of personId's sessions, admin-scoped.
+        http: DELETE /persons/{personId}/sessions/{sessionId}
+        args:
+          personId:
+            type: string
+            param-type: path
+          sessionId:
+            type: string
+            param-type: path
 
       listAuditLog:
         docs: >

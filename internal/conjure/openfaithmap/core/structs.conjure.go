@@ -30,7 +30,7 @@ func (o *AccountStatus) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// M11.2 — one append-only row of identity_audit_log. targetKind/targetId is an opaque discriminator+ref pair (mirrors Moderation's target_kind/target_ref) since targets span role assignments, instance-admin grants, and accounts today, and will span sessions/persons later. before/after are optional — absent for a create/delete side respectively.
+// M11.2 — one append-only row of identity_audit_log. targetKind/targetId is an opaque discriminator+ref pair (mirrors Moderation's target_kind/target_ref) since targets span role assignments, instance-admin grants, accounts, and (M11.3) sessions today, and will span persons (M11.8 merge) later. before/after are optional — absent for a create/delete side respectively.
 type AuditLogEntry struct {
 	Id string `json:"id"`
 	// Empty if the acting person was later deleted (the FK is ON DELETE SET NULL).
@@ -627,6 +627,27 @@ func (o *PersonPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M11.3 — issuer is deliberately NOT a field here: the backend records the caller's own already-verified bearer issuer (authz.Subject.Issuer), not a client-supplied value.
+type RegisterSessionRequest struct {
+	DeviceLabel *string `json:"deviceLabel,omitempty"`
+}
+
+func (o RegisterSessionRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *RegisterSessionRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Role struct {
 	Id          string  `json:"id"`
 	Code        string  `json:"code"`
@@ -753,6 +774,74 @@ func (o RolePage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *RolePage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.3 — one row of identity_sessions: a NextAuth sign-in the backend can revoke independently of every other session on the same account (D-SessionTracking — the reason this exists at all rather than reusing account-status-disable's all-or-nothing shape).
+type Session struct {
+	Id string `json:"id"`
+	// Best-effort User-Agent captured at sign-in; absent if it couldn't be read.
+	DeviceLabel *string           `json:"deviceLabel,omitempty"`
+	CreatedAt   datetime.DateTime `json:"createdAt"`
+	LastSeenAt  datetime.DateTime `json:"lastSeenAt"`
+	// True for the one session the caller's own request is presently authenticated with.
+	IsCurrent bool `json:"isCurrent"`
+}
+
+func (o Session) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Session) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type SessionPage struct {
+	Sessions []Session `json:"sessions"`
+}
+
+func (o SessionPage) MarshalJSON() ([]byte, error) {
+	if o.Sessions == nil {
+		o.Sessions = make([]Session, 0)
+	}
+	type _tmpSessionPage SessionPage
+	return safejson.Marshal(_tmpSessionPage(o))
+}
+
+func (o *SessionPage) UnmarshalJSON(data []byte) error {
+	type _tmpSessionPage SessionPage
+	var rawSessionPage _tmpSessionPage
+	if err := safejson.Unmarshal(data, &rawSessionPage); err != nil {
+		return err
+	}
+	if rawSessionPage.Sessions == nil {
+		rawSessionPage.Sessions = make([]Session, 0)
+	}
+	*o = SessionPage(rawSessionPage)
+	return nil
+}
+
+func (o SessionPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SessionPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

@@ -18,8 +18,15 @@
 // one-hour mark. access_type/prompt below force Google to issue a refresh_token on every sign-in
 // (Google otherwise only grants one on first consent), and the jwt callback refreshes the ID token
 // once its own expiry is close, on every subsequent call.
+//
+// M11.3 (D-SessionTracking): the Google ID token above is signed by Google, so a custom sessionId
+// claim can't be injected into it — the backend never even sees this file's own JWT (its encrypted
+// session cookie), only the forwarded ID token. So sessionId here travels separately: stamped onto
+// THIS cookie JWT at sign-in, then sent as its own X-Session-Id header on every API call
+// (lib/core.ts's client()), alongside — not instead of — the existing bearer.
 import NextAuth, { type DefaultSession } from "next-auth";
 import Google from "next-auth/providers/google";
+import { headers } from "next/headers";
 
 declare module "next-auth" {
   interface Session {
@@ -27,6 +34,8 @@ declare module "next-auth" {
     idToken?: string;
     /** Set when the refresh attempt itself failed — the session should be treated as ended. */
     error?: "RefreshTokenError";
+    /** This browser session's own identity_sessions row id (M11.3) — sent as X-Session-Id. */
+    sessionId?: string;
     user: DefaultSession["user"];
   }
 }
@@ -38,6 +47,17 @@ declare module "@auth/core/jwt" {
     /** ID token expiry, epoch seconds. */
     expiresAt?: number;
     error?: "RefreshTokenError";
+    /** M11.3 — set once, at initial sign-in; never rotated on refresh. */
+    sessionId?: string;
+  }
+}
+
+/** Best-effort User-Agent for identity_sessions.device_label — never throws. */
+async function currentUserAgent(): Promise<string | undefined> {
+  try {
+    return (await headers()).get("user-agent") ?? undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -56,6 +76,27 @@ async function refreshIdToken(refreshToken: string) {
   const body = await res.json();
   if (!res.ok) throw new Error(`refresh failed: ${res.status} ${JSON.stringify(body)}`);
   return body as { id_token: string; expires_in: number; refresh_token?: string };
+}
+
+/**
+ * Creates the identity_sessions row backing this sign-in (M11.3, CoreService.registerSession) and
+ * returns its id. Called via a raw fetch, not lib/core.ts's client() — that helper itself calls
+ * auth() to read the very session being constructed here, which would be circular. Throws on any
+ * failure: a sign-in this app can't register a session for would 401 on every subsequent API call
+ * anyway, so failing the sign-in itself (matching refreshIdToken's own throw-on-failure contract
+ * above) is preferable to silently minting a session nothing can use.
+ */
+async function registerSessionOnBackend(idToken: string): Promise<string> {
+  const baseUrl = process.env.OPENFAITHMAP_API_BASE_URL?.trim().replace(/\/+$/, "");
+  if (!baseUrl) throw new Error("OPENFAITHMAP_API_BASE_URL is not set.");
+  const res = await fetch(`${baseUrl}/core/v1/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({ deviceLabel: await currentUserAgent() }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(`registerSession failed: ${res.status} ${JSON.stringify(body)}`);
+  return (body as { id: string }).id;
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -77,6 +118,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.idToken = account.id_token;
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at; // epoch seconds, from Google's id_token exp claim
+        // M11.3: register the backing identity_sessions row now, before this token is ever used as
+        // a bearer — every other endpoint requires a valid X-Session-Id from the first call on.
+        if (account.id_token) {
+          token.sessionId = await registerSessionOnBackend(account.id_token);
+        }
         return token;
       }
 
@@ -104,6 +150,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async session({ session, token }) {
       session.idToken = token.idToken;
       session.error = token.error;
+      session.sessionId = token.sessionId;
       return session;
     },
   },

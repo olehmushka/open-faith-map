@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Proves M11.2's own stated goal — "the log has no blind spot from day one" — against a real
-// Postgres instance: every one of core.application.Service's six mutating super-admin methods
+// Postgres instance: every one of core.application.Service's mutating super-admin methods
 // (GrantUnitRole, RevokeRoleAssignment, GrantInstanceAdmin, RevokeInstanceAdmin, DeactivateAccount,
-// ReactivateAccount) writes exactly one identity_audit_log row with the expected actor/action/
-// target/before/after shape. See internal/authz/authz_integration_test.go's own header comment for
-// the invocation:
+// ReactivateAccount, and M11.3's RevokeSession) writes exactly one identity_audit_log row with the
+// expected actor/action/target/before/after shape. See internal/authz/authz_integration_test.go's
+// own header comment for the invocation:
 //
 //	DATABASE_URL="postgres://openfaithmap:dev@localhost:5432/postgres?sslmode=disable" \
 //	  go test ./internal/core/... -run TestSuperAdminAuditTrailIntegration -v
@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-
 	auditlogadapters "github.com/olehmushka/open-faith-map/internal/auditlog/adapters"
 	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	"github.com/olehmushka/open-faith-map/internal/authz"
@@ -128,6 +127,12 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 		VALUES ($1, 'm11-2-target@example.test') RETURNING id`, targetID).Scan(&targetAccountID); err != nil {
 		t.Fatalf("insert target account: %v", err)
 	}
+	var targetSessionID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_sessions (account_id, issuer)
+		VALUES ($1, 'urn:test:m11-3-audit-issuer') RETURNING id`, targetAccountID).Scan(&targetSessionID); err != nil {
+		t.Fatalf("insert target session: %v", err)
+	}
 
 	roles, err := authzSvc.ListRoles(ctx)
 	if err != nil {
@@ -230,13 +235,29 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	assertJSONField(t, row.before, "status", "disabled")
 	assertJSONField(t, row.after, "status", "active")
 
+	// --- RevokeSession (M11.3).
+	if err := coreApp.RevokeSession(actorCtx, targetID, targetSessionID); err != nil {
+		t.Fatalf("RevokeSession: %v", err)
+	}
+	row = mustAuditRow(ctx, t, pool, "REVOKE_SESSION", targetSessionID)
+	if row.actorPersonID != actorID || row.targetKind != "SESSION" {
+		t.Errorf("REVOKE_SESSION audit row = %+v, want actor=%s target_kind=SESSION", row, actorID)
+	}
+	var revokedAt *string
+	if err := pool.QueryRow(ctx, `SELECT revoked_at::text FROM openfaithmap.identity_sessions WHERE id = $1`, targetSessionID).Scan(&revokedAt); err != nil {
+		t.Fatalf("read back session revoked_at: %v", err)
+	}
+	if revokedAt == nil {
+		t.Error("session revoked_at is still NULL after RevokeSession")
+	}
+
 	// --- ListAuditLog itself: every action above must be visible, filterable by actor.
 	entries, err := coreApp.ListAuditLog(actorCtx, coreapplication.AuditLogFilter{ActorPersonID: actorID}, 100, nil)
 	if err != nil {
 		t.Fatalf("ListAuditLog: %v", err)
 	}
-	if len(entries) != 6 {
-		t.Errorf("ListAuditLog(actor=%s) returned %d entries, want 6 (one per mutation above)", actorID, len(entries))
+	if len(entries) != 7 {
+		t.Errorf("ListAuditLog(actor=%s) returned %d entries, want 7 (one per mutation above)", actorID, len(entries))
 	}
 }
 

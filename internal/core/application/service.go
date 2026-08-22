@@ -15,6 +15,8 @@ import (
 	"context"
 	"time"
 
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
+	auditlogdomain "github.com/olehmushka/open-faith-map/internal/auditlog/domain"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
 	directoryapplication "github.com/olehmushka/open-faith-map/internal/directory/application"
@@ -27,9 +29,6 @@ import (
 	refdatadomain "github.com/olehmushka/open-faith-map/internal/refdata/domain"
 	religionapplication "github.com/olehmushka/open-faith-map/internal/religion/application"
 	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
-
-	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
-	auditlogdomain "github.com/olehmushka/open-faith-map/internal/auditlog/domain"
 )
 
 type Service struct {
@@ -210,10 +209,12 @@ const (
 	auditActionRevokeInstanceAdmin  = "REVOKE_INSTANCE_ADMIN"
 	auditActionDeactivateAccount    = "DEACTIVATE_ACCOUNT"
 	auditActionReactivateAccount    = "REACTIVATE_ACCOUNT"
+	auditActionRevokeSession        = "REVOKE_SESSION"
 
 	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
 	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
 	auditTargetAccount        = "ACCOUNT"
+	auditTargetSession        = "SESSION"
 )
 
 func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string) error {
@@ -342,6 +343,68 @@ func (s *Service) ReactivateAccount(ctx context.Context, personID string) (Accou
 		return AccountStatus{}, err
 	}
 	return AccountStatus{PersonID: personID, Status: account.Status}, nil
+}
+
+// ---------------------------------------------------------------- sessions (M11.3, D-SessionTracking)
+
+// RegisterSession creates the identity_sessions row backing a just-completed NextAuth sign-in.
+// Self-scoped (the caller registers their own session, never someone else's) and deliberately NOT
+// audit-logged — a sign-in is not an admin action, and internal/identity/middleware's
+// sessionExemptRoutes lets this one request through without a session id of its own to present
+// (there being nothing yet to present). The issuer is read off the caller's own verified bearer
+// (subject.Issuer), not a client-supplied request field — the middleware already established it.
+func (s *Service) RegisterSession(ctx context.Context, deviceLabel string) (identitydomain.Session, error) {
+	subject, ok := authz.SubjectFromContext(ctx)
+	if !ok || subject.AccountID == "" {
+		return identitydomain.Session{}, authzdomain.ErrPermissionDenied
+	}
+	return s.identity.RegisterSession(ctx, subject.AccountID, subject.Issuer, deviceLabel)
+}
+
+// ListSessions returns personID's active sessions (admin-scoped) — CoreSuperAdminService.listSessions.
+func (s *Service) ListSessions(ctx context.Context, personID string) ([]identitydomain.Session, error) {
+	return s.identity.ListSessions(ctx, personID)
+}
+
+// RevokeSession revokes one of personID's sessions (admin-scoped) — CoreSuperAdminService.revokeSession.
+func (s *Service) RevokeSession(ctx context.Context, personID, sessionID string) error {
+	if _, err := s.requireSubject(ctx); err != nil {
+		return err
+	}
+	before, err := s.identity.RevokeSession(ctx, personID, sessionID)
+	if err != nil {
+		return err
+	}
+	return s.auditLog.Record(ctx, auditActionRevokeSession, auditTargetSession, sessionID,
+		map[string]any{"revokedAt": nil}, map[string]any{"revokedAt": before.RevokedAt})
+}
+
+// ListMySessions returns the caller's own active sessions (self-scoped) — CoreService.listMySessions.
+func (s *Service) ListMySessions(ctx context.Context) ([]identitydomain.Session, error) {
+	subject, ok := authz.SubjectFromContext(ctx)
+	if !ok || subject.AccountID == "" {
+		return nil, authzdomain.ErrPermissionDenied
+	}
+	return s.identity.ListMySessions(ctx, subject.AccountID)
+}
+
+// RevokeMySession revokes one of the caller's own sessions (self-scoped) —
+// CoreService.revokeMySession. Still audit-logged (M11.2: every mutation this arc adds is, whether
+// admin- or self-initiated) — the actor and target happen to be the same person here.
+func (s *Service) RevokeMySession(ctx context.Context, sessionID string) error {
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return err
+	}
+	if subject.AccountID == "" {
+		return authzdomain.ErrPermissionDenied
+	}
+	before, err := s.identity.RevokeMySession(ctx, subject.AccountID, sessionID)
+	if err != nil {
+		return err
+	}
+	return s.auditLog.Record(ctx, auditActionRevokeSession, auditTargetSession, sessionID,
+		map[string]any{"revokedAt": nil}, map[string]any{"revokedAt": before.RevokedAt})
 }
 
 // AuditLogFilter narrows ListAuditLog by actor/target/date — every field optional, ANDed together

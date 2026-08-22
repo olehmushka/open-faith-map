@@ -15,10 +15,9 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/olehmushka/open-faith-map/internal/auditlog/domain"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
-
-	"github.com/olehmushka/open-faith-map/internal/auditlog/domain"
 )
 
 type Store interface {

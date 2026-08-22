@@ -7,6 +7,7 @@ import { IInstanceAdminPage } from "./instanceAdminPage";
 import { IPersonPage } from "./personPage";
 import { IRoleAssignmentPage } from "./roleAssignmentPage";
 import { IRolePage } from "./rolePage";
+import { ISessionPage } from "./sessionPage";
 import type { IHttpApiBridge } from "conjure-client";
 
 /** Constant reference to `undefined` that we expect to get minified and therefore reduce total code size */
@@ -31,6 +32,10 @@ export interface ICoreSuperAdminService {
     deactivateAccount(personId: string): Promise<IAccountStatus>;
     /** M11.1 — reverses deactivateAccount. Idempotent. */
     reactivateAccount(personId: string): Promise<IAccountStatus>;
+    /** M11.3 — personId's active sessions, admin-scoped. */
+    listSessions(personId: string): Promise<ISessionPage>;
+    /** M11.3 — revokes one of personId's sessions, admin-scoped. */
+    revokeSession(personId: string, sessionId: string): Promise<void>;
     /**
      * M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
      *
@@ -219,6 +224,43 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
             __undefined,
             [
                 personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.3 — personId's active sessions, admin-scoped. */
+    public listSessions(personId: string): Promise<ISessionPage> {
+        return this.bridge.call<ISessionPage>(
+            "CoreSuperAdminService",
+            "listSessions",
+            "GET",
+            "/core/v1/super-admin/persons/{personId}/sessions",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.3 — revokes one of personId's sessions, admin-scoped. */
+    public revokeSession(personId: string, sessionId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "CoreSuperAdminService",
+            "revokeSession",
+            "DELETE",
+            "/core/v1/super-admin/persons/{personId}/sessions/{sessionId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                sessionId,
             ],
             __undefined,
             __undefined

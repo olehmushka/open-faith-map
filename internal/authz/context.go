@@ -20,6 +20,15 @@ type Subject struct {
 	PersonID  string
 	AccountID string
 	Email     string
+	// SessionID is the caller's own identity_sessions row id (M11.3, D-SessionTracking) — set by
+	// the identity middleware from the request's X-Session-Id header once validated. Lets a
+	// self-scoped session list mark/disable-revoke on the session the caller is presently using
+	// without a second header read anywhere downstream.
+	SessionID string
+	// Issuer is the verified bearer's `iss` claim — set by the identity middleware alongside
+	// SessionID. RegisterSession (M11.3) records this on the new identity_sessions row server-side,
+	// rather than trusting a client-supplied issuer field on the request.
+	Issuer string
 }
 
 type ctxKey struct{}

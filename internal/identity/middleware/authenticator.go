@@ -34,6 +34,14 @@ type PersonDirectory interface {
 	PersonIDByCode(ctx context.Context, code string) (string, bool, error)
 }
 
+// SessionChecker validates an X-Session-Id header value (M11.3, D-SessionTracking): present,
+// unrevoked, and touched (last_seen_at bumped, throttled — see adapters.sessionTouchThrottle).
+// Returns the session's account id so Handle can cross-check it against the bearer-resolved
+// account. internal/identity/application.Service satisfies it.
+type SessionChecker interface {
+	Touch(ctx context.Context, sessionID string) (accountID string, err error)
+}
+
 // Authenticator is the inbound-token validation middleware, matching wrouter's
 // RequestHandlerMiddleware signature exactly. It supports late binding: the composition root
 // registers Handle on the server before Start, then Binds the validator + resolver once the DB pool
@@ -47,6 +55,7 @@ type bound struct {
 	validator  *Validator
 	resolver   Resolver
 	persons    PersonDirectory
+	sessions   SessionChecker
 	jitEnabled bool
 	jitMatch   string // JITMatchCode | JITMatchAccountEmail; read off the validator, not a Bind arg
 }
@@ -54,13 +63,13 @@ type bound struct {
 // NewUnbound builds an Authenticator whose validator/resolver are wired later via Bind.
 func NewUnbound() *Authenticator { return &Authenticator{} }
 
-// Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), and the
-// JIT-enabled flag. Called once at boot.
-func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, jitEnabled bool) {
+// Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), the
+// session checker (M11.3), and the JIT-enabled flag. Called once at boot.
+func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, sessions SessionChecker, jitEnabled bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.bound = &bound{
-		validator: validator, resolver: resolver, persons: persons, jitEnabled: jitEnabled,
+		validator: validator, resolver: resolver, persons: persons, sessions: sessions, jitEnabled: jitEnabled,
 		jitMatch: validator.JITMatch(),
 	}
 }
@@ -119,7 +128,31 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		unauthorized(rw)
 		return
 	}
-	ctx := authz.NewContext(r.Context(), authz.Subject{PersonID: res.PersonID, AccountID: res.AccountID, Email: res.Email})
+
+	// M11.3, D-SessionTracking: a valid, unrevoked session id must accompany the bearer on every
+	// authenticated request — except registerSession itself (sessionExemptRoutes), which is what
+	// CREATES the row a session id would otherwise need to already exist. No issuer-based carve-out:
+	// this applies to dev/local-issuer tokens the same as real Google ID tokens (confirmed decision,
+	// docs/milestones.md's M11.3 row) — cmd/openfaithmap-api/authorization_matrix_test.go and
+	// scripts/mint-local-token both insert a real identity_sessions row for every token they mint.
+	var sessionID string
+	if !isSessionExemptPath(r.Method, r.URL.Path) {
+		sessionID = r.Header.Get(SessionIDHeader)
+		if sessionID == "" {
+			unauthorized(rw)
+			return
+		}
+		sessAccountID, err := b.sessions.Touch(r.Context(), sessionID)
+		if err != nil || sessAccountID != res.AccountID {
+			unauthorized(rw)
+			return
+		}
+	}
+
+	ctx := authz.NewContext(r.Context(), authz.Subject{
+		PersonID: res.PersonID, AccountID: res.AccountID, Email: res.Email,
+		SessionID: sessionID, Issuer: claims.Issuer,
+	})
 	next.ServeHTTP(rw, r.WithContext(ctx))
 }
 
@@ -202,6 +235,32 @@ var anonymousRoutes = []anonymousRoute{
 	{http.MethodGet, "/discovery/v1/search"},
 	{http.MethodPost, "/moderation/v1/reports"},
 	{http.MethodPost, "/moderation/v1/exclusion-check"},
+}
+
+// SessionIDHeader carries the NextAuth-issued session id (M11.3, D-SessionTracking) — a separate
+// signal from the Authorization bearer, since the bearer is Google's own signed ID token and cannot
+// carry a custom claim NextAuth controls. See web/apps/admin/lib/core.ts's client() for the sender
+// side.
+const SessionIDHeader = "X-Session-Id"
+
+// sessionExemptRoutes is the one endpoint allowed to skip the session-presence check every other
+// authenticated request now goes through: registerSession creates the very identity_sessions row a
+// session id would otherwise need to already exist, so requiring one here would make it
+// unreachable. Still requires a fully valid bearer — only the NEW session check is skipped, not
+// authentication itself (unlike anonymousRoutes/isBypassPath above, which skip both).
+var sessionExemptRoutes = []anonymousRoute{
+	{http.MethodPost, "/core/v1/sessions"},
+}
+
+// isSessionExemptPath reports whether (method, path) is exempt from the per-request session-id
+// check (sessionExemptRoutes) — not from authentication itself.
+func isSessionExemptPath(method, path string) bool {
+	for _, r := range sessionExemptRoutes {
+		if r.method == method && r.path == path {
+			return true
+		}
+	}
+	return false
 }
 
 // isBypassPath reports whether (method, path) belongs to either the management/diagnostic surface

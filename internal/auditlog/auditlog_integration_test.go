@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/olehmushka/open-faith-map/internal/auditlog/adapters"
 	"github.com/olehmushka/open-faith-map/internal/auditlog/domain"
 )

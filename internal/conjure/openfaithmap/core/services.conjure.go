@@ -17,6 +17,12 @@ import (
 // The admin app's session-gated reads over the in-process core (units, taxa, countries, org kinds/profiles, memberships, persons) plus its one gated write, createChildOrg. See file header for exactly which endpoints carry an authorization gate beyond the session itself.
 type CoreServiceClient interface {
 	Whoami(ctx context.Context, authHeader bearertoken.Token) (Whoami, error)
+	// M11.3 — creates the identity_sessions row backing a just-completed NextAuth sign-in. Exempt from the per-request session-id check every other endpoint now requires (internal/identity/middleware's sessionExemptRoutes) — this is what creates that row, so it cannot itself require one to already exist.
+	RegisterSession(ctx context.Context, authHeader bearertoken.Token, requestArg RegisterSessionRequest) (Session, error)
+	// M11.3 — the caller's own active sessions, self-scoped.
+	ListMySessions(ctx context.Context, authHeader bearertoken.Token) (SessionPage, error)
+	// M11.3 — revokes one of the caller's own sessions, self-scoped.
+	RevokeMySession(ctx context.Context, authHeader bearertoken.Token, sessionIdArg string) error
 	GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
@@ -58,6 +64,53 @@ func (c *coreServiceClient) Whoami(ctx context.Context, authHeader bearertoken.T
 		return *new(Whoami), werror.ErrorWithContextParams(ctx, "whoami response cannot be nil")
 	}
 	return *returnVal, nil
+}
+
+func (c *coreServiceClient) RegisterSession(ctx context.Context, authHeader bearertoken.Token, requestArg RegisterSessionRequest) (Session, error) {
+	var returnVal *Session
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RegisterSession"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/sessions"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Session), werror.WrapWithContextParams(ctx, err, "registerSession failed")
+	}
+	if returnVal == nil {
+		return *new(Session), werror.ErrorWithContextParams(ctx, "registerSession response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) ListMySessions(ctx context.Context, authHeader bearertoken.Token) (SessionPage, error) {
+	var returnVal *SessionPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListMySessions"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/sessions"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(SessionPage), werror.WrapWithContextParams(ctx, err, "listMySessions failed")
+	}
+	if returnVal == nil {
+		return *new(SessionPage), werror.ErrorWithContextParams(ctx, "listMySessions response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) RevokeMySession(ctx context.Context, authHeader bearertoken.Token, sessionIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokeMySession"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/sessions/%s", url.PathEscape(fmt.Sprint(sessionIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "revokeMySession failed")
+	}
+	return nil
 }
 
 func (c *coreServiceClient) GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error) {
@@ -285,6 +338,12 @@ func (c *coreServiceClient) GetPersons(ctx context.Context, authHeader bearertok
 // The admin app's session-gated reads over the in-process core (units, taxa, countries, org kinds/profiles, memberships, persons) plus its one gated write, createChildOrg. See file header for exactly which endpoints carry an authorization gate beyond the session itself.
 type CoreServiceClientWithAuth interface {
 	Whoami(ctx context.Context) (Whoami, error)
+	// M11.3 — creates the identity_sessions row backing a just-completed NextAuth sign-in. Exempt from the per-request session-id check every other endpoint now requires (internal/identity/middleware's sessionExemptRoutes) — this is what creates that row, so it cannot itself require one to already exist.
+	RegisterSession(ctx context.Context, requestArg RegisterSessionRequest) (Session, error)
+	// M11.3 — the caller's own active sessions, self-scoped.
+	ListMySessions(ctx context.Context) (SessionPage, error)
+	// M11.3 — revokes one of the caller's own sessions, self-scoped.
+	RevokeMySession(ctx context.Context, sessionIdArg string) error
 	GetUnit(ctx context.Context, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, queryArg *string, limitArg *int) (UnitPage, error)
@@ -314,6 +373,18 @@ type coreServiceClientWithAuth struct {
 
 func (c *coreServiceClientWithAuth) Whoami(ctx context.Context) (Whoami, error) {
 	return c.client.Whoami(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) RegisterSession(ctx context.Context, requestArg RegisterSessionRequest) (Session, error) {
+	return c.client.RegisterSession(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) ListMySessions(ctx context.Context) (SessionPage, error) {
+	return c.client.ListMySessions(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) RevokeMySession(ctx context.Context, sessionIdArg string) error {
+	return c.client.RevokeMySession(ctx, c.authHeader, sessionIdArg)
 }
 
 func (c *coreServiceClientWithAuth) GetUnit(ctx context.Context, unitIdArg string) (Unit, error) {
@@ -379,6 +450,30 @@ func (c *coreServiceClientWithTokenProvider) Whoami(ctx context.Context) (Whoami
 		return *new(Whoami), err
 	}
 	return c.client.Whoami(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) RegisterSession(ctx context.Context, requestArg RegisterSessionRequest) (Session, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Session), err
+	}
+	return c.client.RegisterSession(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) ListMySessions(ctx context.Context) (SessionPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(SessionPage), err
+	}
+	return c.client.ListMySessions(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) RevokeMySession(ctx context.Context, sessionIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.RevokeMySession(ctx, bearertoken.Token(token), sessionIdArg)
 }
 
 func (c *coreServiceClientWithTokenProvider) GetUnit(ctx context.Context, unitIdArg string) (Unit, error) {
@@ -493,6 +588,10 @@ type CoreSuperAdminServiceClient interface {
 	DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
 	// M11.1 — reverses deactivateAccount. Idempotent.
 	ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.3 — personId's active sessions, admin-scoped.
+	ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error)
+	// M11.3 — revokes one of personId's sessions, admin-scoped.
+	RevokeSession(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sessionIdArg string) error
 	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
 	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 }
@@ -687,6 +786,35 @@ func (c *coreSuperAdminServiceClient) ReactivateAccount(ctx context.Context, aut
 	return *returnVal, nil
 }
 
+func (c *coreSuperAdminServiceClient) ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error) {
+	var returnVal *SessionPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListSessions"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/sessions", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(SessionPage), werror.WrapWithContextParams(ctx, err, "listSessions failed")
+	}
+	if returnVal == nil {
+		return *new(SessionPage), werror.ErrorWithContextParams(ctx, "listSessions response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) RevokeSession(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sessionIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokeSession"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/sessions/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(sessionIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "revokeSession failed")
+	}
+	return nil
+}
+
 func (c *coreSuperAdminServiceClient) ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
 	var returnVal *AuditLogPage
 	var requestParams []httpclient.RequestParam
@@ -743,6 +871,10 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	DeactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
 	// M11.1 — reverses deactivateAccount. Idempotent.
 	ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
+	// M11.3 — personId's active sessions, admin-scoped.
+	ListSessions(ctx context.Context, personIdArg string) (SessionPage, error)
+	// M11.3 — revokes one of personId's sessions, admin-scoped.
+	RevokeSession(ctx context.Context, personIdArg string, sessionIdArg string) error
 	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
 	ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 }
@@ -798,6 +930,14 @@ func (c *coreSuperAdminServiceClientWithAuth) DeactivateAccount(ctx context.Cont
 
 func (c *coreSuperAdminServiceClientWithAuth) ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
 	return c.client.ReactivateAccount(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ListSessions(ctx context.Context, personIdArg string) (SessionPage, error) {
+	return c.client.ListSessions(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) RevokeSession(ctx context.Context, personIdArg string, sessionIdArg string) error {
+	return c.client.RevokeSession(ctx, c.authHeader, personIdArg, sessionIdArg)
 }
 
 func (c *coreSuperAdminServiceClientWithAuth) ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
@@ -899,6 +1039,22 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) ReactivateAccount(ctx con
 		return *new(AccountStatus), err
 	}
 	return c.client.ReactivateAccount(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ListSessions(ctx context.Context, personIdArg string) (SessionPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(SessionPage), err
+	}
+	return c.client.ListSessions(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeSession(ctx context.Context, personIdArg string, sessionIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.RevokeSession(ctx, bearertoken.Token(token), personIdArg, sessionIdArg)
 }
 
 func (c *coreSuperAdminServiceClientWithTokenProvider) ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {

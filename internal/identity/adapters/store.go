@@ -8,10 +8,17 @@ package adapters
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/olehmushka/open-faith-map/internal/identity/domain"
 )
+
+// sessionTouchThrottle is TouchSession's minimum interval between last_seen_at writes — M11.3's
+// build-time decision to keep the per-request session check off the write hot path (see
+// docs/milestones.md's M11.3 row and D-SessionTracking's Consequences). Not configurable: no
+// existing precedent in this codebase for exposing this class of tuning knob as an env var.
+const sessionTouchThrottle = 60 * time.Second
 
 // Querier is satisfied by both *pgxpool.Pool and pgx.Tx, so a Store can be bound either to the pool
 // for normal request-scoped calls or to a single pgx.Tx for the boot-time admin seed's atomic
@@ -208,4 +215,98 @@ func (s *Store) InsertIdentity(ctx context.Context, accountID, issuer, subject s
 		return domain.ExternalIdentity{}, err
 	}
 	return domain.ExternalIdentity{ID: id, AccountID: accountID, Issuer: issuer, Subject: subject}, nil
+}
+
+// InsertSession creates a new identity_sessions row (M11.3) — one per NextAuth sign-in. deviceLabel
+// is best-effort (User-Agent captured at sign-in) and may be empty.
+func (s *Store) InsertSession(ctx context.Context, accountID, issuer, deviceLabel string) (domain.Session, error) {
+	var deviceLabelArg any
+	if deviceLabel != "" {
+		deviceLabelArg = deviceLabel
+	}
+	return s.scanSession(s.pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_sessions (account_id, issuer, device_label)
+		VALUES ($1, $2, $3)
+		RETURNING id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at`,
+		accountID, issuer, deviceLabelArg))
+}
+
+// GetSession reads a single session by id, revoked or not — callers that care whether it's usable
+// check the returned Session.RevokedAt themselves (same convention GetActiveAccountByPerson uses
+// for Account.Status).
+func (s *Store) GetSession(ctx context.Context, sessionID string) (domain.Session, error) {
+	return s.scanSession(s.pool.QueryRow(ctx, `
+		SELECT id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at
+		FROM openfaithmap.identity_sessions
+		WHERE id = $1`, sessionID))
+}
+
+// ListActiveSessionsByAccount returns accountID's not-yet-revoked sessions, most recently active
+// first — backs application.Service.ListSessions/ListMySessions.
+func (s *Store) ListActiveSessionsByAccount(ctx context.Context, accountID string) ([]domain.Session, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at
+		FROM openfaithmap.identity_sessions
+		WHERE account_id = $1 AND revoked_at IS NULL
+		ORDER BY last_seen_at DESC`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Session
+	for rows.Next() {
+		sess, err := s.scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, sess)
+	}
+	return out, rows.Err()
+}
+
+// TouchSession validates sessionID (ErrSessionNotFound / ErrSessionRevoked) and, on the happy path,
+// bumps last_seen_at — but only when the existing value is more than sessionTouchThrottle stale, so
+// a burst of requests from one still-fresh session costs one read, not one write, per request. This
+// backs the per-request check in internal/identity/middleware.Authenticator.Handle.
+func (s *Store) TouchSession(ctx context.Context, sessionID string) (domain.Session, error) {
+	sess, err := s.GetSession(ctx, sessionID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if sess.RevokedAt != nil {
+		return sess, domain.ErrSessionRevoked
+	}
+	if time.Since(sess.LastSeenAt) <= sessionTouchThrottle {
+		return sess, nil
+	}
+	return s.scanSession(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_sessions
+		SET last_seen_at = now()
+		WHERE id = $1
+		RETURNING id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at`, sessionID))
+}
+
+// RevokeSession sets revoked_at. Idempotent: revoking an already-revoked session is a no-op that
+// still returns the current row (matching SetAccountStatus's own idempotency).
+func (s *Store) RevokeSession(ctx context.Context, sessionID string) (domain.Session, error) {
+	return s.scanSession(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_sessions
+		SET revoked_at = COALESCE(revoked_at, now())
+		WHERE id = $1
+		RETURNING id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at`, sessionID))
+}
+
+func (s *Store) scanSession(row pgx.Row) (domain.Session, error) {
+	var sess domain.Session
+	var deviceLabel *string
+	if err := row.Scan(&sess.ID, &sess.AccountID, &sess.Issuer, &deviceLabel, &sess.CreatedAt, &sess.LastSeenAt, &sess.RevokedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Session{}, domain.ErrSessionNotFound
+		}
+		return domain.Session{}, err
+	}
+	if deviceLabel != nil {
+		sess.DeviceLabel = *deviceLabel
+	}
+	return sess, nil
 }

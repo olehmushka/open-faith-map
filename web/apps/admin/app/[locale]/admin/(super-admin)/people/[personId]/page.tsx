@@ -8,8 +8,10 @@ import {
   grantUnitRole,
   listInstanceAdmins,
   listRoles,
+  listSessions,
   reactivateAccount,
   revokeInstanceAdmin,
+  revokeSession,
 } from "@/lib/core";
 import { redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
@@ -29,11 +31,12 @@ export default async function SuperAdminPersonPage({
   const { locale, personId } = await params;
   const t = await getTranslations("SuperAdminPersonPage");
 
-  const [person, instanceAdmins, roles, accountStatus] = await Promise.all([
+  const [person, instanceAdmins, roles, accountStatus, sessions] = await Promise.all([
     getPerson(personId),
     listInstanceAdmins(),
     listRoles(),
     getAccountStatus(personId),
+    listSessions(personId),
   ]);
   const instanceAdminGrant = instanceAdmins.find((a) => a.personId === personId);
 
@@ -54,6 +57,12 @@ export default async function SuperAdminPersonPage({
     } else {
       await reactivateAccount(personId);
     }
+    redirect({ href: `/admin/people/${personId}`, locale });
+  }
+
+  async function revokeSessionAction(formData: FormData) {
+    "use server";
+    await revokeSession(personId, String(formData.get("sessionId")));
     redirect({ href: `/admin/people/${personId}`, locale });
   }
 
@@ -96,6 +105,34 @@ export default async function SuperAdminPersonPage({
                 </Button>
               </form>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("sessionsHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {sessions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("noSessions")}</p>
+          ) : (
+            sessions.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-4">
+                <p className="text-sm text-muted-foreground">
+                  {t("sessionLastActive", {
+                    device: s.deviceLabel ?? t("sessionDeviceUnknown"),
+                    date: new Date(s.lastSeenAt).toLocaleString(locale),
+                  })}
+                </p>
+                <form action={revokeSessionAction}>
+                  <input type="hidden" name="sessionId" value={s.id} />
+                  <Button type="submit" variant="destructive" size="sm">
+                    {t("revokeSession")}
+                  </Button>
+                </form>
+              </div>
+            ))
           )}
         </CardContent>
       </Card>

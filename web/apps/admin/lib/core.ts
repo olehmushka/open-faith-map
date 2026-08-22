@@ -29,6 +29,7 @@ import type {
   IPerson,
   IRole,
   IRoleAssignment,
+  ISession,
   ITaxon,
   IUnit,
   IUnitRef,
@@ -51,6 +52,7 @@ export type AccountStatus = IAccountStatus;
 export type CreateChildOrgInput = ICreateChildOrgRequest;
 export type AuditLogEntry = IAuditLogEntry;
 export type AuditLogPage = IAuditLogPage;
+export type Session = ISession;
 
 export class CoreApiError extends Error {
   constructor(
@@ -75,6 +77,14 @@ async function client() {
   return createOpenFaithMapClient({
     baseUrl: requireBaseUrl(),
     token: session?.idToken,
+    // M11.3, D-SessionTracking: the bearer above is Google's own signed ID token, which can't carry
+    // a custom sessionId claim — session.sessionId (stamped by auth.ts's jwt() callback at sign-in)
+    // travels instead as its own header, alongside the bearer, checked by the identity middleware's
+    // per-request session lookup (internal/identity/middleware.Authenticator.Handle).
+    fetch: session?.sessionId
+      ? (url, init) =>
+          fetch(url, { ...init, headers: { ...init?.headers, "X-Session-Id": session.sessionId! } })
+      : undefined,
   });
 }
 
@@ -155,6 +165,21 @@ export async function getPersons(personIds: string[]): Promise<Person[]> {
   return page.persons;
 }
 
+/**
+ * M11.3 — the caller's own active sessions, self-scoped. registerSession itself has no wrapper
+ * here — it's called directly from auth.ts's jwt() callback, before a session exists to build this
+ * file's own client() with (see registerSessionOnBackend there).
+ */
+export async function listMySessions(): Promise<Session[]> {
+  const page = await unwrap((await client()).core.listMySessions());
+  return page.sessions;
+}
+
+/** M11.3 — revokes one of the caller's own sessions, self-scoped. */
+export async function revokeMySession(sessionId: string): Promise<void> {
+  return unwrap((await client()).core.revokeMySession(sessionId));
+}
+
 // ---- super-admin (gated server-side by RequireInstanceAdmin) ----
 
 export async function searchPersons(query?: string, limit = 50): Promise<Person[]> {
@@ -203,6 +228,17 @@ export async function deactivateAccount(personId: string): Promise<AccountStatus
 
 export async function reactivateAccount(personId: string): Promise<AccountStatus> {
   return unwrap((await client()).coreSuperAdmin.reactivateAccount(personId));
+}
+
+/** M11.3 — personId's active sessions, admin-scoped. */
+export async function listSessions(personId: string): Promise<Session[]> {
+  const page = await unwrap((await client()).coreSuperAdmin.listSessions(personId));
+  return page.sessions;
+}
+
+/** M11.3 — revokes one of personId's sessions, admin-scoped. */
+export async function revokeSession(personId: string, sessionId: string): Promise<void> {
+  return unwrap((await client()).coreSuperAdmin.revokeSession(personId, sessionId));
 }
 
 export interface AuditLogFilter {

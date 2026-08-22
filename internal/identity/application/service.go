@@ -25,6 +25,11 @@ type Store interface {
 	GetPerson(ctx context.Context, id string) (domain.Person, error)
 	GetPersons(ctx context.Context, ids []string) ([]domain.Person, error)
 	SearchPersons(ctx context.Context, query string, limit int) ([]domain.Person, error)
+	InsertSession(ctx context.Context, accountID, issuer, deviceLabel string) (domain.Session, error)
+	GetSession(ctx context.Context, sessionID string) (domain.Session, error)
+	ListActiveSessionsByAccount(ctx context.Context, accountID string) ([]domain.Session, error)
+	TouchSession(ctx context.Context, sessionID string) (domain.Session, error)
+	RevokeSession(ctx context.Context, sessionID string) (domain.Session, error)
 }
 
 type Service struct {
@@ -167,4 +172,71 @@ func (s *Service) setStatus(ctx context.Context, personID, status string) (befor
 		return domain.Account{}, domain.Account{}, err
 	}
 	return before, after, nil
+}
+
+// RegisterSession creates a new session row for accountID (M11.3, D-SessionTracking) — called once
+// right after a NextAuth sign-in, before the resulting session id is usable as X-Session-Id on any
+// other request. That bootstrapping order is why this one endpoint is the sole entry in
+// internal/identity/middleware's sessionExemptRoutes: it must be reachable without an
+// already-existing session to present.
+func (s *Service) RegisterSession(ctx context.Context, accountID, issuer, deviceLabel string) (domain.Session, error) {
+	return s.store.InsertSession(ctx, accountID, issuer, deviceLabel)
+}
+
+// ListSessions returns personID's active sessions (admin-scoped, M11.3).
+func (s *Service) ListSessions(ctx context.Context, personID string) ([]domain.Session, error) {
+	account, err := s.store.GetActiveAccountByPerson(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	return s.store.ListActiveSessionsByAccount(ctx, account.ID)
+}
+
+// RevokeSession revokes sessionID on personID's behalf (admin-scoped, M11.3). Rejects a sessionID
+// belonging to a different person's account as ErrSessionNotFound — an admin-supplied path segment
+// must not let a cross-account guess revoke someone else's session.
+func (s *Service) RevokeSession(ctx context.Context, personID, sessionID string) (domain.Session, error) {
+	account, err := s.store.GetActiveAccountByPerson(ctx, personID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	sess, err := s.store.GetSession(ctx, sessionID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if sess.AccountID != account.ID {
+		return domain.Session{}, domain.ErrSessionNotFound
+	}
+	return s.store.RevokeSession(ctx, sessionID)
+}
+
+// ListMySessions returns the caller's own active sessions (self-scoped, M11.3).
+func (s *Service) ListMySessions(ctx context.Context, accountID string) ([]domain.Session, error) {
+	return s.store.ListActiveSessionsByAccount(ctx, accountID)
+}
+
+// RevokeMySession revokes one of the caller's own sessions (self-scoped, M11.3) — same
+// account-ownership check as RevokeSession, scoped to the caller's own accountID instead of an
+// admin-supplied personId.
+func (s *Service) RevokeMySession(ctx context.Context, accountID, sessionID string) (domain.Session, error) {
+	sess, err := s.store.GetSession(ctx, sessionID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if sess.AccountID != accountID {
+		return domain.Session{}, domain.ErrSessionNotFound
+	}
+	return s.store.RevokeSession(ctx, sessionID)
+}
+
+// Touch implements internal/identity/middleware.SessionChecker — the per-request check backing
+// D-SessionTracking. Returns the session's accountID so Handle can cross-check it against the
+// bearer-resolved account: a session id that resolves to a DIFFERENT account than the verified
+// bearer must still 401, not silently pass.
+func (s *Service) Touch(ctx context.Context, sessionID string) (string, error) {
+	sess, err := s.store.TouchSession(ctx, sessionID)
+	if err != nil {
+		return "", err
+	}
+	return sess.AccountID, nil
 }

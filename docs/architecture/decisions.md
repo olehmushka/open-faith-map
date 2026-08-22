@@ -2259,6 +2259,52 @@ per-session, and Google's session state is invisible to this app either way.
 - Revoking a session is a mutation, audit-logged per M11.2 like every other admin action this arc
   introduces.
 
+### D-SessionIdTransport — the session id travels as its own header, checked for every bearer including dev tokens
+
+**Decision.** D-SessionTracking's own text ("alongside — not instead of — the existing bearer-token
+verification") left two mechanics unresolved, both settled at build time (M11.3, confirmed with the
+user before implementation): (1) `web/apps/admin/auth.ts`'s NextAuth JWT is an encrypted session
+cookie entirely separate from the Google ID token forwarded as the API bearer — Google signs that ID
+token, so a custom `sessionId` claim can't be injected into it. The session id instead travels as its
+own opaque `X-Session-Id` header, sent alongside `Authorization: Bearer <idToken>` via
+`lib/openfaithmap`'s existing `fetch` override hook (`lib/core.ts`'s `client()`), and read by
+`internal/identity/middleware.Authenticator.Handle` right after bearer resolution — one indexed
+`identity_sessions` lookup (`Touch`), cross-checked against the bearer-resolved account id so a
+session id for a *different* account can't be substituted in. (2) The check applies to **every**
+authenticated request with no issuer-based carve-out — the reserved local/dev HS256 issuer
+(`internal/platform/devtoken`) used by `cmd/openfaithmap-api/authorization_matrix_test.go` and
+`scripts/mint-local-token` is not exempted, even though neither previously had any session concept.
+
+**Why not exempt dev tokens.** Considered and rejected: the alternative kept the authorization-matrix
+test suite and `mint-local-token` unchanged, at the cost of a permanent code-level distinction between
+"real" and "test" auth paths that every future session-aware check would have to remember to
+replicate. The user chose the more invasive retrofit instead — `seedSubjects` now inserts a real
+`identity_sessions` row per minted subject and `doReq` sends `X-Session-Id` on every request;
+`mint-local-token` gained optional `-database-url`/`-account-id` flags that insert a session row and
+print its id, a deliberate, opt-in expansion of a tool whose doc comment previously promised "no API
+calls, no side effects."
+
+**Bootstrapping exemption.** One route, `CoreService.registerSession` (`POST /core/v1/sessions`), is
+listed in `internal/identity/middleware.sessionExemptRoutes` — it is what CREATES the session row a
+session id would otherwise need to already exist, so it cannot itself require one. This is a
+session-check-only exemption, not an authentication bypass (unlike `anonymousRoutes`/`isBypassPath`,
+which skip authentication entirely) — `registerSession` still requires a fully valid bearer, and
+derives both the owning `accountId` and the recorded `issuer` from that bearer's own resolved
+`authz.Subject` (new `SessionID`/`Issuer` fields), never from a client-supplied request field.
+
+**Consequences.**
+- `identity_sessions` is `new_id(1,1,5)` — identity's next free object RID slot after
+  `identity_audit_log`'s `(1,1,4)` — and is a **mutable** table (`last_seen_at`/`revoked_at` updated
+  post-insert), so it follows `identity_accounts`' plain-`UPDATE` shape, not
+  `identity_audit_log`/`moderation_actions`' `reject_mutation()` append-only pattern.
+- `last_seen_at` is bumped throttled, not on every request: `TouchSession`
+  (`internal/identity/adapters`) only issues the `UPDATE` when the existing value is more than 60s
+  stale — a build-time call on the tradeoff M11.4's own milestone text flagged as open ("updated on
+  each authenticated request or session refresh (decided at build time)").
+- `authz.Subject` gained two fields beyond M10's original `PersonID`/`AccountID`/`Email`:
+  `SessionID` (the caller's own session, for self-scoped "is this my current session" UI) and
+  `Issuer` (so `RegisterSession` never trusts a client-supplied issuer).
+
 ### D-InviteLinkMVP — invite-a-teammate ships as a shareable link, not an emailed invite
 
 **Decision.** M11.6's invite flow pre-provisions a person/account row and produces a signed,

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	auditlogdomain "github.com/olehmushka/open-faith-map/internal/auditlog/domain"
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	gencore "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/core"
 	"github.com/olehmushka/open-faith-map/internal/core/application"
 	"github.com/palantir/pkg/bearertoken"
@@ -138,6 +139,26 @@ func (s *SuperAdminService) ReactivateAccount(ctx context.Context, _ bearertoken
 		return gencore.AccountStatus{}, mapErr(err, errCtx{PersonID: personIdArg})
 	}
 	return gencore.AccountStatus{PersonId: status.PersonID, Status: status.Status}, nil
+}
+
+func (s *SuperAdminService) ListSessions(ctx context.Context, _ bearertoken.Token, personIdArg string) (gencore.SessionPage, error) {
+	sessions, err := s.app.ListSessions(ctx, personIdArg)
+	if err != nil {
+		return gencore.SessionPage{}, mapErr(err, errCtx{PersonID: personIdArg})
+	}
+	subject, _ := authz.SubjectFromContext(ctx)
+	out := make([]gencore.Session, len(sessions))
+	for i, sess := range sessions {
+		out[i] = toAPISession(sess, subject.SessionID)
+	}
+	return gencore.SessionPage{Sessions: out}, nil
+}
+
+func (s *SuperAdminService) RevokeSession(ctx context.Context, _ bearertoken.Token, personIdArg, sessionIdArg string) error {
+	if err := s.app.RevokeSession(ctx, personIdArg, sessionIdArg); err != nil {
+		return mapErr(err, errCtx{PersonID: personIdArg, SessionID: sessionIdArg})
+	}
+	return nil
 }
 
 // ListAuditLog uses the same real keyset-pagination trick as moderation's ListReports (M7,

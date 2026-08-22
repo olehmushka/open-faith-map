@@ -20,6 +20,7 @@ type errCtx struct {
 	UnitID       string
 	TaxonID      string
 	AssignmentID string
+	SessionID    string
 }
 
 // mapErr maps a domain error to this contract's typed Conjure error. Any other error (an
@@ -44,6 +45,8 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewAssignmentNotFound(c.AssignmentID)
 	case errors.Is(err, authzdomain.ErrInstanceAdminGrantNotFound):
 		return gencore.NewInstanceAdminGrantNotFound(c.PersonID)
+	case errors.Is(err, identitydomain.ErrSessionNotFound):
+		return gencore.NewSessionNotFound(c.SessionID)
 	default:
 		return err
 	}

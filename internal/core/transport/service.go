@@ -11,6 +11,7 @@ package transport
 import (
 	"context"
 
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	gencore "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/core"
 	"github.com/olehmushka/open-faith-map/internal/core/application"
 	directorydomain "github.com/olehmushka/open-faith-map/internal/directory/domain"
@@ -39,6 +40,34 @@ func (s *Service) Whoami(ctx context.Context, _ bearertoken.Token) (gencore.Whoa
 	return gencore.Whoami{
 		PersonId: who.PersonID, AccountId: who.AccountID, Email: who.Email, IsInstanceAdmin: who.IsInstanceAdmin,
 	}, nil
+}
+
+func (s *Service) RegisterSession(ctx context.Context, _ bearertoken.Token, requestArg gencore.RegisterSessionRequest) (gencore.Session, error) {
+	sess, err := s.app.RegisterSession(ctx, derefStr(requestArg.DeviceLabel))
+	if err != nil {
+		return gencore.Session{}, mapErr(err, errCtx{})
+	}
+	return toAPISession(sess, ""), nil
+}
+
+func (s *Service) ListMySessions(ctx context.Context, _ bearertoken.Token) (gencore.SessionPage, error) {
+	sessions, err := s.app.ListMySessions(ctx)
+	if err != nil {
+		return gencore.SessionPage{}, mapErr(err, errCtx{})
+	}
+	subject, _ := authz.SubjectFromContext(ctx)
+	out := make([]gencore.Session, len(sessions))
+	for i, sess := range sessions {
+		out[i] = toAPISession(sess, subject.SessionID)
+	}
+	return gencore.SessionPage{Sessions: out}, nil
+}
+
+func (s *Service) RevokeMySession(ctx context.Context, _ bearertoken.Token, sessionIdArg string) error {
+	if err := s.app.RevokeMySession(ctx, sessionIdArg); err != nil {
+		return mapErr(err, errCtx{SessionID: sessionIdArg})
+	}
+	return nil
 }
 
 func (s *Service) GetUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string) (gencore.Unit, error) {
@@ -211,6 +240,17 @@ func toAPIPerson(p identitydomain.Person) gencore.Person {
 	return gencore.Person{
 		Id: p.ID, Code: optionalStr(p.Code), DisplayName: p.DisplayName,
 		CreatedAt: datetime.DateTime(p.CreatedAt), UpdatedAt: datetime.DateTime(p.UpdatedAt),
+	}
+}
+
+// toAPISession converts one identity_sessions row (M11.3). currentSessionID is the caller's own
+// authz.Subject.SessionID — compared against sess.ID to compute IsCurrent server-side, rather than
+// asking the client to know which of its own sessions it's presently using.
+func toAPISession(sess identitydomain.Session, currentSessionID string) gencore.Session {
+	return gencore.Session{
+		Id: sess.ID, DeviceLabel: optionalStr(sess.DeviceLabel),
+		CreatedAt: datetime.DateTime(sess.CreatedAt), LastSeenAt: datetime.DateTime(sess.LastSeenAt),
+		IsCurrent: currentSessionID != "" && sess.ID == currentSessionID,
 	}
 }
 
