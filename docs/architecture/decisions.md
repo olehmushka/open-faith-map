@@ -2192,6 +2192,43 @@ knowing.
   the column's default (per `migrations/0008_core_identity.sql`) determines whether they still pass
   unchanged.
 
+### D-AuditLogShape — `identity_audit_log` folds into the identity service RID, before/after is curated JSON per call site
+
+**Decision.** `identity_audit_log`'s primary key uses `new_id(1,1,4)` — the identity service (1), not
+a new service number — and its `before`/`after` columns hold whatever `map[string]any`/struct each
+mutating call site builds by hand, not a generic full-row diff.
+
+**Why the identity service, not a new one.** The migration file is named `0016_core_audit.sql`,
+matching the `core_<subdomain>` naming series `0007`–`0015` already established for core absorption,
+while the table itself stays `identity_`-prefixed like `identity_persons`/`identity_accounts`. An
+audit entry's natural subject is "an identity acted" — the same relationship `authz_instance_admins`
+already has to the authz service rather than being its own service number. A new service number was
+considered and rejected as unwarranted ceremony for what is, mechanically, one more identity-owned
+ledger.
+
+**Why curated per-call-site JSON, not a generic before/after row diff.** Two of the six mutating
+paths this table logs (`RevokeRoleAssignment`, `RevokeInstanceAdmin`) had store methods doing a bare
+`UPDATE ... WHERE ...` with no `RETURNING` and no `GetByID` on either store — building a generic
+"fetch the row, diff it" mechanism would have meant adding read paths to `internal/authz/adapters`
+that don't exist for any other reason, and a wrong `WHERE` on a "before" read taken concurrently with
+another write could observe post-write state. Cheaper and more precise instead: a small `RETURNING`
+addition to each revoke `UPDATE` (and `InsertRoleAssignment` returning a real id, including on its
+idempotent-conflict path) gives each call site exactly the fields it needs, hand-assembled into the
+audit payload at the point of the mutation.
+
+**Consequences.**
+- `action` is free text validated in Go (`internal/core/application/service.go`'s
+  `auditAction*`/`auditTarget*` constants today), not a DB `CHECK` enum — M11.3/M11.7/M11.8 can each
+  add their own logged actions without a migration.
+- The four M10.8 grant/revoke call sites and M11.1's deactivate/reactivate now share one
+  `requireSubject` guard that hard-fails on a missing context subject, closing the same "discarded
+  `SubjectFromContext`'s `ok` bool" gap in all four at once, rather than leaving three fixed and one
+  not.
+- `internal/auditlog` is a new, self-contained module (domain/application/adapters, no transport of
+  its own) rather than logic folded into `internal/core` — `internal/core/application`'s own header
+  already scopes itself as owning no new domain logic beyond one gate, and M11.3's session revocation
+  needs `Record` reusable without reaching into `internal/core`.
+
 ### D-SessionTracking — auth gains a server-side session record, no longer purely stateless
 
 **Decision.** A new `identity_sessions` table (session id, account id, issuer, `created_at`,
