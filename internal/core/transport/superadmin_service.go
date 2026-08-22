@@ -105,3 +105,27 @@ func (s *SuperAdminService) RevokeInstanceAdmin(ctx context.Context, _ bearertok
 	}
 	return nil
 }
+
+func (s *SuperAdminService) GetAccountStatus(ctx context.Context, _ bearertoken.Token, personIdArg string) (gencore.AccountStatus, error) {
+	status, err := s.app.GetAccountStatus(ctx, personIdArg)
+	if err != nil {
+		return gencore.AccountStatus{}, mapErr(err, errCtx{PersonID: personIdArg})
+	}
+	return gencore.AccountStatus{PersonId: status.PersonID, Status: status.Status}, nil
+}
+
+func (s *SuperAdminService) DeactivateAccount(ctx context.Context, _ bearertoken.Token, personIdArg string) (gencore.AccountStatus, error) {
+	status, err := s.app.DeactivateAccount(ctx, personIdArg)
+	if err != nil {
+		return gencore.AccountStatus{}, mapErr(err, errCtx{PersonID: personIdArg})
+	}
+	return gencore.AccountStatus{PersonId: status.PersonID, Status: status.Status}, nil
+}
+
+func (s *SuperAdminService) ReactivateAccount(ctx context.Context, _ bearertoken.Token, personIdArg string) (gencore.AccountStatus, error) {
+	status, err := s.app.ReactivateAccount(ctx, personIdArg)
+	if err != nil {
+		return gencore.AccountStatus{}, mapErr(err, errCtx{PersonID: personIdArg})
+	}
+	return gencore.AccountStatus{PersonId: status.PersonID, Status: status.Status}, nil
+}

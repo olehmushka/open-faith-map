@@ -2160,3 +2160,102 @@ four locales. A two-column lookup is the whole requirement.
 > country matching for one country in one locale — and M10.9's `ua-edr` re-run exercises Ukraine
 > only, so it would not be caught there. M10.9 therefore diffs the whole `refdata_country_names`
 > table against a pre-cutover `ListCountries()` capture: all four locales, 249 rows.
+
+### D-AccountStatusEnforcement — `identity_accounts.status` is checked at resolution, not just stored
+
+**Decision.** `ResolveBySubject` (`internal/identity/adapters/store.go`) and the authenticator's
+resolution path reject any account whose `identity_accounts.status` is not `'active'`, in addition
+to the existing `deleted_at IS NULL` check. A disabled account fails at authentication — it never
+reaches the PDP, never resolves to a `Resolution{PersonID, AccountID, Email}` at all.
+
+**Why.** The M11 discovery pass found `status` (`active`/`disabled`) has existed in the schema since
+M10.1 (`migrations/0008_core_identity.sql`) but was never read anywhere —
+`ResolveBySubject` (`internal/identity/adapters/store.go:167-179`) only filters `deleted_at IS
+NULL`. Disabling an account today is a no-op: the row still resolves, still authenticates, still
+authorizes normally. Not hypothetical — it directly undermines M11.1's own deactivate/reactivate
+feature (disabling someone would silently do nothing), and M11.3 layers session revocation on the
+same enforcement point, so it would have undermined that too.
+
+**Why at resolution, not in the PDP.** A disabled account is an authentication failure (this
+identity no longer gets to *be* anyone), not an authorization failure (this identity isn't allowed
+to do *this*). Putting the check in the PDP would still resolve a disabled account to a real
+subject and fail it only per-permission — wrong shape, and it would leave the anonymous-route
+bypass logic (`isBypassPath`) needing to know about account status, which it has no business
+knowing.
+
+**Consequences.**
+- Every later M11.x milestone that touches auth (M11.3's session checks, M11.6's
+  invite-then-JIT-link path) can assume a disabled account is fully inert, not merely unprivileged.
+- No migration needed — the column already exists; this is a code-only fix to a store method and
+  its callers.
+- Existing tests that create accounts without explicitly setting `status = 'active'` need auditing —
+  the column's default (per `migrations/0008_core_identity.sql`) determines whether they still pass
+  unchanged.
+
+### D-SessionTracking — auth gains a server-side session record, no longer purely stateless
+
+**Decision.** A new `identity_sessions` table (session id, account id, issuer, `created_at`,
+`last_seen_at`, an optional device/user-agent label, `revoked_at`) is introduced. NextAuth
+(`web/apps/admin/auth.ts`) issues a session id into its JWT at sign-in; the backend checks that id
+is present and unrevoked on every authenticated request, alongside — not instead of — the existing
+bearer-token signature/claims verification.
+
+**Why.** M11 scoped "session visibility/revocation" as a real requirement — an admin or user seeing
+active sessions and forcing one out — not just the lighter behavior
+[D-AccountStatusEnforcement](#d-accountstatusenforcement--identity_accountsstatus-is-checked-at-resolution-not-just-stored)
+already provides on its own. That lighter form has no visibility (no list of who's signed in where)
+and no way to kill *one* session while leaving others alone; real revocation needs a record to
+revoke.
+
+**Why not the lighter option instead, given the added complexity.** Considered and rejected: relying
+on account-status-disable plus a short token TTL, and relying on Google's own session management.
+Neither meets the actual requirement — account-status-disable is all-or-nothing per person, not
+per-session, and Google's session state is invisible to this app either way.
+
+**Consequences.**
+- A genuine reversal of the stateless-JWT posture M1's original session design established (no
+  adapter/session-store, `web/apps/admin/auth.ts`). Adds one indexed point-lookup to the hot path of
+  every authenticated request — same cost class as the existing per-request token verification, not
+  a new bottleneck class.
+- `identity_sessions.last_seen_at` becomes the natural source for M11.4's last-login/activity
+  tracking rather than a duplicate column.
+- Revoking a session is a mutation, audit-logged per M11.2 like every other admin action this arc
+  introduces.
+
+### D-InviteLinkMVP — invite-a-teammate ships as a shareable link, not an emailed invite
+
+**Decision.** M11.6's invite flow pre-provisions a person/account row and produces a signed,
+one-time invite link the admin copies and shares out-of-band (Slack, email, however they'd already
+reach the person). No email is sent by the app.
+
+**Why.** No email-sending infrastructure exists anywhere in this repo today (confirmed by direct
+grep — no SMTP/SES/SendGrid client, no notification package); building one is a real new subsystem
+(provider account, deliverability, templates) the user deliberately deferred rather than folding
+into this milestone's scope.
+
+**Consequences.**
+- Recorded explicitly so a future session doesn't mistake the absence of email delivery for an
+  oversight: real email sending is wanted, just not now.
+- The invite link still has to produce a row M10.2's existing JIT link-on-match logic will actually
+  match on first Google sign-in (`IDENTITY_JIT_MATCH=account-email` mode,
+  `internal/identity/middleware/validator.go:29-34`) — M11.6 is scoped to verify this against the
+  *existing* JIT code path, not just the new invite code.
+
+### D-NoAppLevelMFA — MFA is not built at the application layer
+
+**Decision.** M11 does not add MFA enrollment or enforcement. `identity_accounts.mfa_enrolled_at`
+remains unused.
+
+**Why.** MFA was in scope for discussion but dropped once its cost was made concrete: any app-level
+second factor (TOTP secrets, backup codes) means storing a new form of credential, which directly
+reopens what `identity_accounts_dormant_credentials`'s CHECK constraint was built to close off —
+this app deliberately stores no password/MFA material, ever, and delegates all of that to Google.
+Requiring Google's own MFA assertion (checking an `amr` claim) was the one variant that wouldn't
+reintroduce local credential storage, but was still dropped as not worth building against for now —
+Google already enforces this for any account/org that turns it on, with zero code on this side.
+
+**Consequences.**
+- If MFA enforcement is wanted later, the cheapest path that doesn't reopen the no-credentials
+  guarantee is parsing/requiring the OIDC token's `amr` claim (`internal/identity/middleware
+  /validator.go`'s `project()` doesn't read it today) — recorded here so a future session doesn't
+  have to rediscover this trade-off from scratch.

@@ -124,9 +124,13 @@ func (s *Store) SearchPersons(ctx context.Context, query string, limit int) ([]d
 	return out, rows.Err()
 }
 
+// GetActiveAccountByPerson returns personID's account regardless of its status — "Active" here means
+// only "not soft-deleted" (deleted_at IS NULL), same convention as GetActiveAccountByEmail below.
+// Callers that care whether the account is usable must check the returned Account.Status themselves
+// (see application.Service.LinkOnMatch for why filtering status out in SQL here would be wrong).
 func (s *Store) GetActiveAccountByPerson(ctx context.Context, personID string) (domain.Account, error) {
 	return s.scanAccount(s.pool.QueryRow(ctx, `
-		SELECT id, person_id, COALESCE(email::text, ''), created_at, updated_at
+		SELECT id, person_id, COALESCE(email::text, ''), status, created_at, updated_at
 		FROM openfaithmap.identity_accounts
 		WHERE person_id = $1 AND deleted_at IS NULL`, personID))
 }
@@ -136,7 +140,7 @@ func (s *Store) GetActiveAccountByEmail(ctx context.Context, email string) (doma
 	// (identity_accounts_email_active_idx) makes "the single account" true by construction — no
 	// ambiguous-match case to resolve in Go.
 	return s.scanAccount(s.pool.QueryRow(ctx, `
-		SELECT id, person_id, COALESCE(email::text, ''), created_at, updated_at
+		SELECT id, person_id, COALESCE(email::text, ''), status, created_at, updated_at
 		FROM openfaithmap.identity_accounts
 		WHERE email = $1 AND deleted_at IS NULL`, email))
 }
@@ -149,12 +153,22 @@ func (s *Store) InsertAccount(ctx context.Context, personID, email string) (doma
 	return s.scanAccount(s.pool.QueryRow(ctx, `
 		INSERT INTO openfaithmap.identity_accounts (person_id, email)
 		VALUES ($1, $2)
-		RETURNING id, person_id, COALESCE(email::text, ''), created_at, updated_at`, personID, emailArg))
+		RETURNING id, person_id, COALESCE(email::text, ''), status, created_at, updated_at`, personID, emailArg))
+}
+
+// SetAccountStatus sets accountID's status (domain.AccountStatusActive/AccountStatusDisabled) and
+// returns the updated row — backs application.Service.Deactivate/Reactivate.
+func (s *Store) SetAccountStatus(ctx context.Context, accountID, status string) (domain.Account, error) {
+	return s.scanAccount(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_accounts
+		SET status = $2
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, person_id, COALESCE(email::text, ''), status, created_at, updated_at`, accountID, status))
 }
 
 func (s *Store) scanAccount(row pgx.Row) (domain.Account, error) {
 	var a domain.Account
-	if err := row.Scan(&a.ID, &a.PersonID, &a.Email, &a.CreatedAt, &a.UpdatedAt); err != nil {
+	if err := row.Scan(&a.ID, &a.PersonID, &a.Email, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Account{}, domain.ErrAccountNotFound
 		}
@@ -163,13 +177,15 @@ func (s *Store) scanAccount(row pgx.Row) (domain.Account, error) {
 	return a, nil
 }
 
-// ResolveBySubject maps a verified (issuer, subject) to the account+person it federates to.
+// ResolveBySubject maps a verified (issuer, subject) to the account+person it federates to. A
+// disabled account (D-AccountStatusEnforcement) resolves as ErrIdentityNotFound, same as an unknown
+// one — no oracle leak, and it reuses the authenticator's existing uniform-401 path.
 func (s *Store) ResolveBySubject(ctx context.Context, issuer, subject string) (domain.Resolution, error) {
 	var out domain.Resolution
 	err := s.pool.QueryRow(ctx, `
 		SELECT a.person_id, a.id, COALESCE(a.email::text, '')
 		FROM openfaithmap.identity_external_identities x
-		JOIN openfaithmap.identity_accounts a ON a.id = x.account_id AND a.deleted_at IS NULL
+		JOIN openfaithmap.identity_accounts a ON a.id = x.account_id AND a.deleted_at IS NULL AND a.status = 'active'
 		WHERE x.issuer = $1 AND x.subject = $2`, issuer, subject,
 	).Scan(&out.PersonID, &out.AccountID, &out.Email)
 	if errors.Is(err, pgx.ErrNoRows) {

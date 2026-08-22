@@ -486,6 +486,12 @@ type CoreSuperAdminServiceClient interface {
 	ListInstanceAdmins(ctx context.Context, authHeader bearertoken.Token) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
+	// M11.1 — D-AccountStatusEnforcement.
+	GetAccountStatus(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.1 — rejects further authentication for this person's account. Idempotent.
+	DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.1 — reverses deactivateAccount. Idempotent.
+	ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
 }
 
 type coreSuperAdminServiceClient struct {
@@ -627,6 +633,57 @@ func (c *coreSuperAdminServiceClient) RevokeInstanceAdmin(ctx context.Context, a
 	return nil
 }
 
+func (c *coreSuperAdminServiceClient) GetAccountStatus(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error) {
+	var returnVal *AccountStatus
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetAccountStatus"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/account-status", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(AccountStatus), werror.WrapWithContextParams(ctx, err, "getAccountStatus failed")
+	}
+	if returnVal == nil {
+		return *new(AccountStatus), werror.ErrorWithContextParams(ctx, "getAccountStatus response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error) {
+	var returnVal *AccountStatus
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeactivateAccount"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/deactivate", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(AccountStatus), werror.WrapWithContextParams(ctx, err, "deactivateAccount failed")
+	}
+	if returnVal == nil {
+		return *new(AccountStatus), werror.ErrorWithContextParams(ctx, "deactivateAccount response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error) {
+	var returnVal *AccountStatus
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ReactivateAccount"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/reactivate", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(AccountStatus), werror.WrapWithContextParams(ctx, err, "reactivateAccount failed")
+	}
+	if returnVal == nil {
+		return *new(AccountStatus), werror.ErrorWithContextParams(ctx, "reactivateAccount response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // The super-admin surface replacing the deleted oikumenea-console (D-SuperAdminFold): people search, role catalog, per-unit role-assignment grant/list/revoke, and the instance-admin plane's own grant/list/revoke. Every endpoint in this service is gated as a whole route group by internal/authz/transport.RequireInstanceAdmin, attached once at registration (cmd/openfaithmap-api/register_core.go) — not per-handler, so no future endpoint added here can be added without inheriting the check.
 type CoreSuperAdminServiceClientWithAuth interface {
 	SearchPersons(ctx context.Context, queryArg *string, limitArg *int) (PersonPage, error)
@@ -637,6 +694,12 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	ListInstanceAdmins(ctx context.Context) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, personIdArg string) error
+	// M11.1 — D-AccountStatusEnforcement.
+	GetAccountStatus(ctx context.Context, personIdArg string) (AccountStatus, error)
+	// M11.1 — rejects further authentication for this person's account. Idempotent.
+	DeactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
+	// M11.1 — reverses deactivateAccount. Idempotent.
+	ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
 }
 
 func NewCoreSuperAdminServiceClientWithAuth(client CoreSuperAdminServiceClient, authHeader bearertoken.Token) CoreSuperAdminServiceClientWithAuth {
@@ -678,6 +741,18 @@ func (c *coreSuperAdminServiceClientWithAuth) GrantInstanceAdmin(ctx context.Con
 
 func (c *coreSuperAdminServiceClientWithAuth) RevokeInstanceAdmin(ctx context.Context, personIdArg string) error {
 	return c.client.RevokeInstanceAdmin(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) GetAccountStatus(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	return c.client.GetAccountStatus(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) DeactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	return c.client.DeactivateAccount(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	return c.client.ReactivateAccount(ctx, c.authHeader, personIdArg)
 }
 
 func NewCoreSuperAdminServiceClientWithTokenProvider(client CoreSuperAdminServiceClient, tokenProvider httpclient.TokenProvider) CoreSuperAdminServiceClientWithAuth {
@@ -751,4 +826,28 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeInstanceAdmin(ctx c
 		return err
 	}
 	return c.client.RevokeInstanceAdmin(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) GetAccountStatus(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AccountStatus), err
+	}
+	return c.client.GetAccountStatus(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) DeactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AccountStatus), err
+	}
+	return c.client.DeactivateAccount(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AccountStatus), err
+	}
+	return c.client.ReactivateAccount(ctx, bearertoken.Token(token), personIdArg)
 }

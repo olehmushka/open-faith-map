@@ -309,6 +309,12 @@
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",
+    "accountStatusHeading": "Status da conta",
+    "accountStatusActive": "A conta está ativa.",
+    "accountStatusDisabled": "A conta está desativada — esta pessoa não pode entrar.",
+    "accountStatusNone": "Esta pessoa não tem conta (nunca fez login).",
+    "deactivateAccount": "Desativar conta",
+    "reactivateAccount": "Reativar conta",
     "instanceAdminHeading": "Administrador da instância",
     "isInstanceAdminYes": "Concedido como administrador da instância em {date}.",
     "isInstanceAdminNo": "Não é administrador da instância.",

@@ -53,6 +53,8 @@ type matrixSubjects struct {
 
 	unitA string // congAdminOwn's own unit
 	unitB string // congAdminOther's own unit — "other" relative to unitA
+
+	instanceAdminPersonID string // M11.1's getAccountStatus needs a real personId path segment
 }
 
 func TestAuthorizationMatrix(t *testing.T) {
@@ -224,7 +226,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		})
 	})
 
-	// ---- category: instance-admin plane (CoreSuperAdminService — all 8 endpoints share one
+	// ---- category: instance-admin plane (CoreSuperAdminService — all 11 endpoints share one
 	// route-group gate, so this is the highest-value single check in the whole matrix: every
 	// subject except instance-admin must be refused by the SAME middleware, not per-handler logic) ----
 	t.Run("instance_admin_plane", func(t *testing.T) {
@@ -232,6 +234,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			{"searchPersons", "/core/v1/super-admin/persons"},
 			{"listRoles", "/core/v1/super-admin/roles"},
 			{"listInstanceAdmins", "/core/v1/super-admin/instance-admins"},
+			// M11.1 — keeps the representative sample current with the new endpoints on this service.
+			{"getAccountStatus", "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/account-status"},
 		}
 		for _, ep := range endpoints {
 			t.Run(ep.name, func(t *testing.T) {
@@ -423,6 +427,7 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 	}
 
 	tokens := map[string]string{}
+	personIDByLabel := map[string]string{}
 	var personIDs, assignmentIDs, instanceAdminIDs []string
 
 	for _, sp := range specs {
@@ -431,6 +436,7 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 			t.Fatalf("insert person %s: %v", sp.label, err)
 		}
 		personIDs = append(personIDs, personID)
+		personIDByLabel[sp.label] = personID
 
 		var accountID string
 		if err := pool.QueryRow(ctx, `INSERT INTO openfaithmap.identity_accounts (person_id, email) VALUES ($1, $2) RETURNING id`, personID, sp.email).Scan(&accountID); err != nil {
@@ -543,6 +549,8 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 		instanceAdmin:  tokens["instanceAdmin"],
 		unitA:          unitA.ID,
 		unitB:          unitB.ID,
+
+		instanceAdminPersonID: personIDByLabel["instanceAdmin"],
 	}
 }
 

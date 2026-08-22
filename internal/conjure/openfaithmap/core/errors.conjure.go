@@ -15,6 +15,156 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+type accountNotFound struct {
+	PersonId string `json:"personId"`
+}
+
+func (o accountNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *accountNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewAccountNotFound returns new instance of AccountNotFound error.
+func NewAccountNotFound(personIdArg string) *AccountNotFound {
+	return &AccountNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), accountNotFound: accountNotFound{PersonId: personIdArg}}
+}
+
+// WrapWithAccountNotFound returns new instance of AccountNotFound error wrapping an existing error.
+func WrapWithAccountNotFound(err error, personIdArg string) *AccountNotFound {
+	return &AccountNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, accountNotFound: accountNotFound{PersonId: personIdArg}}
+}
+
+// AccountNotFound is an error type.
+// The person has no account (deactivate/reactivate need one to exist).
+type AccountNotFound struct {
+	errorInstanceID uuid.UUID
+	accountNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsAccountNotFound returns true if err is an instance of AccountNotFound.
+func IsAccountNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*AccountNotFound)
+	return ok
+}
+
+func (e *AccountNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Core:AccountNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *AccountNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *AccountNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *AccountNotFound) Message() string {
+	return "NOT_FOUND Core:AccountNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *AccountNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *AccountNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *AccountNotFound) Name() string {
+	return "Core:AccountNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *AccountNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *AccountNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"personId": e.PersonId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *AccountNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"personId": e.PersonId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *AccountNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *AccountNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *AccountNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e AccountNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.accountNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Core:AccountNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *AccountNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters accountNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.accountNotFound = parameters
+	return nil
+}
+
 type assignmentNotFound struct {
 	AssignmentId string `json:"assignmentId"`
 }
@@ -1208,6 +1358,7 @@ func (e *UnitNotFound) UnmarshalJSON(data []byte) error {
 }
 
 func init() {
+	conjureerrors.RegisterErrorType("Core:AccountNotFound", reflect.TypeOf(AccountNotFound{}))
 	conjureerrors.RegisterErrorType("Core:AssignmentNotFound", reflect.TypeOf(AssignmentNotFound{}))
 	conjureerrors.RegisterErrorType("Core:ChildCreationExcluded", reflect.TypeOf(ChildCreationExcluded{}))
 	conjureerrors.RegisterErrorType("Core:Forbidden", reflect.TypeOf(Forbidden{}))

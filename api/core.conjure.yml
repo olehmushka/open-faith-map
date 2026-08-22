@@ -190,6 +190,12 @@ types:
         fields:
           personId: string
 
+      AccountStatus:
+        docs: status is "active", "disabled", or "none" (the person has never had a login attached).
+        fields:
+          personId: string
+          status: string
+
     errors:
       PersonNotFound:
         namespace: Core
@@ -228,6 +234,12 @@ types:
         safe-args:
           assignmentId: string
       InstanceAdminGrantNotFound:
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          personId: string
+      AccountNotFound:
+        docs: The person has no account (deactivate/reactivate need one to exist).
         namespace: Core
         code: NOT_FOUND
         safe-args:
@@ -387,3 +399,28 @@ services:
           personId:
             type: string
             param-type: path
+
+      getAccountStatus:
+        docs: M11.1 — D-AccountStatusEnforcement.
+        http: GET /persons/{personId}/account-status
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: AccountStatus
+      deactivateAccount:
+        docs: M11.1 — rejects further authentication for this person's account. Idempotent.
+        http: POST /persons/{personId}/deactivate
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: AccountStatus
+      reactivateAccount:
+        docs: M11.1 — reverses deactivateAccount. Idempotent.
+        http: POST /persons/{personId}/reactivate
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: AccountStatus

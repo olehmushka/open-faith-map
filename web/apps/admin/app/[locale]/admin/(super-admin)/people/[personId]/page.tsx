@@ -1,11 +1,14 @@
 import { getTranslations } from "next-intl/server";
 
 import {
+  deactivateAccount,
+  getAccountStatus,
   getPerson,
   grantInstanceAdmin,
   grantUnitRole,
   listInstanceAdmins,
   listRoles,
+  reactivateAccount,
   revokeInstanceAdmin,
 } from "@/lib/core";
 import { redirect } from "@/i18n/navigation";
@@ -26,10 +29,11 @@ export default async function SuperAdminPersonPage({
   const { locale, personId } = await params;
   const t = await getTranslations("SuperAdminPersonPage");
 
-  const [person, instanceAdmins, roles] = await Promise.all([
+  const [person, instanceAdmins, roles, accountStatus] = await Promise.all([
     getPerson(personId),
     listInstanceAdmins(),
     listRoles(),
+    getAccountStatus(personId),
   ]);
   const instanceAdminGrant = instanceAdmins.find((a) => a.personId === personId);
 
@@ -39,6 +43,16 @@ export default async function SuperAdminPersonPage({
       await grantInstanceAdmin(personId);
     } else {
       await revokeInstanceAdmin(personId);
+    }
+    redirect({ href: `/admin/people/${personId}`, locale });
+  }
+
+  async function toggleAccountStatus(formData: FormData) {
+    "use server";
+    if (String(formData.get("action")) === "deactivate") {
+      await deactivateAccount(personId);
+    } else {
+      await reactivateAccount(personId);
     }
     redirect({ href: `/admin/people/${personId}`, locale });
   }
@@ -54,6 +68,37 @@ export default async function SuperAdminPersonPage({
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <h1 className="text-2xl font-semibold">{t("heading", { name: person.displayName })}</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("accountStatusHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {accountStatus.status === "none" ? (
+            <p className="text-sm text-muted-foreground">{t("accountStatusNone")}</p>
+          ) : accountStatus.status === "active" ? (
+            <>
+              <p className="text-sm text-muted-foreground">{t("accountStatusActive")}</p>
+              <form action={toggleAccountStatus}>
+                <input type="hidden" name="action" value="deactivate" />
+                <Button type="submit" variant="destructive" size="sm">
+                  {t("deactivateAccount")}
+                </Button>
+              </form>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">{t("accountStatusDisabled")}</p>
+              <form action={toggleAccountStatus}>
+                <input type="hidden" name="action" value="reactivate" />
+                <Button type="submit" size="sm">
+                  {t("reactivateAccount")}
+                </Button>
+              </form>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -8,6 +8,28 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+// status is "active", "disabled", or "none" (the person has never had a login attached).
+type AccountStatus struct {
+	PersonId string `json:"personId"`
+	Status   string `json:"status"`
+}
+
+func (o AccountStatus) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AccountStatus) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Country struct {
 	Id string `json:"id"`
 	// ISO-3166-1 alpha-2.

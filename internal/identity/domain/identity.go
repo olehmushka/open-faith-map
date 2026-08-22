@@ -11,9 +11,17 @@ import (
 var (
 	ErrPersonNotFound    = errors.New("person not found")
 	ErrAccountNotFound   = errors.New("account not found")
+	ErrAccountDisabled   = errors.New("account is disabled")
 	ErrIdentityNotFound  = errors.New("external identity not found")
 	ErrIdentityConflict  = errors.New("external identity already linked to a different person")
 	ErrInvalidExternalID = errors.New("external identity requires both issuer and subject")
+)
+
+// Account status values — must match identity_accounts' CHECK constraint literals
+// (migrations/0008_core_identity.sql).
+const (
+	AccountStatusActive   = "active"
+	AccountStatusDisabled = "disabled"
 )
 
 // Person is identity_persons — the durable PDP subject. Trimmed relative to go-oikumenea's own
@@ -33,6 +41,7 @@ type Account struct {
 	ID        string
 	PersonID  string
 	Email     string // citext; unique among active when set
+	Status    string // AccountStatusActive | AccountStatusDisabled
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

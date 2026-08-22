@@ -309,6 +309,12 @@
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",
+    "accountStatusHeading": "Account status",
+    "accountStatusActive": "Account is active.",
+    "accountStatusDisabled": "Account is deactivated — this person cannot sign in.",
+    "accountStatusNone": "This person has no account (never signed in).",
+    "deactivateAccount": "Deactivate account",
+    "reactivateAccount": "Reactivate account",
     "instanceAdminHeading": "Instance admin",
     "isInstanceAdminYes": "Granted instance admin on {date}.",
     "isInstanceAdminNo": "Not an instance admin.",

@@ -351,6 +351,12 @@ type CoreSuperAdminService interface {
 	ListInstanceAdmins(ctx context.Context, authHeader bearertoken.Token) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
+	// M11.1 — D-AccountStatusEnforcement.
+	GetAccountStatus(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.1 — rejects further authentication for this person's account. Idempotent.
+	DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.1 — reverses deactivateAccount. Idempotent.
+	ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
 }
 
 // RegisterRoutesCoreSuperAdminService registers handlers for the CoreSuperAdminService endpoints with a witchcraft wrouter.
@@ -383,6 +389,15 @@ func RegisterRoutesCoreSuperAdminService(router wrouter.Router, impl CoreSuperAd
 	}
 	if err := resource.Delete("RevokeInstanceAdmin", "/core/v1/super-admin/instance-admins/{personId}", httpserver.NewJSONHandler(handler.HandleRevokeInstanceAdmin, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeInstanceAdmin route")
+	}
+	if err := resource.Get("GetAccountStatus", "/core/v1/super-admin/persons/{personId}/account-status", httpserver.NewJSONHandler(handler.HandleGetAccountStatus, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getAccountStatus route")
+	}
+	if err := resource.Post("DeactivateAccount", "/core/v1/super-admin/persons/{personId}/deactivate", httpserver.NewJSONHandler(handler.HandleDeactivateAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deactivateAccount route")
+	}
+	if err := resource.Post("ReactivateAccount", "/core/v1/super-admin/persons/{personId}/reactivate", httpserver.NewJSONHandler(handler.HandleReactivateAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add reactivateAccount route")
 	}
 	return nil
 }
@@ -535,4 +550,67 @@ func (c *coreSuperAdminServiceHandler) HandleRevokeInstanceAdmin(rw http.Respons
 	}
 	rw.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func (c *coreSuperAdminServiceHandler) HandleGetAccountStatus(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := c.impl.GetAccountStatus(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleDeactivateAccount(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := c.impl.DeactivateAccount(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleReactivateAccount(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := c.impl.ReactivateAccount(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
 }

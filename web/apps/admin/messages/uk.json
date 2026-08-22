@@ -309,6 +309,12 @@
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",
+    "accountStatusHeading": "Статус облікового запису",
+    "accountStatusActive": "Обліковий запис активний.",
+    "accountStatusDisabled": "Обліковий запис деактивовано — ця особа не може увійти.",
+    "accountStatusNone": "Ця особа не має облікового запису (ще не входила в систему).",
+    "deactivateAccount": "Деактивувати обліковий запис",
+    "reactivateAccount": "Реактивувати обліковий запис",
     "instanceAdminHeading": "Адміністратор інстансу",
     "isInstanceAdminYes": "Надано права адміністратора інстансу {date}.",
     "isInstanceAdminNo": "Не є адміністратором інстансу.",

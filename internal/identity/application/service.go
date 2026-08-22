@@ -18,6 +18,7 @@ type Store interface {
 	GetActiveAccountByPerson(ctx context.Context, personID string) (domain.Account, error)
 	GetActiveAccountByEmail(ctx context.Context, email string) (domain.Account, error)
 	InsertAccount(ctx context.Context, personID, email string) (domain.Account, error)
+	SetAccountStatus(ctx context.Context, accountID, status string) (domain.Account, error)
 	ResolveBySubject(ctx context.Context, issuer, subject string) (domain.Resolution, error)
 	InsertIdentity(ctx context.Context, accountID, issuer, subject string) (domain.ExternalIdentity, error)
 	GetActivePersonByCode(ctx context.Context, code string) (domain.Person, error)
@@ -55,6 +56,11 @@ func (s *Service) LinkOnMatch(ctx context.Context, personID, issuer, subject, em
 	}
 	if err != nil {
 		return domain.Resolution{}, err
+	}
+	// A disabled account must never be re-linked or reused by JIT (D-AccountStatusEnforcement) — a
+	// freshly inserted account is always active, so this only ever rejects the reuse path.
+	if account.Status == domain.AccountStatusDisabled {
+		return domain.Resolution{}, domain.ErrAccountDisabled
 	}
 
 	// Pre-check rather than insert-then-recover: a unique-violation on
@@ -122,4 +128,37 @@ func (s *Service) GetPersons(ctx context.Context, ids []string) ([]domain.Person
 // SearchPersons backs the M10.7 super-admin people screen's search box.
 func (s *Service) SearchPersons(ctx context.Context, query string, limit int) ([]domain.Person, error) {
 	return s.store.SearchPersons(ctx, query, limit)
+}
+
+// AccountStatus reports personID's account status, or found=false if the person has no account yet
+// (not an error) — backs the M11.1 super-admin person detail page's account-status display.
+func (s *Service) AccountStatus(ctx context.Context, personID string) (status string, found bool, err error) {
+	account, err := s.store.GetActiveAccountByPerson(ctx, personID)
+	if errors.Is(err, domain.ErrAccountNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return account.Status, true, nil
+}
+
+// Deactivate disables personID's account (D-AccountStatusEnforcement), rejecting further
+// authentication for it — see ResolveBySubject and LinkOnMatch. Idempotent: deactivating an
+// already-disabled account just re-asserts the state.
+func (s *Service) Deactivate(ctx context.Context, personID string) (domain.Account, error) {
+	return s.setStatus(ctx, personID, domain.AccountStatusDisabled)
+}
+
+// Reactivate re-enables personID's account. Idempotent, mirroring Deactivate.
+func (s *Service) Reactivate(ctx context.Context, personID string) (domain.Account, error) {
+	return s.setStatus(ctx, personID, domain.AccountStatusActive)
+}
+
+func (s *Service) setStatus(ctx context.Context, personID, status string) (domain.Account, error) {
+	account, err := s.store.GetActiveAccountByPerson(ctx, personID)
+	if err != nil {
+		return domain.Account{}, err
+	}
+	return s.store.SetAccountStatus(ctx, account.ID, status)
 }

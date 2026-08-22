@@ -1,3 +1,4 @@
+import { IAccountStatus } from "./accountStatus";
 import { IGrantInstanceAdminRequest } from "./grantInstanceAdminRequest";
 import { IGrantUnitRoleRequest } from "./grantUnitRoleRequest";
 import { IInstanceAdminGrant } from "./instanceAdminGrant";
@@ -23,6 +24,12 @@ export interface ICoreSuperAdminService {
     listInstanceAdmins(): Promise<IInstanceAdminPage>;
     grantInstanceAdmin(request: IGrantInstanceAdminRequest): Promise<IInstanceAdminGrant>;
     revokeInstanceAdmin(personId: string): Promise<void>;
+    /** M11.1 — D-AccountStatusEnforcement. */
+    getAccountStatus(personId: string): Promise<IAccountStatus>;
+    /** M11.1 — rejects further authentication for this person's account. Idempotent. */
+    deactivateAccount(personId: string): Promise<IAccountStatus>;
+    /** M11.1 — reverses deactivateAccount. Idempotent. */
+    reactivateAccount(personId: string): Promise<IAccountStatus>;
 }
 
 export class CoreSuperAdminService implements ICoreSuperAdminService {
@@ -147,6 +154,60 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
             "revokeInstanceAdmin",
             "DELETE",
             "/core/v1/super-admin/instance-admins/{personId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.1 — D-AccountStatusEnforcement. */
+    public getAccountStatus(personId: string): Promise<IAccountStatus> {
+        return this.bridge.call<IAccountStatus>(
+            "CoreSuperAdminService",
+            "getAccountStatus",
+            "GET",
+            "/core/v1/super-admin/persons/{personId}/account-status",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.1 — rejects further authentication for this person's account. Idempotent. */
+    public deactivateAccount(personId: string): Promise<IAccountStatus> {
+        return this.bridge.call<IAccountStatus>(
+            "CoreSuperAdminService",
+            "deactivateAccount",
+            "POST",
+            "/core/v1/super-admin/persons/{personId}/deactivate",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.1 — reverses deactivateAccount. Idempotent. */
+    public reactivateAccount(personId: string): Promise<IAccountStatus> {
+        return this.bridge.call<IAccountStatus>(
+            "CoreSuperAdminService",
+            "reactivateAccount",
+            "POST",
+            "/core/v1/super-admin/persons/{personId}/reactivate",
             __undefined,
             __undefined,
             __undefined,

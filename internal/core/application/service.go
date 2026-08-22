@@ -219,3 +219,42 @@ func (s *Service) RevokeInstanceAdmin(ctx context.Context, personID string) erro
 	subject, _ := authz.SubjectFromContext(ctx)
 	return s.authz.RevokeInstanceAdmin(ctx, personID, subject.PersonID)
 }
+
+// AccountStatusNone is the wire value for "this person has never had a login attached" — not an
+// identity_accounts.status value (there is no row to have one), so it lives here rather than in
+// internal/identity/domain.
+const AccountStatusNone = "none"
+
+// AccountStatus is core's own read-model for an M11.1 account-status check — the super-admin person
+// detail page's deactivate/reactivate action.
+type AccountStatus struct {
+	PersonID string
+	Status   string
+}
+
+func (s *Service) GetAccountStatus(ctx context.Context, personID string) (AccountStatus, error) {
+	status, found, err := s.identity.AccountStatus(ctx, personID)
+	if err != nil {
+		return AccountStatus{}, err
+	}
+	if !found {
+		status = AccountStatusNone
+	}
+	return AccountStatus{PersonID: personID, Status: status}, nil
+}
+
+func (s *Service) DeactivateAccount(ctx context.Context, personID string) (AccountStatus, error) {
+	account, err := s.identity.Deactivate(ctx, personID)
+	if err != nil {
+		return AccountStatus{}, err
+	}
+	return AccountStatus{PersonID: personID, Status: account.Status}, nil
+}
+
+func (s *Service) ReactivateAccount(ctx context.Context, personID string) (AccountStatus, error) {
+	account, err := s.identity.Reactivate(ctx, personID)
+	if err != nil {
+		return AccountStatus{}, err
+	}
+	return AccountStatus{PersonID: personID, Status: account.Status}, nil
+}

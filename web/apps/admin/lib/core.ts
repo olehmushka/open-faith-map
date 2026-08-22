@@ -17,6 +17,7 @@ import { auth } from "@/auth";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
 import type {
+  IAccountStatus,
   ICountry,
   ICreateChildOrgRequest,
   IInstanceAdminGrant,
@@ -44,6 +45,7 @@ export type Person = IPerson;
 export type Role = IRole;
 export type RoleAssignment = IRoleAssignment;
 export type InstanceAdminGrant = IInstanceAdminGrant;
+export type AccountStatus = IAccountStatus;
 export type CreateChildOrgInput = ICreateChildOrgRequest;
 
 export class CoreApiError extends Error {
@@ -185,4 +187,16 @@ export async function grantInstanceAdmin(personId: string): Promise<InstanceAdmi
 
 export async function revokeInstanceAdmin(personId: string): Promise<void> {
   return unwrap((await client()).coreSuperAdmin.revokeInstanceAdmin(personId));
+}
+
+export async function getAccountStatus(personId: string): Promise<AccountStatus> {
+  return unwrap((await client()).coreSuperAdmin.getAccountStatus(personId));
+}
+
+export async function deactivateAccount(personId: string): Promise<AccountStatus> {
+  return unwrap((await client()).coreSuperAdmin.deactivateAccount(personId));
+}
+
+export async function reactivateAccount(personId: string): Promise<AccountStatus> {
+  return unwrap((await client()).coreSuperAdmin.reactivateAccount(personId));
 }

@@ -28,6 +28,8 @@ func mapErr(err error, c errCtx) error {
 	switch {
 	case errors.Is(err, identitydomain.ErrPersonNotFound):
 		return gencore.NewPersonNotFound(c.PersonID)
+	case errors.Is(err, identitydomain.ErrAccountNotFound):
+		return gencore.NewAccountNotFound(c.PersonID)
 	case errors.Is(err, directorydomain.ErrUnitNotFound):
 		return gencore.NewUnitNotFound(c.UnitID)
 	case errors.Is(err, religiondomain.ErrTaxonNotFound):
