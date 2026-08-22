@@ -26,6 +26,7 @@ type Store interface {
 	GetPerson(ctx context.Context, id string) (domain.Person, error)
 	GetPersons(ctx context.Context, ids []string) ([]domain.Person, error)
 	SearchPersons(ctx context.Context, query string, limit int) ([]domain.Person, error)
+	UpdateDisplayName(ctx context.Context, personID, displayName string) (domain.Person, error)
 	InsertSession(ctx context.Context, accountID, issuer, deviceLabel string) (domain.Session, error)
 	GetSession(ctx context.Context, sessionID string) (domain.Session, error)
 	ListActiveSessionsByAccount(ctx context.Context, accountID string) ([]domain.Session, error)
@@ -135,6 +136,14 @@ func (s *Service) GetPersons(ctx context.Context, ids []string) ([]domain.Person
 // SearchPersons backs the M10.7 super-admin people screen's search box.
 func (s *Service) SearchPersons(ctx context.Context, query string, limit int) ([]domain.Person, error) {
 	return s.store.SearchPersons(ctx, query, limit)
+}
+
+// UpdateMyProfile sets personID's display name — M11.5's self-service profile page. A plain
+// delegate to the store, no subject resolution here: the caller (internal/core/application) must
+// derive personID from the request's own resolved subject, never a client-supplied argument, same
+// division of responsibility RevokeMySession already uses for accountID.
+func (s *Service) UpdateMyProfile(ctx context.Context, personID, displayName string) (domain.Person, error) {
+	return s.store.UpdateDisplayName(ctx, personID, displayName)
 }
 
 // AccountStatus reports personID's account status plus its M11.4 last-active signal, or found=false

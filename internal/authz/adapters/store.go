@@ -120,6 +120,36 @@ func (s *Store) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([
 	return out, rows.Err()
 }
 
+// ListRoleAssignmentsByPerson lists personID's own active role assignments, across every unit — M11.5's
+// self-service profile page. Mirrors ListRoleAssignmentsByUnit's query shape exactly, filtered on
+// subject_person_id instead of target_unit_id; PersonName is always the caller's own name here, but
+// scanned via the same domain.RoleAssignment shape rather than a narrower one, so both listings stay
+// interchangeable for any future shared rendering.
+func (s *Store) ListRoleAssignmentsByPerson(ctx context.Context, personID string) ([]domain.RoleAssignment, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code, a.target_unit_id, a.scope, a.granted_at
+		FROM openfaithmap.authz_role_assignments a
+		JOIN openfaithmap.authz_roles r ON r.id = a.role_id
+		JOIN openfaithmap.identity_persons p ON p.id = a.subject_person_id
+		WHERE a.subject_person_id = $1 AND a.revoked_at IS NULL
+		ORDER BY a.granted_at DESC`, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.RoleAssignment
+	for rows.Next() {
+		var a domain.RoleAssignment
+		var scope string
+		if err := rows.Scan(&a.ID, &a.PersonID, &a.PersonName, &a.RoleID, &a.RoleCode, &a.TargetUnitID, &scope, &a.GrantedAt); err != nil {
+			return nil, err
+		}
+		a.Scope = domain.Scope(scope)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // RevokeRoleAssignment soft-revokes assignmentID — sets revoked_at/revoked_by, only if it is
 // currently active. Returns domain.ErrAssignmentNotFound if it was already revoked or never existed;
 // unlike InsertRoleAssignment's insert-side idempotency, a repeat revoke has no natural "already

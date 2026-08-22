@@ -1054,6 +1054,27 @@ func (o *UnitRefPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M11.5 — no personId field here, deliberately: the backend always updates the caller's own person row, resolved from the already-verified request subject, never a client-supplied id.
+type UpdateMyProfileRequest struct {
+	DisplayName string `json:"displayName"`
+}
+
+func (o UpdateMyProfileRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateMyProfileRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Whoami struct {
 	PersonId string `json:"personId"`
 	// Empty if the caller's person has no login account attached yet.

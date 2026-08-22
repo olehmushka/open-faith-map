@@ -25,6 +25,9 @@ type GrantStore interface {
 	// (M11.2) so the audit-log helper has a real "before" snapshot with no second read.
 	ListRoles(ctx context.Context) ([]domain.Role, error)
 	ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([]domain.RoleAssignment, error)
+	// ListRoleAssignmentsByPerson is M11.5's self-service read: the caller's own active role
+	// assignments across every unit, personID always the resolved subject's — never a request param.
+	ListRoleAssignmentsByPerson(ctx context.Context, personID string) ([]domain.RoleAssignment, error)
 	RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) (domain.RevokedRoleAssignment, error)
 	ListInstanceAdmins(ctx context.Context) ([]domain.InstanceAdminGrant, error)
 	InsertInstanceAdmin(ctx context.Context, personID, grantedBy string) (string, error)
@@ -121,6 +124,13 @@ func (s *Service) ListRoles(ctx context.Context) ([]domain.Role, error) {
 // role-grants screen.
 func (s *Service) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([]domain.RoleAssignment, error) {
 	return s.store.ListRoleAssignmentsByUnit(ctx, unitID)
+}
+
+// ListRoleAssignmentsByPerson returns personID's own active role assignments across every unit —
+// M11.5's self-service profile page. Unlike ListRoleAssignmentsByUnit, callers must derive personID
+// from the resolved request subject only, never a client-supplied argument.
+func (s *Service) ListRoleAssignmentsByPerson(ctx context.Context, personID string) ([]domain.RoleAssignment, error) {
+	return s.store.ListRoleAssignmentsByPerson(ctx, personID)
 }
 
 // RevokeRoleAssignment revokes assignmentID, recording revokedByPersonID. Returns the revoked row's

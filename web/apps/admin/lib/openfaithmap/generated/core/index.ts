@@ -43,4 +43,5 @@ export * from "./unitNotFound";
 export * from "./unitPage";
 export * from "./unitRef";
 export * from "./unitRefPage";
+export * from "./updateMyProfileRequest";
 export * from "./whoami";

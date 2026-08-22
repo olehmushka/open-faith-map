@@ -34,6 +34,10 @@ func (f fakeStore) ListRoleAssignmentsByUnit(context.Context, string) ([]domain.
 	return nil, nil
 }
 
+func (f fakeStore) ListRoleAssignmentsByPerson(context.Context, string) ([]domain.RoleAssignment, error) {
+	return nil, nil
+}
+
 func (f fakeStore) RevokeRoleAssignment(context.Context, string, string) (domain.RevokedRoleAssignment, error) {
 	return domain.RevokedRoleAssignment{}, nil
 }

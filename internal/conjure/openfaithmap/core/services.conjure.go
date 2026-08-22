@@ -23,6 +23,10 @@ type CoreServiceClient interface {
 	ListMySessions(ctx context.Context, authHeader bearertoken.Token) (SessionPage, error)
 	// M11.3 — revokes one of the caller's own sessions, self-scoped.
 	RevokeMySession(ctx context.Context, authHeader bearertoken.Token, sessionIdArg string) error
+	// M11.5 — updates the caller's own display name, self-scoped.
+	UpdateMyProfile(ctx context.Context, authHeader bearertoken.Token, requestArg UpdateMyProfileRequest) (Person, error)
+	// M11.5 — the caller's own active role assignments across every unit, self-scoped.
+	ListMyRoleAssignments(ctx context.Context, authHeader bearertoken.Token) (RoleAssignmentPage, error)
 	GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
@@ -111,6 +115,41 @@ func (c *coreServiceClient) RevokeMySession(ctx context.Context, authHeader bear
 		return werror.WrapWithContextParams(ctx, err, "revokeMySession failed")
 	}
 	return nil
+}
+
+func (c *coreServiceClient) UpdateMyProfile(ctx context.Context, authHeader bearertoken.Token, requestArg UpdateMyProfileRequest) (Person, error) {
+	var returnVal *Person
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateMyProfile"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/profile"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Person), werror.WrapWithContextParams(ctx, err, "updateMyProfile failed")
+	}
+	if returnVal == nil {
+		return *new(Person), werror.ErrorWithContextParams(ctx, "updateMyProfile response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) ListMyRoleAssignments(ctx context.Context, authHeader bearertoken.Token) (RoleAssignmentPage, error) {
+	var returnVal *RoleAssignmentPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListMyRoleAssignments"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/profile/roles"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(RoleAssignmentPage), werror.WrapWithContextParams(ctx, err, "listMyRoleAssignments failed")
+	}
+	if returnVal == nil {
+		return *new(RoleAssignmentPage), werror.ErrorWithContextParams(ctx, "listMyRoleAssignments response cannot be nil")
+	}
+	return *returnVal, nil
 }
 
 func (c *coreServiceClient) GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error) {
@@ -344,6 +383,10 @@ type CoreServiceClientWithAuth interface {
 	ListMySessions(ctx context.Context) (SessionPage, error)
 	// M11.3 — revokes one of the caller's own sessions, self-scoped.
 	RevokeMySession(ctx context.Context, sessionIdArg string) error
+	// M11.5 — updates the caller's own display name, self-scoped.
+	UpdateMyProfile(ctx context.Context, requestArg UpdateMyProfileRequest) (Person, error)
+	// M11.5 — the caller's own active role assignments across every unit, self-scoped.
+	ListMyRoleAssignments(ctx context.Context) (RoleAssignmentPage, error)
 	GetUnit(ctx context.Context, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, queryArg *string, limitArg *int) (UnitPage, error)
@@ -385,6 +428,14 @@ func (c *coreServiceClientWithAuth) ListMySessions(ctx context.Context) (Session
 
 func (c *coreServiceClientWithAuth) RevokeMySession(ctx context.Context, sessionIdArg string) error {
 	return c.client.RevokeMySession(ctx, c.authHeader, sessionIdArg)
+}
+
+func (c *coreServiceClientWithAuth) UpdateMyProfile(ctx context.Context, requestArg UpdateMyProfileRequest) (Person, error) {
+	return c.client.UpdateMyProfile(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) ListMyRoleAssignments(ctx context.Context) (RoleAssignmentPage, error) {
+	return c.client.ListMyRoleAssignments(ctx, c.authHeader)
 }
 
 func (c *coreServiceClientWithAuth) GetUnit(ctx context.Context, unitIdArg string) (Unit, error) {
@@ -474,6 +525,22 @@ func (c *coreServiceClientWithTokenProvider) RevokeMySession(ctx context.Context
 		return err
 	}
 	return c.client.RevokeMySession(ctx, bearertoken.Token(token), sessionIdArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) UpdateMyProfile(ctx context.Context, requestArg UpdateMyProfileRequest) (Person, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Person), err
+	}
+	return c.client.UpdateMyProfile(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) ListMyRoleAssignments(ctx context.Context) (RoleAssignmentPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(RoleAssignmentPage), err
+	}
+	return c.client.ListMyRoleAssignments(ctx, bearertoken.Token(token))
 }
 
 func (c *coreServiceClientWithTokenProvider) GetUnit(ctx context.Context, unitIdArg string) (Unit, error) {

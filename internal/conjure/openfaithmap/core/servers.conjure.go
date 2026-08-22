@@ -26,6 +26,10 @@ type CoreService interface {
 	ListMySessions(ctx context.Context, authHeader bearertoken.Token) (SessionPage, error)
 	// M11.3 — revokes one of the caller's own sessions, self-scoped.
 	RevokeMySession(ctx context.Context, authHeader bearertoken.Token, sessionIdArg string) error
+	// M11.5 — updates the caller's own display name, self-scoped.
+	UpdateMyProfile(ctx context.Context, authHeader bearertoken.Token, requestArg UpdateMyProfileRequest) (Person, error)
+	// M11.5 — the caller's own active role assignments across every unit, self-scoped.
+	ListMyRoleAssignments(ctx context.Context, authHeader bearertoken.Token) (RoleAssignmentPage, error)
 	GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
@@ -62,6 +66,12 @@ func RegisterRoutesCoreService(router wrouter.Router, impl CoreService, routerPa
 	}
 	if err := resource.Delete("RevokeMySession", "/core/v1/sessions/{sessionId}", httpserver.NewJSONHandler(handler.HandleRevokeMySession, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeMySession route")
+	}
+	if err := resource.Put("UpdateMyProfile", "/core/v1/profile", httpserver.NewJSONHandler(handler.HandleUpdateMyProfile, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateMyProfile route")
+	}
+	if err := resource.Get("ListMyRoleAssignments", "/core/v1/profile/roles", httpserver.NewJSONHandler(handler.HandleListMyRoleAssignments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMyRoleAssignments route")
 	}
 	if err := resource.Get("GetUnit", "/core/v1/units/{unitId}", httpserver.NewJSONHandler(handler.HandleGetUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getUnit route")
@@ -167,6 +177,36 @@ func (c *coreServiceHandler) HandleRevokeMySession(rw http.ResponseWriter, req *
 	}
 	rw.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func (c *coreServiceHandler) HandleUpdateMyProfile(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg UpdateMyProfileRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.UpdateMyProfile(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleListMyRoleAssignments(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := c.impl.ListMyRoleAssignments(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
 }
 
 func (c *coreServiceHandler) HandleGetUnit(rw http.ResponseWriter, req *http.Request) error {

@@ -180,6 +180,17 @@ export async function revokeMySession(sessionId: string): Promise<void> {
   return unwrap((await client()).core.revokeMySession(sessionId));
 }
 
+/** M11.5 — updates the caller's own display name, self-scoped. */
+export async function updateMyProfile(displayName: string): Promise<Person> {
+  return unwrap((await client()).core.updateMyProfile({ displayName }));
+}
+
+/** M11.5 — the caller's own active role assignments across every unit, self-scoped. */
+export async function listMyRoleAssignments(): Promise<RoleAssignment[]> {
+  const page = await unwrap((await client()).core.listMyRoleAssignments());
+  return page.assignments;
+}
+
 // ---- super-admin (gated server-side by RequireInstanceAdmin) ----
 
 export async function searchPersons(query?: string, limit = 50): Promise<Person[]> {

@@ -210,11 +210,13 @@ const (
 	auditActionDeactivateAccount    = "DEACTIVATE_ACCOUNT"
 	auditActionReactivateAccount    = "REACTIVATE_ACCOUNT"
 	auditActionRevokeSession        = "REVOKE_SESSION"
+	auditActionUpdateProfile        = "UPDATE_PROFILE"
 
 	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
 	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
 	auditTargetAccount        = "ACCOUNT"
 	auditTargetSession        = "SESSION"
+	auditTargetPerson         = "PERSON"
 )
 
 func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string) error {
@@ -407,6 +409,42 @@ func (s *Service) RevokeMySession(ctx context.Context, sessionID string) error {
 	}
 	return s.auditLog.Record(ctx, auditActionRevokeSession, auditTargetSession, sessionID,
 		map[string]any{"revokedAt": nil}, map[string]any{"revokedAt": before.RevokedAt})
+}
+
+// UpdateMyProfile sets the caller's own display name (self-scoped) — CoreService.updateMyProfile.
+// personID always comes from requireSubject's resolved subject, never a request argument — a
+// deliberate BOLA/IDOR defense: there is no way for this endpoint to be pointed at anyone else's
+// person row. Still audit-logged (M11.2's every-mutation convention, same reasoning
+// RevokeMySession's own doc comment gives): actor and target happen to be the same person here.
+func (s *Service) UpdateMyProfile(ctx context.Context, displayName string) (identitydomain.Person, error) {
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return identitydomain.Person{}, err
+	}
+	before, err := s.identity.GetPerson(ctx, subject.PersonID)
+	if err != nil {
+		return identitydomain.Person{}, err
+	}
+	after, err := s.identity.UpdateMyProfile(ctx, subject.PersonID, displayName)
+	if err != nil {
+		return identitydomain.Person{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionUpdateProfile, auditTargetPerson, subject.PersonID,
+		map[string]any{"displayName": before.DisplayName}, map[string]any{"displayName": after.DisplayName}); err != nil {
+		return identitydomain.Person{}, err
+	}
+	return after, nil
+}
+
+// ListMyRoleAssignments returns the caller's own active role assignments across every unit
+// (self-scoped) — CoreService.listMyRoleAssignments. Pure read, no audit (same reasoning
+// ListMySessions already documents); personID again comes only from the resolved subject.
+func (s *Service) ListMyRoleAssignments(ctx context.Context) ([]authzdomain.RoleAssignment, error) {
+	subject, ok := authz.SubjectFromContext(ctx)
+	if !ok || subject.PersonID == "" {
+		return nil, authzdomain.ErrPermissionDenied
+	}
+	return s.authz.ListRoleAssignmentsByPerson(ctx, subject.PersonID)
 }
 
 // AuditLogFilter narrows ListAuditLog by actor/target/date — every field optional, ANDed together

@@ -103,6 +103,20 @@ func (s *Store) GetPersons(ctx context.Context, ids []string) ([]domain.Person, 
 	return out, rows.Err()
 }
 
+// UpdateDisplayName sets personID's display_name — M11.5's self-service profile page, the first
+// person-mutation store method in this module (GetPerson/GetPersons/SearchPersons are all reads;
+// InsertPerson is the boot-time/registration insert path, not an update). Callers must resolve
+// personID from the request's own subject, never a client-supplied argument — this method itself
+// enforces no ownership, same "data layer, no subject resolution" shape RevokeMySession's store call
+// already uses.
+func (s *Store) UpdateDisplayName(ctx context.Context, personID, displayName string) (domain.Person, error) {
+	return s.scanPerson(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_persons
+		SET display_name = $2, updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, code, display_name, created_at, updated_at`, personID, displayName))
+}
+
 // SearchPersons is the M10.7 super-admin people screen's search — case-insensitive substring match
 // on display name or code, capped at limit (default/max 50).
 // SearchPersons backs the super-admin people list, so unlike GetPerson/GetPersons (shared with

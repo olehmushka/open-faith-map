@@ -233,6 +233,13 @@ types:
           entries: list<AuditLogEntry>
           nextPageToken: optional<string>
 
+      UpdateMyProfileRequest:
+        docs: >
+          M11.5 — no personId field here, deliberately: the backend always updates the caller's own
+          person row, resolved from the already-verified request subject, never a client-supplied id.
+        fields:
+          displayName: string
+
       RegisterSessionRequest:
         docs: >
           M11.3 — issuer is deliberately NOT a field here: the backend records the caller's own
@@ -359,6 +366,17 @@ services:
           sessionId:
             type: string
             param-type: path
+
+      updateMyProfile:
+        docs: M11.5 — updates the caller's own display name, self-scoped.
+        http: PUT /profile
+        args:
+          request: UpdateMyProfileRequest
+        returns: Person
+      listMyRoleAssignments:
+        docs: M11.5 — the caller's own active role assignments across every unit, self-scoped.
+        http: GET /profile/roles
+        returns: RoleAssignmentPage
 
       getUnit:
         http: GET /units/{unitId}

@@ -71,6 +71,29 @@ func (s *Service) RevokeMySession(ctx context.Context, _ bearertoken.Token, sess
 	return nil
 }
 
+func (s *Service) UpdateMyProfile(ctx context.Context, _ bearertoken.Token, requestArg gencore.UpdateMyProfileRequest) (gencore.Person, error) {
+	p, err := s.app.UpdateMyProfile(ctx, requestArg.DisplayName)
+	if err != nil {
+		return gencore.Person{}, mapErr(err, errCtx{})
+	}
+	return toAPIPerson(p), nil
+}
+
+func (s *Service) ListMyRoleAssignments(ctx context.Context, _ bearertoken.Token) (gencore.RoleAssignmentPage, error) {
+	assignments, err := s.app.ListMyRoleAssignments(ctx)
+	if err != nil {
+		return gencore.RoleAssignmentPage{}, mapErr(err, errCtx{})
+	}
+	out := make([]gencore.RoleAssignment, len(assignments))
+	for i, a := range assignments {
+		out[i] = gencore.RoleAssignment{
+			Id: a.ID, PersonId: a.PersonID, PersonName: a.PersonName, RoleId: a.RoleID, RoleCode: a.RoleCode,
+			TargetUnitId: a.TargetUnitID, Scope: string(a.Scope), GrantedAt: datetime.DateTime(a.GrantedAt),
+		}
+	}
+	return gencore.RoleAssignmentPage{Assignments: out}, nil
+}
+
 func (s *Service) GetUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string) (gencore.Unit, error) {
 	unit, err := s.app.GetUnit(ctx, unitIdArg)
 	if err != nil {
