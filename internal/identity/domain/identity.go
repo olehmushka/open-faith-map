@@ -21,6 +21,7 @@ var (
 	ErrInviteNotFound        = errors.New("invite not found")
 	ErrInviteExpired         = errors.New("invite has expired")
 	ErrInviteAlreadyAccepted = errors.New("invite has already been accepted")
+	ErrCannotMergeSelf       = errors.New("cannot merge a person with itself")
 )
 
 // Account status values — must match identity_accounts' CHECK constraint literals
@@ -28,6 +29,15 @@ var (
 const (
 	AccountStatusActive   = "active"
 	AccountStatusDisabled = "disabled"
+)
+
+// Person status values — must match identity_persons' CHECK constraint literals
+// (migrations/0008_core_identity.sql). The column has existed since M10.1 but nothing wrote to it
+// until M11.8's MergePersons, which sets a merged-away duplicate to PersonStatusDeactivated
+// alongside soft-deleting it.
+const (
+	PersonStatusActive      = "active"
+	PersonStatusDeactivated = "deactivated"
 )
 
 // Invite status values — must match identity_invites' CHECK constraint literals

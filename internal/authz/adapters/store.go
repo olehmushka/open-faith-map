@@ -364,3 +364,131 @@ func (s *Store) BulkInsertRoleAssignments(ctx context.Context, personIDs []strin
 	}
 	return ids, nil
 }
+
+// CountRepointableRoleAssignments previews RepointRoleAssignments' own two-statement effect
+// (M11.8) without mutating anything: how many of duplicateID's active role assignments would move
+// onto survivorID untouched, versus how many would instead be revoked as redundant because
+// survivorID already holds an identical active grant (same role/unit/scope/graph). Mirrors
+// RepointRoleAssignments' NOT EXISTS predicate exactly so the preview and the real mutation can
+// never disagree.
+func (s *Store) CountRepointableRoleAssignments(ctx context.Context, duplicateID, survivorID string) (toMove, toRevoke int, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT
+			count(*) FILTER (WHERE NOT EXISTS (
+				SELECT 1 FROM openfaithmap.authz_role_assignments s
+				WHERE s.subject_person_id = $2 AND s.role_id = ra.role_id AND s.target_unit_id = ra.target_unit_id
+				  AND s.scope = ra.scope AND s.graph_id IS NOT DISTINCT FROM ra.graph_id AND s.revoked_at IS NULL
+			)),
+			count(*) FILTER (WHERE EXISTS (
+				SELECT 1 FROM openfaithmap.authz_role_assignments s
+				WHERE s.subject_person_id = $2 AND s.role_id = ra.role_id AND s.target_unit_id = ra.target_unit_id
+				  AND s.scope = ra.scope AND s.graph_id IS NOT DISTINCT FROM ra.graph_id AND s.revoked_at IS NULL
+			))
+		FROM openfaithmap.authz_role_assignments ra
+		WHERE ra.subject_person_id = $1 AND ra.revoked_at IS NULL`, duplicateID, survivorID,
+	).Scan(&toMove, &toRevoke)
+	return toMove, toRevoke, err
+}
+
+// RepointRoleAssignments moves every one of duplicateID's active role assignments onto survivorID
+// (M11.8's MergePersons). A set-based two-statement pattern rather than BulkInsertRoleAssignments'
+// per-row loop: the input here is "every active row belonging to one person," which SQL already
+// expresses as one predicate. The first UPDATE repoints whatever doesn't collide with a grant
+// survivorID already holds; the second revokes whatever is still left under duplicateID afterward
+// (i.e. exactly the rows that collided) as redundant, not deleted — matching this codebase's
+// existing revoke-not-delete convention (RevokeRoleAssignment). Must run inside the same tx as the
+// caller's other MergePersons store calls (core/application.Service.MergePersons), so this method
+// takes no Begin/Commit itself and works against whatever s.pool is bound to.
+func (s *Store) RepointRoleAssignments(ctx context.Context, duplicateID, survivorID, actorID string) (movedIDs, revokedIDs []string, err error) {
+	moveRows, err := s.pool.Query(ctx, `
+		UPDATE openfaithmap.authz_role_assignments ra
+		SET subject_person_id = $2, updated_at = now()
+		WHERE ra.subject_person_id = $1 AND ra.revoked_at IS NULL
+		  AND NOT EXISTS (
+		    SELECT 1 FROM openfaithmap.authz_role_assignments s
+		    WHERE s.subject_person_id = $2 AND s.role_id = ra.role_id AND s.target_unit_id = ra.target_unit_id
+		      AND s.scope = ra.scope AND s.graph_id IS NOT DISTINCT FROM ra.graph_id AND s.revoked_at IS NULL
+		  )
+		RETURNING ra.id`, duplicateID, survivorID)
+	if err != nil {
+		return nil, nil, err
+	}
+	movedIDs, err = pgx.CollectRows(moveRows, pgx.RowTo[string])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var revokedByArg any
+	if actorID != "" {
+		revokedByArg = actorID
+	}
+	revokeRows, err := s.pool.Query(ctx, `
+		UPDATE openfaithmap.authz_role_assignments
+		SET revoked_at = now(), revoked_by = $2
+		WHERE subject_person_id = $1 AND revoked_at IS NULL
+		RETURNING id`, duplicateID, revokedByArg)
+	if err != nil {
+		return nil, nil, err
+	}
+	revokedIDs, err = pgx.CollectRows(revokeRows, pgx.RowTo[string])
+	if err != nil {
+		return nil, nil, err
+	}
+	return movedIDs, revokedIDs, nil
+}
+
+// PreviewRepointInstanceAdmin previews RepointInstanceAdmin's effect (M11.8) without mutating
+// anything: whether duplicateID's active instance-admin grant (if any) would move onto survivorID,
+// or would instead be revoked as redundant because survivorID already holds one.
+func (s *Store) PreviewRepointInstanceAdmin(ctx context.Context, duplicateID, survivorID string) (willMove, willRevoke bool, err error) {
+	var duplicateIsAdmin, survivorIsAdmin bool
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM openfaithmap.authz_instance_admins WHERE person_id = $1 AND revoked_at IS NULL)`,
+		duplicateID).Scan(&duplicateIsAdmin); err != nil {
+		return false, false, err
+	}
+	if !duplicateIsAdmin {
+		return false, false, nil
+	}
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM openfaithmap.authz_instance_admins WHERE person_id = $1 AND revoked_at IS NULL)`,
+		survivorID).Scan(&survivorIsAdmin); err != nil {
+		return false, false, err
+	}
+	return !survivorIsAdmin, survivorIsAdmin, nil
+}
+
+// RepointInstanceAdmin moves duplicateID's active instance-admin grant (if any) onto survivorID —
+// same repoint-or-revoke-redundant shape as RepointRoleAssignments, simplified to the plane's own
+// single-key uniqueness (authz_instance_admins_person_active_idx has no compound key to match).
+func (s *Store) RepointInstanceAdmin(ctx context.Context, duplicateID, survivorID, actorID string) (moved, revoked bool, err error) {
+	var movedID string
+	err = s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.authz_instance_admins a
+		SET person_id = $2, updated_at = now()
+		WHERE a.person_id = $1 AND a.revoked_at IS NULL
+		  AND NOT EXISTS (
+		    SELECT 1 FROM openfaithmap.authz_instance_admins s WHERE s.person_id = $2 AND s.revoked_at IS NULL
+		  )
+		RETURNING a.id`, duplicateID, survivorID).Scan(&movedID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return false, false, err
+	}
+	moved = movedID != ""
+
+	var revokedByArg any
+	if actorID != "" {
+		revokedByArg = actorID
+	}
+	var revokedID string
+	err = s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.authz_instance_admins
+		SET revoked_at = now(), revoked_by = $2
+		WHERE person_id = $1 AND revoked_at IS NULL
+		RETURNING id`, duplicateID, revokedByArg).Scan(&revokedID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return false, false, err
+	}
+	revoked = revokedID != ""
+	return moved, revoked, nil
+}

@@ -372,7 +372,29 @@
     "rolePlaceholder": "Select a role…",
     "unitIdLabel": "Unit ID",
     "unitIdPlaceholder": "The unit this role applies to",
-    "grantRole": "Grant role"
+    "grantRole": "Grant role",
+    "mergeHeading": "Merge with another person",
+    "mergeDescription": "Merge a duplicate person record into this one.",
+    "mergeLink": "Merge with another person"
+  },
+  "SuperAdminMergePersonPage": {
+    "heading": "Merge into {name}",
+    "findHeading": "Find the duplicate",
+    "duplicateIdLabel": "Duplicate person ID",
+    "duplicateIdPlaceholder": "The person to merge into this one",
+    "preview": "Preview merge",
+    "previewHeading": "What merging {name} into this person will do",
+    "roleAssignmentsMove": "{count} role assignment(s) will move to this person.",
+    "roleAssignmentsRevoke": "{count} role assignment(s) will be revoked as redundant (this person already holds them).",
+    "membershipsMove": "{count} membership(s) will move to this person.",
+    "membershipsEnd": "{count} membership(s) will be ended as redundant (this person already holds them).",
+    "instanceAdminWillMove": "Instance-admin standing will move to this person.",
+    "instanceAdminWillBeRevoked": "The duplicate's instance-admin grant will be revoked as redundant — this person already holds it.",
+    "instanceAdminNone": "The duplicate is not an instance admin.",
+    "accountNone": "The duplicate has no login account.",
+    "accountWillMove": "The duplicate's login account will move to this person.",
+    "accountWillBeDisabled": "This person already has a login account — the duplicate's account will be disabled and its login will stop working.",
+    "confirm": "Confirm merge"
   },
   "SuperAdminRoleGrantsPage": {
     "heading": "Role Grants",

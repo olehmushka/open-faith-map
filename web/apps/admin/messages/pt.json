@@ -372,7 +372,29 @@
     "rolePlaceholder": "Selecionar um papel…",
     "unitIdLabel": "ID da unidade",
     "unitIdPlaceholder": "A unidade à qual este papel se aplica",
-    "grantRole": "Conceder papel"
+    "grantRole": "Conceder papel",
+    "mergeHeading": "Mesclar com outra pessoa",
+    "mergeDescription": "Mesclar um registro de pessoa duplicado com este.",
+    "mergeLink": "Mesclar com outra pessoa"
+  },
+  "SuperAdminMergePersonPage": {
+    "heading": "Mesclar com {name}",
+    "findHeading": "Encontrar o duplicado",
+    "duplicateIdLabel": "ID da pessoa duplicada",
+    "duplicateIdPlaceholder": "A pessoa que será mesclada com esta",
+    "preview": "Pré-visualizar mesclagem",
+    "previewHeading": "O que acontecerá ao mesclar {name} com esta pessoa",
+    "roleAssignmentsMove": "{count} atribuição(ões) de papel será(ão) movida(s) para esta pessoa.",
+    "roleAssignmentsRevoke": "{count} atribuição(ões) de papel será(ão) revogada(s) por serem redundantes (esta pessoa já as possui).",
+    "membershipsMove": "{count} associação(ões) será(ão) movida(s) para esta pessoa.",
+    "membershipsEnd": "{count} associação(ões) será(ão) encerrada(s) por serem redundantes (esta pessoa já as possui).",
+    "instanceAdminWillMove": "O status de administrador da instância será movido para esta pessoa.",
+    "instanceAdminWillBeRevoked": "A concessão de administrador da instância do duplicado será revogada por ser redundante — esta pessoa já a possui.",
+    "instanceAdminNone": "O duplicado não é administrador da instância.",
+    "accountNone": "O duplicado não tem conta de login.",
+    "accountWillMove": "A conta de login do duplicado será movida para esta pessoa.",
+    "accountWillBeDisabled": "Esta pessoa já tem uma conta de login — a conta do duplicado será desativada e seu login deixará de funcionar.",
+    "confirm": "Confirmar mesclagem"
   },
   "SuperAdminRoleGrantsPage": {
     "heading": "Concessão de papéis",

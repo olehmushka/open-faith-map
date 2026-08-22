@@ -390,6 +390,98 @@ func (s *Store) InsertPersonAccountInvite(ctx context.Context, displayName, emai
 	return invite, nil
 }
 
+// PreviewMergeIdentity previews MergePersonIdentity's effect (M11.8) without mutating anything:
+// whether duplicateID has an active account at all, and if so, whether survivorID also has one
+// (accountConflict) — the case where the duplicate's account will be disabled rather than moved.
+// Reuses GetActiveAccountByPerson rather than raw SQL so the preview can never drift from what a
+// merge actually checks.
+func (s *Store) PreviewMergeIdentity(ctx context.Context, survivorID, duplicateID string) (duplicateHasActiveAccount, accountConflict bool, err error) {
+	if _, err := s.GetActiveAccountByPerson(ctx, duplicateID); err != nil {
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	if _, err := s.GetActiveAccountByPerson(ctx, survivorID); err != nil {
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			return true, false, nil
+		}
+		return false, false, err
+	}
+	return true, true, nil
+}
+
+// MergePersonIdentity does the identity-side work of M11.8's MergePersons, reflecting the
+// soft-merge-only decision (re-pointing the duplicate's external identity onto the survivor's own
+// account, so the same human could keep logging in with either, was considered and declined):
+//   - duplicateID has no active account: nothing to move; only the final soft-delete below runs.
+//   - duplicateID has one and survivorID has none (no conflict): the whole account row moves onto
+//     survivorID. External identities come along for free — they FK to account_id, not person_id.
+//   - both have an active account (the conflict case): duplicateID's account is disabled
+//     (status='disabled', deleted_at=now()) and its sessions revoked. Its external identity stays
+//     attached to that now-disabled account and stops resolving (M11.1's existing account-status
+//     gate already blocks a disabled account; the session revoke is defense-in-depth, matching this
+//     arc's other revoke flows).
+//
+// Always: duplicateID's own person row is soft-deleted (status='deactivated', deleted_at=now()).
+// Must run inside the caller's own tx (core/application.Service.MergePersons); no Begin/Commit here.
+func (s *Store) MergePersonIdentity(ctx context.Context, survivorID, duplicateID string) (accountMoved, accountDisabled bool, err error) {
+	duplicateAccount, err := s.GetActiveAccountByPerson(ctx, duplicateID)
+	switch {
+	case errors.Is(err, domain.ErrAccountNotFound):
+		// No account to move or disable — falls through to the person soft-delete below.
+	case err != nil:
+		return false, false, err
+	default:
+		_, survivorErr := s.GetActiveAccountByPerson(ctx, survivorID)
+		switch {
+		case errors.Is(survivorErr, domain.ErrAccountNotFound):
+			var movedID string
+			if err := s.pool.QueryRow(ctx, `
+				UPDATE openfaithmap.identity_accounts
+				SET person_id = $2, updated_at = now()
+				WHERE id = $1
+				RETURNING id`, duplicateAccount.ID, survivorID).Scan(&movedID); err != nil {
+				return false, false, err
+			}
+			accountMoved = true
+		case survivorErr != nil:
+			return false, false, survivorErr
+		default:
+			var disabledID string
+			if err := s.pool.QueryRow(ctx, `
+				UPDATE openfaithmap.identity_accounts
+				SET status = $2, deleted_at = now(), updated_at = now()
+				WHERE id = $1
+				RETURNING id`, duplicateAccount.ID, domain.AccountStatusDisabled).Scan(&disabledID); err != nil {
+				return false, false, err
+			}
+			revokeRows, err := s.pool.Query(ctx, `
+				UPDATE openfaithmap.identity_sessions
+				SET revoked_at = now()
+				WHERE account_id = $1 AND revoked_at IS NULL
+				RETURNING id`, duplicateAccount.ID)
+			if err != nil {
+				return false, false, err
+			}
+			if _, err := pgx.CollectRows(revokeRows, pgx.RowTo[string]); err != nil {
+				return false, false, err
+			}
+			accountDisabled = true
+		}
+	}
+
+	var deletedID string
+	if err := s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_persons
+		SET status = $2, deleted_at = now(), updated_at = now()
+		WHERE id = $1
+		RETURNING id`, duplicateID, domain.PersonStatusDeactivated).Scan(&deletedID); err != nil {
+		return accountMoved, accountDisabled, err
+	}
+	return accountMoved, accountDisabled, nil
+}
+
 // GetInviteByTokenHash looks up an invite by its hashed token, pending or accepted — callers that
 // care whether it's still usable check the returned Invite.Status/ExpiresAt themselves, same
 // convention GetSession uses for RevokedAt.

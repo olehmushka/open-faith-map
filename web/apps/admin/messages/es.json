@@ -372,7 +372,29 @@
     "rolePlaceholder": "Seleccionar un rol…",
     "unitIdLabel": "ID de la unidad",
     "unitIdPlaceholder": "La unidad a la que se aplica este rol",
-    "grantRole": "Conceder rol"
+    "grantRole": "Conceder rol",
+    "mergeHeading": "Fusionar con otra persona",
+    "mergeDescription": "Fusionar un registro de persona duplicado con este.",
+    "mergeLink": "Fusionar con otra persona"
+  },
+  "SuperAdminMergePersonPage": {
+    "heading": "Fusionar con {name}",
+    "findHeading": "Buscar el duplicado",
+    "duplicateIdLabel": "ID de la persona duplicada",
+    "duplicateIdPlaceholder": "La persona que se fusionará con esta",
+    "preview": "Vista previa de la fusión",
+    "previewHeading": "Qué ocurrirá al fusionar {name} con esta persona",
+    "roleAssignmentsMove": "Se moverán {count} asignación(es) de rol a esta persona.",
+    "roleAssignmentsRevoke": "Se revocarán {count} asignación(es) de rol por ser redundantes (esta persona ya las tiene).",
+    "membershipsMove": "Se moverán {count} membresía(s) a esta persona.",
+    "membershipsEnd": "Se finalizarán {count} membresía(s) por ser redundantes (esta persona ya las tiene).",
+    "instanceAdminWillMove": "El estado de administrador de instancia se moverá a esta persona.",
+    "instanceAdminWillBeRevoked": "Se revocará el permiso de administrador de instancia del duplicado por ser redundante — esta persona ya lo tiene.",
+    "instanceAdminNone": "El duplicado no es administrador de instancia.",
+    "accountNone": "El duplicado no tiene cuenta de acceso.",
+    "accountWillMove": "La cuenta de acceso del duplicado se moverá a esta persona.",
+    "accountWillBeDisabled": "Esta persona ya tiene una cuenta de acceso — la cuenta del duplicado se desactivará y dejará de poder iniciar sesión.",
+    "confirm": "Confirmar fusión"
   },
   "SuperAdminRoleGrantsPage": {
     "heading": "Concesión de roles",

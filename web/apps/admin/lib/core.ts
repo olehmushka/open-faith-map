@@ -26,6 +26,8 @@ import type {
   IInviteInfo,
   IInviteResult,
   IMembership,
+  IMergePreview,
+  IMergeResult,
   IOrgKind,
   IOrgProfile,
   IPerson,
@@ -57,6 +59,8 @@ export type AuditLogPage = IAuditLogPage;
 export type Session = ISession;
 export type InviteResult = IInviteResult;
 export type InviteInfo = IInviteInfo;
+export type MergePreview = IMergePreview;
+export type MergeResult = IMergeResult;
 
 export class CoreApiError extends Error {
   constructor(
@@ -261,6 +265,20 @@ export async function deactivateAccount(personId: string): Promise<AccountStatus
 
 export async function reactivateAccount(personId: string): Promise<AccountStatus> {
   return unwrap((await client()).coreSuperAdmin.reactivateAccount(personId));
+}
+
+/** M11.8 — read-only preview of what mergePersons(personId, duplicatePersonId) would move/end. */
+export async function previewMergePersons(personId: string, duplicatePersonId: string): Promise<MergePreview> {
+  return unwrap((await client()).coreSuperAdmin.previewMergePersons(personId, { duplicatePersonId }));
+}
+
+/**
+ * M11.8 — merges duplicatePersonId into personId (the survivor): reassigns its active role
+ * assignments and memberships, moves or disables its account, soft-deletes it. Destructive and
+ * irreversible; callers should call previewMergePersons first.
+ */
+export async function mergePersons(personId: string, duplicatePersonId: string): Promise<MergeResult> {
+  return unwrap((await client()).coreSuperAdmin.mergePersons(personId, { duplicatePersonId }));
 }
 
 /** M11.3 — personId's active sessions, admin-scoped. */

@@ -501,6 +501,10 @@ type CoreSuperAdminService interface {
 	DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
 	// M11.1 — reverses deactivateAccount. Idempotent.
 	ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.8 — read-only preview of what mergePersons would move/end for (personId as survivor, duplicatePersonId). Out of scope: registration/moderation/vouching/congregationimport rows, which reference person ids as opaque text with no FK.
+	PreviewMergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error)
+	// M11.8 — reassigns duplicatePersonId's active role-assignment and membership rows onto personId (the survivor); moves the duplicate's account onto the survivor if the survivor has none, otherwise disables the duplicate's account (soft-merge — its login stops working); soft-deletes the duplicate person; audit-logs the merge. Destructive-shaped and irreversible. Out of scope: registration/moderation/vouching/congregationimport rows (opaque text, no FK) — those keep referencing the pre-merge duplicate id. The admin UI calls previewMergePersons first.
+	MergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error)
 	// M11.3 — personId's active sessions, admin-scoped.
 	ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error)
 	// M11.3 — revokes one of personId's sessions, admin-scoped.
@@ -553,6 +557,12 @@ func RegisterRoutesCoreSuperAdminService(router wrouter.Router, impl CoreSuperAd
 	}
 	if err := resource.Post("ReactivateAccount", "/core/v1/super-admin/persons/{personId}/reactivate", httpserver.NewJSONHandler(handler.HandleReactivateAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add reactivateAccount route")
+	}
+	if err := resource.Post("PreviewMergePersons", "/core/v1/super-admin/persons/{personId}/merge-preview", httpserver.NewJSONHandler(handler.HandlePreviewMergePersons, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add previewMergePersons route")
+	}
+	if err := resource.Post("MergePersons", "/core/v1/super-admin/persons/{personId}/merge", httpserver.NewJSONHandler(handler.HandleMergePersons, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add mergePersons route")
 	}
 	if err := resource.Get("ListSessions", "/core/v1/super-admin/persons/{personId}/sessions", httpserver.NewJSONHandler(handler.HandleListSessions, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listSessions route")
@@ -791,6 +801,56 @@ func (c *coreSuperAdminServiceHandler) HandleReactivateAccount(rw http.ResponseW
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
 	}
 	respArg, err := c.impl.ReactivateAccount(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandlePreviewMergePersons(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg MergePersonsRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.PreviewMergePersons(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleMergePersons(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg MergePersonsRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.MergePersons(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
 	if err != nil {
 		return err
 	}

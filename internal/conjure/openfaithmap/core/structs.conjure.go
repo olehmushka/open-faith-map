@@ -542,6 +542,88 @@ func (o *MembershipPage) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M11.8 — the path's personId is always the survivor; duplicatePersonId is merged into it.
+type MergePersonsRequest struct {
+	DuplicatePersonId string `json:"duplicatePersonId"`
+}
+
+func (o MergePersonsRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MergePersonsRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.8 — what mergePersons(personId, duplicatePersonId) will move or end, computed read-only so the admin UI can show it before the caller confirms. Does not consider registration/moderation/vouching/congregationimport rows, which reference person ids as opaque text with no FK and are out of scope for this milestone.
+type MergePreview struct {
+	SurvivorId                            string `json:"survivorId"`
+	DuplicatePersonId                     string `json:"duplicatePersonId"`
+	RoleAssignmentsToMove                 int    `json:"roleAssignmentsToMove"`
+	RoleAssignmentsToRevokeAsRedundant    int    `json:"roleAssignmentsToRevokeAsRedundant"`
+	MembershipsToMove                     int    `json:"membershipsToMove"`
+	MembershipsToEndAsRedundant           int    `json:"membershipsToEndAsRedundant"`
+	InstanceAdminWillMove                 bool   `json:"instanceAdminWillMove"`
+	InstanceAdminWillBeRevokedAsRedundant bool   `json:"instanceAdminWillBeRevokedAsRedundant"`
+	DuplicateHasActiveAccount             bool   `json:"duplicateHasActiveAccount"`
+	// True when the survivor already has their own active account — in that case the duplicate's account is disabled (soft-merge) rather than moved, and its login stops working. False means the duplicate's account (if any) simply moves onto the survivor.
+	AccountConflict bool `json:"accountConflict"`
+}
+
+func (o MergePreview) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MergePreview) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.8 — what mergePersons actually did, for the audit record and the confirmation UI.
+type MergeResult struct {
+	SurvivorId                      string `json:"survivorId"`
+	DuplicatePersonId               string `json:"duplicatePersonId"`
+	RoleAssignmentsMoved            int    `json:"roleAssignmentsMoved"`
+	RoleAssignmentsRevokedRedundant int    `json:"roleAssignmentsRevokedRedundant"`
+	MembershipsMoved                int    `json:"membershipsMoved"`
+	MembershipsEnded                int    `json:"membershipsEnded"`
+	InstanceAdminMoved              bool   `json:"instanceAdminMoved"`
+	InstanceAdminRevokedRedundant   bool   `json:"instanceAdminRevokedRedundant"`
+	DuplicateAccountMoved           bool   `json:"duplicateAccountMoved"`
+	DuplicateAccountDisabled        bool   `json:"duplicateAccountDisabled"`
+}
+
+func (o MergeResult) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MergeResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type OrgClassification struct {
 	Id        string            `json:"id"`
 	UnitId    string            `json:"unitId"`

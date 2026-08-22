@@ -13,7 +13,7 @@ import {
   revokeInstanceAdmin,
   revokeSession,
 } from "@/lib/core";
-import { redirect } from "@/i18n/navigation";
+import { Link, redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -203,6 +203,18 @@ export default async function SuperAdminPersonPage({
               {t("grantRole")}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("mergeHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">{t("mergeDescription")}</p>
+          <Button variant="destructive" size="sm" className="self-start" asChild>
+            <Link href={`/admin/people/${personId}/merge`}>{t("mergeLink")}</Link>
+          </Button>
         </CardContent>
       </Card>
     </div>

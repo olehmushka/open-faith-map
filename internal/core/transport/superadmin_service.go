@@ -5,7 +5,6 @@ package transport
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	auditlogdomain "github.com/olehmushka/open-faith-map/internal/auditlog/domain"
@@ -148,6 +147,38 @@ func (s *SuperAdminService) ReactivateAccount(ctx context.Context, _ bearertoken
 	return gencore.AccountStatus{PersonId: status.PersonID, Status: status.Status}, nil
 }
 
+// PreviewMergePersons is M11.8's read-only preview: personIdArg is always the would-be survivor,
+// requestArg.DuplicatePersonId the person that would be merged away.
+func (s *SuperAdminService) PreviewMergePersons(ctx context.Context, _ bearertoken.Token, personIdArg string, requestArg gencore.MergePersonsRequest) (gencore.MergePreview, error) {
+	preview, err := s.app.PreviewMergePersons(ctx, personIdArg, requestArg.DuplicatePersonId)
+	if err != nil {
+		return gencore.MergePreview{}, mapErr(err, errCtx{PersonID: personIdArg})
+	}
+	return gencore.MergePreview{
+		SurvivorId: preview.SurvivorID, DuplicatePersonId: preview.DuplicatePersonID,
+		RoleAssignmentsToMove: preview.RoleAssignmentsToMove, RoleAssignmentsToRevokeAsRedundant: preview.RoleAssignmentsToRevokeAsRedundant,
+		MembershipsToMove: preview.MembershipsToMove, MembershipsToEndAsRedundant: preview.MembershipsToEndAsRedundant,
+		InstanceAdminWillMove: preview.InstanceAdminWillMove, InstanceAdminWillBeRevokedAsRedundant: preview.InstanceAdminWillBeRevokedAsRedundant,
+		DuplicateHasActiveAccount: preview.DuplicateHasActiveAccount, AccountConflict: preview.AccountConflict,
+	}, nil
+}
+
+// MergePersons is M11.8's destructive write: personIdArg is always the survivor,
+// requestArg.DuplicatePersonId is merged into it and soft-deleted.
+func (s *SuperAdminService) MergePersons(ctx context.Context, _ bearertoken.Token, personIdArg string, requestArg gencore.MergePersonsRequest) (gencore.MergeResult, error) {
+	result, err := s.app.MergePersons(ctx, personIdArg, requestArg.DuplicatePersonId)
+	if err != nil {
+		return gencore.MergeResult{}, mapErr(err, errCtx{PersonID: personIdArg})
+	}
+	return gencore.MergeResult{
+		SurvivorId: result.SurvivorID, DuplicatePersonId: result.DuplicatePersonID,
+		RoleAssignmentsMoved: result.RoleAssignmentsMoved, RoleAssignmentsRevokedRedundant: result.RoleAssignmentsRevokedRedundant,
+		MembershipsMoved: result.MembershipsMoved, MembershipsEnded: result.MembershipsEnded,
+		InstanceAdminMoved: result.InstanceAdminMoved, InstanceAdminRevokedRedundant: result.InstanceAdminRevokedRedundant,
+		DuplicateAccountMoved: result.DuplicateAccountMoved, DuplicateAccountDisabled: result.DuplicateAccountDisabled,
+	}, nil
+}
+
 func (s *SuperAdminService) ListSessions(ctx context.Context, _ bearertoken.Token, personIdArg string) (gencore.SessionPage, error) {
 	sessions, err := s.app.ListSessions(ctx, personIdArg)
 	if err != nil {
@@ -246,11 +277,11 @@ func toAPIAuditLogEntry(e auditlogdomain.Entry) gencore.AuditLogEntry {
 		Action: e.Action, TargetKind: e.TargetKind, TargetId: e.TargetID, CreatedAt: datetime.DateTime(e.CreatedAt),
 	}
 	if len(e.Before) > 0 {
-		var v any = json.RawMessage(e.Before)
+		var v any = e.Before
 		entry.Before = &v
 	}
 	if len(e.After) > 0 {
-		var v any = json.RawMessage(e.After)
+		var v any = e.After
 		entry.After = &v
 	}
 	return entry

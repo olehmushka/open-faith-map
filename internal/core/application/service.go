@@ -16,14 +16,18 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	auditlogdomain "github.com/olehmushka/open-faith-map/internal/auditlog/domain"
 	"github.com/olehmushka/open-faith-map/internal/authz"
+	authzadapters "github.com/olehmushka/open-faith-map/internal/authz/adapters"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
 	directoryapplication "github.com/olehmushka/open-faith-map/internal/directory/application"
 	directorydomain "github.com/olehmushka/open-faith-map/internal/directory/domain"
+	identityadapters "github.com/olehmushka/open-faith-map/internal/identity/adapters"
 	identityapplication "github.com/olehmushka/open-faith-map/internal/identity/application"
 	identitydomain "github.com/olehmushka/open-faith-map/internal/identity/domain"
+	membershipadapters "github.com/olehmushka/open-faith-map/internal/membership/adapters"
 	membershipapplication "github.com/olehmushka/open-faith-map/internal/membership/application"
 	membershipdomain "github.com/olehmushka/open-faith-map/internal/membership/domain"
 	refdataapplication "github.com/olehmushka/open-faith-map/internal/refdata/application"
@@ -40,6 +44,12 @@ type Service struct {
 	refdata    *refdataapplication.Service
 	authz      *authz.Service
 	auditLog   *auditlogapplication.Service
+	// pool is M11.8's own addition, alongside the six module Services above: MergePersons is the
+	// first CoreSuperAdminService write that must span identity's, authz's, and membership's tables
+	// in one atomic transaction, and none of those Services expose their own pool or store for a
+	// caller to reuse — mirroring internal/identity/bootstrap.Run's cross-module transaction shape,
+	// just triggered at runtime instead of at boot.
+	pool *pgxpool.Pool
 }
 
 func NewService(
@@ -50,10 +60,12 @@ func NewService(
 	refdata *refdataapplication.Service,
 	authzSvc *authz.Service,
 	auditLog *auditlogapplication.Service,
+	pool *pgxpool.Pool,
 ) *Service {
 	return &Service{
 		directory: directory, religion: religion, membership: membership,
 		identity: identity, refdata: refdata, authz: authzSvc, auditLog: auditLog,
+		pool: pool,
 	}
 }
 
@@ -214,6 +226,7 @@ const (
 	auditActionUpdateProfile        = "UPDATE_PROFILE"
 	auditActionCreateInvite         = "CREATE_INVITE"
 	auditActionBulkGrantUnitRole    = "BULK_GRANT_UNIT_ROLE"
+	auditActionMergePersons         = "MERGE_PERSONS"
 
 	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
 	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
@@ -257,6 +270,179 @@ func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, rol
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// MergePreview is what PreviewMergePersons computes read-only, before mergePersons's own
+// destructive write (M11.8) — the admin UI's "what will move" step. Field-for-field, this mirrors
+// MergeResult below (Xxx"ToMove"/"ToRevokeAsRedundant" here vs. Xxx"Moved"/"XxxRevokedRedundant"
+// there) so the same UI rendering logic can present either shape.
+type MergePreview struct {
+	SurvivorID                            string
+	DuplicatePersonID                     string
+	RoleAssignmentsToMove                 int
+	RoleAssignmentsToRevokeAsRedundant    int
+	MembershipsToMove                     int
+	MembershipsToEndAsRedundant           int
+	InstanceAdminWillMove                 bool
+	InstanceAdminWillBeRevokedAsRedundant bool
+	DuplicateHasActiveAccount             bool
+	// AccountConflict is true when the survivor already has their own active account — in that case
+	// the duplicate's account will be disabled (soft-merge) rather than moved, and its login stops
+	// working (a decision made with the user, not the alternative of re-pointing the duplicate's
+	// external identity onto the survivor's own account).
+	AccountConflict bool
+}
+
+// MergeResult is what MergePersons actually did (M11.8) — the audit record's payload and the
+// confirmation UI's own summary.
+type MergeResult struct {
+	SurvivorID                      string
+	DuplicatePersonID               string
+	RoleAssignmentsMoved            int
+	RoleAssignmentsRevokedRedundant int
+	MembershipsMoved                int
+	MembershipsEnded                int
+	InstanceAdminMoved              bool
+	InstanceAdminRevokedRedundant   bool
+	DuplicateAccountMoved           bool
+	DuplicateAccountDisabled        bool
+}
+
+// PreviewMergePersons computes, read-only, what MergePersons would move/end for (survivorID,
+// duplicateID) — no requireSubject gate beyond the route group's own RequireInstanceAdmin, same as
+// SearchPersons/ListRoles above (a pure read carries no further per-call check on this service).
+// Every count/flag here is computed by the same predicate the real mutation uses, so a preview can
+// never disagree with what confirming it will actually do.
+func (s *Service) PreviewMergePersons(ctx context.Context, survivorID, duplicateID string) (MergePreview, error) {
+	if survivorID == duplicateID {
+		return MergePreview{}, identitydomain.ErrCannotMergeSelf
+	}
+	if _, err := s.identity.GetPerson(ctx, survivorID); err != nil {
+		return MergePreview{}, err
+	}
+	if _, err := s.identity.GetPerson(ctx, duplicateID); err != nil {
+		return MergePreview{}, err
+	}
+
+	authzStore := authzadapters.NewStore(s.pool)
+	roleAssignmentsToMove, roleAssignmentsToRevoke, err := authzStore.CountRepointableRoleAssignments(ctx, duplicateID, survivorID)
+	if err != nil {
+		return MergePreview{}, err
+	}
+	instanceAdminWillMove, instanceAdminWillRevoke, err := authzStore.PreviewRepointInstanceAdmin(ctx, duplicateID, survivorID)
+	if err != nil {
+		return MergePreview{}, err
+	}
+
+	membershipStore := membershipadapters.NewStore(s.pool)
+	membershipsToMove, membershipsToEnd, err := membershipStore.CountRepointableMemberships(ctx, duplicateID, survivorID)
+	if err != nil {
+		return MergePreview{}, err
+	}
+
+	identityStore := identityadapters.NewStore(s.pool)
+	duplicateHasActiveAccount, accountConflict, err := identityStore.PreviewMergeIdentity(ctx, survivorID, duplicateID)
+	if err != nil {
+		return MergePreview{}, err
+	}
+
+	return MergePreview{
+		SurvivorID:                            survivorID,
+		DuplicatePersonID:                     duplicateID,
+		RoleAssignmentsToMove:                 roleAssignmentsToMove,
+		RoleAssignmentsToRevokeAsRedundant:    roleAssignmentsToRevoke,
+		MembershipsToMove:                     membershipsToMove,
+		MembershipsToEndAsRedundant:           membershipsToEnd,
+		InstanceAdminWillMove:                 instanceAdminWillMove,
+		InstanceAdminWillBeRevokedAsRedundant: instanceAdminWillRevoke,
+		DuplicateHasActiveAccount:             duplicateHasActiveAccount,
+		AccountConflict:                       accountConflict,
+	}, nil
+}
+
+// MergePersons reassigns duplicateID's active role-assignment and membership rows onto survivorID,
+// moves or disables duplicateID's account (see internal/identity/adapters.MergePersonIdentity),
+// soft-deletes the duplicate person, and audit-logs the merge — M11.8, "the riskiest of the nine"
+// (docs/milestones.md). Everything below runs inside one transaction spanning identity's, authz's,
+// and membership's own tables: each module's store still only touches its own tables by name (no
+// cross-module SQL), but this method is the one place that binds all three to the same pgx.Tx and
+// commits once — the same shape internal/identity/bootstrap.Run already established for the
+// boot-time admin seed, just triggered at runtime. Out of scope, deliberately (matches this
+// milestone's own written scope): registration/moderation/vouching/congregationimport rows, which
+// reference person ids as opaque text with no FK and are never touched here.
+func (s *Service) MergePersons(ctx context.Context, survivorID, duplicateID string) (MergeResult, error) {
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	if survivorID == duplicateID {
+		return MergeResult{}, identitydomain.ErrCannotMergeSelf
+	}
+	if _, err := s.identity.GetPerson(ctx, survivorID); err != nil {
+		return MergeResult{}, err
+	}
+	if _, err := s.identity.GetPerson(ctx, duplicateID); err != nil {
+		return MergeResult{}, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	authzStore := authzadapters.NewStore(tx)
+	roleAssignmentsMoved, roleAssignmentsRevoked, err := authzStore.RepointRoleAssignments(ctx, duplicateID, survivorID, subject.PersonID)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	instanceAdminMoved, instanceAdminRevoked, err := authzStore.RepointInstanceAdmin(ctx, duplicateID, survivorID, subject.PersonID)
+	if err != nil {
+		return MergeResult{}, err
+	}
+
+	membershipStore := membershipadapters.NewStore(tx)
+	membershipsMoved, membershipsEnded, err := membershipStore.RepointMemberships(ctx, duplicateID, survivorID)
+	if err != nil {
+		return MergeResult{}, err
+	}
+
+	identityStore := identityadapters.NewStore(tx)
+	accountMoved, accountDisabled, err := identityStore.MergePersonIdentity(ctx, survivorID, duplicateID)
+	if err != nil {
+		return MergeResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return MergeResult{}, err
+	}
+
+	result := MergeResult{
+		SurvivorID:                      survivorID,
+		DuplicatePersonID:               duplicateID,
+		RoleAssignmentsMoved:            len(roleAssignmentsMoved),
+		RoleAssignmentsRevokedRedundant: len(roleAssignmentsRevoked),
+		MembershipsMoved:                len(membershipsMoved),
+		MembershipsEnded:                len(membershipsEnded),
+		InstanceAdminMoved:              instanceAdminMoved,
+		InstanceAdminRevokedRedundant:   instanceAdminRevoked,
+		DuplicateAccountMoved:           accountMoved,
+		DuplicateAccountDisabled:        accountDisabled,
+	}
+	if err := s.auditLog.Record(ctx, auditActionMergePersons, auditTargetPerson, survivorID, nil, map[string]any{
+		"duplicatePersonId":               duplicateID,
+		"roleAssignmentsMoved":            result.RoleAssignmentsMoved,
+		"roleAssignmentsRevokedRedundant": result.RoleAssignmentsRevokedRedundant,
+		"membershipsMoved":                result.MembershipsMoved,
+		"membershipsEnded":                result.MembershipsEnded,
+		"instanceAdminMoved":              result.InstanceAdminMoved,
+		"instanceAdminRevokedRedundant":   result.InstanceAdminRevokedRedundant,
+		"duplicateAccountMoved":           result.DuplicateAccountMoved,
+		"duplicateAccountDisabled":        result.DuplicateAccountDisabled,
+	}); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID string) error {

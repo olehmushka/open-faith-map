@@ -63,7 +63,7 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	// M10.7: the Conjure surface these modules gain via api/core.conjure.yml, for
 	// openfaithmap-admin — deps.IdentitySvc is already built by registerIdentity, which runs before
 	// this function (registerOrder in main.go).
-	coreAppSvc := coreapplication.NewService(directorySvc, religionSvc, membershipSvc, deps.IdentitySvc, refdataSvc, authzSvc, auditLogSvc)
+	coreAppSvc := coreapplication.NewService(directorySvc, religionSvc, membershipSvc, deps.IdentitySvc, refdataSvc, authzSvc, auditLogSvc, deps.Pool)
 
 	coreTransportSvc := coretransport.NewService(coreAppSvc)
 	if err := gencore.RegisterRoutesCoreService(info.Router, coreTransportSvc); err != nil {

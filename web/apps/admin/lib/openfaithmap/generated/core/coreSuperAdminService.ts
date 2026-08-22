@@ -7,6 +7,9 @@ import { IInstanceAdminGrant } from "./instanceAdminGrant";
 import { IInstanceAdminPage } from "./instanceAdminPage";
 import { IInvitePersonRequest } from "./invitePersonRequest";
 import { IInviteResult } from "./inviteResult";
+import { IMergePersonsRequest } from "./mergePersonsRequest";
+import { IMergePreview } from "./mergePreview";
+import { IMergeResult } from "./mergeResult";
 import { IPersonPage } from "./personPage";
 import { IRoleAssignmentPage } from "./roleAssignmentPage";
 import { IRolePage } from "./rolePage";
@@ -40,6 +43,16 @@ export interface ICoreSuperAdminService {
     deactivateAccount(personId: string): Promise<IAccountStatus>;
     /** M11.1 — reverses deactivateAccount. Idempotent. */
     reactivateAccount(personId: string): Promise<IAccountStatus>;
+    /**
+     * M11.8 — read-only preview of what mergePersons would move/end for (personId as survivor, duplicatePersonId). Out of scope: registration/moderation/vouching/congregationimport rows, which reference person ids as opaque text with no FK.
+     *
+     */
+    previewMergePersons(personId: string, request: IMergePersonsRequest): Promise<IMergePreview>;
+    /**
+     * M11.8 — reassigns duplicatePersonId's active role-assignment and membership rows onto personId (the survivor); moves the duplicate's account onto the survivor if the survivor has none, otherwise disables the duplicate's account (soft-merge — its login stops working); soft-deletes the duplicate person; audit-logs the merge. Destructive-shaped and irreversible. Out of scope: registration/moderation/vouching/congregationimport rows (opaque text, no FK) — those keep referencing the pre-merge duplicate id. The admin UI calls previewMergePersons first.
+     *
+     */
+    mergePersons(personId: string, request: IMergePersonsRequest): Promise<IMergeResult>;
     /** M11.3 — personId's active sessions, admin-scoped. */
     listSessions(personId: string): Promise<ISessionPage>;
     /** M11.3 — revokes one of personId's sessions, admin-scoped. */
@@ -252,6 +265,48 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
             "POST",
             "/core/v1/super-admin/persons/{personId}/reactivate",
             __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.8 — read-only preview of what mergePersons would move/end for (personId as survivor, duplicatePersonId). Out of scope: registration/moderation/vouching/congregationimport rows, which reference person ids as opaque text with no FK.
+     *
+     */
+    public previewMergePersons(personId: string, request: IMergePersonsRequest): Promise<IMergePreview> {
+        return this.bridge.call<IMergePreview>(
+            "CoreSuperAdminService",
+            "previewMergePersons",
+            "POST",
+            "/core/v1/super-admin/persons/{personId}/merge-preview",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.8 — reassigns duplicatePersonId's active role-assignment and membership rows onto personId (the survivor); moves the duplicate's account onto the survivor if the survivor has none, otherwise disables the duplicate's account (soft-merge — its login stops working); soft-deletes the duplicate person; audit-logs the merge. Destructive-shaped and irreversible. Out of scope: registration/moderation/vouching/congregationimport rows (opaque text, no FK) — those keep referencing the pre-merge duplicate id. The admin UI calls previewMergePersons first.
+     *
+     */
+    public mergePersons(personId: string, request: IMergePersonsRequest): Promise<IMergeResult> {
+        return this.bridge.call<IMergeResult>(
+            "CoreSuperAdminService",
+            "mergePersons",
+            "POST",
+            "/core/v1/super-admin/persons/{personId}/merge",
+            request,
             __undefined,
             __undefined,
             [

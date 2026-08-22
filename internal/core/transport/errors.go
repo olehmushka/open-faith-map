@@ -57,6 +57,8 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewInviteExpired()
 	case errors.Is(err, identitydomain.ErrInviteNotFound):
 		return gencore.NewInviteNotFound()
+	case errors.Is(err, identitydomain.ErrCannotMergeSelf):
+		return gencore.NewCannotMergeSelf()
 	case errors.Is(err, identitydomain.ErrAccountDisabled):
 		// No oracle leak to an anonymous invitee holding just a token guess (same reasoning
 		// D-AccountStatusEnforcement's own ResolveBySubject already applies): a disabled account

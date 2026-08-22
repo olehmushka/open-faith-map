@@ -688,6 +688,10 @@ type CoreSuperAdminServiceClient interface {
 	DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
 	// M11.1 — reverses deactivateAccount. Idempotent.
 	ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.8 — read-only preview of what mergePersons would move/end for (personId as survivor, duplicatePersonId). Out of scope: registration/moderation/vouching/congregationimport rows, which reference person ids as opaque text with no FK.
+	PreviewMergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error)
+	// M11.8 — reassigns duplicatePersonId's active role-assignment and membership rows onto personId (the survivor); moves the duplicate's account onto the survivor if the survivor has none, otherwise disables the duplicate's account (soft-merge — its login stops working); soft-deletes the duplicate person; audit-logs the merge. Destructive-shaped and irreversible. Out of scope: registration/moderation/vouching/congregationimport rows (opaque text, no FK) — those keep referencing the pre-merge duplicate id. The admin UI calls previewMergePersons first.
+	MergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error)
 	// M11.3 — personId's active sessions, admin-scoped.
 	ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error)
 	// M11.3 — revokes one of personId's sessions, admin-scoped.
@@ -901,6 +905,42 @@ func (c *coreSuperAdminServiceClient) ReactivateAccount(ctx context.Context, aut
 	return *returnVal, nil
 }
 
+func (c *coreSuperAdminServiceClient) PreviewMergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error) {
+	var returnVal *MergePreview
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("PreviewMergePersons"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/merge-preview", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(MergePreview), werror.WrapWithContextParams(ctx, err, "previewMergePersons failed")
+	}
+	if returnVal == nil {
+		return *new(MergePreview), werror.ErrorWithContextParams(ctx, "previewMergePersons response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) MergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error) {
+	var returnVal *MergeResult
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("MergePersons"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/merge", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(MergeResult), werror.WrapWithContextParams(ctx, err, "mergePersons failed")
+	}
+	if returnVal == nil {
+		return *new(MergeResult), werror.ErrorWithContextParams(ctx, "mergePersons response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 func (c *coreSuperAdminServiceClient) ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error) {
 	var returnVal *SessionPage
 	var requestParams []httpclient.RequestParam
@@ -1006,6 +1046,10 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	DeactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
 	// M11.1 — reverses deactivateAccount. Idempotent.
 	ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
+	// M11.8 — read-only preview of what mergePersons would move/end for (personId as survivor, duplicatePersonId). Out of scope: registration/moderation/vouching/congregationimport rows, which reference person ids as opaque text with no FK.
+	PreviewMergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error)
+	// M11.8 — reassigns duplicatePersonId's active role-assignment and membership rows onto personId (the survivor); moves the duplicate's account onto the survivor if the survivor has none, otherwise disables the duplicate's account (soft-merge — its login stops working); soft-deletes the duplicate person; audit-logs the merge. Destructive-shaped and irreversible. Out of scope: registration/moderation/vouching/congregationimport rows (opaque text, no FK) — those keep referencing the pre-merge duplicate id. The admin UI calls previewMergePersons first.
+	MergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error)
 	// M11.3 — personId's active sessions, admin-scoped.
 	ListSessions(ctx context.Context, personIdArg string) (SessionPage, error)
 	// M11.3 — revokes one of personId's sessions, admin-scoped.
@@ -1071,6 +1115,14 @@ func (c *coreSuperAdminServiceClientWithAuth) DeactivateAccount(ctx context.Cont
 
 func (c *coreSuperAdminServiceClientWithAuth) ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
 	return c.client.ReactivateAccount(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) PreviewMergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error) {
+	return c.client.PreviewMergePersons(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) MergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error) {
+	return c.client.MergePersons(ctx, c.authHeader, personIdArg, requestArg)
 }
 
 func (c *coreSuperAdminServiceClientWithAuth) ListSessions(ctx context.Context, personIdArg string) (SessionPage, error) {
@@ -1192,6 +1244,22 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) ReactivateAccount(ctx con
 		return *new(AccountStatus), err
 	}
 	return c.client.ReactivateAccount(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) PreviewMergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(MergePreview), err
+	}
+	return c.client.PreviewMergePersons(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) MergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(MergeResult), err
+	}
+	return c.client.MergePersons(ctx, bearertoken.Token(token), personIdArg, requestArg)
 }
 
 func (c *coreSuperAdminServiceClientWithTokenProvider) ListSessions(ctx context.Context, personIdArg string) (SessionPage, error) {
