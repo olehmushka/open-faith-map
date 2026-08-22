@@ -291,7 +291,8 @@
     "people": "Pessoas",
     "roleGrants": "Concessão de papéis",
     "units": "Unidades",
-    "taxa": "Taxonomia"
+    "taxa": "Taxonomia",
+    "auditLog": "Registro de auditoria"
   },
   "AdminSitesPage": {
     "heading": "Sites",
@@ -370,6 +371,27 @@
     "rankLabel": "Categoria",
     "parentLabel": "Superior",
     "noParent": "Este é um táxon raiz."
+  },
+  "SuperAdminAuditLogPage": {
+    "heading": "Registro de auditoria",
+    "actorFilterLabel": "ID da pessoa autora",
+    "targetKindFilterLabel": "Tipo de alvo",
+    "targetKindFilterPlaceholder": "ex.: ROLE_ASSIGNMENT",
+    "targetIdFilterLabel": "ID do alvo",
+    "fromFilterLabel": "De",
+    "toFilterLabel": "Até",
+    "applyFilters": "Aplicar filtros",
+    "clearFilters": "Limpar filtros",
+    "filterEntries": "Filtrar entradas carregadas…",
+    "actorColumn": "Autor",
+    "actionColumn": "Ação",
+    "targetColumn": "Alvo",
+    "whenColumn": "Quando",
+    "beforeLabel": "Antes",
+    "afterLabel": "Depois",
+    "noEntries": "Nenhuma entrada do registro corresponde a estes filtros.",
+    "loadMore": "Carregar mais",
+    "loading": "Carregando…"
   },
   "AdminNotFoundPage": {
     "heading": "Página não encontrada",

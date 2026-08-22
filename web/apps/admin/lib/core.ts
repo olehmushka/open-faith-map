@@ -18,6 +18,8 @@ import { auth } from "@/auth";
 import { createOpenFaithMapClient } from "./openfaithmap";
 import type {
   IAccountStatus,
+  IAuditLogEntry,
+  IAuditLogPage,
   ICountry,
   ICreateChildOrgRequest,
   IInstanceAdminGrant,
@@ -47,6 +49,8 @@ export type RoleAssignment = IRoleAssignment;
 export type InstanceAdminGrant = IInstanceAdminGrant;
 export type AccountStatus = IAccountStatus;
 export type CreateChildOrgInput = ICreateChildOrgRequest;
+export type AuditLogEntry = IAuditLogEntry;
+export type AuditLogPage = IAuditLogPage;
 
 export class CoreApiError extends Error {
   constructor(
@@ -199,4 +203,28 @@ export async function deactivateAccount(personId: string): Promise<AccountStatus
 
 export async function reactivateAccount(personId: string): Promise<AccountStatus> {
   return unwrap((await client()).coreSuperAdmin.reactivateAccount(personId));
+}
+
+export interface AuditLogFilter {
+  actorPersonId?: string;
+  targetKind?: string;
+  targetId?: string;
+  from?: string;
+  to?: string;
+  pageToken?: string;
+}
+
+/** M11.2 — keyset-paginated, filterable by actor/target/date; see components/data-table.tsx's own doc comment for why pagination state stays with the caller. */
+export async function listAuditLog(filter: AuditLogFilter): Promise<AuditLogPage> {
+  return unwrap(
+    (await client()).coreSuperAdmin.listAuditLog(
+      filter.actorPersonId,
+      filter.targetKind,
+      filter.targetId,
+      filter.from,
+      filter.to,
+      undefined,
+      filter.pageToken,
+    ),
+  );
 }

@@ -291,7 +291,8 @@
     "people": "People",
     "roleGrants": "Role Grants",
     "units": "Units",
-    "taxa": "Taxa"
+    "taxa": "Taxa",
+    "auditLog": "Audit Log"
   },
   "AdminSitesPage": {
     "heading": "Sites",
@@ -370,6 +371,27 @@
     "rankLabel": "Rank",
     "parentLabel": "Parent",
     "noParent": "This is a root taxon."
+  },
+  "SuperAdminAuditLogPage": {
+    "heading": "Audit log",
+    "actorFilterLabel": "Actor person ID",
+    "targetKindFilterLabel": "Target kind",
+    "targetKindFilterPlaceholder": "e.g. ROLE_ASSIGNMENT",
+    "targetIdFilterLabel": "Target ID",
+    "fromFilterLabel": "From",
+    "toFilterLabel": "To",
+    "applyFilters": "Apply filters",
+    "clearFilters": "Clear filters",
+    "filterEntries": "Filter loaded entries…",
+    "actorColumn": "Actor",
+    "actionColumn": "Action",
+    "targetColumn": "Target",
+    "whenColumn": "When",
+    "beforeLabel": "Before",
+    "afterLabel": "After",
+    "noEntries": "No audit log entries match these filters.",
+    "loadMore": "Load more",
+    "loading": "Loading…"
   },
   "AdminNotFoundPage": {
     "heading": "Page not found",

@@ -291,7 +291,8 @@
     "people": "Personas",
     "roleGrants": "Concesión de roles",
     "units": "Unidades",
-    "taxa": "Taxonomía"
+    "taxa": "Taxonomía",
+    "auditLog": "Registro de auditoría"
   },
   "AdminSitesPage": {
     "heading": "Sitios",
@@ -370,6 +371,27 @@
     "rankLabel": "Rango",
     "parentLabel": "Padre",
     "noParent": "Este es un taxón raíz."
+  },
+  "SuperAdminAuditLogPage": {
+    "heading": "Registro de auditoría",
+    "actorFilterLabel": "ID de la persona actora",
+    "targetKindFilterLabel": "Tipo de objetivo",
+    "targetKindFilterPlaceholder": "p. ej. ROLE_ASSIGNMENT",
+    "targetIdFilterLabel": "ID del objetivo",
+    "fromFilterLabel": "Desde",
+    "toFilterLabel": "Hasta",
+    "applyFilters": "Aplicar filtros",
+    "clearFilters": "Borrar filtros",
+    "filterEntries": "Filtrar entradas cargadas…",
+    "actorColumn": "Actor",
+    "actionColumn": "Acción",
+    "targetColumn": "Objetivo",
+    "whenColumn": "Cuándo",
+    "beforeLabel": "Antes",
+    "afterLabel": "Después",
+    "noEntries": "Ninguna entrada del registro coincide con estos filtros.",
+    "loadMore": "Cargar más",
+    "loading": "Cargando…"
   },
   "AdminNotFoundPage": {
     "heading": "Página no encontrada",

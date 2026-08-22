@@ -6,6 +6,7 @@ import {
   BookOpen,
   Building2,
   Flag,
+  History,
   KeyRound,
   MapPinned,
   ShieldCheck,
@@ -79,6 +80,7 @@ export const SUPER_ADMIN_NAV: NavItem[] = [
   { href: "/admin/role-grants", icon: KeyRound, labelKey: "roleGrants" },
   { href: "/admin/units", icon: Building2, labelKey: "units" },
   { href: "/admin/taxa", icon: BookOpen, labelKey: "taxa" },
+  { href: "/admin/audit-log", icon: History, labelKey: "auditLog" },
 ];
 
 function NavItems({

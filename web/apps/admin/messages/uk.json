@@ -291,7 +291,8 @@
     "people": "Люди",
     "roleGrants": "Надання ролей",
     "units": "Юніти",
-    "taxa": "Таксономія"
+    "taxa": "Таксономія",
+    "auditLog": "Журнал аудиту"
   },
   "AdminSitesPage": {
     "heading": "Сайти",
@@ -370,6 +371,27 @@
     "rankLabel": "Ранг",
     "parentLabel": "Батьківський",
     "noParent": "Це кореневий таксон."
+  },
+  "SuperAdminAuditLogPage": {
+    "heading": "Журнал аудиту",
+    "actorFilterLabel": "ID особи-ініціатора",
+    "targetKindFilterLabel": "Тип цілі",
+    "targetKindFilterPlaceholder": "напр. ROLE_ASSIGNMENT",
+    "targetIdFilterLabel": "ID цілі",
+    "fromFilterLabel": "Від",
+    "toFilterLabel": "До",
+    "applyFilters": "Застосувати фільтри",
+    "clearFilters": "Очистити фільтри",
+    "filterEntries": "Фільтрувати завантажені записи…",
+    "actorColumn": "Ініціатор",
+    "actionColumn": "Дія",
+    "targetColumn": "Ціль",
+    "whenColumn": "Коли",
+    "beforeLabel": "До",
+    "afterLabel": "Після",
+    "noEntries": "Жодного запису журналу не відповідає цим фільтрам.",
+    "loadMore": "Завантажити ще",
+    "loading": "Завантаження…"
   },
   "AdminNotFoundPage": {
     "heading": "Сторінку не знайдено",
