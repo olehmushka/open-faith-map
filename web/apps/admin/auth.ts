@@ -126,7 +126,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return token;
       }
 
-      if (!token.expiresAt || Date.now() < token.expiresAt * 1000) {
+      // A missing expiresAt (e.g. the provider omitted expires_at on initial sign-in) must NOT be
+      // treated as "still valid" — that reads as permanently-fresh and this branch would then never
+      // run again for that token, silently forwarding an increasingly stale idToken as the bearer
+      // forever. Only skip the refresh below when expiresAt is actually known and still in the future.
+      if (token.expiresAt && Date.now() < token.expiresAt * 1000) {
         return token; // still valid
       }
       if (!token.refreshToken) {
