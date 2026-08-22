@@ -43,6 +43,12 @@ types:
           displayName: string
           createdAt: datetime
           updatedAt: datetime
+          lastActiveAt:
+            type: optional<datetime>
+            docs: >
+              M11.4 — most recent session activity (revoked-inclusive), populated only by
+              CoreSuperAdminService's searchPersons. Always absent from CoreService's getPerson/
+              getPersons, which don't compute it.
       PersonPage:
         fields:
           persons: list<Person>
@@ -195,6 +201,11 @@ types:
         fields:
           personId: string
           status: string
+          lastActiveAt:
+            type: optional<datetime>
+            docs: >
+              M11.4 — most recent session activity (revoked-inclusive), absent for status "none" or an
+              account that has never had a session.
 
       AuditLogEntry:
         docs: >

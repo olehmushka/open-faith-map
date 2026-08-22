@@ -10,6 +10,7 @@ package transport
 
 import (
 	"context"
+	"time"
 
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	gencore "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/core"
@@ -240,7 +241,18 @@ func toAPIPerson(p identitydomain.Person) gencore.Person {
 	return gencore.Person{
 		Id: p.ID, Code: optionalStr(p.Code), DisplayName: p.DisplayName,
 		CreatedAt: datetime.DateTime(p.CreatedAt), UpdatedAt: datetime.DateTime(p.UpdatedAt),
+		LastActiveAt: optionalDateTime(p.LastActiveAt),
 	}
+}
+
+// optionalDateTime converts an optional time.Time (M11.4's revoked-inclusive last-active signal) to
+// the conjure-generated *datetime.DateTime an optional<datetime> field wants, nil-safe.
+func optionalDateTime(t *time.Time) *datetime.DateTime {
+	if t == nil {
+		return nil
+	}
+	dt := datetime.DateTime(*t)
+	return &dt
 }
 
 // toAPISession converts one identity_sessions row (M11.3). currentSessionID is the caller's own

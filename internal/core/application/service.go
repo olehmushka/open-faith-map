@@ -298,21 +298,23 @@ func (s *Service) RevokeInstanceAdmin(ctx context.Context, personID string) erro
 const AccountStatusNone = "none"
 
 // AccountStatus is core's own read-model for an M11.1 account-status check — the super-admin person
-// detail page's deactivate/reactivate action.
+// detail page's deactivate/reactivate action. LastActiveAt is M11.4's addition, nil for
+// AccountStatusNone and for an account that has never had a session.
 type AccountStatus struct {
-	PersonID string
-	Status   string
+	PersonID     string
+	Status       string
+	LastActiveAt *time.Time
 }
 
 func (s *Service) GetAccountStatus(ctx context.Context, personID string) (AccountStatus, error) {
-	status, found, err := s.identity.AccountStatus(ctx, personID)
+	status, lastActiveAt, found, err := s.identity.AccountStatus(ctx, personID)
 	if err != nil {
 		return AccountStatus{}, err
 	}
 	if !found {
 		status = AccountStatusNone
 	}
-	return AccountStatus{PersonID: personID, Status: status}, nil
+	return AccountStatus{PersonID: personID, Status: status, LastActiveAt: lastActiveAt}, nil
 }
 
 func (s *Service) DeactivateAccount(ctx context.Context, personID string) (AccountStatus, error) {

@@ -87,7 +87,7 @@ func TestAccountStatusIntegration(t *testing.T) {
 	}
 
 	// AccountStatus reports "active" while active.
-	if status, found, err := svc.AccountStatus(ctx, carolID); err != nil || !found || status != domain.AccountStatusActive {
+	if status, _, found, err := svc.AccountStatus(ctx, carolID); err != nil || !found || status != domain.AccountStatusActive {
 		t.Errorf("AccountStatus(carol) = (%q, %v, %v), want (%q, true, nil)", status, found, err, domain.AccountStatusActive)
 	}
 
@@ -129,7 +129,7 @@ func TestAccountStatusIntegration(t *testing.T) {
 
 	// --- Dave: never had an account.
 	daveID := insertPerson("M11.1 Dave Test")
-	if status, found, err := svc.AccountStatus(ctx, daveID); err != nil || found || status != "" {
+	if status, _, found, err := svc.AccountStatus(ctx, daveID); err != nil || found || status != "" {
 		t.Errorf("AccountStatus(dave, no account) = (%q, %v, %v), want (\"\", false, nil)", status, found, err)
 	}
 	if _, _, err := svc.Deactivate(ctx, daveID); !errors.Is(err, domain.ErrAccountNotFound) {

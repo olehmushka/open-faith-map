@@ -306,7 +306,9 @@
     "searchHeading": "Buscar pessoas",
     "searchPlaceholder": "Buscar por nome ou código…",
     "search": "Buscar",
-    "noResults": "Nenhum resultado encontrado."
+    "noResults": "Nenhum resultado encontrado.",
+    "lastActive": "Ativo pela última vez em {date}",
+    "neverActive": "Nunca esteve ativo"
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",
@@ -314,6 +316,8 @@
     "accountStatusActive": "A conta está ativa.",
     "accountStatusDisabled": "A conta está desativada — esta pessoa não pode entrar.",
     "accountStatusNone": "Esta pessoa não tem conta (nunca fez login).",
+    "lastActive": "Ativo pela última vez em {date}.",
+    "neverActive": "Nunca esteve ativo.",
     "deactivateAccount": "Desativar conta",
     "reactivateAccount": "Reativar conta",
     "sessionsHeading": "Sessões",

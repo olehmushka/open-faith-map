@@ -122,7 +122,7 @@ func (s *SuperAdminService) GetAccountStatus(ctx context.Context, _ bearertoken.
 	if err != nil {
 		return gencore.AccountStatus{}, mapErr(err, errCtx{PersonID: personIdArg})
 	}
-	return gencore.AccountStatus{PersonId: status.PersonID, Status: status.Status}, nil
+	return gencore.AccountStatus{PersonId: status.PersonID, Status: status.Status, LastActiveAt: optionalDateTime(status.LastActiveAt)}, nil
 }
 
 func (s *SuperAdminService) DeactivateAccount(ctx context.Context, _ bearertoken.Token, personIdArg string) (gencore.AccountStatus, error) {

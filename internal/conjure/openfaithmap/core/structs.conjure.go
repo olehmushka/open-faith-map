@@ -12,6 +12,8 @@ import (
 type AccountStatus struct {
 	PersonId string `json:"personId"`
 	Status   string `json:"status"`
+	// M11.4 — most recent session activity (revoked-inclusive), absent for status "none" or an account that has never had a session.
+	LastActiveAt *datetime.DateTime `json:"lastActiveAt,omitempty"`
 }
 
 func (o AccountStatus) MarshalYAML() (interface{}, error) {
@@ -568,6 +570,8 @@ type Person struct {
 	DisplayName string            `json:"displayName"`
 	CreatedAt   datetime.DateTime `json:"createdAt"`
 	UpdatedAt   datetime.DateTime `json:"updatedAt"`
+	// M11.4 — most recent session activity (revoked-inclusive), populated only by CoreSuperAdminService's searchPersons. Always absent from CoreService's getPerson/ getPersons, which don't compute it.
+	LastActiveAt *datetime.DateTime `json:"lastActiveAt,omitempty"`
 }
 
 func (o Person) MarshalYAML() (interface{}, error) {

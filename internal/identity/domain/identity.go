@@ -35,6 +35,12 @@ type Person struct {
 	DisplayName string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	// LastActiveAt is M11.4's activity signal: the most recent identity_sessions.last_seen_at across
+	// all of this person's account's sessions, revoked or not (same "revoked or not" read convention
+	// GetSession already uses). Nil if the person has no account or that account has no sessions.
+	// Only SearchPersons populates this today — GetPerson/GetPersons (non-admin CoreService reads)
+	// leave it nil, so it stays absent for every caller besides the super-admin people list.
+	LastActiveAt *time.Time
 }
 
 // Account is identity_accounts — an optional login attachment to exactly one person. Tokens/

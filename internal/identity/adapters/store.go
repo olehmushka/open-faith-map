@@ -105,16 +105,28 @@ func (s *Store) GetPersons(ctx context.Context, ids []string) ([]domain.Person, 
 
 // SearchPersons is the M10.7 super-admin people screen's search — case-insensitive substring match
 // on display name or code, capped at limit (default/max 50).
+// SearchPersons backs the super-admin people list, so unlike GetPerson/GetPersons (shared with
+// non-admin CoreService reads) it also computes each result's M11.4 last-active signal in the same
+// round trip — a revoked-inclusive MAX(last_seen_at) per account, not filtered by
+// ListActiveSessionsByAccount's own revoked_at IS NULL predicate. Scanned separately from
+// scanPerson (an extra column) rather than changing that shared helper, so GetPerson/GetPersons stay
+// untouched and don't pay for the join.
 func (s *Store) SearchPersons(ctx context.Context, query string, limit int) ([]domain.Person, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 50
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, code, display_name, created_at, updated_at
-		FROM openfaithmap.identity_persons
-		WHERE deleted_at IS NULL
-		  AND ($1 = '' OR display_name ILIKE '%' || $1 || '%' OR code ILIKE '%' || $1 || '%')
-		ORDER BY display_name
+		SELECT p.id, p.code, p.display_name, p.created_at, p.updated_at, las.last_active
+		FROM openfaithmap.identity_persons p
+		LEFT JOIN openfaithmap.identity_accounts a ON a.person_id = p.id AND a.deleted_at IS NULL
+		LEFT JOIN (
+			SELECT account_id, MAX(last_seen_at) AS last_active
+			FROM openfaithmap.identity_sessions
+			GROUP BY account_id
+		) las ON las.account_id = a.id
+		WHERE p.deleted_at IS NULL
+		  AND ($1 = '' OR p.display_name ILIKE '%' || $1 || '%' OR p.code ILIKE '%' || $1 || '%')
+		ORDER BY p.display_name
 		LIMIT $2`, query, limit)
 	if err != nil {
 		return nil, err
@@ -122,9 +134,13 @@ func (s *Store) SearchPersons(ctx context.Context, query string, limit int) ([]d
 	defer rows.Close()
 	var out []domain.Person
 	for rows.Next() {
-		p, err := s.scanPerson(rows)
-		if err != nil {
+		var p domain.Person
+		var code *string
+		if err := rows.Scan(&p.ID, &code, &p.DisplayName, &p.CreatedAt, &p.UpdatedAt, &p.LastActiveAt); err != nil {
 			return nil, err
+		}
+		if code != nil {
+			p.Code = *code
 		}
 		out = append(out, p)
 	}
@@ -284,6 +300,20 @@ func (s *Store) TouchSession(ctx context.Context, sessionID string) (domain.Sess
 		SET last_seen_at = now()
 		WHERE id = $1
 		RETURNING id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at`, sessionID))
+}
+
+// LastActiveAtByAccount returns accountID's most recent session activity — MAX(last_seen_at) across
+// all of its sessions, revoked or not (M11.4's revoked-inclusive decision: an admin revoking a
+// session shouldn't retroactively erase the historical fact that the person was active). Nil if the
+// account has never had a session. Backs application.Service.AccountStatus for the person detail page
+// (SearchPersons computes the same signal itself, batched, for the people list).
+func (s *Store) LastActiveAtByAccount(ctx context.Context, accountID string) (*time.Time, error) {
+	var lastActive *time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT MAX(last_seen_at)
+		FROM openfaithmap.identity_sessions
+		WHERE account_id = $1`, accountID).Scan(&lastActive)
+	return lastActive, err
 }
 
 // RevokeSession sets revoked_at. Idempotent: revoking an already-revoked session is a no-op that

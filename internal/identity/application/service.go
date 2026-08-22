@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/olehmushka/open-faith-map/internal/identity/domain"
 )
@@ -30,6 +31,7 @@ type Store interface {
 	ListActiveSessionsByAccount(ctx context.Context, accountID string) ([]domain.Session, error)
 	TouchSession(ctx context.Context, sessionID string) (domain.Session, error)
 	RevokeSession(ctx context.Context, sessionID string) (domain.Session, error)
+	LastActiveAtByAccount(ctx context.Context, accountID string) (*time.Time, error)
 }
 
 type Service struct {
@@ -135,17 +137,22 @@ func (s *Service) SearchPersons(ctx context.Context, query string, limit int) ([
 	return s.store.SearchPersons(ctx, query, limit)
 }
 
-// AccountStatus reports personID's account status, or found=false if the person has no account yet
-// (not an error) — backs the M11.1 super-admin person detail page's account-status display.
-func (s *Service) AccountStatus(ctx context.Context, personID string) (status string, found bool, err error) {
+// AccountStatus reports personID's account status plus its M11.4 last-active signal, or found=false
+// if the person has no account yet (not an error) — backs the M11.1/M11.4 super-admin person detail
+// page's account-status display.
+func (s *Service) AccountStatus(ctx context.Context, personID string) (status string, lastActiveAt *time.Time, found bool, err error) {
 	account, err := s.store.GetActiveAccountByPerson(ctx, personID)
 	if errors.Is(err, domain.ErrAccountNotFound) {
-		return "", false, nil
+		return "", nil, false, nil
 	}
 	if err != nil {
-		return "", false, err
+		return "", nil, false, err
 	}
-	return account.Status, true, nil
+	lastActiveAt, err = s.store.LastActiveAtByAccount(ctx, account.ID)
+	if err != nil {
+		return "", nil, false, err
+	}
+	return account.Status, lastActiveAt, true, nil
 }
 
 // Deactivate disables personID's account (D-AccountStatusEnforcement), rejecting further

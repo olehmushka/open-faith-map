@@ -306,7 +306,9 @@
     "searchHeading": "Search people",
     "searchPlaceholder": "Search by name or code…",
     "search": "Search",
-    "noResults": "No matches found."
+    "noResults": "No matches found.",
+    "lastActive": "Last active {date}",
+    "neverActive": "Never active"
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",
@@ -314,6 +316,8 @@
     "accountStatusActive": "Account is active.",
     "accountStatusDisabled": "Account is deactivated — this person cannot sign in.",
     "accountStatusNone": "This person has no account (never signed in).",
+    "lastActive": "Last active on {date}.",
+    "neverActive": "Never active.",
     "deactivateAccount": "Deactivate account",
     "reactivateAccount": "Reactivate account",
     "sessionsHeading": "Sessions",

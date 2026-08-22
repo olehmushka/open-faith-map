@@ -88,6 +88,11 @@ export default async function SuperAdminPersonPage({
           ) : accountStatus.status === "active" ? (
             <>
               <p className="text-sm text-muted-foreground">{t("accountStatusActive")}</p>
+              <p className="text-sm text-muted-foreground">
+                {accountStatus.lastActiveAt
+                  ? t("lastActive", { date: new Date(accountStatus.lastActiveAt).toLocaleString(locale) })
+                  : t("neverActive")}
+              </p>
               <form action={toggleAccountStatus}>
                 <input type="hidden" name="action" value="deactivate" />
                 <Button type="submit" variant="destructive" size="sm">
@@ -98,6 +103,11 @@ export default async function SuperAdminPersonPage({
           ) : (
             <>
               <p className="text-sm text-muted-foreground">{t("accountStatusDisabled")}</p>
+              <p className="text-sm text-muted-foreground">
+                {accountStatus.lastActiveAt
+                  ? t("lastActive", { date: new Date(accountStatus.lastActiveAt).toLocaleString(locale) })
+                  : t("neverActive")}
+              </p>
               <form action={toggleAccountStatus}>
                 <input type="hidden" name="action" value="reactivate" />
                 <Button type="submit" size="sm">

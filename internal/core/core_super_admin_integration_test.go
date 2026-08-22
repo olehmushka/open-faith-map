@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditlogadapters "github.com/olehmushka/open-faith-map/internal/auditlog/adapters"
@@ -29,6 +30,7 @@ import (
 	directorydomain "github.com/olehmushka/open-faith-map/internal/directory/domain"
 	identityadapters "github.com/olehmushka/open-faith-map/internal/identity/adapters"
 	identityapplication "github.com/olehmushka/open-faith-map/internal/identity/application"
+	identitydomain "github.com/olehmushka/open-faith-map/internal/identity/domain"
 )
 
 // noopClosure satisfies authzdomain.ClosurePort without touching the DB — none of the six mutating
@@ -258,6 +260,146 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	}
 	if len(entries) != 7 {
 		t.Errorf("ListAuditLog(actor=%s) returned %d entries, want 7 (one per mutation above)", actorID, len(entries))
+	}
+}
+
+// TestLastActiveIntegration proves M11.4's revoked-inclusive last-active signal against a real
+// Postgres instance, over both of its read paths (GetAccountStatus for the person detail page,
+// SearchPersons for the people list) — plain reads, no audit-log mutation, so unlike
+// TestSuperAdminAuditTrailIntegration this test's cleanup never touches identity_audit_log's
+// append-only trigger.
+//
+//	DATABASE_URL="postgres://openfaithmap:dev@localhost:5432/postgres?sslmode=disable" \
+//	  go test ./internal/core/... -run TestLastActiveIntegration -v
+func TestLastActiveIntegration(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set DATABASE_URL to run against a live Postgres instance")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, nil)
+
+	var noAccountID, withAccountID, accountID, sessionID string
+	t.Cleanup(func() {
+		bg := context.Background()
+		if sessionID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_sessions WHERE id = $1`, sessionID); err != nil {
+				t.Errorf("cleanup: delete session: %v", err)
+			}
+		}
+		if accountID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_accounts WHERE id = $1`, accountID); err != nil {
+				t.Errorf("cleanup: delete account: %v", err)
+			}
+		}
+		for _, id := range []string{noAccountID, withAccountID} {
+			if id == "" {
+				continue
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_persons WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete person %s: %v", id, err)
+			}
+		}
+	})
+
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_persons (display_name, given, surname)
+		VALUES ('M11.4 NoAccount Test', 'M11.4', 'NoAccount') RETURNING id`).Scan(&noAccountID); err != nil {
+		t.Fatalf("insert no-account person: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_persons (display_name, given, surname)
+		VALUES ('M11.4 WithAccount Test', 'M11.4', 'WithAccount') RETURNING id`).Scan(&withAccountID); err != nil {
+		t.Fatalf("insert with-account person: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_accounts (person_id, email)
+		VALUES ($1, 'm11-4-target@example.test') RETURNING id`, withAccountID).Scan(&accountID); err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	findByID := func(persons []identitydomain.Person, id string) (identitydomain.Person, bool) {
+		for _, p := range persons {
+			if p.ID == id {
+				return p, true
+			}
+		}
+		return identitydomain.Person{}, false
+	}
+
+	// --- No account at all: status "none", LastActiveAt nil on both read paths.
+	status, err := coreApp.GetAccountStatus(ctx, noAccountID)
+	if err != nil {
+		t.Fatalf("GetAccountStatus(no account): %v", err)
+	}
+	if status.Status != coreapplication.AccountStatusNone || status.LastActiveAt != nil {
+		t.Errorf("GetAccountStatus(no account) = %+v, want status=none lastActiveAt=nil", status)
+	}
+
+	// --- Has an account, but no session yet: active, LastActiveAt still nil.
+	status, err = coreApp.GetAccountStatus(ctx, withAccountID)
+	if err != nil {
+		t.Fatalf("GetAccountStatus(no session): %v", err)
+	}
+	if status.Status != "active" || status.LastActiveAt != nil {
+		t.Errorf("GetAccountStatus(no session) = %+v, want status=active lastActiveAt=nil", status)
+	}
+	persons, err := coreApp.SearchPersons(ctx, "M11.4 WithAccount Test", 10)
+	if err != nil {
+		t.Fatalf("SearchPersons(no session): %v", err)
+	}
+	p, ok := findByID(persons, withAccountID)
+	if !ok {
+		t.Fatalf("SearchPersons(no session) = %+v, want it to include %s", persons, withAccountID)
+	}
+	if p.LastActiveAt != nil {
+		t.Errorf("SearchPersons(no session) person.LastActiveAt = %v, want nil", p.LastActiveAt)
+	}
+
+	// --- A session exists: both read paths must reflect its last_seen_at.
+	var wantLastActive time.Time
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_sessions (account_id, issuer, last_seen_at)
+		VALUES ($1, 'urn:test:m11-4-issuer', now() - interval '1 hour')
+		RETURNING id, last_seen_at`, accountID).Scan(&sessionID, &wantLastActive); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	status, err = coreApp.GetAccountStatus(ctx, withAccountID)
+	if err != nil {
+		t.Fatalf("GetAccountStatus(active session): %v", err)
+	}
+	if status.LastActiveAt == nil || !status.LastActiveAt.Equal(wantLastActive) {
+		t.Errorf("GetAccountStatus(active session).LastActiveAt = %v, want %v", status.LastActiveAt, wantLastActive)
+	}
+	persons, err = coreApp.SearchPersons(ctx, "M11.4 WithAccount Test", 10)
+	if err != nil {
+		t.Fatalf("SearchPersons(active session): %v", err)
+	}
+	p, ok = findByID(persons, withAccountID)
+	if !ok || p.LastActiveAt == nil || !p.LastActiveAt.Equal(wantLastActive) {
+		t.Errorf("SearchPersons(active session) person = %+v, want LastActiveAt=%v", p, wantLastActive)
+	}
+
+	// --- Revoke the session: last-active must still reflect the same historical timestamp
+	// (M11.4's revoked-inclusive decision — revoking a session doesn't erase that it happened).
+	if _, err := pool.Exec(ctx, `UPDATE openfaithmap.identity_sessions SET revoked_at = now() WHERE id = $1`, sessionID); err != nil {
+		t.Fatalf("revoke session: %v", err)
+	}
+	status, err = coreApp.GetAccountStatus(ctx, withAccountID)
+	if err != nil {
+		t.Fatalf("GetAccountStatus(revoked session): %v", err)
+	}
+	if status.LastActiveAt == nil || !status.LastActiveAt.Equal(wantLastActive) {
+		t.Errorf("GetAccountStatus(revoked session).LastActiveAt = %v, want unchanged %v (revoked-inclusive)", status.LastActiveAt, wantLastActive)
 	}
 }
 

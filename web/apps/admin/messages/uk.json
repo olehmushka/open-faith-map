@@ -306,7 +306,9 @@
     "searchHeading": "Пошук людей",
     "searchPlaceholder": "Пошук за іменем або кодом…",
     "search": "Пошук",
-    "noResults": "Нічого не знайдено."
+    "noResults": "Нічого не знайдено.",
+    "lastActive": "Востаннє активний {date}",
+    "neverActive": "Ще не був активний"
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",
@@ -314,6 +316,8 @@
     "accountStatusActive": "Обліковий запис активний.",
     "accountStatusDisabled": "Обліковий запис деактивовано — ця особа не може увійти.",
     "accountStatusNone": "Ця особа не має облікового запису (ще не входила в систему).",
+    "lastActive": "Востаннє активний {date}.",
+    "neverActive": "Ще не був активний.",
     "deactivateAccount": "Деактивувати обліковий запис",
     "reactivateAccount": "Реактивувати обліковий запис",
     "sessionsHeading": "Сеанси",
