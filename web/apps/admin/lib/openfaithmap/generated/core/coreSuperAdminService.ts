@@ -4,6 +4,8 @@ import { IGrantInstanceAdminRequest } from "./grantInstanceAdminRequest";
 import { IGrantUnitRoleRequest } from "./grantUnitRoleRequest";
 import { IInstanceAdminGrant } from "./instanceAdminGrant";
 import { IInstanceAdminPage } from "./instanceAdminPage";
+import { IInvitePersonRequest } from "./invitePersonRequest";
+import { IInviteResult } from "./inviteResult";
 import { IPersonPage } from "./personPage";
 import { IRoleAssignmentPage } from "./roleAssignmentPage";
 import { IRolePage } from "./rolePage";
@@ -41,6 +43,11 @@ export interface ICoreSuperAdminService {
      *
      */
     listAuditLog(actorPersonId?: string | null, targetKind?: string | null, targetId?: string | null, from?: string | null, to?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAuditLogPage>;
+    /**
+     * M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+     *
+     */
+    invitePerson(request: IInvitePersonRequest): Promise<IInviteResult>;
 }
 
 export class CoreSuperAdminService implements ICoreSuperAdminService {
@@ -288,6 +295,25 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
                 "pageSize": pageSize,
                 "pageToken": pageToken,
             },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+     *
+     */
+    public invitePerson(request: IInvitePersonRequest): Promise<IInviteResult> {
+        return this.bridge.call<IInviteResult>(
+            "CoreSuperAdminService",
+            "invitePerson",
+            "POST",
+            "/core/v1/super-admin/invites",
+            request,
+            __undefined,
+            __undefined,
             __undefined,
             __undefined,
             __undefined

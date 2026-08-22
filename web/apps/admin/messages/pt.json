@@ -7,6 +7,15 @@
     "heading": "Sign in",
     "googleButton": "Sign in with Google"
   },
+  "AcceptInvitePage": {
+    "heading": "Você foi convidado",
+    "welcome": "Você foi convidado a participar como {name} ({email}). Entre com o Google usando este endereço de e-mail para concluir a configuração da sua conta.",
+    "googleButton": "Entrar com o Google",
+    "errorMissingToken": "Este link de convite está sem o token.",
+    "errorNotFound": "Este link de convite não é válido.",
+    "errorExpired": "Este link de convite expirou. Peça a um administrador para enviar um novo.",
+    "errorAlreadyAccepted": "Este convite já foi aceito. Tente entrar em vez disso."
+  },
   "WhoamiPage": {
     "heading": "Who am I",
     "description": "Resolved by openfaithmap-api's <code>core.whoami()</code> from the forwarded Google ID token — this is the M1 proof that login and token passthrough work end-to-end.",
@@ -318,12 +327,25 @@
   },
   "SuperAdminPeoplePage": {
     "heading": "Pessoas",
+    "invite": "Convidar",
     "searchHeading": "Buscar pessoas",
     "searchPlaceholder": "Buscar por nome ou código…",
     "search": "Buscar",
     "noResults": "Nenhum resultado encontrado.",
     "lastActive": "Ativo pela última vez em {date}",
     "neverActive": "Nunca esteve ativo"
+  },
+  "SuperAdminInvitePage": {
+    "heading": "Convidar um colega",
+    "intro": "Cria previamente uma conta e gera um link de uso único: copie-o e compartilhe da forma que já usaria com essa pessoa (Slack, e-mail, etc). Nenhum e-mail é enviado automaticamente.",
+    "emailLabel": "E-mail",
+    "displayNameLabel": "Nome de exibição",
+    "submit": "Gerar link de convite",
+    "linkGenerated": "Link de convite gerado. Copie-o e compartilhe — ele não será mostrado novamente.",
+    "copyLink": "Copiar link",
+    "copied": "Copiado!",
+    "errorAccountAlreadyExists": "Já existe uma conta ativa para este e-mail.",
+    "errorGeneric": "Algo deu errado ao gerar o convite. Tente novamente."
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",

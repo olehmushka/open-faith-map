@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/identity/domain"
 )
 
@@ -338,6 +339,95 @@ func (s *Store) RevokeSession(ctx context.Context, sessionID string) (domain.Ses
 		SET revoked_at = COALESCE(revoked_at, now())
 		WHERE id = $1
 		RETURNING id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at`, sessionID))
+}
+
+// InsertInvite creates a new identity_invites row (M11.6) — tokenHash is the caller's already-hashed
+// token (application.Service.CreateInvite generates and hashes the raw token; this store method
+// never sees or persists the raw value).
+func (s *Store) InsertInvite(ctx context.Context, personID, accountID, email, tokenHash, invitedBy string, expiresAt time.Time) (domain.Invite, error) {
+	return s.scanInvite(s.pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_invites (person_id, account_id, email, token_hash, invited_by, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, person_id, account_id, email::text, status, invited_by, expires_at, created_at, accepted_at`,
+		personID, accountID, email, tokenHash, invitedBy, expiresAt))
+}
+
+// InsertPersonAccountInvite runs the three inserts CreateInvite needs — Person, Account, Invite — in
+// ONE transaction, the same atomicity shape internal/identity/bootstrap's own person+account+
+// identity+instance-admin write already uses. Without this, a failure on the last insert (a real
+// possibility: network blip, pool exhaustion) would leave behind an orphaned active Person+Account
+// with no Invite — silently and permanently blocking any future invite to that email, since
+// CreateInvite's own duplicate-email check would then see an active account that no admin can ever
+// retrieve a link for. Requires the Store to be pool-bound (ok fails only if this Store is already
+// itself bound to a pgx.Tx, which never happens on the normal request path).
+func (s *Store) InsertPersonAccountInvite(ctx context.Context, displayName, email, tokenHash, invitedBy string, expiresAt time.Time) (domain.Invite, error) {
+	pool, ok := s.pool.(*pgxpool.Pool)
+	if !ok {
+		return domain.Invite{}, errors.New("InsertPersonAccountInvite requires a pool-bound Store")
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return domain.Invite{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	txStore := NewStore(tx)
+	person, err := txStore.InsertPerson(ctx, domain.Person{DisplayName: displayName})
+	if err != nil {
+		return domain.Invite{}, err
+	}
+	account, err := txStore.InsertAccount(ctx, person.ID, email)
+	if err != nil {
+		return domain.Invite{}, err
+	}
+	invite, err := txStore.InsertInvite(ctx, person.ID, account.ID, email, tokenHash, invitedBy, expiresAt)
+	if err != nil {
+		return domain.Invite{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Invite{}, err
+	}
+	return invite, nil
+}
+
+// GetInviteByTokenHash looks up an invite by its hashed token, pending or accepted — callers that
+// care whether it's still usable check the returned Invite.Status/ExpiresAt themselves, same
+// convention GetSession uses for RevokedAt.
+func (s *Store) GetInviteByTokenHash(ctx context.Context, tokenHash string) (domain.Invite, error) {
+	return s.scanInvite(s.pool.QueryRow(ctx, `
+		SELECT id, person_id, account_id, email::text, status, invited_by, expires_at, created_at, accepted_at
+		FROM openfaithmap.identity_invites
+		WHERE token_hash = $1`, tokenHash))
+}
+
+// MarkInviteAcceptedByAccount flips accountID's pending invite (if any) to accepted — called from
+// LinkOnMatch right after a successful InsertIdentity, the exact moment JIT actually links the
+// account. Idempotent no-op if accountID has no pending invite (an account created outside the
+// invite flow, or one whose invite was already accepted) — QueryRow/RETURNING, not Exec, since
+// Querier (bound to either *pgxpool.Pool or a pgx.Tx) declares no Exec method.
+func (s *Store) MarkInviteAcceptedByAccount(ctx context.Context, accountID string) error {
+	var id string
+	err := s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_invites
+		SET status = 'accepted', accepted_at = now()
+		WHERE account_id = $1 AND status = 'pending'
+		RETURNING id`, accountID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	return err
+}
+
+func (s *Store) scanInvite(row pgx.Row) (domain.Invite, error) {
+	var inv domain.Invite
+	if err := row.Scan(&inv.ID, &inv.PersonID, &inv.AccountID, &inv.Email, &inv.Status, &inv.InvitedBy,
+		&inv.ExpiresAt, &inv.CreatedAt, &inv.AcceptedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Invite{}, domain.ErrInviteNotFound
+		}
+		return domain.Invite{}, err
+	}
+	return inv, nil
 }
 
 func (s *Store) scanSession(row pgx.Row) (domain.Session, error) {

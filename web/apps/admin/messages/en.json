@@ -7,6 +7,15 @@
     "heading": "Sign in",
     "googleButton": "Sign in with Google"
   },
+  "AcceptInvitePage": {
+    "heading": "You're invited",
+    "welcome": "You've been invited to join as {name} ({email}). Sign in with Google using this email address to finish setting up your account.",
+    "googleButton": "Sign in with Google",
+    "errorMissingToken": "This invite link is missing its token.",
+    "errorNotFound": "This invite link isn't valid.",
+    "errorExpired": "This invite link has expired. Ask an admin to send you a new one.",
+    "errorAlreadyAccepted": "This invite has already been accepted. Try signing in instead."
+  },
   "WhoamiPage": {
     "heading": "Who am I",
     "description": "Resolved by openfaithmap-api's <code>core.whoami()</code> from the forwarded Google ID token — this is the M1 proof that login and token passthrough work end-to-end.",
@@ -318,12 +327,25 @@
   },
   "SuperAdminPeoplePage": {
     "heading": "People",
+    "invite": "Invite",
     "searchHeading": "Search people",
     "searchPlaceholder": "Search by name or code…",
     "search": "Search",
     "noResults": "No matches found.",
     "lastActive": "Last active {date}",
     "neverActive": "Never active"
+  },
+  "SuperAdminInvitePage": {
+    "heading": "Invite a teammate",
+    "intro": "Pre-provisions an account and generates a one-time link — copy it and share it however you'd already reach this person (Slack, email, etc). No email is sent automatically.",
+    "emailLabel": "Email",
+    "displayNameLabel": "Display name",
+    "submit": "Generate invite link",
+    "linkGenerated": "Invite link generated. Copy it and share it — it won't be shown again.",
+    "copyLink": "Copy link",
+    "copied": "Copied!",
+    "errorAccountAlreadyExists": "An active account already exists for this email.",
+    "errorGeneric": "Something went wrong generating the invite. Please try again."
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",

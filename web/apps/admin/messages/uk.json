@@ -7,6 +7,15 @@
     "heading": "Sign in",
     "googleButton": "Sign in with Google"
   },
+  "AcceptInvitePage": {
+    "heading": "Вас запросили",
+    "welcome": "Вас запросили приєднатися як {name} ({email}). Увійдіть через Google, використовуючи цю адресу електронної пошти, щоб завершити налаштування облікового запису.",
+    "googleButton": "Увійти через Google",
+    "errorMissingToken": "У цьому посиланні-запрошенні відсутній токен.",
+    "errorNotFound": "Це посилання-запрошення недійсне.",
+    "errorExpired": "Термін дії цього посилання-запрошення закінчився. Попросіть адміністратора надіслати нове.",
+    "errorAlreadyAccepted": "Це запрошення вже прийнято. Спробуйте увійти замість цього."
+  },
   "WhoamiPage": {
     "heading": "Who am I",
     "description": "Resolved by openfaithmap-api's <code>core.whoami()</code> from the forwarded Google ID token — this is the M1 proof that login and token passthrough work end-to-end.",
@@ -318,12 +327,25 @@
   },
   "SuperAdminPeoplePage": {
     "heading": "Люди",
+    "invite": "Запросити",
     "searchHeading": "Пошук людей",
     "searchPlaceholder": "Пошук за іменем або кодом…",
     "search": "Пошук",
     "noResults": "Нічого не знайдено.",
     "lastActive": "Востаннє активний {date}",
     "neverActive": "Ще не був активний"
+  },
+  "SuperAdminInvitePage": {
+    "heading": "Запросити колегу",
+    "intro": "Попередньо створює обліковий запис і генерує одноразове посилання — скопіюйте його та поділіться так, як ви б уже зв'язалися з цією людиною (Slack, email тощо). Електронний лист автоматично не надсилається.",
+    "emailLabel": "Електронна пошта",
+    "displayNameLabel": "Ім'я для показу",
+    "submit": "Згенерувати посилання-запрошення",
+    "linkGenerated": "Посилання-запрошення згенеровано. Скопіюйте та поділіться ним — воно більше не буде показане.",
+    "copyLink": "Копіювати посилання",
+    "copied": "Скопійовано!",
+    "errorAccountAlreadyExists": "Для цієї електронної пошти вже існує активний обліковий запис.",
+    "errorGeneric": "Щось пішло не так під час створення запрошення. Спробуйте ще раз."
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",

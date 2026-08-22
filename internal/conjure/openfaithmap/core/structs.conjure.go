@@ -364,6 +364,74 @@ func (o *InstanceAdminPage) UnmarshalYAML(unmarshal func(interface{}) error) err
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M11.6 — what a valid, still-pending invite reveals to its own not-yet-authenticated invitee (the accept-invite landing page's welcome message). Deliberately minimal.
+type InviteInfo struct {
+	DisplayName string `json:"displayName"`
+	Email       string `json:"email"`
+}
+
+func (o InviteInfo) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *InviteInfo) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.6 — pre-provisions a Person+Account for email/displayName and generates a one-time invite link.
+type InvitePersonRequest struct {
+	Email       string `json:"email"`
+	DisplayName string `json:"displayName"`
+}
+
+func (o InvitePersonRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *InvitePersonRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.6 — token is the bare, one-time raw token, not a full URL: the admin app builds the shareable link from its own known origin. Returned exactly once; only its hash is ever persisted server-side.
+type InviteResult struct {
+	PersonId  string            `json:"personId"`
+	AccountId string            `json:"accountId"`
+	Token     string            `json:"token"`
+	ExpiresAt datetime.DateTime `json:"expiresAt"`
+}
+
+func (o InviteResult) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *InviteResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Membership struct {
 	Id            string            `json:"id"`
 	PersonId      string            `json:"personId"`
@@ -645,6 +713,27 @@ func (o RegisterSessionRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *RegisterSessionRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.6 — a POST body, not a path/query token, so the one-time token never lands in a server access log or browser history the way a GET with the token in the URL would.
+type ResolveInviteRequest struct {
+	Token string `json:"token"`
+}
+
+func (o ResolveInviteRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ResolveInviteRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

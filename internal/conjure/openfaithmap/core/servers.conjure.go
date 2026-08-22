@@ -17,6 +17,42 @@ import (
 	"github.com/palantir/witchcraft-go-server/v2/wrouter"
 )
 
+// M11.6 — genuinely anonymous, mirroring ContentPublicService's own shape (no default-auth: a Conjure service's auth is a fixed per-service choice — see this file's own header comment — so an endpoint reachable with no bearer at all cannot live on CoreService, which sets default-auth: header). The invitee has no session yet (they haven't signed in for the first time), the same reasoning D-AdminSurface gives for ContentPublicService, just admin-side instead of web-side. internal/identity/middleware's isBypassPath also carries a matching /core/v1/public prefix bypass, the same mechanism /content/v1/public already uses.
+type CorePublicService interface {
+	// Validates an invite token for its own not-yet-authenticated invitee, ahead of their first sign-in.
+	ResolveInvite(ctx context.Context, requestArg ResolveInviteRequest) (InviteInfo, error)
+}
+
+// RegisterRoutesCorePublicService registers handlers for the CorePublicService endpoints with a witchcraft wrouter.
+// This should typically be called in a witchcraft server's InitFunc.
+// impl provides an implementation of each endpoint, which can assume the request parameters have been parsed
+// in accordance with the Conjure specification.
+func RegisterRoutesCorePublicService(router wrouter.Router, impl CorePublicService, routerParams ...wrouter.RouteParam) error {
+	handler := corePublicServiceHandler{impl: impl}
+	resource := wresource.New("corepublicservice", router)
+	if err := resource.Post("ResolveInvite", "/core/v1/public/invites/resolve", httpserver.NewJSONHandler(handler.HandleResolveInvite, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add resolveInvite route")
+	}
+	return nil
+}
+
+type corePublicServiceHandler struct {
+	impl CorePublicService
+}
+
+func (c *corePublicServiceHandler) HandleResolveInvite(rw http.ResponseWriter, req *http.Request) error {
+	var requestArg ResolveInviteRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.ResolveInvite(req.Context(), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
 // The admin app's session-gated reads over the in-process core (units, taxa, countries, org kinds/profiles, memberships, persons) plus its one gated write, createChildOrg. See file header for exactly which endpoints carry an authorization gate beyond the session itself.
 type CoreService interface {
 	Whoami(ctx context.Context, authHeader bearertoken.Token) (Whoami, error)
@@ -469,6 +505,8 @@ type CoreSuperAdminService interface {
 	RevokeSession(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sessionIdArg string) error
 	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
 	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
+	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+	InvitePerson(ctx context.Context, authHeader bearertoken.Token, requestArg InvitePersonRequest) (InviteResult, error)
 }
 
 // RegisterRoutesCoreSuperAdminService registers handlers for the CoreSuperAdminService endpoints with a witchcraft wrouter.
@@ -519,6 +557,9 @@ func RegisterRoutesCoreSuperAdminService(router wrouter.Router, impl CoreSuperAd
 	}
 	if err := resource.Get("ListAuditLog", "/core/v1/super-admin/audit-log", httpserver.NewJSONHandler(handler.HandleListAuditLog, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAuditLog route")
+	}
+	if err := resource.Post("InvitePerson", "/core/v1/super-admin/invites", httpserver.NewJSONHandler(handler.HandleInvitePerson, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add invitePerson route")
 	}
 	return nil
 }
@@ -831,6 +872,23 @@ func (c *coreSuperAdminServiceHandler) HandleListAuditLog(rw http.ResponseWriter
 		pageTokenArg = &pageTokenArgInternal
 	}
 	respArg, err := c.impl.ListAuditLog(req.Context(), bearertoken.Token(authHeader), actorPersonIdArg, targetKindArg, targetIdArg, fromArg, toArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleInvitePerson(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg InvitePersonRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.InvitePerson(req.Context(), bearertoken.Token(authHeader), requestArg)
 	if err != nil {
 		return err
 	}

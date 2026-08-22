@@ -66,7 +66,7 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 
 	var actorID, targetID, targetAccountID string
 	var unit directorydomain.Unit
-	var assignmentID, instanceAdminGrantID string
+	var assignmentID, instanceAdminGrantID, invitedPersonID string
 	t.Cleanup(func() {
 		bg := context.Background()
 		// identity_audit_log is append-only (reject_mutation trigger) — disable it just for this
@@ -88,6 +88,19 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 		if instanceAdminGrantID != "" {
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_instance_admins WHERE id = $1`, instanceAdminGrantID); err != nil {
 				t.Errorf("cleanup: delete instance-admin grant: %v", err)
+			}
+		}
+		if invitedPersonID != "" {
+			// identity_invites references both the invited account and person (ON DELETE RESTRICT
+			// on both), so it must go first.
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_invites WHERE person_id = $1`, invitedPersonID); err != nil {
+				t.Errorf("cleanup: delete invite: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_accounts WHERE person_id = $1`, invitedPersonID); err != nil {
+				t.Errorf("cleanup: delete invited account: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_persons WHERE id = $1`, invitedPersonID); err != nil {
+				t.Errorf("cleanup: delete invited person: %v", err)
 			}
 		}
 		if targetAccountID != "" {
@@ -161,6 +174,9 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 		t.Errorf("DeactivateAccount with no subject = %v, want ErrPermissionDenied", err)
 	}
 	assertNoAuditRow(ctx, t, pool, "DEACTIVATE_ACCOUNT", targetID)
+	if _, err := coreApp.InvitePerson(ctx, "m11-6-no-subject@example.test", "No Subject"); !errorsIs(err, authzdomain.ErrPermissionDenied) {
+		t.Errorf("InvitePerson with no subject = %v, want ErrPermissionDenied", err)
+	}
 
 	// --- GrantUnitRole.
 	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID); err != nil {
@@ -253,13 +269,29 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 		t.Error("session revoked_at is still NULL after RevokeSession")
 	}
 
+	// --- InvitePerson (M11.6).
+	invite, err := coreApp.InvitePerson(actorCtx, "m11-6-invitee@example.test", "M11.6 Invitee")
+	if err != nil {
+		t.Fatalf("InvitePerson: %v", err)
+	}
+	invitedPersonID = invite.PersonID
+	if invite.Token == "" {
+		t.Error("InvitePerson returned an empty token")
+	}
+	row = mustAuditRow(ctx, t, pool, "CREATE_INVITE", invite.PersonID)
+	if row.actorPersonID != actorID || row.targetKind != "PERSON" {
+		t.Errorf("CREATE_INVITE audit row = %+v, want actor=%s target_kind=PERSON", row, actorID)
+	}
+	assertJSONField(t, row.after, "email", "m11-6-invitee@example.test")
+	assertJSONField(t, row.after, "displayName", "M11.6 Invitee")
+
 	// --- ListAuditLog itself: every action above must be visible, filterable by actor.
 	entries, err := coreApp.ListAuditLog(actorCtx, coreapplication.AuditLogFilter{ActorPersonID: actorID}, 100, nil)
 	if err != nil {
 		t.Fatalf("ListAuditLog: %v", err)
 	}
-	if len(entries) != 7 {
-		t.Errorf("ListAuditLog(actor=%s) returned %d entries, want 7 (one per mutation above)", actorID, len(entries))
+	if len(entries) != 8 {
+		t.Errorf("ListAuditLog(actor=%s) returned %d entries, want 8 (one per mutation above)", actorID, len(entries))
 	}
 }
 

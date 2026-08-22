@@ -247,20 +247,30 @@ func TestAuthorizationMatrix(t *testing.T) {
 			// legitimately 404s past the gate rather than succeeding, unlike every other subject
 			// below, who are all refused at 403 before the handler ever runs.
 			adminOK []int
+			// adminBody is sent only on the instanceAdmin call — the anonymous/denied checks below
+			// are refused at the route-group gate before any handler ever decodes a body, so nil is
+			// fine for those; nil here for every endpoint that doesn't need one.
+			adminBody any
 		}{
-			{"searchPersons", http.MethodGet, "/core/v1/super-admin/persons", []int{http.StatusOK}},
-			{"listRoles", http.MethodGet, "/core/v1/super-admin/roles", []int{http.StatusOK}},
-			{"listInstanceAdmins", http.MethodGet, "/core/v1/super-admin/instance-admins", []int{http.StatusOK}},
+			{"searchPersons", http.MethodGet, "/core/v1/super-admin/persons", []int{http.StatusOK}, nil},
+			{"listRoles", http.MethodGet, "/core/v1/super-admin/roles", []int{http.StatusOK}, nil},
+			{"listInstanceAdmins", http.MethodGet, "/core/v1/super-admin/instance-admins", []int{http.StatusOK}, nil},
 			// M11.1 — keeps the representative sample current with the new endpoints on this service.
-			{"getAccountStatus", http.MethodGet, "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/account-status", []int{http.StatusOK}},
+			{"getAccountStatus", http.MethodGet, "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/account-status", []int{http.StatusOK}, nil},
 			// M11.2 — same reasoning: listAuditLog must be refused by the same route-group gate too.
-			{"listAuditLog", http.MethodGet, "/core/v1/super-admin/audit-log", []int{http.StatusOK}},
+			{"listAuditLog", http.MethodGet, "/core/v1/super-admin/audit-log", []int{http.StatusOK}, nil},
 			// M11.3 — same reasoning: listSessions/revokeSession must be refused by the same
 			// route-group gate too. revokeSession uses a syntactically valid but nonexistent
 			// sessionId — proving instanceAdmin reaches the handler (404) is enough; a real fixture
 			// isn't needed to prove the GATE is the same for every subject.
-			{"listSessions", http.MethodGet, "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/sessions", []int{http.StatusOK}},
-			{"revokeSession", http.MethodDelete, "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/sessions/00000000-0000-8000-8000-000000000000", []int{http.StatusOK, http.StatusNotFound}},
+			{"listSessions", http.MethodGet, "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/sessions", []int{http.StatusOK}, nil},
+			{"revokeSession", http.MethodDelete, "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/sessions/00000000-0000-8000-8000-000000000000", []int{http.StatusOK, http.StatusNotFound}, nil},
+			// M11.6 — same reasoning: invitePerson must be refused by the same route-group gate too.
+			// The email deliberately reuses an already-seeded subject's own address (never a fresh
+			// one) so instanceAdmin's call reliably 409s on Core:AccountAlreadyExists past the gate —
+			// proving the handler was reached with no new person/account/invite row left behind for
+			// every repeated run of this test.
+			{"invitePerson", http.MethodPost, "/core/v1/super-admin/invites", []int{http.StatusConflict}, map[string]any{"email": "matrix-instance-admin@example.com", "displayName": "Matrix Test Invitee"}},
 		}
 		for _, ep := range endpoints {
 			t.Run(ep.name, func(t *testing.T) {
@@ -280,12 +290,27 @@ func TestAuthorizationMatrix(t *testing.T) {
 					assertErrorName(t, body, "Authz:InstanceAdminRequired")
 				}
 
-				adminStatus, _ := doReq(t, client, apiBase, ep.method, ep.path, subj.instanceAdmin, subj.instanceAdminSession, nil)
+				adminStatus, _ := doReq(t, client, apiBase, ep.method, ep.path, subj.instanceAdmin, subj.instanceAdminSession, ep.adminBody)
 				if !containsStatus(ep.adminOK, adminStatus) {
 					t.Errorf("instanceAdmin: status = %d, want one of %v", adminStatus, ep.adminOK)
 				}
 			})
 		}
+	})
+
+	// ---- category: resolveInvite (M11.6) — the one CoreService endpoint reachable with NO bearer
+	// at all (internal/identity/middleware's anonymousRoutes), the opposite direction from every
+	// other check in this file. Proves the bypass is real (anonymous does NOT 401) and that an
+	// authenticated caller still gets a normal typed response too (the bypass doesn't special-case
+	// away the endpoint's own logic) — a bogus token both ways returns Core:InviteNotFound, not 401.
+	t.Run("resolveInvite_anonymous_bypass", func(t *testing.T) {
+		anonStatus, anonBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/public/invites/resolve", "", "", map[string]any{"token": "not-a-real-token"})
+		assertStatus(t, "anonymous", anonStatus, http.StatusNotFound)
+		assertErrorName(t, anonBody, "Core:InviteNotFound")
+
+		authedStatus, authedBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/public/invites/resolve", subj.congAdminOwn, subj.congAdminOwnSession, map[string]any{"token": "not-a-real-token"})
+		assertStatus(t, "congAdminOwn (endpoint is public either way)", authedStatus, http.StatusNotFound)
+		assertErrorName(t, authedBody, "Core:InviteNotFound")
 	})
 }
 

@@ -7,6 +7,15 @@
     "heading": "Sign in",
     "googleButton": "Sign in with Google"
   },
+  "AcceptInvitePage": {
+    "heading": "Has sido invitado",
+    "welcome": "Has sido invitado a unirte como {name} ({email}). Inicia sesión con Google usando esta dirección de correo para terminar de configurar tu cuenta.",
+    "googleButton": "Iniciar sesión con Google",
+    "errorMissingToken": "A este enlace de invitación le falta el token.",
+    "errorNotFound": "Este enlace de invitación no es válido.",
+    "errorExpired": "Este enlace de invitación ha caducado. Pide a un administrador que te envíe uno nuevo.",
+    "errorAlreadyAccepted": "Esta invitación ya ha sido aceptada. Intenta iniciar sesión."
+  },
   "WhoamiPage": {
     "heading": "Who am I",
     "description": "Resolved by openfaithmap-api's <code>core.whoami()</code> from the forwarded Google ID token — this is the M1 proof that login and token passthrough work end-to-end.",
@@ -318,12 +327,25 @@
   },
   "SuperAdminPeoplePage": {
     "heading": "Personas",
+    "invite": "Invitar",
     "searchHeading": "Buscar personas",
     "searchPlaceholder": "Buscar por nombre o código…",
     "search": "Buscar",
     "noResults": "No se encontraron coincidencias.",
     "lastActive": "Activo por última vez el {date}",
     "neverActive": "Nunca ha estado activo"
+  },
+  "SuperAdminInvitePage": {
+    "heading": "Invitar a un colaborador",
+    "intro": "Crea una cuenta previamente y genera un enlace de un solo uso: cópialo y compártelo por el medio que ya uses con esta persona (Slack, correo, etc). No se envía ningún correo automáticamente.",
+    "emailLabel": "Correo electrónico",
+    "displayNameLabel": "Nombre para mostrar",
+    "submit": "Generar enlace de invitación",
+    "linkGenerated": "Enlace de invitación generado. Cópialo y compártelo: no se mostrará de nuevo.",
+    "copyLink": "Copiar enlace",
+    "copied": "¡Copiado!",
+    "errorAccountAlreadyExists": "Ya existe una cuenta activa para este correo electrónico.",
+    "errorGeneric": "Algo salió mal al generar la invitación. Inténtalo de nuevo."
   },
   "SuperAdminPersonPage": {
     "heading": "{name}",

@@ -211,6 +211,7 @@ const (
 	auditActionReactivateAccount    = "REACTIVATE_ACCOUNT"
 	auditActionRevokeSession        = "REVOKE_SESSION"
 	auditActionUpdateProfile        = "UPDATE_PROFILE"
+	auditActionCreateInvite         = "CREATE_INVITE"
 
 	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
 	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
@@ -467,4 +468,42 @@ func (s *Service) ListAuditLog(ctx context.Context, filter AuditLogFilter, pageS
 		ActorPersonID: filter.ActorPersonID, TargetKind: filter.TargetKind, TargetID: filter.TargetID,
 		From: filter.From, To: filter.To,
 	}, pageSize, after)
+}
+
+// ---------------------------------------------------------------- invites (M11.6, D-InviteLinkMVP)
+
+// InviteResult is CoreSuperAdminService.invitePerson's response — Token is the bare, one-time raw
+// token, not a full URL: the backend has no notion of the admin app's own public origin, so the
+// Next.js layer builds the shareable link from its own known origin.
+type InviteResult struct {
+	PersonID  string
+	AccountID string
+	Token     string
+	ExpiresAt time.Time
+}
+
+// InvitePerson pre-provisions a Person+Account for email/displayName and generates a one-time
+// invite link (admin-scoped, requires CoreSuperAdminService's route-group gate) — CoreSuperAdminService.invitePerson.
+func (s *Service) InvitePerson(ctx context.Context, email, displayName string) (InviteResult, error) {
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return InviteResult{}, err
+	}
+	invite, rawToken, err := s.identity.CreateInvite(ctx, email, displayName, subject.PersonID)
+	if err != nil {
+		return InviteResult{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionCreateInvite, auditTargetPerson, invite.PersonID, nil,
+		map[string]any{"email": email, "displayName": displayName}); err != nil {
+		return InviteResult{}, err
+	}
+	return InviteResult{PersonID: invite.PersonID, AccountID: invite.AccountID, Token: rawToken, ExpiresAt: invite.ExpiresAt}, nil
+}
+
+// ResolveInvite validates an invite token for its own not-yet-authenticated invitee —
+// CoreService.resolveInvite, the one endpoint in this arc reachable with no session at all
+// (internal/identity/middleware's anonymousRoutes). Deliberately no requireSubject call and no audit
+// log: a pure read, and the caller has no subject to resolve yet.
+func (s *Service) ResolveInvite(ctx context.Context, token string) (identityapplication.InviteInfo, error) {
+	return s.identity.ResolveInvite(ctx, token)
 }

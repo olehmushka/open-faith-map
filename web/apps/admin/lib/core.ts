@@ -23,6 +23,8 @@ import type {
   ICountry,
   ICreateChildOrgRequest,
   IInstanceAdminGrant,
+  IInviteInfo,
+  IInviteResult,
   IMembership,
   IOrgKind,
   IOrgProfile,
@@ -53,6 +55,8 @@ export type CreateChildOrgInput = ICreateChildOrgRequest;
 export type AuditLogEntry = IAuditLogEntry;
 export type AuditLogPage = IAuditLogPage;
 export type Session = ISession;
+export type InviteResult = IInviteResult;
+export type InviteInfo = IInviteInfo;
 
 export class CoreApiError extends Error {
   constructor(
@@ -191,6 +195,18 @@ export async function listMyRoleAssignments(): Promise<RoleAssignment[]> {
   return page.assignments;
 }
 
+/**
+ * M11.6 — validates an invite token for its own not-yet-authenticated invitee. Deliberately its own
+ * unauthenticated client, not client(): this is called from the public /accept-invite page, where
+ * there is no NextAuth session (and so no idToken/X-Session-Id) to forward — the backend's own
+ * anonymousRoutes allowlist (internal/identity/middleware) is what actually makes this call work
+ * with no bearer at all.
+ */
+export async function resolveInvite(token: string): Promise<InviteInfo> {
+  const anonymousClient = createOpenFaithMapClient({ baseUrl: requireBaseUrl() });
+  return unwrap(anonymousClient.corePublic.resolveInvite({ token }));
+}
+
 // ---- super-admin (gated server-side by RequireInstanceAdmin) ----
 
 export async function searchPersons(query?: string, limit = 50): Promise<Person[]> {
@@ -274,4 +290,9 @@ export async function listAuditLog(filter: AuditLogFilter): Promise<AuditLogPage
       filter.pageToken,
     ),
   );
+}
+
+/** M11.6, D-InviteLinkMVP — pre-provisions a Person+Account and returns a one-time invite token; the caller builds the shareable link from its own known origin. */
+export async function invitePerson(email: string, displayName: string): Promise<InviteResult> {
+  return unwrap((await client()).coreSuperAdmin.invitePerson({ email, displayName }));
 }

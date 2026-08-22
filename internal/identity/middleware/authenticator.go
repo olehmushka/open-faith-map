@@ -266,12 +266,17 @@ func isSessionExemptPath(method, path string) bool {
 // isBypassPath reports whether (method, path) belongs to either the management/diagnostic surface
 // (readiness/liveness/health, debug diagnostics — a path prefix is safe here, nothing else lives
 // under /status or /debug) or a genuinely anonymous product endpoint (method+path exact match, or
-// content's own distinct /content/v1/public prefix).
+// a distinct .../public path prefix — content's own /content/v1/public, and M11.6's
+// /core/v1/public, the admin-side counterpart: the invitee genuinely has no session yet, not "this
+// app never forwards one," but the mechanism is identical).
 func isBypassPath(method, path string) bool {
 	if strings.HasPrefix(path, "/status") || strings.HasPrefix(path, "/debug") {
 		return true
 	}
 	if strings.HasPrefix(path, "/content/v1/public") {
+		return true
+	}
+	if strings.HasPrefix(path, "/core/v1/public") {
 		return true
 	}
 	for _, r := range anonymousRoutes {

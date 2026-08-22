@@ -16,7 +16,10 @@
 # first registration) could still browse these catalogs. CreateChildOrg is CoreService's one
 # exception: a real write, gated on religionorg.manage over the parent unit, the same convention
 # every other consumer module already follows before calling into internal/religion (which carries
-# zero authorization logic of its own, D-InProcessAuthz).
+# zero authorization logic of its own, D-InProcessAuthz). resolveInvite (M11.6) needs the opposite:
+# reachable with NO session at all (the invitee has never signed in yet) — which a per-service fixed
+# auth choice means CANNOT live on CoreService itself, so it gets its own CorePublicService below,
+# mirroring ContentPublicService's shape exactly.
 #
 # Generated Go lands in internal/conjure and is never hand-edited.
 types:
@@ -265,6 +268,35 @@ types:
         fields:
           sessions: list<Session>
 
+      InvitePersonRequest:
+        docs: M11.6 — pre-provisions a Person+Account for email/displayName and generates a one-time invite link.
+        fields:
+          email: string
+          displayName: string
+      InviteResult:
+        docs: >
+          M11.6 — token is the bare, one-time raw token, not a full URL: the admin app builds the
+          shareable link from its own known origin. Returned exactly once; only its hash is ever
+          persisted server-side.
+        fields:
+          personId: string
+          accountId: string
+          token: string
+          expiresAt: datetime
+      ResolveInviteRequest:
+        docs: >
+          M11.6 — a POST body, not a path/query token, so the one-time token never lands in a server
+          access log or browser history the way a GET with the token in the URL would.
+        fields:
+          token: string
+      InviteInfo:
+        docs: >
+          M11.6 — what a valid, still-pending invite reveals to its own not-yet-authenticated
+          invitee (the accept-invite landing page's welcome message). Deliberately minimal.
+        fields:
+          displayName: string
+          email: string
+
     errors:
       PersonNotFound:
         namespace: Core
@@ -329,6 +361,26 @@ types:
         code: NOT_FOUND
         safe-args:
           sessionId: string
+      AccountAlreadyExists:
+        docs: M11.6 — invitePerson's email already has an active account; no safe-args (the email itself is not safe to log).
+        namespace: Core
+        code: CONFLICT
+        safe-args: {}
+      InviteNotFound:
+        docs: M11.6 — resolveInvite's token doesn't match any invite; no safe-args (the token itself is not safe to log).
+        namespace: Core
+        code: NOT_FOUND
+        safe-args: {}
+      InviteExpired:
+        docs: M11.6 — the invite's expiresAt has passed.
+        namespace: Core
+        code: CONFLICT
+        safe-args: {}
+      InviteAlreadyAccepted:
+        docs: M11.6 — the invitee has already signed in and JIT-linked this invite's account.
+        namespace: Core
+        code: CONFLICT
+        safe-args: {}
 
 services:
   CoreService:
@@ -461,6 +513,28 @@ services:
           request: GetPersonsRequest
         returns: PersonPage
 
+  CorePublicService:
+    name: Core Public Service
+    package: openfaithmap.core
+    base-path: /core/v1/public
+    docs: >
+      M11.6 — genuinely anonymous, mirroring ContentPublicService's own shape (no default-auth: a
+      Conjure service's auth is a fixed per-service choice — see this file's own header comment —
+      so an endpoint reachable with no bearer at all cannot live on CoreService, which sets
+      default-auth: header). The invitee has no session yet (they haven't signed in for the first
+      time), the same reasoning D-AdminSurface gives for ContentPublicService, just admin-side
+      instead of web-side. internal/identity/middleware's isBypassPath also carries a matching
+      /core/v1/public prefix bypass, the same mechanism /content/v1/public already uses.
+    endpoints:
+      resolveInvite:
+        docs: >
+          Validates an invite token for its own not-yet-authenticated invitee, ahead of their first
+          sign-in.
+        http: POST /invites/resolve
+        args:
+          request: ResolveInviteRequest
+        returns: InviteInfo
+
   CoreSuperAdminService:
     name: Core Super Admin Service
     package: openfaithmap.core
@@ -592,3 +666,18 @@ services:
             type: optional<string>
             param-type: query
         returns: AuditLogPage
+
+      invitePerson:
+        docs: >
+          M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName
+          and returns a one-time invite token; the admin app builds the shareable link from its own
+          origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on
+          the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites
+          path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation
+          has no existing personId to path-parameter against — and httprouter's radix tree can't
+          have a static "invite" segment as a sibling of the existing ":personId" wildcard under
+          /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+        http: POST /invites
+        args:
+          request: InvitePersonRequest
+        returns: InviteResult

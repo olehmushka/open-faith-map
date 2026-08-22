@@ -14,6 +14,37 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+// M11.6 — genuinely anonymous, mirroring ContentPublicService's own shape (no default-auth: a Conjure service's auth is a fixed per-service choice — see this file's own header comment — so an endpoint reachable with no bearer at all cannot live on CoreService, which sets default-auth: header). The invitee has no session yet (they haven't signed in for the first time), the same reasoning D-AdminSurface gives for ContentPublicService, just admin-side instead of web-side. internal/identity/middleware's isBypassPath also carries a matching /core/v1/public prefix bypass, the same mechanism /content/v1/public already uses.
+type CorePublicServiceClient interface {
+	// Validates an invite token for its own not-yet-authenticated invitee, ahead of their first sign-in.
+	ResolveInvite(ctx context.Context, requestArg ResolveInviteRequest) (InviteInfo, error)
+}
+
+type corePublicServiceClient struct {
+	client httpclient.Client
+}
+
+func NewCorePublicServiceClient(client httpclient.Client) CorePublicServiceClient {
+	return &corePublicServiceClient{client: client}
+}
+
+func (c *corePublicServiceClient) ResolveInvite(ctx context.Context, requestArg ResolveInviteRequest) (InviteInfo, error) {
+	var returnVal *InviteInfo
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ResolveInvite"))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/public/invites/resolve"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(InviteInfo), werror.WrapWithContextParams(ctx, err, "resolveInvite failed")
+	}
+	if returnVal == nil {
+		return *new(InviteInfo), werror.ErrorWithContextParams(ctx, "resolveInvite response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // The admin app's session-gated reads over the in-process core (units, taxa, countries, org kinds/profiles, memberships, persons) plus its one gated write, createChildOrg. See file header for exactly which endpoints carry an authorization gate beyond the session itself.
 type CoreServiceClient interface {
 	Whoami(ctx context.Context, authHeader bearertoken.Token) (Whoami, error)
@@ -661,6 +692,8 @@ type CoreSuperAdminServiceClient interface {
 	RevokeSession(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sessionIdArg string) error
 	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
 	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
+	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+	InvitePerson(ctx context.Context, authHeader bearertoken.Token, requestArg InvitePersonRequest) (InviteResult, error)
 }
 
 type coreSuperAdminServiceClient struct {
@@ -922,6 +955,24 @@ func (c *coreSuperAdminServiceClient) ListAuditLog(ctx context.Context, authHead
 	return *returnVal, nil
 }
 
+func (c *coreSuperAdminServiceClient) InvitePerson(ctx context.Context, authHeader bearertoken.Token, requestArg InvitePersonRequest) (InviteResult, error) {
+	var returnVal *InviteResult
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("InvitePerson"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/invites"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(InviteResult), werror.WrapWithContextParams(ctx, err, "invitePerson failed")
+	}
+	if returnVal == nil {
+		return *new(InviteResult), werror.ErrorWithContextParams(ctx, "invitePerson response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // The super-admin surface replacing the deleted oikumenea-console (D-SuperAdminFold): people search, role catalog, per-unit role-assignment grant/list/revoke, and the instance-admin plane's own grant/list/revoke. Every endpoint in this service is gated as a whole route group by internal/authz/transport.RequireInstanceAdmin, attached once at registration (cmd/openfaithmap-api/register_core.go) — not per-handler, so no future endpoint added here can be added without inheriting the check.
 type CoreSuperAdminServiceClientWithAuth interface {
 	SearchPersons(ctx context.Context, queryArg *string, limitArg *int) (PersonPage, error)
@@ -944,6 +995,8 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	RevokeSession(ctx context.Context, personIdArg string, sessionIdArg string) error
 	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
 	ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
+	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+	InvitePerson(ctx context.Context, requestArg InvitePersonRequest) (InviteResult, error)
 }
 
 func NewCoreSuperAdminServiceClientWithAuth(client CoreSuperAdminServiceClient, authHeader bearertoken.Token) CoreSuperAdminServiceClientWithAuth {
@@ -1009,6 +1062,10 @@ func (c *coreSuperAdminServiceClientWithAuth) RevokeSession(ctx context.Context,
 
 func (c *coreSuperAdminServiceClientWithAuth) ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
 	return c.client.ListAuditLog(ctx, c.authHeader, actorPersonIdArg, targetKindArg, targetIdArg, fromArg, toArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) InvitePerson(ctx context.Context, requestArg InvitePersonRequest) (InviteResult, error) {
+	return c.client.InvitePerson(ctx, c.authHeader, requestArg)
 }
 
 func NewCoreSuperAdminServiceClientWithTokenProvider(client CoreSuperAdminServiceClient, tokenProvider httpclient.TokenProvider) CoreSuperAdminServiceClientWithAuth {
@@ -1130,4 +1187,12 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) ListAuditLog(ctx context.
 		return *new(AuditLogPage), err
 	}
 	return c.client.ListAuditLog(ctx, bearertoken.Token(token), actorPersonIdArg, targetKindArg, targetIdArg, fromArg, toArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) InvitePerson(ctx context.Context, requestArg InvitePersonRequest) (InviteResult, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(InviteResult), err
+	}
+	return c.client.InvitePerson(ctx, bearertoken.Token(token), requestArg)
 }

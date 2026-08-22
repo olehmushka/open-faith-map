@@ -25,7 +25,12 @@ export default async function SuperAdminPeoplePage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-      <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+        <Button asChild size="sm">
+          <Link href="/admin/people/invite">{t("invite")}</Link>
+        </Button>
+      </div>
 
       <Card>
         <CardHeader>

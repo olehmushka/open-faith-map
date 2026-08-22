@@ -70,6 +70,14 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 		return err
 	}
 
+	// CorePublicService (M11.6) — genuinely anonymous, mirroring registerContent's own
+	// ContentPublicService registration. internal/identity/middleware's isBypassPath carries a
+	// matching /core/v1/public prefix bypass, the same mechanism /content/v1/public already uses.
+	corePublicTransportSvc := coretransport.NewPublicService(coreAppSvc)
+	if err := gencore.RegisterRoutesCorePublicService(info.Router, corePublicTransportSvc); err != nil {
+		return err
+	}
+
 	// CoreSuperAdminService is gated as a whole route group by RequireInstanceAdmin — the one
 	// shared, hard-to-misuse enforcer D-SuperAdminFold's amendment requires, attached here rather
 	// than copied into every handler so no future endpoint on this service can be added ungated.

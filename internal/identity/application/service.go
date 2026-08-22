@@ -7,12 +7,21 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
 
 	"github.com/olehmushka/open-faith-map/internal/identity/domain"
 )
+
+// InviteTTL is how long a generated invite link stays valid (M11.6) — not configurable: no existing
+// precedent in this codebase for exposing this class of tuning knob as an env var (same reasoning
+// adapters.sessionTouchThrottle's own doc comment gives).
+const InviteTTL = 7 * 24 * time.Hour
 
 // Store is the subset of internal/identity/adapters.Store this service needs.
 type Store interface {
@@ -33,6 +42,9 @@ type Store interface {
 	TouchSession(ctx context.Context, sessionID string) (domain.Session, error)
 	RevokeSession(ctx context.Context, sessionID string) (domain.Session, error)
 	LastActiveAtByAccount(ctx context.Context, accountID string) (*time.Time, error)
+	InsertPersonAccountInvite(ctx context.Context, displayName, email, tokenHash, invitedBy string, expiresAt time.Time) (domain.Invite, error)
+	GetInviteByTokenHash(ctx context.Context, tokenHash string) (domain.Invite, error)
+	MarkInviteAcceptedByAccount(ctx context.Context, accountID string) error
 }
 
 type Service struct {
@@ -85,6 +97,12 @@ func (s *Service) LinkOnMatch(ctx context.Context, personID, issuer, subject, em
 	}
 
 	if _, err := s.store.InsertIdentity(ctx, account.ID, issuer, subject); err != nil {
+		return domain.Resolution{}, err
+	}
+	// M11.6: the exact moment JIT actually links the account is when a pre-provisioned invite (if
+	// any) counts as accepted — not when the invitee merely views the accept-invite landing page.
+	// Idempotent no-op for every non-invite sign-in (the overwhelming majority).
+	if err := s.store.MarkInviteAcceptedByAccount(ctx, account.ID); err != nil {
 		return domain.Resolution{}, err
 	}
 	return domain.Resolution{PersonID: personID, AccountID: account.ID, Email: account.Email}, nil
@@ -255,4 +273,94 @@ func (s *Service) Touch(ctx context.Context, sessionID string) (string, error) {
 		return "", err
 	}
 	return sess.AccountID, nil
+}
+
+// ---------------------------------------------------------------- invites (M11.6, D-InviteLinkMVP)
+
+// InviteInfo is what a valid, still-pending invite reveals to its own not-yet-authenticated
+// invitee — deliberately just enough for the accept-invite landing page's welcome message, nothing
+// that would help an outsider probe for valid tokens (the invite itself, before this call succeeds,
+// already proves possession).
+type InviteInfo struct {
+	DisplayName string
+	Email       string
+}
+
+// CreateInvite pre-provisions a Person+Account for email/displayName (the same InsertPerson ->
+// InsertAccount sequence LinkOnMatch's own fallback path already uses, just invoked proactively
+// instead of lazily on first sign-in) and generates a one-time invite link token. Fails
+// ErrAccountAlreadyExists up front if an active account for this email already exists, rather than
+// letting InsertAccount hit identity_accounts_email_active_idx's unique-violation. Returns the raw
+// token exactly once — only its hash is ever persisted (identity_invites.token_hash).
+func (s *Service) CreateInvite(ctx context.Context, email, displayName, invitedByPersonID string) (domain.Invite, string, error) {
+	if _, err := s.store.GetActiveAccountByEmail(ctx, email); err == nil {
+		return domain.Invite{}, "", domain.ErrAccountAlreadyExists
+	} else if !errors.Is(err, domain.ErrAccountNotFound) {
+		return domain.Invite{}, "", err
+	}
+
+	rawToken, tokenHash, err := newInviteToken()
+	if err != nil {
+		return domain.Invite{}, "", err
+	}
+	// One transaction (Store.InsertPersonAccountInvite) for all three inserts — a failure partway
+	// through must not leave an orphaned Person+Account with no Invite, which would permanently
+	// block any future invite to this email (the GetActiveAccountByEmail check above would keep
+	// seeing it as taken).
+	invite, err := s.store.InsertPersonAccountInvite(ctx, displayName, email, tokenHash, invitedByPersonID, time.Now().Add(InviteTTL))
+	if err != nil {
+		return domain.Invite{}, "", err
+	}
+	return invite, rawToken, nil
+}
+
+// ResolveInvite validates rawToken and returns the invitee's display info, or one of
+// ErrInviteNotFound / ErrInviteAlreadyAccepted / ErrInviteExpired / ErrAccountDisabled. Deliberately
+// read-only: acceptance itself only ever happens via LinkOnMatch's own hook, never from viewing this
+// page.
+func (s *Service) ResolveInvite(ctx context.Context, rawToken string) (InviteInfo, error) {
+	invite, err := s.store.GetInviteByTokenHash(ctx, hashInviteToken(rawToken))
+	if err != nil {
+		return InviteInfo{}, err
+	}
+	if invite.Status == domain.InviteStatusAccepted {
+		return InviteInfo{}, domain.ErrInviteAlreadyAccepted
+	}
+	if time.Now().After(invite.ExpiresAt) {
+		return InviteInfo{}, domain.ErrInviteExpired
+	}
+	person, err := s.store.GetPerson(ctx, invite.PersonID)
+	if err != nil {
+		return InviteInfo{}, err
+	}
+	account, err := s.store.GetActiveAccountByPerson(ctx, invite.PersonID)
+	if err != nil {
+		return InviteInfo{}, err
+	}
+	// Reusing the account's own status, not a separate "revoked" invite status (see
+	// migrations/0018_core_invites.sql): deactivating the pre-provisioned account via M11.1's
+	// existing action naturally invalidates a bad invite too.
+	if account.Status == domain.AccountStatusDisabled {
+		return InviteInfo{}, domain.ErrAccountDisabled
+	}
+	return InviteInfo{DisplayName: person.DisplayName, Email: invite.Email}, nil
+}
+
+// newInviteToken generates a random 32-byte token (base64url-encoded for the link) and its SHA-256
+// hash (the only form ever persisted) — deliberately not a signed HMAC/JWT like
+// internal/platform/devtoken.go's dev-only pattern: that would need a new production secret and
+// still couldn't be truly one-time without a DB row anyway, so a random-token-plus-stored-hash (the
+// same defensive shape password-reset tokens use elsewhere) is simpler and no less secure.
+func newInviteToken() (rawToken, tokenHash string, err error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	rawToken = base64.RawURLEncoding.EncodeToString(buf)
+	return rawToken, hashInviteToken(rawToken), nil
+}
+
+func hashInviteToken(rawToken string) string {
+	sum := sha256.Sum256([]byte(rawToken))
+	return hex.EncodeToString(sum[:])
 }

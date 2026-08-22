@@ -210,6 +210,19 @@ func (s *SuperAdminService) ListAuditLog(
 	return gencore.AuditLogPage{Entries: out, NextPageToken: nextToken}, nil
 }
 
+// InvitePerson pre-provisions a Person+Account and returns a one-time invite token — admin-scoped
+// (CoreSuperAdminService's route-group gate).
+func (s *SuperAdminService) InvitePerson(ctx context.Context, _ bearertoken.Token, requestArg gencore.InvitePersonRequest) (gencore.InviteResult, error) {
+	result, err := s.app.InvitePerson(ctx, requestArg.Email, requestArg.DisplayName)
+	if err != nil {
+		return gencore.InviteResult{}, mapErr(err, errCtx{})
+	}
+	return gencore.InviteResult{
+		PersonId: result.PersonID, AccountId: result.AccountID, Token: result.Token,
+		ExpiresAt: datetime.DateTime(result.ExpiresAt),
+	}, nil
+}
+
 func auditLogPageSizeOrDefault(p *int) int {
 	if p == nil || *p <= 0 {
 		return defaultAuditLogPageSize
