@@ -6,11 +6,16 @@ import { IOrgKindPage } from "./orgKindPage";
 import { IOrgProfile } from "./orgProfile";
 import { IPerson } from "./person";
 import { IPersonPage } from "./personPage";
+import { IRegisterSessionRequest } from "./registerSessionRequest";
+import { IRoleAssignmentPage } from "./roleAssignmentPage";
+import { ISession } from "./session";
+import { ISessionPage } from "./sessionPage";
 import { ITaxon } from "./taxon";
 import { ITaxonPage } from "./taxonPage";
 import { IUnit } from "./unit";
 import { IUnitPage } from "./unitPage";
 import { IUnitRefPage } from "./unitRefPage";
+import { IUpdateMyProfileRequest } from "./updateMyProfileRequest";
 import { IWhoami } from "./whoami";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -23,6 +28,19 @@ const __undefined: undefined = undefined;
  */
 export interface ICoreService {
     whoami(): Promise<IWhoami>;
+    /**
+     * M11.3 — creates the identity_sessions row backing a just-completed NextAuth sign-in. Exempt from the per-request session-id check every other endpoint now requires (internal/identity/middleware's sessionExemptRoutes) — this is what creates that row, so it cannot itself require one to already exist.
+     *
+     */
+    registerSession(request: IRegisterSessionRequest): Promise<ISession>;
+    /** M11.3 — the caller's own active sessions, self-scoped. */
+    listMySessions(): Promise<ISessionPage>;
+    /** M11.3 — revokes one of the caller's own sessions, self-scoped. */
+    revokeMySession(sessionId: string): Promise<void>;
+    /** M11.5 — updates the caller's own display name, self-scoped. */
+    updateMyProfile(request: IUpdateMyProfileRequest): Promise<IPerson>;
+    /** M11.5 — the caller's own active role assignments across every unit, self-scoped. */
+    listMyRoleAssignments(): Promise<IRoleAssignmentPage>;
     getUnit(unitId: string): Promise<IUnit>;
     /** Free-text search over code/name, capped at limit (default/max 50). */
     listUnits(query?: string | null, limit?: number | null): Promise<IUnitPage>;
@@ -51,6 +69,91 @@ export class CoreService implements ICoreService {
             "whoami",
             "GET",
             "/core/v1/whoami",
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.3 — creates the identity_sessions row backing a just-completed NextAuth sign-in. Exempt from the per-request session-id check every other endpoint now requires (internal/identity/middleware's sessionExemptRoutes) — this is what creates that row, so it cannot itself require one to already exist.
+     *
+     */
+    public registerSession(request: IRegisterSessionRequest): Promise<ISession> {
+        return this.bridge.call<ISession>(
+            "CoreService",
+            "registerSession",
+            "POST",
+            "/core/v1/sessions",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.3 — the caller's own active sessions, self-scoped. */
+    public listMySessions(): Promise<ISessionPage> {
+        return this.bridge.call<ISessionPage>(
+            "CoreService",
+            "listMySessions",
+            "GET",
+            "/core/v1/sessions",
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.3 — revokes one of the caller's own sessions, self-scoped. */
+    public revokeMySession(sessionId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "CoreService",
+            "revokeMySession",
+            "DELETE",
+            "/core/v1/sessions/{sessionId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                sessionId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.5 — updates the caller's own display name, self-scoped. */
+    public updateMyProfile(request: IUpdateMyProfileRequest): Promise<IPerson> {
+        return this.bridge.call<IPerson>(
+            "CoreService",
+            "updateMyProfile",
+            "PUT",
+            "/core/v1/profile",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.5 — the caller's own active role assignments across every unit, self-scoped. */
+    public listMyRoleAssignments(): Promise<IRoleAssignmentPage> {
+        return this.bridge.call<IRoleAssignmentPage>(
+            "CoreService",
+            "listMyRoleAssignments",
+            "GET",
+            "/core/v1/profile/roles",
             __undefined,
             __undefined,
             __undefined,

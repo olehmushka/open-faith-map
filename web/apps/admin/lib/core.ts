@@ -17,15 +17,21 @@ import { auth } from "@/auth";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
 import type {
+  IAccountStatus,
+  IAuditLogEntry,
+  IAuditLogPage,
   ICountry,
   ICreateChildOrgRequest,
   IInstanceAdminGrant,
+  IInviteInfo,
+  IInviteResult,
   IMembership,
   IOrgKind,
   IOrgProfile,
   IPerson,
   IRole,
   IRoleAssignment,
+  ISession,
   ITaxon,
   IUnit,
   IUnitRef,
@@ -44,7 +50,13 @@ export type Person = IPerson;
 export type Role = IRole;
 export type RoleAssignment = IRoleAssignment;
 export type InstanceAdminGrant = IInstanceAdminGrant;
+export type AccountStatus = IAccountStatus;
 export type CreateChildOrgInput = ICreateChildOrgRequest;
+export type AuditLogEntry = IAuditLogEntry;
+export type AuditLogPage = IAuditLogPage;
+export type Session = ISession;
+export type InviteResult = IInviteResult;
+export type InviteInfo = IInviteInfo;
 
 export class CoreApiError extends Error {
   constructor(
@@ -69,6 +81,14 @@ async function client() {
   return createOpenFaithMapClient({
     baseUrl: requireBaseUrl(),
     token: session?.idToken,
+    // M11.3, D-SessionTracking: the bearer above is Google's own signed ID token, which can't carry
+    // a custom sessionId claim — session.sessionId (stamped by auth.ts's jwt() callback at sign-in)
+    // travels instead as its own header, alongside the bearer, checked by the identity middleware's
+    // per-request session lookup (internal/identity/middleware.Authenticator.Handle).
+    fetch: session?.sessionId
+      ? (url, init) =>
+          fetch(url, { ...init, headers: { ...init?.headers, "X-Session-Id": session.sessionId! } })
+      : undefined,
   });
 }
 
@@ -149,6 +169,44 @@ export async function getPersons(personIds: string[]): Promise<Person[]> {
   return page.persons;
 }
 
+/**
+ * M11.3 — the caller's own active sessions, self-scoped. registerSession itself has no wrapper
+ * here — it's called directly from auth.ts's jwt() callback, before a session exists to build this
+ * file's own client() with (see registerSessionOnBackend there).
+ */
+export async function listMySessions(): Promise<Session[]> {
+  const page = await unwrap((await client()).core.listMySessions());
+  return page.sessions;
+}
+
+/** M11.3 — revokes one of the caller's own sessions, self-scoped. */
+export async function revokeMySession(sessionId: string): Promise<void> {
+  return unwrap((await client()).core.revokeMySession(sessionId));
+}
+
+/** M11.5 — updates the caller's own display name, self-scoped. */
+export async function updateMyProfile(displayName: string): Promise<Person> {
+  return unwrap((await client()).core.updateMyProfile({ displayName }));
+}
+
+/** M11.5 — the caller's own active role assignments across every unit, self-scoped. */
+export async function listMyRoleAssignments(): Promise<RoleAssignment[]> {
+  const page = await unwrap((await client()).core.listMyRoleAssignments());
+  return page.assignments;
+}
+
+/**
+ * M11.6 — validates an invite token for its own not-yet-authenticated invitee. Deliberately its own
+ * unauthenticated client, not client(): this is called from the public /accept-invite page, where
+ * there is no NextAuth session (and so no idToken/X-Session-Id) to forward — the backend's own
+ * anonymousRoutes allowlist (internal/identity/middleware) is what actually makes this call work
+ * with no bearer at all.
+ */
+export async function resolveInvite(token: string): Promise<InviteInfo> {
+  const anonymousClient = createOpenFaithMapClient({ baseUrl: requireBaseUrl() });
+  return unwrap(anonymousClient.corePublic.resolveInvite({ token }));
+}
+
 // ---- super-admin (gated server-side by RequireInstanceAdmin) ----
 
 export async function searchPersons(query?: string, limit = 50): Promise<Person[]> {
@@ -185,4 +243,56 @@ export async function grantInstanceAdmin(personId: string): Promise<InstanceAdmi
 
 export async function revokeInstanceAdmin(personId: string): Promise<void> {
   return unwrap((await client()).coreSuperAdmin.revokeInstanceAdmin(personId));
+}
+
+export async function getAccountStatus(personId: string): Promise<AccountStatus> {
+  return unwrap((await client()).coreSuperAdmin.getAccountStatus(personId));
+}
+
+export async function deactivateAccount(personId: string): Promise<AccountStatus> {
+  return unwrap((await client()).coreSuperAdmin.deactivateAccount(personId));
+}
+
+export async function reactivateAccount(personId: string): Promise<AccountStatus> {
+  return unwrap((await client()).coreSuperAdmin.reactivateAccount(personId));
+}
+
+/** M11.3 — personId's active sessions, admin-scoped. */
+export async function listSessions(personId: string): Promise<Session[]> {
+  const page = await unwrap((await client()).coreSuperAdmin.listSessions(personId));
+  return page.sessions;
+}
+
+/** M11.3 — revokes one of personId's sessions, admin-scoped. */
+export async function revokeSession(personId: string, sessionId: string): Promise<void> {
+  return unwrap((await client()).coreSuperAdmin.revokeSession(personId, sessionId));
+}
+
+export interface AuditLogFilter {
+  actorPersonId?: string;
+  targetKind?: string;
+  targetId?: string;
+  from?: string;
+  to?: string;
+  pageToken?: string;
+}
+
+/** M11.2 — keyset-paginated, filterable by actor/target/date; see components/data-table.tsx's own doc comment for why pagination state stays with the caller. */
+export async function listAuditLog(filter: AuditLogFilter): Promise<AuditLogPage> {
+  return unwrap(
+    (await client()).coreSuperAdmin.listAuditLog(
+      filter.actorPersonId,
+      filter.targetKind,
+      filter.targetId,
+      filter.from,
+      filter.to,
+      undefined,
+      filter.pageToken,
+    ),
+  );
+}
+
+/** M11.6, D-InviteLinkMVP — pre-provisions a Person+Account and returns a one-time invite token; the caller builds the shareable link from its own known origin. */
+export async function invitePerson(email: string, displayName: string): Promise<InviteResult> {
+  return unwrap((await client()).coreSuperAdmin.invitePerson({ email, displayName }));
 }

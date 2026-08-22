@@ -12,17 +12,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // up to 50 people (internal/identity/adapters/store.go's SearchPersons), so this page shows a
 // landing set rather than requiring a search first.
 export default async function SuperAdminPeoplePage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ locale: string }>;
   searchParams: Promise<{ q?: string }>;
 }) {
+  const { locale } = await params;
   const t = await getTranslations("SuperAdminPeoplePage");
   const { q } = await searchParams;
   const results = await searchPersons(q, 50);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-      <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+        <Button asChild size="sm">
+          <Link href="/admin/people/invite">{t("invite")}</Link>
+        </Button>
+      </div>
 
       <Card>
         <CardHeader>
@@ -46,6 +54,11 @@ export default async function SuperAdminPeoplePage({
                   >
                     <UserCog className="size-4 text-muted-foreground" />
                     <span className="flex-1">{p.displayName}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {p.lastActiveAt
+                        ? t("lastActive", { date: new Date(p.lastActiveAt).toLocaleString(locale) })
+                        : t("neverActive")}
+                    </span>
                     {p.code && <span className="text-xs text-muted-foreground">{p.code}</span>}
                   </Link>
                 </li>

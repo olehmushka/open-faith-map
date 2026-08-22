@@ -10,7 +10,9 @@ package transport
 
 import (
 	"context"
+	"time"
 
+	"github.com/olehmushka/open-faith-map/internal/authz"
 	gencore "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/core"
 	"github.com/olehmushka/open-faith-map/internal/core/application"
 	directorydomain "github.com/olehmushka/open-faith-map/internal/directory/domain"
@@ -39,6 +41,57 @@ func (s *Service) Whoami(ctx context.Context, _ bearertoken.Token) (gencore.Whoa
 	return gencore.Whoami{
 		PersonId: who.PersonID, AccountId: who.AccountID, Email: who.Email, IsInstanceAdmin: who.IsInstanceAdmin,
 	}, nil
+}
+
+func (s *Service) RegisterSession(ctx context.Context, _ bearertoken.Token, requestArg gencore.RegisterSessionRequest) (gencore.Session, error) {
+	sess, err := s.app.RegisterSession(ctx, derefStr(requestArg.DeviceLabel))
+	if err != nil {
+		return gencore.Session{}, mapErr(err, errCtx{})
+	}
+	return toAPISession(sess, ""), nil
+}
+
+func (s *Service) ListMySessions(ctx context.Context, _ bearertoken.Token) (gencore.SessionPage, error) {
+	sessions, err := s.app.ListMySessions(ctx)
+	if err != nil {
+		return gencore.SessionPage{}, mapErr(err, errCtx{})
+	}
+	subject, _ := authz.SubjectFromContext(ctx)
+	out := make([]gencore.Session, len(sessions))
+	for i, sess := range sessions {
+		out[i] = toAPISession(sess, subject.SessionID)
+	}
+	return gencore.SessionPage{Sessions: out}, nil
+}
+
+func (s *Service) RevokeMySession(ctx context.Context, _ bearertoken.Token, sessionIdArg string) error {
+	if err := s.app.RevokeMySession(ctx, sessionIdArg); err != nil {
+		return mapErr(err, errCtx{SessionID: sessionIdArg})
+	}
+	return nil
+}
+
+func (s *Service) UpdateMyProfile(ctx context.Context, _ bearertoken.Token, requestArg gencore.UpdateMyProfileRequest) (gencore.Person, error) {
+	p, err := s.app.UpdateMyProfile(ctx, requestArg.DisplayName)
+	if err != nil {
+		return gencore.Person{}, mapErr(err, errCtx{})
+	}
+	return toAPIPerson(p), nil
+}
+
+func (s *Service) ListMyRoleAssignments(ctx context.Context, _ bearertoken.Token) (gencore.RoleAssignmentPage, error) {
+	assignments, err := s.app.ListMyRoleAssignments(ctx)
+	if err != nil {
+		return gencore.RoleAssignmentPage{}, mapErr(err, errCtx{})
+	}
+	out := make([]gencore.RoleAssignment, len(assignments))
+	for i, a := range assignments {
+		out[i] = gencore.RoleAssignment{
+			Id: a.ID, PersonId: a.PersonID, PersonName: a.PersonName, RoleId: a.RoleID, RoleCode: a.RoleCode,
+			TargetUnitId: a.TargetUnitID, Scope: string(a.Scope), GrantedAt: datetime.DateTime(a.GrantedAt),
+		}
+	}
+	return gencore.RoleAssignmentPage{Assignments: out}, nil
 }
 
 func (s *Service) GetUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string) (gencore.Unit, error) {
@@ -211,6 +264,28 @@ func toAPIPerson(p identitydomain.Person) gencore.Person {
 	return gencore.Person{
 		Id: p.ID, Code: optionalStr(p.Code), DisplayName: p.DisplayName,
 		CreatedAt: datetime.DateTime(p.CreatedAt), UpdatedAt: datetime.DateTime(p.UpdatedAt),
+		LastActiveAt: optionalDateTime(p.LastActiveAt),
+	}
+}
+
+// optionalDateTime converts an optional time.Time (M11.4's revoked-inclusive last-active signal) to
+// the conjure-generated *datetime.DateTime an optional<datetime> field wants, nil-safe.
+func optionalDateTime(t *time.Time) *datetime.DateTime {
+	if t == nil {
+		return nil
+	}
+	dt := datetime.DateTime(*t)
+	return &dt
+}
+
+// toAPISession converts one identity_sessions row (M11.3). currentSessionID is the caller's own
+// authz.Subject.SessionID — compared against sess.ID to compute IsCurrent server-side, rather than
+// asking the client to know which of its own sessions it's presently using.
+func toAPISession(sess identitydomain.Session, currentSessionID string) gencore.Session {
+	return gencore.Session{
+		Id: sess.ID, DeviceLabel: optionalStr(sess.DeviceLabel),
+		CreatedAt: datetime.DateTime(sess.CreatedAt), LastSeenAt: datetime.DateTime(sess.LastSeenAt),
+		IsCurrent: currentSessionID != "" && sess.ID == currentSessionID,
 	}
 }
 

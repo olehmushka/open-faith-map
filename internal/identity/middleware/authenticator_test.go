@@ -55,6 +55,20 @@ func (f fakePersonDirectory) PersonIDByCode(_ context.Context, code string) (str
 	return p, ok, nil
 }
 
+// fakeSessionChecker is the M11.3 SessionChecker test double: bySessionID maps a session id to the
+// account it belongs to; ok=false (session missing from the map) simulates domain.ErrSessionNotFound.
+type fakeSessionChecker struct {
+	bySessionID map[string]string
+}
+
+func (f fakeSessionChecker) Touch(_ context.Context, sessionID string) (string, error) {
+	accountID, ok := f.bySessionID[sessionID]
+	if !ok {
+		return "", domain.ErrSessionNotFound
+	}
+	return accountID, nil
+}
+
 func TestResolveDirectMatch(t *testing.T) {
 	resolver := &fakeResolver{byIssuerSubject: map[[2]string]domain.Resolution{
 		{"iss", "sub"}: {PersonID: "p1", AccountID: "a1"},

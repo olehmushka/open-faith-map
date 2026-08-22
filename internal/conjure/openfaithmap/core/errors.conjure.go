@@ -15,6 +15,304 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+type accountAlreadyExists struct{}
+
+func (o accountAlreadyExists) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *accountAlreadyExists) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewAccountAlreadyExists returns new instance of AccountAlreadyExists error.
+func NewAccountAlreadyExists() *AccountAlreadyExists {
+	return &AccountAlreadyExists{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), accountAlreadyExists: accountAlreadyExists{}}
+}
+
+// WrapWithAccountAlreadyExists returns new instance of AccountAlreadyExists error wrapping an existing error.
+func WrapWithAccountAlreadyExists(err error) *AccountAlreadyExists {
+	return &AccountAlreadyExists{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, accountAlreadyExists: accountAlreadyExists{}}
+}
+
+// AccountAlreadyExists is an error type.
+// M11.6 — invitePerson's email already has an active account; no safe-args (the email itself is not safe to log).
+type AccountAlreadyExists struct {
+	errorInstanceID uuid.UUID
+	accountAlreadyExists
+	cause error
+	stack werror.StackTrace
+}
+
+// IsAccountAlreadyExists returns true if err is an instance of AccountAlreadyExists.
+func IsAccountAlreadyExists(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*AccountAlreadyExists)
+	return ok
+}
+
+func (e *AccountAlreadyExists) Error() string {
+	return fmt.Sprintf("CONFLICT Core:AccountAlreadyExists (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *AccountAlreadyExists) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *AccountAlreadyExists) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *AccountAlreadyExists) Message() string {
+	return "CONFLICT Core:AccountAlreadyExists"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *AccountAlreadyExists) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *AccountAlreadyExists) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *AccountAlreadyExists) Name() string {
+	return "Core:AccountAlreadyExists"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *AccountAlreadyExists) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *AccountAlreadyExists) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *AccountAlreadyExists) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *AccountAlreadyExists) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *AccountAlreadyExists) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *AccountAlreadyExists) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e AccountAlreadyExists) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.accountAlreadyExists)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Core:AccountAlreadyExists", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *AccountAlreadyExists) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters accountAlreadyExists
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.accountAlreadyExists = parameters
+	return nil
+}
+
+type accountNotFound struct {
+	PersonId string `json:"personId"`
+}
+
+func (o accountNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *accountNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewAccountNotFound returns new instance of AccountNotFound error.
+func NewAccountNotFound(personIdArg string) *AccountNotFound {
+	return &AccountNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), accountNotFound: accountNotFound{PersonId: personIdArg}}
+}
+
+// WrapWithAccountNotFound returns new instance of AccountNotFound error wrapping an existing error.
+func WrapWithAccountNotFound(err error, personIdArg string) *AccountNotFound {
+	return &AccountNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, accountNotFound: accountNotFound{PersonId: personIdArg}}
+}
+
+// AccountNotFound is an error type.
+// The person has no account (deactivate/reactivate need one to exist).
+type AccountNotFound struct {
+	errorInstanceID uuid.UUID
+	accountNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsAccountNotFound returns true if err is an instance of AccountNotFound.
+func IsAccountNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*AccountNotFound)
+	return ok
+}
+
+func (e *AccountNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Core:AccountNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *AccountNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *AccountNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *AccountNotFound) Message() string {
+	return "NOT_FOUND Core:AccountNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *AccountNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *AccountNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *AccountNotFound) Name() string {
+	return "Core:AccountNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *AccountNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *AccountNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"personId": e.PersonId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *AccountNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"personId": e.PersonId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *AccountNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *AccountNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *AccountNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e AccountNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.accountNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Core:AccountNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *AccountNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters accountNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.accountNotFound = parameters
+	return nil
+}
+
 type assignmentNotFound struct {
 	AssignmentId string `json:"assignmentId"`
 }
@@ -611,6 +909,598 @@ func (e *InstanceAdminGrantNotFound) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type invalidPageToken struct{}
+
+func (o invalidPageToken) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *invalidPageToken) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewInvalidPageToken returns new instance of InvalidPageToken error.
+func NewInvalidPageToken() *InvalidPageToken {
+	return &InvalidPageToken{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), invalidPageToken: invalidPageToken{}}
+}
+
+// WrapWithInvalidPageToken returns new instance of InvalidPageToken error wrapping an existing error.
+func WrapWithInvalidPageToken(err error) *InvalidPageToken {
+	return &InvalidPageToken{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, invalidPageToken: invalidPageToken{}}
+}
+
+// InvalidPageToken is an error type.
+// M11.2 — listAuditLog's pageToken query argument is malformed or tampered — never silently reinterpreted as "start from page 1" (mirrors Moderation:InvalidPageToken/ Congregationimport:InvalidPageToken's identical M7 invariant). Declared in this file's own Core namespace rather than imported cross-module, same convention congregationimport.conjure.yml already uses for its own copy.
+type InvalidPageToken struct {
+	errorInstanceID uuid.UUID
+	invalidPageToken
+	cause error
+	stack werror.StackTrace
+}
+
+// IsInvalidPageToken returns true if err is an instance of InvalidPageToken.
+func IsInvalidPageToken(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*InvalidPageToken)
+	return ok
+}
+
+func (e *InvalidPageToken) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Core:InvalidPageToken (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *InvalidPageToken) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *InvalidPageToken) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *InvalidPageToken) Message() string {
+	return "INVALID_ARGUMENT Core:InvalidPageToken"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *InvalidPageToken) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *InvalidPageToken) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *InvalidPageToken) Name() string {
+	return "Core:InvalidPageToken"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *InvalidPageToken) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *InvalidPageToken) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *InvalidPageToken) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InvalidPageToken) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *InvalidPageToken) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InvalidPageToken) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e InvalidPageToken) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.invalidPageToken)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Core:InvalidPageToken", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *InvalidPageToken) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters invalidPageToken
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.invalidPageToken = parameters
+	return nil
+}
+
+type inviteAlreadyAccepted struct{}
+
+func (o inviteAlreadyAccepted) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *inviteAlreadyAccepted) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewInviteAlreadyAccepted returns new instance of InviteAlreadyAccepted error.
+func NewInviteAlreadyAccepted() *InviteAlreadyAccepted {
+	return &InviteAlreadyAccepted{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), inviteAlreadyAccepted: inviteAlreadyAccepted{}}
+}
+
+// WrapWithInviteAlreadyAccepted returns new instance of InviteAlreadyAccepted error wrapping an existing error.
+func WrapWithInviteAlreadyAccepted(err error) *InviteAlreadyAccepted {
+	return &InviteAlreadyAccepted{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, inviteAlreadyAccepted: inviteAlreadyAccepted{}}
+}
+
+// InviteAlreadyAccepted is an error type.
+// M11.6 — the invitee has already signed in and JIT-linked this invite's account.
+type InviteAlreadyAccepted struct {
+	errorInstanceID uuid.UUID
+	inviteAlreadyAccepted
+	cause error
+	stack werror.StackTrace
+}
+
+// IsInviteAlreadyAccepted returns true if err is an instance of InviteAlreadyAccepted.
+func IsInviteAlreadyAccepted(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*InviteAlreadyAccepted)
+	return ok
+}
+
+func (e *InviteAlreadyAccepted) Error() string {
+	return fmt.Sprintf("CONFLICT Core:InviteAlreadyAccepted (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *InviteAlreadyAccepted) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *InviteAlreadyAccepted) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *InviteAlreadyAccepted) Message() string {
+	return "CONFLICT Core:InviteAlreadyAccepted"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *InviteAlreadyAccepted) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *InviteAlreadyAccepted) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *InviteAlreadyAccepted) Name() string {
+	return "Core:InviteAlreadyAccepted"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *InviteAlreadyAccepted) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *InviteAlreadyAccepted) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *InviteAlreadyAccepted) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InviteAlreadyAccepted) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *InviteAlreadyAccepted) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InviteAlreadyAccepted) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e InviteAlreadyAccepted) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.inviteAlreadyAccepted)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Core:InviteAlreadyAccepted", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *InviteAlreadyAccepted) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters inviteAlreadyAccepted
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.inviteAlreadyAccepted = parameters
+	return nil
+}
+
+type inviteExpired struct{}
+
+func (o inviteExpired) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *inviteExpired) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewInviteExpired returns new instance of InviteExpired error.
+func NewInviteExpired() *InviteExpired {
+	return &InviteExpired{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), inviteExpired: inviteExpired{}}
+}
+
+// WrapWithInviteExpired returns new instance of InviteExpired error wrapping an existing error.
+func WrapWithInviteExpired(err error) *InviteExpired {
+	return &InviteExpired{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, inviteExpired: inviteExpired{}}
+}
+
+// InviteExpired is an error type.
+// M11.6 — the invite's expiresAt has passed.
+type InviteExpired struct {
+	errorInstanceID uuid.UUID
+	inviteExpired
+	cause error
+	stack werror.StackTrace
+}
+
+// IsInviteExpired returns true if err is an instance of InviteExpired.
+func IsInviteExpired(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*InviteExpired)
+	return ok
+}
+
+func (e *InviteExpired) Error() string {
+	return fmt.Sprintf("CONFLICT Core:InviteExpired (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *InviteExpired) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *InviteExpired) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *InviteExpired) Message() string {
+	return "CONFLICT Core:InviteExpired"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *InviteExpired) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *InviteExpired) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *InviteExpired) Name() string {
+	return "Core:InviteExpired"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *InviteExpired) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *InviteExpired) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *InviteExpired) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InviteExpired) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *InviteExpired) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InviteExpired) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e InviteExpired) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.inviteExpired)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Core:InviteExpired", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *InviteExpired) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters inviteExpired
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.inviteExpired = parameters
+	return nil
+}
+
+type inviteNotFound struct{}
+
+func (o inviteNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *inviteNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewInviteNotFound returns new instance of InviteNotFound error.
+func NewInviteNotFound() *InviteNotFound {
+	return &InviteNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), inviteNotFound: inviteNotFound{}}
+}
+
+// WrapWithInviteNotFound returns new instance of InviteNotFound error wrapping an existing error.
+func WrapWithInviteNotFound(err error) *InviteNotFound {
+	return &InviteNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, inviteNotFound: inviteNotFound{}}
+}
+
+// InviteNotFound is an error type.
+// M11.6 — resolveInvite's token doesn't match any invite; no safe-args (the token itself is not safe to log).
+type InviteNotFound struct {
+	errorInstanceID uuid.UUID
+	inviteNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsInviteNotFound returns true if err is an instance of InviteNotFound.
+func IsInviteNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*InviteNotFound)
+	return ok
+}
+
+func (e *InviteNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Core:InviteNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *InviteNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *InviteNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *InviteNotFound) Message() string {
+	return "NOT_FOUND Core:InviteNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *InviteNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *InviteNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *InviteNotFound) Name() string {
+	return "Core:InviteNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *InviteNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *InviteNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *InviteNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InviteNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *InviteNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InviteNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e InviteNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.inviteNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Core:InviteNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *InviteNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters inviteNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.inviteNotFound = parameters
+	return nil
+}
+
 type orgProfileNotFound struct {
 	UnitId string `json:"unitId"`
 }
@@ -906,6 +1796,156 @@ func (e *PersonNotFound) UnmarshalJSON(data []byte) error {
 	}
 	e.errorInstanceID = serializableError.ErrorInstanceID
 	e.personNotFound = parameters
+	return nil
+}
+
+type sessionNotFound struct {
+	SessionId string `json:"sessionId"`
+}
+
+func (o sessionNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *sessionNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewSessionNotFound returns new instance of SessionNotFound error.
+func NewSessionNotFound(sessionIdArg string) *SessionNotFound {
+	return &SessionNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), sessionNotFound: sessionNotFound{SessionId: sessionIdArg}}
+}
+
+// WrapWithSessionNotFound returns new instance of SessionNotFound error wrapping an existing error.
+func WrapWithSessionNotFound(err error, sessionIdArg string) *SessionNotFound {
+	return &SessionNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, sessionNotFound: sessionNotFound{SessionId: sessionIdArg}}
+}
+
+// SessionNotFound is an error type.
+// M11.3 — sessionId doesn't exist, or belongs to a different person's/caller's account.
+type SessionNotFound struct {
+	errorInstanceID uuid.UUID
+	sessionNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsSessionNotFound returns true if err is an instance of SessionNotFound.
+func IsSessionNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*SessionNotFound)
+	return ok
+}
+
+func (e *SessionNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Core:SessionNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *SessionNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *SessionNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *SessionNotFound) Message() string {
+	return "NOT_FOUND Core:SessionNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *SessionNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *SessionNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *SessionNotFound) Name() string {
+	return "Core:SessionNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *SessionNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *SessionNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"sessionId": e.SessionId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *SessionNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"sessionId": e.SessionId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *SessionNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *SessionNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *SessionNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e SessionNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.sessionNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Core:SessionNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *SessionNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters sessionNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.sessionNotFound = parameters
 	return nil
 }
 
@@ -1208,12 +2248,19 @@ func (e *UnitNotFound) UnmarshalJSON(data []byte) error {
 }
 
 func init() {
+	conjureerrors.RegisterErrorType("Core:AccountAlreadyExists", reflect.TypeOf(AccountAlreadyExists{}))
+	conjureerrors.RegisterErrorType("Core:AccountNotFound", reflect.TypeOf(AccountNotFound{}))
 	conjureerrors.RegisterErrorType("Core:AssignmentNotFound", reflect.TypeOf(AssignmentNotFound{}))
 	conjureerrors.RegisterErrorType("Core:ChildCreationExcluded", reflect.TypeOf(ChildCreationExcluded{}))
 	conjureerrors.RegisterErrorType("Core:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("Core:InstanceAdminGrantNotFound", reflect.TypeOf(InstanceAdminGrantNotFound{}))
+	conjureerrors.RegisterErrorType("Core:InvalidPageToken", reflect.TypeOf(InvalidPageToken{}))
+	conjureerrors.RegisterErrorType("Core:InviteAlreadyAccepted", reflect.TypeOf(InviteAlreadyAccepted{}))
+	conjureerrors.RegisterErrorType("Core:InviteExpired", reflect.TypeOf(InviteExpired{}))
+	conjureerrors.RegisterErrorType("Core:InviteNotFound", reflect.TypeOf(InviteNotFound{}))
 	conjureerrors.RegisterErrorType("Core:OrgProfileNotFound", reflect.TypeOf(OrgProfileNotFound{}))
 	conjureerrors.RegisterErrorType("Core:PersonNotFound", reflect.TypeOf(PersonNotFound{}))
+	conjureerrors.RegisterErrorType("Core:SessionNotFound", reflect.TypeOf(SessionNotFound{}))
 	conjureerrors.RegisterErrorType("Core:TaxonNotFound", reflect.TypeOf(TaxonNotFound{}))
 	conjureerrors.RegisterErrorType("Core:UnitNotFound", reflect.TypeOf(UnitNotFound{}))
 }

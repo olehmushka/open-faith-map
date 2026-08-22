@@ -57,7 +57,7 @@ func registerIdentity(ctx context.Context, info witchcraft.InitInfo, deps *Deps)
 		Issuers: issuers, ClockSkew: 60 * time.Second,
 		JITEnabled: jitEnabled, JITClaim: os.Getenv("IDENTITY_JIT_CLAIM"), JITMatch: os.Getenv("IDENTITY_JIT_MATCH"),
 	})
-	deps.Authenticator.Bind(validator, identitySvc, identitySvc, jitEnabled)
+	deps.Authenticator.Bind(validator, identitySvc, identitySvc, identitySvc, jitEnabled)
 	if err := deps.Authenticator.MustBeBound(); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "identity: authenticator not bound")
 	}

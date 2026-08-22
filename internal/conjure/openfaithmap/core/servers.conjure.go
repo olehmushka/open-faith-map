@@ -11,14 +11,61 @@ import (
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-server/httpserver"
 	"github.com/palantir/pkg/bearertoken"
+	"github.com/palantir/pkg/datetime"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft/wresource"
 	"github.com/palantir/witchcraft-go-server/v2/wrouter"
 )
 
+// M11.6 — genuinely anonymous, mirroring ContentPublicService's own shape (no default-auth: a Conjure service's auth is a fixed per-service choice — see this file's own header comment — so an endpoint reachable with no bearer at all cannot live on CoreService, which sets default-auth: header). The invitee has no session yet (they haven't signed in for the first time), the same reasoning D-AdminSurface gives for ContentPublicService, just admin-side instead of web-side. internal/identity/middleware's isBypassPath also carries a matching /core/v1/public prefix bypass, the same mechanism /content/v1/public already uses.
+type CorePublicService interface {
+	// Validates an invite token for its own not-yet-authenticated invitee, ahead of their first sign-in.
+	ResolveInvite(ctx context.Context, requestArg ResolveInviteRequest) (InviteInfo, error)
+}
+
+// RegisterRoutesCorePublicService registers handlers for the CorePublicService endpoints with a witchcraft wrouter.
+// This should typically be called in a witchcraft server's InitFunc.
+// impl provides an implementation of each endpoint, which can assume the request parameters have been parsed
+// in accordance with the Conjure specification.
+func RegisterRoutesCorePublicService(router wrouter.Router, impl CorePublicService, routerParams ...wrouter.RouteParam) error {
+	handler := corePublicServiceHandler{impl: impl}
+	resource := wresource.New("corepublicservice", router)
+	if err := resource.Post("ResolveInvite", "/core/v1/public/invites/resolve", httpserver.NewJSONHandler(handler.HandleResolveInvite, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add resolveInvite route")
+	}
+	return nil
+}
+
+type corePublicServiceHandler struct {
+	impl CorePublicService
+}
+
+func (c *corePublicServiceHandler) HandleResolveInvite(rw http.ResponseWriter, req *http.Request) error {
+	var requestArg ResolveInviteRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.ResolveInvite(req.Context(), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
 // The admin app's session-gated reads over the in-process core (units, taxa, countries, org kinds/profiles, memberships, persons) plus its one gated write, createChildOrg. See file header for exactly which endpoints carry an authorization gate beyond the session itself.
 type CoreService interface {
 	Whoami(ctx context.Context, authHeader bearertoken.Token) (Whoami, error)
+	// M11.3 — creates the identity_sessions row backing a just-completed NextAuth sign-in. Exempt from the per-request session-id check every other endpoint now requires (internal/identity/middleware's sessionExemptRoutes) — this is what creates that row, so it cannot itself require one to already exist.
+	RegisterSession(ctx context.Context, authHeader bearertoken.Token, requestArg RegisterSessionRequest) (Session, error)
+	// M11.3 — the caller's own active sessions, self-scoped.
+	ListMySessions(ctx context.Context, authHeader bearertoken.Token) (SessionPage, error)
+	// M11.3 — revokes one of the caller's own sessions, self-scoped.
+	RevokeMySession(ctx context.Context, authHeader bearertoken.Token, sessionIdArg string) error
+	// M11.5 — updates the caller's own display name, self-scoped.
+	UpdateMyProfile(ctx context.Context, authHeader bearertoken.Token, requestArg UpdateMyProfileRequest) (Person, error)
+	// M11.5 — the caller's own active role assignments across every unit, self-scoped.
+	ListMyRoleAssignments(ctx context.Context, authHeader bearertoken.Token) (RoleAssignmentPage, error)
 	GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
@@ -46,6 +93,21 @@ func RegisterRoutesCoreService(router wrouter.Router, impl CoreService, routerPa
 	resource := wresource.New("coreservice", router)
 	if err := resource.Get("Whoami", "/core/v1/whoami", httpserver.NewJSONHandler(handler.HandleWhoami, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add whoami route")
+	}
+	if err := resource.Post("RegisterSession", "/core/v1/sessions", httpserver.NewJSONHandler(handler.HandleRegisterSession, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add registerSession route")
+	}
+	if err := resource.Get("ListMySessions", "/core/v1/sessions", httpserver.NewJSONHandler(handler.HandleListMySessions, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMySessions route")
+	}
+	if err := resource.Delete("RevokeMySession", "/core/v1/sessions/{sessionId}", httpserver.NewJSONHandler(handler.HandleRevokeMySession, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeMySession route")
+	}
+	if err := resource.Put("UpdateMyProfile", "/core/v1/profile", httpserver.NewJSONHandler(handler.HandleUpdateMyProfile, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateMyProfile route")
+	}
+	if err := resource.Get("ListMyRoleAssignments", "/core/v1/profile/roles", httpserver.NewJSONHandler(handler.HandleListMyRoleAssignments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMyRoleAssignments route")
 	}
 	if err := resource.Get("GetUnit", "/core/v1/units/{unitId}", httpserver.NewJSONHandler(handler.HandleGetUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getUnit route")
@@ -96,6 +158,86 @@ func (c *coreServiceHandler) HandleWhoami(rw http.ResponseWriter, req *http.Requ
 		return errors.WrapWithPermissionDenied(err)
 	}
 	respArg, err := c.impl.Whoami(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleRegisterSession(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg RegisterSessionRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.RegisterSession(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleListMySessions(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := c.impl.ListMySessions(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleRevokeMySession(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	sessionIdArg, ok := pathParams["sessionId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"sessionId\" not present")
+	}
+	if err := c.impl.RevokeMySession(req.Context(), bearertoken.Token(authHeader), sessionIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (c *coreServiceHandler) HandleUpdateMyProfile(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg UpdateMyProfileRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.UpdateMyProfile(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleListMyRoleAssignments(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := c.impl.ListMyRoleAssignments(req.Context(), bearertoken.Token(authHeader))
 	if err != nil {
 		return err
 	}
@@ -351,6 +493,20 @@ type CoreSuperAdminService interface {
 	ListInstanceAdmins(ctx context.Context, authHeader bearertoken.Token) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
+	// M11.1 — D-AccountStatusEnforcement.
+	GetAccountStatus(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.1 — rejects further authentication for this person's account. Idempotent.
+	DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.1 — reverses deactivateAccount. Idempotent.
+	ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.3 — personId's active sessions, admin-scoped.
+	ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error)
+	// M11.3 — revokes one of personId's sessions, admin-scoped.
+	RevokeSession(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sessionIdArg string) error
+	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
+	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+	InvitePerson(ctx context.Context, authHeader bearertoken.Token, requestArg InvitePersonRequest) (InviteResult, error)
 }
 
 // RegisterRoutesCoreSuperAdminService registers handlers for the CoreSuperAdminService endpoints with a witchcraft wrouter.
@@ -383,6 +539,27 @@ func RegisterRoutesCoreSuperAdminService(router wrouter.Router, impl CoreSuperAd
 	}
 	if err := resource.Delete("RevokeInstanceAdmin", "/core/v1/super-admin/instance-admins/{personId}", httpserver.NewJSONHandler(handler.HandleRevokeInstanceAdmin, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeInstanceAdmin route")
+	}
+	if err := resource.Get("GetAccountStatus", "/core/v1/super-admin/persons/{personId}/account-status", httpserver.NewJSONHandler(handler.HandleGetAccountStatus, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getAccountStatus route")
+	}
+	if err := resource.Post("DeactivateAccount", "/core/v1/super-admin/persons/{personId}/deactivate", httpserver.NewJSONHandler(handler.HandleDeactivateAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deactivateAccount route")
+	}
+	if err := resource.Post("ReactivateAccount", "/core/v1/super-admin/persons/{personId}/reactivate", httpserver.NewJSONHandler(handler.HandleReactivateAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add reactivateAccount route")
+	}
+	if err := resource.Get("ListSessions", "/core/v1/super-admin/persons/{personId}/sessions", httpserver.NewJSONHandler(handler.HandleListSessions, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listSessions route")
+	}
+	if err := resource.Delete("RevokeSession", "/core/v1/super-admin/persons/{personId}/sessions/{sessionId}", httpserver.NewJSONHandler(handler.HandleRevokeSession, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeSession route")
+	}
+	if err := resource.Get("ListAuditLog", "/core/v1/super-admin/audit-log", httpserver.NewJSONHandler(handler.HandleListAuditLog, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAuditLog route")
+	}
+	if err := resource.Post("InvitePerson", "/core/v1/super-admin/invites", httpserver.NewJSONHandler(handler.HandleInvitePerson, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add invitePerson route")
 	}
 	return nil
 }
@@ -535,4 +712,186 @@ func (c *coreSuperAdminServiceHandler) HandleRevokeInstanceAdmin(rw http.Respons
 	}
 	rw.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func (c *coreSuperAdminServiceHandler) HandleGetAccountStatus(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := c.impl.GetAccountStatus(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleDeactivateAccount(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := c.impl.DeactivateAccount(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleReactivateAccount(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := c.impl.ReactivateAccount(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleListSessions(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := c.impl.ListSessions(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleRevokeSession(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	sessionIdArg, ok := pathParams["sessionId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"sessionId\" not present")
+	}
+	if err := c.impl.RevokeSession(req.Context(), bearertoken.Token(authHeader), personIdArg, sessionIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (c *coreSuperAdminServiceHandler) HandleListAuditLog(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var actorPersonIdArg *string
+	if actorPersonIdArgStr := req.URL.Query().Get("actorPersonId"); actorPersonIdArgStr != "" {
+		actorPersonIdArgInternal := actorPersonIdArgStr
+		actorPersonIdArg = &actorPersonIdArgInternal
+	}
+	var targetKindArg *string
+	if targetKindArgStr := req.URL.Query().Get("targetKind"); targetKindArgStr != "" {
+		targetKindArgInternal := targetKindArgStr
+		targetKindArg = &targetKindArgInternal
+	}
+	var targetIdArg *string
+	if targetIdArgStr := req.URL.Query().Get("targetId"); targetIdArgStr != "" {
+		targetIdArgInternal := targetIdArgStr
+		targetIdArg = &targetIdArgInternal
+	}
+	var fromArg *datetime.DateTime
+	if fromArgStr := req.URL.Query().Get("from"); fromArgStr != "" {
+		fromArgInternal, err := datetime.ParseDateTime(fromArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"from\" as datetime")
+		}
+		fromArg = &fromArgInternal
+	}
+	var toArg *datetime.DateTime
+	if toArgStr := req.URL.Query().Get("to"); toArgStr != "" {
+		toArgInternal, err := datetime.ParseDateTime(toArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"to\" as datetime")
+		}
+		toArg = &toArgInternal
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := c.impl.ListAuditLog(req.Context(), bearertoken.Token(authHeader), actorPersonIdArg, targetKindArg, targetIdArg, fromArg, toArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleInvitePerson(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg InvitePersonRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.InvitePerson(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
 }

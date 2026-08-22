@@ -16,18 +16,22 @@ import (
 type GrantStore interface {
 	IsActiveInstanceAdmin(ctx context.Context, personID string) (bool, error)
 	ActiveGrantsForSubject(ctx context.Context, personID string) ([]domain.ActiveGrant, error)
-	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) error
+	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) (string, error)
 
 	// The M10.7 super-admin surface: the role catalog, per-unit assignment listing/revocation, and
 	// the instance-admin plane's own list/grant/revoke — all new at M10.7 (InsertInstanceAdmin
 	// already existed, for the boot seed; nothing else on the instance-admin plane had a Service
-	// wrapper until now).
+	// wrapper until now). RevokeRoleAssignment/RevokeInstanceAdmin return the revoked row's identity
+	// (M11.2) so the audit-log helper has a real "before" snapshot with no second read.
 	ListRoles(ctx context.Context) ([]domain.Role, error)
 	ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([]domain.RoleAssignment, error)
-	RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) error
+	// ListRoleAssignmentsByPerson is M11.5's self-service read: the caller's own active role
+	// assignments across every unit, personID always the resolved subject's — never a request param.
+	ListRoleAssignmentsByPerson(ctx context.Context, personID string) ([]domain.RoleAssignment, error)
+	RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) (domain.RevokedRoleAssignment, error)
 	ListInstanceAdmins(ctx context.Context) ([]domain.InstanceAdminGrant, error)
 	InsertInstanceAdmin(ctx context.Context, personID, grantedBy string) (string, error)
-	RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) error
+	RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) (domain.RevokedInstanceAdminGrant, error)
 }
 
 // Service is the module's composition: the pure PDP engine plus the store that fetches the authority
@@ -81,8 +85,9 @@ func (s *Service) enforce(ctx context.Context, subjectPersonID string, action do
 // GrantUnitRole grants personID roleID on unitID, scope "unit" — M10.6's registration cutover is
 // the first caller (approval-time congregation-admin grant). No epoch bump, no cache to invalidate
 // (D-InProcessAuthz's amendment: grants are read fresh per request), so a grant is visible to the
-// very next Require call with no extra step.
-func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, grantedByPersonID string) error {
+// very next Require call with no extra step. Returns the assignment's id (M11.2: super-admin callers
+// use it as the audit log's target_id).
+func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, grantedByPersonID string) (string, error) {
 	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, grantedByPersonID)
 }
 
@@ -121,8 +126,16 @@ func (s *Service) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) 
 	return s.store.ListRoleAssignmentsByUnit(ctx, unitID)
 }
 
-// RevokeRoleAssignment revokes assignmentID, recording revokedByPersonID.
-func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedByPersonID string) error {
+// ListRoleAssignmentsByPerson returns personID's own active role assignments across every unit —
+// M11.5's self-service profile page. Unlike ListRoleAssignmentsByUnit, callers must derive personID
+// from the resolved request subject only, never a client-supplied argument.
+func (s *Service) ListRoleAssignmentsByPerson(ctx context.Context, personID string) ([]domain.RoleAssignment, error) {
+	return s.store.ListRoleAssignmentsByPerson(ctx, personID)
+}
+
+// RevokeRoleAssignment revokes assignmentID, recording revokedByPersonID. Returns the revoked row's
+// identity (M11.2: the audit log's "before" snapshot).
+func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedByPersonID string) (domain.RevokedRoleAssignment, error) {
 	return s.store.RevokeRoleAssignment(ctx, assignmentID, revokedByPersonID)
 }
 
@@ -139,7 +152,8 @@ func (s *Service) GrantInstanceAdmin(ctx context.Context, personID, grantedByPer
 }
 
 // RevokeInstanceAdmin revokes personID's active instance-admin grant, recording revokedByPersonID.
-func (s *Service) RevokeInstanceAdmin(ctx context.Context, personID, revokedByPersonID string) error {
+// Returns the revoked grant's identity (M11.2: the audit log's "before" snapshot).
+func (s *Service) RevokeInstanceAdmin(ctx context.Context, personID, revokedByPersonID string) (domain.RevokedInstanceAdminGrant, error) {
 	return s.store.RevokeInstanceAdmin(ctx, personID, revokedByPersonID)
 }
 

@@ -1,10 +1,15 @@
+import { IAccountStatus } from "./accountStatus";
+import { IAuditLogPage } from "./auditLogPage";
 import { IGrantInstanceAdminRequest } from "./grantInstanceAdminRequest";
 import { IGrantUnitRoleRequest } from "./grantUnitRoleRequest";
 import { IInstanceAdminGrant } from "./instanceAdminGrant";
 import { IInstanceAdminPage } from "./instanceAdminPage";
+import { IInvitePersonRequest } from "./invitePersonRequest";
+import { IInviteResult } from "./inviteResult";
 import { IPersonPage } from "./personPage";
 import { IRoleAssignmentPage } from "./roleAssignmentPage";
 import { IRolePage } from "./rolePage";
+import { ISessionPage } from "./sessionPage";
 import type { IHttpApiBridge } from "conjure-client";
 
 /** Constant reference to `undefined` that we expect to get minified and therefore reduce total code size */
@@ -23,6 +28,26 @@ export interface ICoreSuperAdminService {
     listInstanceAdmins(): Promise<IInstanceAdminPage>;
     grantInstanceAdmin(request: IGrantInstanceAdminRequest): Promise<IInstanceAdminGrant>;
     revokeInstanceAdmin(personId: string): Promise<void>;
+    /** M11.1 — D-AccountStatusEnforcement. */
+    getAccountStatus(personId: string): Promise<IAccountStatus>;
+    /** M11.1 — rejects further authentication for this person's account. Idempotent. */
+    deactivateAccount(personId: string): Promise<IAccountStatus>;
+    /** M11.1 — reverses deactivateAccount. Idempotent. */
+    reactivateAccount(personId: string): Promise<IAccountStatus>;
+    /** M11.3 — personId's active sessions, admin-scoped. */
+    listSessions(personId: string): Promise<ISessionPage>;
+    /** M11.3 — revokes one of personId's sessions, admin-scoped. */
+    revokeSession(personId: string, sessionId: string): Promise<void>;
+    /**
+     * M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+     *
+     */
+    listAuditLog(actorPersonId?: string | null, targetKind?: string | null, targetId?: string | null, from?: string | null, to?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAuditLogPage>;
+    /**
+     * M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+     *
+     */
+    invitePerson(request: IInvitePersonRequest): Promise<IInviteResult>;
 }
 
 export class CoreSuperAdminService implements ICoreSuperAdminService {
@@ -153,6 +178,143 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
             [
                 personId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.1 — D-AccountStatusEnforcement. */
+    public getAccountStatus(personId: string): Promise<IAccountStatus> {
+        return this.bridge.call<IAccountStatus>(
+            "CoreSuperAdminService",
+            "getAccountStatus",
+            "GET",
+            "/core/v1/super-admin/persons/{personId}/account-status",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.1 — rejects further authentication for this person's account. Idempotent. */
+    public deactivateAccount(personId: string): Promise<IAccountStatus> {
+        return this.bridge.call<IAccountStatus>(
+            "CoreSuperAdminService",
+            "deactivateAccount",
+            "POST",
+            "/core/v1/super-admin/persons/{personId}/deactivate",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.1 — reverses deactivateAccount. Idempotent. */
+    public reactivateAccount(personId: string): Promise<IAccountStatus> {
+        return this.bridge.call<IAccountStatus>(
+            "CoreSuperAdminService",
+            "reactivateAccount",
+            "POST",
+            "/core/v1/super-admin/persons/{personId}/reactivate",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.3 — personId's active sessions, admin-scoped. */
+    public listSessions(personId: string): Promise<ISessionPage> {
+        return this.bridge.call<ISessionPage>(
+            "CoreSuperAdminService",
+            "listSessions",
+            "GET",
+            "/core/v1/super-admin/persons/{personId}/sessions",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.3 — revokes one of personId's sessions, admin-scoped. */
+    public revokeSession(personId: string, sessionId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "CoreSuperAdminService",
+            "revokeSession",
+            "DELETE",
+            "/core/v1/super-admin/persons/{personId}/sessions/{sessionId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                sessionId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+     *
+     */
+    public listAuditLog(actorPersonId?: string | null, targetKind?: string | null, targetId?: string | null, from?: string | null, to?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAuditLogPage> {
+        return this.bridge.call<IAuditLogPage>(
+            "CoreSuperAdminService",
+            "listAuditLog",
+            "GET",
+            "/core/v1/super-admin/audit-log",
+            __undefined,
+            __undefined,
+            {
+                "actorPersonId": actorPersonId,
+                "targetKind": targetKind,
+                "targetId": targetId,
+                "from": from,
+                "to": to,
+                "pageSize": pageSize,
+                "pageToken": pageToken,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+     *
+     */
+    public invitePerson(request: IInvitePersonRequest): Promise<IInviteResult> {
+        return this.bridge.call<IInviteResult>(
+            "CoreSuperAdminService",
+            "invitePerson",
+            "POST",
+            "/core/v1/super-admin/invites",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
             __undefined,
             __undefined
         );

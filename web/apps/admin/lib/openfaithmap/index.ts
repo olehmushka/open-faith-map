@@ -17,7 +17,7 @@ import { DefaultHttpApiBridge, type IHttpApiBridge, type IUserAgent } from "conj
 
 import { CongregationImportService } from "./generated/congregationimport";
 import { ContentPublicService, ContentService } from "./generated/content";
-import { CoreService, CoreSuperAdminService } from "./generated/core";
+import { CorePublicService, CoreService, CoreSuperAdminService } from "./generated/core";
 import { DiscoveryPublicService, DiscoveryService } from "./generated/discovery";
 import { ModerationPublicService, ModerationService } from "./generated/moderation";
 import { RegistrationService } from "./generated/registration";
@@ -56,6 +56,7 @@ export interface OpenFaithMapClient {
   readonly congregationImport: CongregationImportService;
   readonly core: CoreService;
   readonly coreSuperAdmin: CoreSuperAdminService;
+  readonly corePublic: CorePublicService;
   /** The underlying conjure HTTP bridge, for advanced use. */
   readonly bridge: IHttpApiBridge;
 }
@@ -94,6 +95,7 @@ export function createOpenFaithMapClient(
     congregationImport: new CongregationImportService(bridge),
     core: new CoreService(bridge),
     coreSuperAdmin: new CoreSuperAdminService(bridge),
+    corePublic: new CorePublicService(bridge),
     bridge,
   };
 }

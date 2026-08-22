@@ -2160,3 +2160,185 @@ four locales. A two-column lookup is the whole requirement.
 > country matching for one country in one locale — and M10.9's `ua-edr` re-run exercises Ukraine
 > only, so it would not be caught there. M10.9 therefore diffs the whole `refdata_country_names`
 > table against a pre-cutover `ListCountries()` capture: all four locales, 249 rows.
+
+### D-AccountStatusEnforcement — `identity_accounts.status` is checked at resolution, not just stored
+
+**Decision.** `ResolveBySubject` (`internal/identity/adapters/store.go`) and the authenticator's
+resolution path reject any account whose `identity_accounts.status` is not `'active'`, in addition
+to the existing `deleted_at IS NULL` check. A disabled account fails at authentication — it never
+reaches the PDP, never resolves to a `Resolution{PersonID, AccountID, Email}` at all.
+
+**Why.** The M11 discovery pass found `status` (`active`/`disabled`) has existed in the schema since
+M10.1 (`migrations/0008_core_identity.sql`) but was never read anywhere —
+`ResolveBySubject` (`internal/identity/adapters/store.go:167-179`) only filters `deleted_at IS
+NULL`. Disabling an account today is a no-op: the row still resolves, still authenticates, still
+authorizes normally. Not hypothetical — it directly undermines M11.1's own deactivate/reactivate
+feature (disabling someone would silently do nothing), and M11.3 layers session revocation on the
+same enforcement point, so it would have undermined that too.
+
+**Why at resolution, not in the PDP.** A disabled account is an authentication failure (this
+identity no longer gets to *be* anyone), not an authorization failure (this identity isn't allowed
+to do *this*). Putting the check in the PDP would still resolve a disabled account to a real
+subject and fail it only per-permission — wrong shape, and it would leave the anonymous-route
+bypass logic (`isBypassPath`) needing to know about account status, which it has no business
+knowing.
+
+**Consequences.**
+- Every later M11.x milestone that touches auth (M11.3's session checks, M11.6's
+  invite-then-JIT-link path) can assume a disabled account is fully inert, not merely unprivileged.
+- No migration needed — the column already exists; this is a code-only fix to a store method and
+  its callers.
+- Existing tests that create accounts without explicitly setting `status = 'active'` need auditing —
+  the column's default (per `migrations/0008_core_identity.sql`) determines whether they still pass
+  unchanged.
+
+### D-AuditLogShape — `identity_audit_log` folds into the identity service RID, before/after is curated JSON per call site
+
+**Decision.** `identity_audit_log`'s primary key uses `new_id(1,1,4)` — the identity service (1), not
+a new service number — and its `before`/`after` columns hold whatever `map[string]any`/struct each
+mutating call site builds by hand, not a generic full-row diff.
+
+**Why the identity service, not a new one.** The migration file is named `0016_core_audit.sql`,
+matching the `core_<subdomain>` naming series `0007`–`0015` already established for core absorption,
+while the table itself stays `identity_`-prefixed like `identity_persons`/`identity_accounts`. An
+audit entry's natural subject is "an identity acted" — the same relationship `authz_instance_admins`
+already has to the authz service rather than being its own service number. A new service number was
+considered and rejected as unwarranted ceremony for what is, mechanically, one more identity-owned
+ledger.
+
+**Why curated per-call-site JSON, not a generic before/after row diff.** Two of the six mutating
+paths this table logs (`RevokeRoleAssignment`, `RevokeInstanceAdmin`) had store methods doing a bare
+`UPDATE ... WHERE ...` with no `RETURNING` and no `GetByID` on either store — building a generic
+"fetch the row, diff it" mechanism would have meant adding read paths to `internal/authz/adapters`
+that don't exist for any other reason, and a wrong `WHERE` on a "before" read taken concurrently with
+another write could observe post-write state. Cheaper and more precise instead: a small `RETURNING`
+addition to each revoke `UPDATE` (and `InsertRoleAssignment` returning a real id, including on its
+idempotent-conflict path) gives each call site exactly the fields it needs, hand-assembled into the
+audit payload at the point of the mutation.
+
+**Consequences.**
+- `action` is free text validated in Go (`internal/core/application/service.go`'s
+  `auditAction*`/`auditTarget*` constants today), not a DB `CHECK` enum — M11.3/M11.7/M11.8 can each
+  add their own logged actions without a migration.
+- The four M10.8 grant/revoke call sites and M11.1's deactivate/reactivate now share one
+  `requireSubject` guard that hard-fails on a missing context subject, closing the same "discarded
+  `SubjectFromContext`'s `ok` bool" gap in all four at once, rather than leaving three fixed and one
+  not.
+- `internal/auditlog` is a new, self-contained module (domain/application/adapters, no transport of
+  its own) rather than logic folded into `internal/core` — `internal/core/application`'s own header
+  already scopes itself as owning no new domain logic beyond one gate, and M11.3's session revocation
+  needs `Record` reusable without reaching into `internal/core`.
+
+### D-SessionTracking — auth gains a server-side session record, no longer purely stateless
+
+**Decision.** A new `identity_sessions` table (session id, account id, issuer, `created_at`,
+`last_seen_at`, an optional device/user-agent label, `revoked_at`) is introduced. NextAuth
+(`web/apps/admin/auth.ts`) issues a session id into its JWT at sign-in; the backend checks that id
+is present and unrevoked on every authenticated request, alongside — not instead of — the existing
+bearer-token signature/claims verification.
+
+**Why.** M11 scoped "session visibility/revocation" as a real requirement — an admin or user seeing
+active sessions and forcing one out — not just the lighter behavior
+[D-AccountStatusEnforcement](#d-accountstatusenforcement--identity_accountsstatus-is-checked-at-resolution-not-just-stored)
+already provides on its own. That lighter form has no visibility (no list of who's signed in where)
+and no way to kill *one* session while leaving others alone; real revocation needs a record to
+revoke.
+
+**Why not the lighter option instead, given the added complexity.** Considered and rejected: relying
+on account-status-disable plus a short token TTL, and relying on Google's own session management.
+Neither meets the actual requirement — account-status-disable is all-or-nothing per person, not
+per-session, and Google's session state is invisible to this app either way.
+
+**Consequences.**
+- A genuine reversal of the stateless-JWT posture M1's original session design established (no
+  adapter/session-store, `web/apps/admin/auth.ts`). Adds one indexed point-lookup to the hot path of
+  every authenticated request — same cost class as the existing per-request token verification, not
+  a new bottleneck class.
+- `identity_sessions.last_seen_at` becomes the natural source for M11.4's last-login/activity
+  tracking rather than a duplicate column.
+- Revoking a session is a mutation, audit-logged per M11.2 like every other admin action this arc
+  introduces.
+
+### D-SessionIdTransport — the session id travels as its own header, checked for every bearer including dev tokens
+
+**Decision.** D-SessionTracking's own text ("alongside — not instead of — the existing bearer-token
+verification") left two mechanics unresolved, both settled at build time (M11.3, confirmed with the
+user before implementation): (1) `web/apps/admin/auth.ts`'s NextAuth JWT is an encrypted session
+cookie entirely separate from the Google ID token forwarded as the API bearer — Google signs that ID
+token, so a custom `sessionId` claim can't be injected into it. The session id instead travels as its
+own opaque `X-Session-Id` header, sent alongside `Authorization: Bearer <idToken>` via
+`lib/openfaithmap`'s existing `fetch` override hook (`lib/core.ts`'s `client()`), and read by
+`internal/identity/middleware.Authenticator.Handle` right after bearer resolution — one indexed
+`identity_sessions` lookup (`Touch`), cross-checked against the bearer-resolved account id so a
+session id for a *different* account can't be substituted in. (2) The check applies to **every**
+authenticated request with no issuer-based carve-out — the reserved local/dev HS256 issuer
+(`internal/platform/devtoken`) used by `cmd/openfaithmap-api/authorization_matrix_test.go` and
+`scripts/mint-local-token` is not exempted, even though neither previously had any session concept.
+
+**Why not exempt dev tokens.** Considered and rejected: the alternative kept the authorization-matrix
+test suite and `mint-local-token` unchanged, at the cost of a permanent code-level distinction between
+"real" and "test" auth paths that every future session-aware check would have to remember to
+replicate. The user chose the more invasive retrofit instead — `seedSubjects` now inserts a real
+`identity_sessions` row per minted subject and `doReq` sends `X-Session-Id` on every request;
+`mint-local-token` gained optional `-database-url`/`-account-id` flags that insert a session row and
+print its id, a deliberate, opt-in expansion of a tool whose doc comment previously promised "no API
+calls, no side effects."
+
+**Bootstrapping exemption.** One route, `CoreService.registerSession` (`POST /core/v1/sessions`), is
+listed in `internal/identity/middleware.sessionExemptRoutes` — it is what CREATES the session row a
+session id would otherwise need to already exist, so it cannot itself require one. This is a
+session-check-only exemption, not an authentication bypass (unlike `anonymousRoutes`/`isBypassPath`,
+which skip authentication entirely) — `registerSession` still requires a fully valid bearer, and
+derives both the owning `accountId` and the recorded `issuer` from that bearer's own resolved
+`authz.Subject` (new `SessionID`/`Issuer` fields), never from a client-supplied request field.
+
+**Consequences.**
+- `identity_sessions` is `new_id(1,1,5)` — identity's next free object RID slot after
+  `identity_audit_log`'s `(1,1,4)` — and is a **mutable** table (`last_seen_at`/`revoked_at` updated
+  post-insert), so it follows `identity_accounts`' plain-`UPDATE` shape, not
+  `identity_audit_log`/`moderation_actions`' `reject_mutation()` append-only pattern.
+- `last_seen_at` is bumped throttled, not on every request: `TouchSession`
+  (`internal/identity/adapters`) only issues the `UPDATE` when the existing value is more than 60s
+  stale — a build-time call on the tradeoff M11.4's own milestone text flagged as open ("updated on
+  each authenticated request or session refresh (decided at build time)").
+- `authz.Subject` gained two fields beyond M10's original `PersonID`/`AccountID`/`Email`:
+  `SessionID` (the caller's own session, for self-scoped "is this my current session" UI) and
+  `Issuer` (so `RegisterSession` never trusts a client-supplied issuer).
+
+### D-InviteLinkMVP — invite-a-teammate ships as a shareable link, not an emailed invite
+
+**Decision.** M11.6's invite flow pre-provisions a person/account row and produces a signed,
+one-time invite link the admin copies and shares out-of-band (Slack, email, however they'd already
+reach the person). No email is sent by the app.
+
+**Why.** No email-sending infrastructure exists anywhere in this repo today (confirmed by direct
+grep — no SMTP/SES/SendGrid client, no notification package); building one is a real new subsystem
+(provider account, deliverability, templates) the user deliberately deferred rather than folding
+into this milestone's scope.
+
+**Consequences.**
+- Recorded explicitly so a future session doesn't mistake the absence of email delivery for an
+  oversight: real email sending is wanted, just not now.
+- The invite link still has to produce a row M10.2's existing JIT link-on-match logic will actually
+  match on first Google sign-in (`IDENTITY_JIT_MATCH=account-email` mode,
+  `internal/identity/middleware/validator.go:29-34`) — M11.6 is scoped to verify this against the
+  *existing* JIT code path, not just the new invite code.
+
+### D-NoAppLevelMFA — MFA is not built at the application layer
+
+**Decision.** M11 does not add MFA enrollment or enforcement. `identity_accounts.mfa_enrolled_at`
+remains unused.
+
+**Why.** MFA was in scope for discussion but dropped once its cost was made concrete: any app-level
+second factor (TOTP secrets, backup codes) means storing a new form of credential, which directly
+reopens what `identity_accounts_dormant_credentials`'s CHECK constraint was built to close off —
+this app deliberately stores no password/MFA material, ever, and delegates all of that to Google.
+Requiring Google's own MFA assertion (checking an `amr` claim) was the one variant that wouldn't
+reintroduce local credential storage, but was still dropped as not worth building against for now —
+Google already enforces this for any account/org that turns it on, with zero code on this side.
+
+**Consequences.**
+- If MFA enforcement is wanted later, the cheapest path that doesn't reopen the no-credentials
+  guarantee is parsing/requiring the OIDC token's `amr` claim (`internal/identity/middleware
+  /validator.go`'s `project()` doesn't read it today) — recorded here so a future session doesn't
+  have to rediscover this trade-off from scratch.

@@ -24,8 +24,8 @@ func (f fakeStore) ActiveGrantsForSubject(_ context.Context, personID string) ([
 	return f.grants[personID], nil
 }
 
-func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _ string) error {
-	return nil
+func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _ string) (string, error) {
+	return "", nil
 }
 
 func (f fakeStore) ListRoles(context.Context) ([]domain.Role, error) { return nil, nil }
@@ -34,7 +34,13 @@ func (f fakeStore) ListRoleAssignmentsByUnit(context.Context, string) ([]domain.
 	return nil, nil
 }
 
-func (f fakeStore) RevokeRoleAssignment(context.Context, string, string) error { return nil }
+func (f fakeStore) ListRoleAssignmentsByPerson(context.Context, string) ([]domain.RoleAssignment, error) {
+	return nil, nil
+}
+
+func (f fakeStore) RevokeRoleAssignment(context.Context, string, string) (domain.RevokedRoleAssignment, error) {
+	return domain.RevokedRoleAssignment{}, nil
+}
 
 func (f fakeStore) ListInstanceAdmins(context.Context) ([]domain.InstanceAdminGrant, error) {
 	return nil, nil
@@ -44,7 +50,9 @@ func (f fakeStore) InsertInstanceAdmin(_ context.Context, _, _ string) (string, 
 	return "", nil
 }
 
-func (f fakeStore) RevokeInstanceAdmin(_ context.Context, _, _ string) error { return nil }
+func (f fakeStore) RevokeInstanceAdmin(_ context.Context, _, _ string) (domain.RevokedInstanceAdminGrant, error) {
+	return domain.RevokedInstanceAdminGrant{}, nil
+}
 
 type noopClosure struct{}
 

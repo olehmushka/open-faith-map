@@ -1,12 +1,17 @@
 import { getTranslations } from "next-intl/server";
 
 import {
+  deactivateAccount,
+  getAccountStatus,
   getPerson,
   grantInstanceAdmin,
   grantUnitRole,
   listInstanceAdmins,
   listRoles,
+  listSessions,
+  reactivateAccount,
   revokeInstanceAdmin,
+  revokeSession,
 } from "@/lib/core";
 import { redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
@@ -26,10 +31,12 @@ export default async function SuperAdminPersonPage({
   const { locale, personId } = await params;
   const t = await getTranslations("SuperAdminPersonPage");
 
-  const [person, instanceAdmins, roles] = await Promise.all([
+  const [person, instanceAdmins, roles, accountStatus, sessions] = await Promise.all([
     getPerson(personId),
     listInstanceAdmins(),
     listRoles(),
+    getAccountStatus(personId),
+    listSessions(personId),
   ]);
   const instanceAdminGrant = instanceAdmins.find((a) => a.personId === personId);
 
@@ -40,6 +47,22 @@ export default async function SuperAdminPersonPage({
     } else {
       await revokeInstanceAdmin(personId);
     }
+    redirect({ href: `/admin/people/${personId}`, locale });
+  }
+
+  async function toggleAccountStatus(formData: FormData) {
+    "use server";
+    if (String(formData.get("action")) === "deactivate") {
+      await deactivateAccount(personId);
+    } else {
+      await reactivateAccount(personId);
+    }
+    redirect({ href: `/admin/people/${personId}`, locale });
+  }
+
+  async function revokeSessionAction(formData: FormData) {
+    "use server";
+    await revokeSession(personId, String(formData.get("sessionId")));
     redirect({ href: `/admin/people/${personId}`, locale });
   }
 
@@ -54,6 +77,75 @@ export default async function SuperAdminPersonPage({
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <h1 className="text-2xl font-semibold">{t("heading", { name: person.displayName })}</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("accountStatusHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {accountStatus.status === "none" ? (
+            <p className="text-sm text-muted-foreground">{t("accountStatusNone")}</p>
+          ) : accountStatus.status === "active" ? (
+            <>
+              <p className="text-sm text-muted-foreground">{t("accountStatusActive")}</p>
+              <p className="text-sm text-muted-foreground">
+                {accountStatus.lastActiveAt
+                  ? t("lastActive", { date: new Date(accountStatus.lastActiveAt).toLocaleString(locale) })
+                  : t("neverActive")}
+              </p>
+              <form action={toggleAccountStatus}>
+                <input type="hidden" name="action" value="deactivate" />
+                <Button type="submit" variant="destructive" size="sm">
+                  {t("deactivateAccount")}
+                </Button>
+              </form>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">{t("accountStatusDisabled")}</p>
+              <p className="text-sm text-muted-foreground">
+                {accountStatus.lastActiveAt
+                  ? t("lastActive", { date: new Date(accountStatus.lastActiveAt).toLocaleString(locale) })
+                  : t("neverActive")}
+              </p>
+              <form action={toggleAccountStatus}>
+                <input type="hidden" name="action" value="reactivate" />
+                <Button type="submit" size="sm">
+                  {t("reactivateAccount")}
+                </Button>
+              </form>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("sessionsHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {sessions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("noSessions")}</p>
+          ) : (
+            sessions.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-4">
+                <p className="text-sm text-muted-foreground">
+                  {t("sessionLastActive", {
+                    device: s.deviceLabel ?? t("sessionDeviceUnknown"),
+                    date: new Date(s.lastSeenAt).toLocaleString(locale),
+                  })}
+                </p>
+                <form action={revokeSessionAction}>
+                  <input type="hidden" name="sessionId" value={s.id} />
+                  <Button type="submit" variant="destructive" size="sm">
+                    {t("revokeSession")}
+                  </Button>
+                </form>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
