@@ -58,6 +58,14 @@ type CoreServiceClient interface {
 	UpdateMyProfile(ctx context.Context, authHeader bearertoken.Token, requestArg UpdateMyProfileRequest) (Person, error)
 	// M11.5 — the caller's own active role assignments across every unit, self-scoped.
 	ListMyRoleAssignments(ctx context.Context, authHeader bearertoken.Token) (RoleAssignmentPage, error)
+	// M11.9 — the closed unit-scoped permission catalog, self-scoped since every person needs it for their own createApiKey allowlist picker, not just admins. Static, no DB read.
+	ListPermissionCatalog(ctx context.Context, authHeader bearertoken.Token) (PermissionCodePage, error)
+	// M11.9 — the caller's own active API keys, self-scoped.
+	ListMyApiKeys(ctx context.Context, authHeader bearertoken.Token) (ApiKeyPage, error)
+	// M11.9 — mints a new API key for the caller, scoped to request.permissionCodes. Returns the raw secret exactly once.
+	CreateApiKey(ctx context.Context, authHeader bearertoken.Token, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error)
+	// M11.9 — revokes one of the caller's own API keys, self-scoped.
+	RevokeMyApiKey(ctx context.Context, authHeader bearertoken.Token, apiKeyIdArg string) error
 	GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
@@ -181,6 +189,70 @@ func (c *coreServiceClient) ListMyRoleAssignments(ctx context.Context, authHeade
 		return *new(RoleAssignmentPage), werror.ErrorWithContextParams(ctx, "listMyRoleAssignments response cannot be nil")
 	}
 	return *returnVal, nil
+}
+
+func (c *coreServiceClient) ListPermissionCatalog(ctx context.Context, authHeader bearertoken.Token) (PermissionCodePage, error) {
+	var returnVal *PermissionCodePage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPermissionCatalog"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/permission-catalog"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(PermissionCodePage), werror.WrapWithContextParams(ctx, err, "listPermissionCatalog failed")
+	}
+	if returnVal == nil {
+		return *new(PermissionCodePage), werror.ErrorWithContextParams(ctx, "listPermissionCatalog response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) ListMyApiKeys(ctx context.Context, authHeader bearertoken.Token) (ApiKeyPage, error) {
+	var returnVal *ApiKeyPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListMyApiKeys"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/api-keys"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ApiKeyPage), werror.WrapWithContextParams(ctx, err, "listMyApiKeys failed")
+	}
+	if returnVal == nil {
+		return *new(ApiKeyPage), werror.ErrorWithContextParams(ctx, "listMyApiKeys response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) CreateApiKey(ctx context.Context, authHeader bearertoken.Token, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error) {
+	var returnVal *CreateApiKeyResult
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreateApiKey"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/api-keys"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(CreateApiKeyResult), werror.WrapWithContextParams(ctx, err, "createApiKey failed")
+	}
+	if returnVal == nil {
+		return *new(CreateApiKeyResult), werror.ErrorWithContextParams(ctx, "createApiKey response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) RevokeMyApiKey(ctx context.Context, authHeader bearertoken.Token, apiKeyIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokeMyApiKey"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/api-keys/%s", url.PathEscape(fmt.Sprint(apiKeyIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "revokeMyApiKey failed")
+	}
+	return nil
 }
 
 func (c *coreServiceClient) GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error) {
@@ -418,6 +490,14 @@ type CoreServiceClientWithAuth interface {
 	UpdateMyProfile(ctx context.Context, requestArg UpdateMyProfileRequest) (Person, error)
 	// M11.5 — the caller's own active role assignments across every unit, self-scoped.
 	ListMyRoleAssignments(ctx context.Context) (RoleAssignmentPage, error)
+	// M11.9 — the closed unit-scoped permission catalog, self-scoped since every person needs it for their own createApiKey allowlist picker, not just admins. Static, no DB read.
+	ListPermissionCatalog(ctx context.Context) (PermissionCodePage, error)
+	// M11.9 — the caller's own active API keys, self-scoped.
+	ListMyApiKeys(ctx context.Context) (ApiKeyPage, error)
+	// M11.9 — mints a new API key for the caller, scoped to request.permissionCodes. Returns the raw secret exactly once.
+	CreateApiKey(ctx context.Context, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error)
+	// M11.9 — revokes one of the caller's own API keys, self-scoped.
+	RevokeMyApiKey(ctx context.Context, apiKeyIdArg string) error
 	GetUnit(ctx context.Context, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, queryArg *string, limitArg *int) (UnitPage, error)
@@ -467,6 +547,22 @@ func (c *coreServiceClientWithAuth) UpdateMyProfile(ctx context.Context, request
 
 func (c *coreServiceClientWithAuth) ListMyRoleAssignments(ctx context.Context) (RoleAssignmentPage, error) {
 	return c.client.ListMyRoleAssignments(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) ListPermissionCatalog(ctx context.Context) (PermissionCodePage, error) {
+	return c.client.ListPermissionCatalog(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) ListMyApiKeys(ctx context.Context) (ApiKeyPage, error) {
+	return c.client.ListMyApiKeys(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) CreateApiKey(ctx context.Context, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error) {
+	return c.client.CreateApiKey(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) RevokeMyApiKey(ctx context.Context, apiKeyIdArg string) error {
+	return c.client.RevokeMyApiKey(ctx, c.authHeader, apiKeyIdArg)
 }
 
 func (c *coreServiceClientWithAuth) GetUnit(ctx context.Context, unitIdArg string) (Unit, error) {
@@ -572,6 +668,38 @@ func (c *coreServiceClientWithTokenProvider) ListMyRoleAssignments(ctx context.C
 		return *new(RoleAssignmentPage), err
 	}
 	return c.client.ListMyRoleAssignments(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) ListPermissionCatalog(ctx context.Context) (PermissionCodePage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PermissionCodePage), err
+	}
+	return c.client.ListPermissionCatalog(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) ListMyApiKeys(ctx context.Context) (ApiKeyPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ApiKeyPage), err
+	}
+	return c.client.ListMyApiKeys(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) CreateApiKey(ctx context.Context, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(CreateApiKeyResult), err
+	}
+	return c.client.CreateApiKey(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) RevokeMyApiKey(ctx context.Context, apiKeyIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.RevokeMyApiKey(ctx, bearertoken.Token(token), apiKeyIdArg)
 }
 
 func (c *coreServiceClientWithTokenProvider) GetUnit(ctx context.Context, unitIdArg string) (Unit, error) {
@@ -696,6 +824,10 @@ type CoreSuperAdminServiceClient interface {
 	ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error)
 	// M11.3 — revokes one of personId's sessions, admin-scoped.
 	RevokeSession(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sessionIdArg string) error
+	// M11.9 — personId's active AND revoked API keys, admin-scoped, metadata only (ApiKey carries no secret/hash field, so this endpoint can never leak one). Incident-response visibility: lets an admin see a person's keys without the owner's cooperation.
+	ListApiKeys(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (ApiKeyPage, error)
+	// M11.9 — revokes one of personId's API keys, admin-scoped (incident response — kill a compromised key without waiting on the owner). Audit-logged distinctly from a self-revoke (REVOKE_API_KEY_ADMIN vs REVOKE_API_KEY) so the trail shows who actually acted.
+	RevokeApiKey(ctx context.Context, authHeader bearertoken.Token, personIdArg string, apiKeyIdArg string) error
 	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
 	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
@@ -970,6 +1102,35 @@ func (c *coreSuperAdminServiceClient) RevokeSession(ctx context.Context, authHea
 	return nil
 }
 
+func (c *coreSuperAdminServiceClient) ListApiKeys(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (ApiKeyPage, error) {
+	var returnVal *ApiKeyPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListApiKeys"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/api-keys", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ApiKeyPage), werror.WrapWithContextParams(ctx, err, "listApiKeys failed")
+	}
+	if returnVal == nil {
+		return *new(ApiKeyPage), werror.ErrorWithContextParams(ctx, "listApiKeys response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) RevokeApiKey(ctx context.Context, authHeader bearertoken.Token, personIdArg string, apiKeyIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokeApiKey"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/api-keys/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(apiKeyIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "revokeApiKey failed")
+	}
+	return nil
+}
+
 func (c *coreSuperAdminServiceClient) ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
 	var returnVal *AuditLogPage
 	var requestParams []httpclient.RequestParam
@@ -1054,6 +1215,10 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	ListSessions(ctx context.Context, personIdArg string) (SessionPage, error)
 	// M11.3 — revokes one of personId's sessions, admin-scoped.
 	RevokeSession(ctx context.Context, personIdArg string, sessionIdArg string) error
+	// M11.9 — personId's active AND revoked API keys, admin-scoped, metadata only (ApiKey carries no secret/hash field, so this endpoint can never leak one). Incident-response visibility: lets an admin see a person's keys without the owner's cooperation.
+	ListApiKeys(ctx context.Context, personIdArg string) (ApiKeyPage, error)
+	// M11.9 — revokes one of personId's API keys, admin-scoped (incident response — kill a compromised key without waiting on the owner). Audit-logged distinctly from a self-revoke (REVOKE_API_KEY_ADMIN vs REVOKE_API_KEY) so the trail shows who actually acted.
+	RevokeApiKey(ctx context.Context, personIdArg string, apiKeyIdArg string) error
 	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
 	ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
@@ -1131,6 +1296,14 @@ func (c *coreSuperAdminServiceClientWithAuth) ListSessions(ctx context.Context, 
 
 func (c *coreSuperAdminServiceClientWithAuth) RevokeSession(ctx context.Context, personIdArg string, sessionIdArg string) error {
 	return c.client.RevokeSession(ctx, c.authHeader, personIdArg, sessionIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ListApiKeys(ctx context.Context, personIdArg string) (ApiKeyPage, error) {
+	return c.client.ListApiKeys(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) RevokeApiKey(ctx context.Context, personIdArg string, apiKeyIdArg string) error {
+	return c.client.RevokeApiKey(ctx, c.authHeader, personIdArg, apiKeyIdArg)
 }
 
 func (c *coreSuperAdminServiceClientWithAuth) ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
@@ -1276,6 +1449,22 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeSession(ctx context
 		return err
 	}
 	return c.client.RevokeSession(ctx, bearertoken.Token(token), personIdArg, sessionIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ListApiKeys(ctx context.Context, personIdArg string) (ApiKeyPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ApiKeyPage), err
+	}
+	return c.client.ListApiKeys(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeApiKey(ctx context.Context, personIdArg string, apiKeyIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.RevokeApiKey(ctx, bearertoken.Token(token), personIdArg, apiKeyIdArg)
 }
 
 func (c *coreSuperAdminServiceClientWithTokenProvider) ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {

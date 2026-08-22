@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
 	"github.com/olehmushka/open-faith-map/internal/identity/domain"
 )
 
@@ -45,6 +46,13 @@ type Store interface {
 	InsertPersonAccountInvite(ctx context.Context, displayName, email, tokenHash, invitedBy string, expiresAt time.Time) (domain.Invite, error)
 	GetInviteByTokenHash(ctx context.Context, tokenHash string) (domain.Invite, error)
 	MarkInviteAcceptedByAccount(ctx context.Context, accountID string) error
+	InsertApiKey(ctx context.Context, personID, label, tokenHash string, permissionCodes []string) (domain.APIKey, error)
+	GetApiKeyByTokenHash(ctx context.Context, tokenHash string) (domain.APIKey, error)
+	TouchApiKeyLastUsed(ctx context.Context, apiKeyID string) error
+	ListApiKeysByPerson(ctx context.Context, personID string) ([]domain.APIKey, error)
+	ListApiKeysByPersonIncludingRevoked(ctx context.Context, personID string) ([]domain.APIKey, error)
+	RevokeApiKey(ctx context.Context, apiKeyID, personID, revokedBy string) (domain.APIKey, error)
+	ResolveByAPIKey(ctx context.Context, tokenHash string) (domain.Resolution, []string, error)
 }
 
 type Service struct {
@@ -361,6 +369,88 @@ func newInviteToken() (rawToken, tokenHash string, err error) {
 }
 
 func hashInviteToken(rawToken string) string {
+	sum := sha256.Sum256([]byte(rawToken))
+	return hex.EncodeToString(sum[:])
+}
+
+// -------------------------------------------------------------------- API keys (M11.9)
+
+// CreateApiKey mints a new API key for personID, scoped to permissionCodes (the owner's chosen
+// allowlist — validated against the closed catalog and rejected if it contains any instance-scope
+// code, since RequireInstanceAdmin hard-denies every API-key-authenticated subject regardless of
+// allowlist contents, so an instance-scope code could never actually be exercised through a key).
+// Returns the raw token exactly once — only its hash is ever persisted (identity_api_keys.token_hash).
+func (s *Service) CreateApiKey(ctx context.Context, personID, label string, permissionCodes []string) (domain.APIKey, string, error) {
+	for _, code := range permissionCodes {
+		if !authzdomain.IsKnownPermission(code) {
+			return domain.APIKey{}, "", domain.ErrUnknownPermissionCode
+		}
+		if authzdomain.IsInstanceScope(code) {
+			return domain.APIKey{}, "", domain.ErrUnknownPermissionCode
+		}
+	}
+	rawToken, tokenHash, err := newAPIKeyToken()
+	if err != nil {
+		return domain.APIKey{}, "", err
+	}
+	key, err := s.store.InsertApiKey(ctx, personID, label, tokenHash, permissionCodes)
+	if err != nil {
+		return domain.APIKey{}, "", err
+	}
+	return key, rawToken, nil
+}
+
+// ResolveByAPIKey hashes rawToken and resolves it to the owning person's PDP subject plus the key's
+// stored permission-code allowlist — internal/identity/middleware's ResolveByAPIKey hook. Best-effort
+// bumps the key's last-used timestamp on success; a touch failure never fails the request (matching
+// TouchSession's own fire-and-forget-adjacent posture, just without even surfacing the error).
+func (s *Service) ResolveByAPIKey(ctx context.Context, rawToken string) (domain.Resolution, []string, error) {
+	res, permissionCodes, err := s.store.ResolveByAPIKey(ctx, hashAPIKeyToken(rawToken))
+	if err != nil {
+		return domain.Resolution{}, nil, err
+	}
+	return res, permissionCodes, nil
+}
+
+// ListMyApiKeys returns personID's own active keys (self-scoped, M11.9).
+func (s *Service) ListMyApiKeys(ctx context.Context, personID string) ([]domain.APIKey, error) {
+	return s.store.ListApiKeysByPerson(ctx, personID)
+}
+
+// RevokeMyApiKey revokes one of the caller's own keys (self-scoped, M11.9) — RevokeApiKey's own
+// person_id-scoped WHERE clause means a foreign apiKeyID resolves as ErrAPIKeyNotFound, not a
+// different error that would leak whether the id exists at all.
+func (s *Service) RevokeMyApiKey(ctx context.Context, personID, apiKeyID string) (domain.APIKey, error) {
+	return s.store.RevokeApiKey(ctx, apiKeyID, personID, personID)
+}
+
+// ListApiKeysByPerson is the admin-oversight read: personID's full key history, active and revoked
+// (M11.9).
+func (s *Service) ListApiKeysByPerson(ctx context.Context, personID string) ([]domain.APIKey, error) {
+	return s.store.ListApiKeysByPersonIncludingRevoked(ctx, personID)
+}
+
+// RevokeApiKey revokes personID's apiKeyID on an admin's behalf (M11.9, admin oversight — incident
+// response without waiting on the owner). revokedByPersonID is the acting admin, recorded distinctly
+// from personID (the owner) in the returned row's RevokedBy.
+func (s *Service) RevokeApiKey(ctx context.Context, personID, apiKeyID, revokedByPersonID string) (domain.APIKey, error) {
+	return s.store.RevokeApiKey(ctx, apiKeyID, personID, revokedByPersonID)
+}
+
+// newAPIKeyToken generates a random 32-byte token, base64url-encoded and prefixed with
+// domain.APIKeyTokenPrefix so internal/identity/middleware can detect an API-key-shaped bearer without
+// a DB round-trip or a doomed JWT-parse attempt, and its SHA-256 hash (the only form ever persisted) —
+// the same random-token-plus-stored-hash shape newInviteToken already uses.
+func newAPIKeyToken() (rawToken, tokenHash string, err error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	rawToken = domain.APIKeyTokenPrefix + base64.RawURLEncoding.EncodeToString(buf)
+	return rawToken, hashAPIKeyToken(rawToken), nil
+}
+
+func hashAPIKeyToken(rawToken string) string {
 	sum := sha256.Sum256([]byte(rawToken))
 	return hex.EncodeToString(sum[:])
 }

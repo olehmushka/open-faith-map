@@ -134,6 +134,70 @@ func TestServiceRequireInstanceAdminPanicsOnSystemContext(t *testing.T) {
 	_ = svc.RequireInstanceAdmin(SystemContext(context.Background()))
 }
 
+// -------------------------------------------------------------------- M11.9: API-key subject guards
+
+func TestServiceRequireAllowsAPIKeyWithinAllowlistAndLiveGrants(t *testing.T) {
+	store := fakeStore{grants: map[string][]domain.ActiveGrant{
+		"p1": {{TargetUnitID: "unit-a", Scope: domain.ScopeUnit, Perms: map[domain.Permission]struct{}{domain.PermPersonRead: {}}}},
+	}}
+	svc := NewService(domain.NewPDP(noopClosure{}), store)
+	ctx := NewContext(context.Background(), Subject{PersonID: "p1", APIKeyPermissionCodes: []string{string(domain.PermPersonRead)}})
+	if err := svc.Require(ctx, domain.PermPersonRead, "unit-a"); err != nil {
+		t.Errorf("Require for an API key in-allowlist and in-grants = %v, want nil", err)
+	}
+}
+
+func TestServiceRequireDeniesAPIKeyOutsideAllowlist(t *testing.T) {
+	store := fakeStore{grants: map[string][]domain.ActiveGrant{
+		"p1": {{TargetUnitID: "unit-a", Scope: domain.ScopeUnit, Perms: map[domain.Permission]struct{}{
+			domain.PermPersonRead: {}, domain.PermPersonUpdate: {},
+		}}},
+	}}
+	svc := NewService(domain.NewPDP(noopClosure{}), store)
+	// The owner actually holds PermPersonUpdate too, but the key's own allowlist never granted it —
+	// the allowlist bounds even an owner with broader live grants.
+	ctx := NewContext(context.Background(), Subject{PersonID: "p1", APIKeyPermissionCodes: []string{string(domain.PermPersonRead)}})
+	err := svc.Require(ctx, domain.PermPersonUpdate, "unit-a")
+	if !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Errorf("Require for an API key outside its allowlist = %v, want ErrPermissionDenied", err)
+	}
+}
+
+func TestServiceRequireDeniesAPIKeyInAllowlistButOutsideLiveGrants(t *testing.T) {
+	// Allowlist is deliberately broader than what the owner currently holds — the intersection's
+	// second half (the unmodified enforce/decide path) still applies.
+	svc := NewService(domain.NewPDP(noopClosure{}), fakeStore{})
+	ctx := NewContext(context.Background(), Subject{PersonID: "p1", APIKeyPermissionCodes: []string{string(domain.PermPersonRead)}})
+	err := svc.Require(ctx, domain.PermPersonRead, "unit-a")
+	if !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Errorf("Require for an API key in-allowlist but with no live grant = %v, want ErrPermissionDenied", err)
+	}
+}
+
+func TestServiceRequireDeniesEmptyAllowlistAPIKey(t *testing.T) {
+	store := fakeStore{grants: map[string][]domain.ActiveGrant{
+		"p1": {{TargetUnitID: "unit-a", Scope: domain.ScopeUnit, Perms: map[domain.Permission]struct{}{domain.PermPersonRead: {}}}},
+	}}
+	svc := NewService(domain.NewPDP(noopClosure{}), store)
+	// Non-nil but empty: a legitimately zero-permission key, not "unset".
+	ctx := NewContext(context.Background(), Subject{PersonID: "p1", APIKeyPermissionCodes: []string{}})
+	err := svc.Require(ctx, domain.PermPersonRead, "unit-a")
+	if !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Errorf("Require for an empty-allowlist API key = %v, want ErrPermissionDenied", err)
+	}
+}
+
+func TestServiceRequireInstanceAdminDeniesAPIKeyEvenForActualAdmin(t *testing.T) {
+	// p1 genuinely is an instance admin, but the request came in via an API key — the instance-admin
+	// plane must never be reachable through a key, allowlist or not.
+	svc := NewService(domain.NewPDP(noopClosure{}), fakeStore{admins: map[string]bool{"p1": true}})
+	ctx := NewContext(context.Background(), Subject{PersonID: "p1", APIKeyPermissionCodes: []string{string(domain.PermInstanceAdminManage)}})
+	err := svc.RequireInstanceAdmin(ctx)
+	if !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Errorf("RequireInstanceAdmin for an API-key subject (even an admin owner) = %v, want ErrPermissionDenied", err)
+	}
+}
+
 func TestStripSystemMarkerRemovesTheMarker(t *testing.T) {
 	ctx := SystemContext(context.Background())
 	if !isSystemContext(ctx) {

@@ -32,6 +32,95 @@ func (o *AccountStatus) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M11.9 — one identity_api_keys row, metadata only: no token or token hash field exists on this type at all, so it is structurally impossible for any endpoint returning it to leak the secret, regardless of caller (self-service or admin-oversight).
+type ApiKey struct {
+	Id    string `json:"id"`
+	Label string `json:"label"`
+	// The owner's chosen allowlist at creation time. The effective permission set for a request authenticated with this key is this list intersected with the owning person's LIVE authz grants at request time — never wider than either alone.
+	PermissionCodes []string           `json:"permissionCodes"`
+	CreatedAt       datetime.DateTime  `json:"createdAt"`
+	LastUsedAt      *datetime.DateTime `json:"lastUsedAt,omitempty"`
+	RevokedAt       *datetime.DateTime `json:"revokedAt,omitempty"`
+}
+
+func (o ApiKey) MarshalJSON() ([]byte, error) {
+	if o.PermissionCodes == nil {
+		o.PermissionCodes = make([]string, 0)
+	}
+	type _tmpApiKey ApiKey
+	return safejson.Marshal(_tmpApiKey(o))
+}
+
+func (o *ApiKey) UnmarshalJSON(data []byte) error {
+	type _tmpApiKey ApiKey
+	var rawApiKey _tmpApiKey
+	if err := safejson.Unmarshal(data, &rawApiKey); err != nil {
+		return err
+	}
+	if rawApiKey.PermissionCodes == nil {
+		rawApiKey.PermissionCodes = make([]string, 0)
+	}
+	*o = ApiKey(rawApiKey)
+	return nil
+}
+
+func (o ApiKey) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ApiKey) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type ApiKeyPage struct {
+	ApiKeys []ApiKey `json:"apiKeys"`
+}
+
+func (o ApiKeyPage) MarshalJSON() ([]byte, error) {
+	if o.ApiKeys == nil {
+		o.ApiKeys = make([]ApiKey, 0)
+	}
+	type _tmpApiKeyPage ApiKeyPage
+	return safejson.Marshal(_tmpApiKeyPage(o))
+}
+
+func (o *ApiKeyPage) UnmarshalJSON(data []byte) error {
+	type _tmpApiKeyPage ApiKeyPage
+	var rawApiKeyPage _tmpApiKeyPage
+	if err := safejson.Unmarshal(data, &rawApiKeyPage); err != nil {
+		return err
+	}
+	if rawApiKeyPage.ApiKeys == nil {
+		rawApiKeyPage.ApiKeys = make([]ApiKey, 0)
+	}
+	*o = ApiKeyPage(rawApiKeyPage)
+	return nil
+}
+
+func (o ApiKeyPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ApiKeyPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // M11.2 — one append-only row of identity_audit_log. targetKind/targetId is an opaque discriminator+ref pair (mirrors Moderation's target_kind/target_ref) since targets span role assignments, instance-admin grants, accounts, and (M11.3) sessions today, and will span persons (M11.8 merge) later. before/after are optional — absent for a create/delete side respectively.
 type AuditLogEntry struct {
 	Id string `json:"id"`
@@ -230,6 +319,94 @@ func (o CountryPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *CountryPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type CreateApiKeyRequest struct {
+	Label           string   `json:"label"`
+	PermissionCodes []string `json:"permissionCodes"`
+}
+
+func (o CreateApiKeyRequest) MarshalJSON() ([]byte, error) {
+	if o.PermissionCodes == nil {
+		o.PermissionCodes = make([]string, 0)
+	}
+	type _tmpCreateApiKeyRequest CreateApiKeyRequest
+	return safejson.Marshal(_tmpCreateApiKeyRequest(o))
+}
+
+func (o *CreateApiKeyRequest) UnmarshalJSON(data []byte) error {
+	type _tmpCreateApiKeyRequest CreateApiKeyRequest
+	var rawCreateApiKeyRequest _tmpCreateApiKeyRequest
+	if err := safejson.Unmarshal(data, &rawCreateApiKeyRequest); err != nil {
+		return err
+	}
+	if rawCreateApiKeyRequest.PermissionCodes == nil {
+		rawCreateApiKeyRequest.PermissionCodes = make([]string, 0)
+	}
+	*o = CreateApiKeyRequest(rawCreateApiKeyRequest)
+	return nil
+}
+
+func (o CreateApiKeyRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateApiKeyRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.9 — token is the bare, one-time raw secret, prefixed "ofm_" so the authenticator can cheaply distinguish it from a JWT bearer with no DB round-trip. Returned exactly once; only its hash is ever persisted server-side (identity_api_keys.token_hash) — the same one-time- secret shape InviteResult already uses.
+type CreateApiKeyResult struct {
+	Id              string            `json:"id"`
+	Label           string            `json:"label"`
+	PermissionCodes []string          `json:"permissionCodes"`
+	Token           string            `json:"token"`
+	CreatedAt       datetime.DateTime `json:"createdAt"`
+}
+
+func (o CreateApiKeyResult) MarshalJSON() ([]byte, error) {
+	if o.PermissionCodes == nil {
+		o.PermissionCodes = make([]string, 0)
+	}
+	type _tmpCreateApiKeyResult CreateApiKeyResult
+	return safejson.Marshal(_tmpCreateApiKeyResult(o))
+}
+
+func (o *CreateApiKeyResult) UnmarshalJSON(data []byte) error {
+	type _tmpCreateApiKeyResult CreateApiKeyResult
+	var rawCreateApiKeyResult _tmpCreateApiKeyResult
+	if err := safejson.Unmarshal(data, &rawCreateApiKeyResult); err != nil {
+		return err
+	}
+	if rawCreateApiKeyResult.PermissionCodes == nil {
+		rawCreateApiKeyResult.PermissionCodes = make([]string, 0)
+	}
+	*o = CreateApiKeyResult(rawCreateApiKeyResult)
+	return nil
+}
+
+func (o CreateApiKeyResult) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateApiKeyResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -750,6 +927,48 @@ func (o OrgProfile) MarshalYAML() (interface{}, error) {
 }
 
 func (o *OrgProfile) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.9 — the closed unit-scoped permission catalog (internal/authz/domain/permissions.go), excluding instance-scope codes: an API key can never exercise one (RequireInstanceAdmin hard-denies every API-key-authenticated subject, allowlist or not), so offering them in the creation picker would be misleading. Self-scoped, not admin-only: every person needs this for their own createApiKey picker.
+type PermissionCodePage struct {
+	Codes []string `json:"codes"`
+}
+
+func (o PermissionCodePage) MarshalJSON() ([]byte, error) {
+	if o.Codes == nil {
+		o.Codes = make([]string, 0)
+	}
+	type _tmpPermissionCodePage PermissionCodePage
+	return safejson.Marshal(_tmpPermissionCodePage(o))
+}
+
+func (o *PermissionCodePage) UnmarshalJSON(data []byte) error {
+	type _tmpPermissionCodePage PermissionCodePage
+	var rawPermissionCodePage _tmpPermissionCodePage
+	if err := safejson.Unmarshal(data, &rawPermissionCodePage); err != nil {
+		return err
+	}
+	if rawPermissionCodePage.Codes == nil {
+		rawPermissionCodePage.Codes = make([]string, 0)
+	}
+	*o = PermissionCodePage(rawPermissionCodePage)
+	return nil
+}
+
+func (o PermissionCodePage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PermissionCodePage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

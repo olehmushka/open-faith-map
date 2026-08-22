@@ -3,6 +3,8 @@
 
 package domain
 
+import "slices"
+
 // Permission is a closed vocabulary of action codes (D-InProcessAuthz): a permission no code path
 // checks is dead weight, and a code path checking a permission nobody can grant is a silent hole.
 // Keeping the catalog in Go means the compiler is the integrity check, not a DB row.
@@ -76,4 +78,19 @@ func IsKnownPermission(code string) bool {
 func IsInstanceScope(code string) bool {
 	_, ok := instanceScope[Permission(code)]
 	return ok
+}
+
+// UnitScopedPermissionCodes returns every catalog code except the instance-scope ones (M11.9's
+// listPermissionCatalog: an API key's allowlist can only ever be satisfied through the unit-scoped
+// PDP path, since RequireInstanceAdmin hard-denies every API-key-authenticated subject regardless of
+// allowlist contents — offering instance-scope codes in the creation picker would be misleading).
+func UnitScopedPermissionCodes() []string {
+	codes := make([]string, 0, len(catalog)-len(instanceScope))
+	for p := range catalog {
+		if _, ok := instanceScope[p]; !ok {
+			codes = append(codes, string(p))
+		}
+	}
+	slices.Sort(codes)
+	return codes
 }

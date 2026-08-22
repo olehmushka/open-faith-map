@@ -66,6 +66,14 @@ type CoreService interface {
 	UpdateMyProfile(ctx context.Context, authHeader bearertoken.Token, requestArg UpdateMyProfileRequest) (Person, error)
 	// M11.5 — the caller's own active role assignments across every unit, self-scoped.
 	ListMyRoleAssignments(ctx context.Context, authHeader bearertoken.Token) (RoleAssignmentPage, error)
+	// M11.9 — the closed unit-scoped permission catalog, self-scoped since every person needs it for their own createApiKey allowlist picker, not just admins. Static, no DB read.
+	ListPermissionCatalog(ctx context.Context, authHeader bearertoken.Token) (PermissionCodePage, error)
+	// M11.9 — the caller's own active API keys, self-scoped.
+	ListMyApiKeys(ctx context.Context, authHeader bearertoken.Token) (ApiKeyPage, error)
+	// M11.9 — mints a new API key for the caller, scoped to request.permissionCodes. Returns the raw secret exactly once.
+	CreateApiKey(ctx context.Context, authHeader bearertoken.Token, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error)
+	// M11.9 — revokes one of the caller's own API keys, self-scoped.
+	RevokeMyApiKey(ctx context.Context, authHeader bearertoken.Token, apiKeyIdArg string) error
 	GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
@@ -108,6 +116,18 @@ func RegisterRoutesCoreService(router wrouter.Router, impl CoreService, routerPa
 	}
 	if err := resource.Get("ListMyRoleAssignments", "/core/v1/profile/roles", httpserver.NewJSONHandler(handler.HandleListMyRoleAssignments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMyRoleAssignments route")
+	}
+	if err := resource.Get("ListPermissionCatalog", "/core/v1/permission-catalog", httpserver.NewJSONHandler(handler.HandleListPermissionCatalog, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPermissionCatalog route")
+	}
+	if err := resource.Get("ListMyApiKeys", "/core/v1/api-keys", httpserver.NewJSONHandler(handler.HandleListMyApiKeys, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMyApiKeys route")
+	}
+	if err := resource.Post("CreateApiKey", "/core/v1/api-keys", httpserver.NewJSONHandler(handler.HandleCreateApiKey, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createApiKey route")
+	}
+	if err := resource.Delete("RevokeMyApiKey", "/core/v1/api-keys/{apiKeyId}", httpserver.NewJSONHandler(handler.HandleRevokeMyApiKey, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeMyApiKey route")
 	}
 	if err := resource.Get("GetUnit", "/core/v1/units/{unitId}", httpserver.NewJSONHandler(handler.HandleGetUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getUnit route")
@@ -243,6 +263,69 @@ func (c *coreServiceHandler) HandleListMyRoleAssignments(rw http.ResponseWriter,
 	}
 	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
 	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleListPermissionCatalog(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := c.impl.ListPermissionCatalog(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleListMyApiKeys(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := c.impl.ListMyApiKeys(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleCreateApiKey(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg CreateApiKeyRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.CreateApiKey(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleRevokeMyApiKey(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	apiKeyIdArg, ok := pathParams["apiKeyId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"apiKeyId\" not present")
+	}
+	if err := c.impl.RevokeMyApiKey(req.Context(), bearertoken.Token(authHeader), apiKeyIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 func (c *coreServiceHandler) HandleGetUnit(rw http.ResponseWriter, req *http.Request) error {
@@ -509,6 +592,10 @@ type CoreSuperAdminService interface {
 	ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error)
 	// M11.3 — revokes one of personId's sessions, admin-scoped.
 	RevokeSession(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sessionIdArg string) error
+	// M11.9 — personId's active AND revoked API keys, admin-scoped, metadata only (ApiKey carries no secret/hash field, so this endpoint can never leak one). Incident-response visibility: lets an admin see a person's keys without the owner's cooperation.
+	ListApiKeys(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (ApiKeyPage, error)
+	// M11.9 — revokes one of personId's API keys, admin-scoped (incident response — kill a compromised key without waiting on the owner). Audit-logged distinctly from a self-revoke (REVOKE_API_KEY_ADMIN vs REVOKE_API_KEY) so the trail shows who actually acted.
+	RevokeApiKey(ctx context.Context, authHeader bearertoken.Token, personIdArg string, apiKeyIdArg string) error
 	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
 	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
@@ -569,6 +656,12 @@ func RegisterRoutesCoreSuperAdminService(router wrouter.Router, impl CoreSuperAd
 	}
 	if err := resource.Delete("RevokeSession", "/core/v1/super-admin/persons/{personId}/sessions/{sessionId}", httpserver.NewJSONHandler(handler.HandleRevokeSession, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeSession route")
+	}
+	if err := resource.Get("ListApiKeys", "/core/v1/super-admin/persons/{personId}/api-keys", httpserver.NewJSONHandler(handler.HandleListApiKeys, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listApiKeys route")
+	}
+	if err := resource.Delete("RevokeApiKey", "/core/v1/super-admin/persons/{personId}/api-keys/{apiKeyId}", httpserver.NewJSONHandler(handler.HandleRevokeApiKey, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeApiKey route")
 	}
 	if err := resource.Get("ListAuditLog", "/core/v1/super-admin/audit-log", httpserver.NewJSONHandler(handler.HandleListAuditLog, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAuditLog route")
@@ -897,6 +990,51 @@ func (c *coreSuperAdminServiceHandler) HandleRevokeSession(rw http.ResponseWrite
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"sessionId\" not present")
 	}
 	if err := c.impl.RevokeSession(req.Context(), bearertoken.Token(authHeader), personIdArg, sessionIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (c *coreSuperAdminServiceHandler) HandleListApiKeys(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := c.impl.ListApiKeys(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleRevokeApiKey(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	apiKeyIdArg, ok := pathParams["apiKeyId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"apiKeyId\" not present")
+	}
+	if err := c.impl.RevokeApiKey(req.Context(), bearertoken.Token(authHeader), personIdArg, apiKeyIdArg); err != nil {
 		return err
 	}
 	rw.WriteHeader(http.StatusNoContent)

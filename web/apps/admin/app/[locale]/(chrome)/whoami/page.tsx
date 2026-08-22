@@ -121,6 +121,9 @@ export default async function WhoamiPage({ params }: { params: Promise<{ locale:
         <Link href="/my-congregation" className="underline">
           {t("myCongregationLink")}
         </Link>
+        <Link href="/api-keys" className="underline">
+          {t("apiKeysLink")}
+        </Link>
       </nav>
 
       <form

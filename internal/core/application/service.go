@@ -227,12 +227,20 @@ const (
 	auditActionCreateInvite         = "CREATE_INVITE"
 	auditActionBulkGrantUnitRole    = "BULK_GRANT_UNIT_ROLE"
 	auditActionMergePersons         = "MERGE_PERSONS"
+	auditActionCreateApiKey         = "CREATE_API_KEY"
+	// auditActionRevokeApiKey (self-revoke) is kept distinct from auditActionRevokeApiKeyAdmin
+	// (admin-revoke) — M11.9 — so the audit trail visibly distinguishes "the owner revoked their own
+	// key" from "an admin revoked it for them" (incident response), the same log-viewer surfacing
+	// both to every caller.
+	auditActionRevokeApiKey      = "REVOKE_API_KEY"
+	auditActionRevokeApiKeyAdmin = "REVOKE_API_KEY_ADMIN"
 
 	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
 	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
 	auditTargetAccount        = "ACCOUNT"
 	auditTargetSession        = "SESSION"
 	auditTargetPerson         = "PERSON"
+	auditTargetApiKey         = "API_KEY"
 )
 
 func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string) error {
@@ -718,4 +726,93 @@ func (s *Service) InvitePerson(ctx context.Context, email, displayName string) (
 // log: a pure read, and the caller has no subject to resolve yet.
 func (s *Service) ResolveInvite(ctx context.Context, token string) (identityapplication.InviteInfo, error) {
 	return s.identity.ResolveInvite(ctx, token)
+}
+
+// ---------------------------------------------------------------- API keys (M11.9)
+
+// ListPermissionCatalog returns the closed unit-scoped permission catalog (excluding instance-scope
+// codes — see UnitScopedPermissionCodes' own doc comment) — CoreService.listPermissionCatalog. Static,
+// self-scoped, no audit (a pure read, same reasoning ListMySessions/ListMyRoleAssignments give).
+func (s *Service) ListPermissionCatalog(ctx context.Context) ([]string, error) {
+	if _, err := s.requireSubject(ctx); err != nil {
+		return nil, err
+	}
+	return authzdomain.UnitScopedPermissionCodes(), nil
+}
+
+// CreateApiKeyResult is CoreService.createApiKey's response — Token is the bare, one-time raw secret,
+// the same "returned exactly once, only its hash is ever persisted" shape InviteResult already uses.
+type CreateApiKeyResult struct {
+	ID              string
+	Label           string
+	PermissionCodes []string
+	Token           string
+	CreatedAt       time.Time
+}
+
+// CreateApiKey mints a new API key for the caller, scoped to permissionCodes (self-scoped) —
+// CoreService.createApiKey. permissionCodes is validated against the closed catalog (and rejected if
+// it contains any instance-scope code) by s.identity.CreateApiKey itself.
+func (s *Service) CreateApiKey(ctx context.Context, label string, permissionCodes []string) (CreateApiKeyResult, error) {
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return CreateApiKeyResult{}, err
+	}
+	key, rawToken, err := s.identity.CreateApiKey(ctx, subject.PersonID, label, permissionCodes)
+	if err != nil {
+		return CreateApiKeyResult{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionCreateApiKey, auditTargetApiKey, key.ID, nil,
+		map[string]any{"label": label, "permissionCodes": permissionCodes}); err != nil {
+		return CreateApiKeyResult{}, err
+	}
+	return CreateApiKeyResult{ID: key.ID, Label: key.Label, PermissionCodes: key.PermissionCodes, Token: rawToken, CreatedAt: key.CreatedAt}, nil
+}
+
+// ListMyApiKeys returns the caller's own active API keys (self-scoped) — CoreService.listMyApiKeys.
+// Pure read, no audit (same reasoning ListMySessions already documents).
+func (s *Service) ListMyApiKeys(ctx context.Context) ([]identitydomain.APIKey, error) {
+	subject, ok := authz.SubjectFromContext(ctx)
+	if !ok || subject.PersonID == "" {
+		return nil, authzdomain.ErrPermissionDenied
+	}
+	return s.identity.ListMyApiKeys(ctx, subject.PersonID)
+}
+
+// RevokeMyApiKey revokes one of the caller's own API keys (self-scoped) — CoreService.revokeMyApiKey.
+// s.identity.RevokeMyApiKey's own person_id-scoped WHERE clause means a foreign apiKeyID resolves as
+// ErrAPIKeyNotFound, not a different error that would leak whether the id exists at all.
+func (s *Service) RevokeMyApiKey(ctx context.Context, apiKeyID string) error {
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return err
+	}
+	before, err := s.identity.RevokeMyApiKey(ctx, subject.PersonID, apiKeyID)
+	if err != nil {
+		return err
+	}
+	return s.auditLog.Record(ctx, auditActionRevokeApiKey, auditTargetApiKey, apiKeyID,
+		map[string]any{"revokedAt": nil}, map[string]any{"revokedAt": before.RevokedAt})
+}
+
+// ListApiKeys returns personID's full key history, active and revoked (admin-scoped, incident-
+// response visibility) — CoreSuperAdminService.listApiKeys.
+func (s *Service) ListApiKeys(ctx context.Context, personID string) ([]identitydomain.APIKey, error) {
+	return s.identity.ListApiKeysByPerson(ctx, personID)
+}
+
+// RevokeApiKey revokes one of personID's API keys on an admin's behalf (admin-scoped, incident
+// response) — CoreSuperAdminService.revokeApiKey. revokedByPersonID (the acting admin) is recorded
+// distinctly from personID (the owner) via auditActionRevokeApiKeyAdmin.
+func (s *Service) RevokeApiKey(ctx context.Context, personID, apiKeyID string) error {
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return err
+	}
+	before, err := s.identity.RevokeApiKey(ctx, personID, apiKeyID, subject.PersonID)
+	if err != nil {
+		return err
+	}
+	return s.auditLog.Record(ctx, auditActionRevokeApiKeyAdmin, auditTargetApiKey, apiKeyID,
+		map[string]any{"revokedAt": nil}, map[string]any{"revokedAt": before.RevokedAt})
 }

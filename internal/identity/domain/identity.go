@@ -22,6 +22,8 @@ var (
 	ErrInviteExpired         = errors.New("invite has expired")
 	ErrInviteAlreadyAccepted = errors.New("invite has already been accepted")
 	ErrCannotMergeSelf       = errors.New("cannot merge a person with itself")
+	ErrAPIKeyNotFound        = errors.New("api key not found")
+	ErrUnknownPermissionCode = errors.New("permission code is not in the known catalog")
 )
 
 // Account status values — must match identity_accounts' CHECK constraint literals
@@ -39,6 +41,13 @@ const (
 	PersonStatusActive      = "active"
 	PersonStatusDeactivated = "deactivated"
 )
+
+// APIKeyTokenPrefix marks a raw bearer token as API-key-shaped (M11.9) rather than a JWT — a JWT is
+// always three dot-separated base64url segments, which never starts with this literal. Shared between
+// internal/identity/application (which generates tokens with this prefix) and
+// internal/identity/middleware (which branches on it before ever attempting JWT parsing), so both
+// import this one package instead of duplicating the literal.
+const APIKeyTokenPrefix = "ofm_"
 
 // Invite status values — must match identity_invites' CHECK constraint literals
 // (migrations/0018_core_invites.sql). No "expired"/"revoked" value: see that migration's own
@@ -129,4 +138,21 @@ type Invite struct {
 	ExpiresAt  time.Time
 	CreatedAt  time.Time
 	AcceptedAt *time.Time
+}
+
+// APIKey is identity_api_keys (M11.9) — a second credential for an existing person, not a new
+// principal type (authz.Subject's own doc comment, D-DirectTokenVerification, stays true).
+// PermissionCodes is a fixed allowlist the owner chose at creation time; the effective permission set
+// for a request authenticated via this key is that allowlist intersected with PersonID's LIVE authz
+// grants at request time (internal/authz.Service.Require), never stored as a materialized set here.
+// TokenHash is the only form of the raw secret ever persisted — see migrations/0020_core_api_keys.sql.
+type APIKey struct {
+	ID              string
+	PersonID        string
+	Label           string
+	PermissionCodes []string
+	CreatedAt       time.Time
+	LastUsedAt      *time.Time
+	RevokedAt       *time.Time
+	RevokedBy       *string
 }

@@ -27,6 +27,11 @@ type Resolver interface {
 	// PersonIDByAccountEmail backs D-JIT's attribute arm: the person behind the single active
 	// account carrying this IdP-asserted email, and whether one was found.
 	PersonIDByAccountEmail(ctx context.Context, email string) (string, bool, error)
+	// ResolveByAPIKey maps a raw, domain.APIKeyTokenPrefix-shaped bearer to the owning person's PDP
+	// subject plus the key's stored permission-code allowlist (M11.9) — the "new resolution path
+	// alongside ResolveBySubject" the milestone spec calls for. No JIT applies to this path: an API
+	// key is already bound to a specific person at creation time.
+	ResolveByAPIKey(ctx context.Context, rawToken string) (domain.Resolution, []string, error)
 }
 
 // PersonDirectory resolves a token claim value to an existing person (D-JIT: claim -> person.code).
@@ -114,6 +119,28 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 	raw := bearerToken(r)
 	if raw == "" {
 		unauthorized(rw)
+		return
+	}
+
+	// M11.9: an API-key-shaped bearer (domain.APIKeyTokenPrefix, "ofm_") is never a JWT — branch here,
+	// before b.validator.Validate ever attempts to parse it as one. This is a different resolution
+	// path entirely, not an issuer-based carve-out of the JWT path below (the M11.3 comment on the
+	// session-id check two blocks down is about THAT path, not this one): an API key is itself the
+	// credential, has no NextAuth session to forward, and so is unconditionally exempt from the
+	// X-Session-Id check by construction — it never reaches that block at all. No JIT fallback applies
+	// either (JIT is specifically (issuer, subject)-claim matching; an API key is already bound to one
+	// person at creation time).
+	if strings.HasPrefix(raw, domain.APIKeyTokenPrefix) {
+		res, permCodes, err := b.resolver.ResolveByAPIKey(r.Context(), raw)
+		if err != nil {
+			unauthorized(rw)
+			return
+		}
+		ctx := authz.NewContext(r.Context(), authz.Subject{
+			PersonID: res.PersonID, AccountID: res.AccountID, Email: res.Email,
+			APIKeyPermissionCodes: permCodes,
+		})
+		next.ServeHTTP(rw, r.WithContext(ctx))
 		return
 	}
 

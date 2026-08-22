@@ -313,6 +313,156 @@ func (e *AccountNotFound) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type apiKeyNotFound struct {
+	ApiKeyId string `json:"apiKeyId"`
+}
+
+func (o apiKeyNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *apiKeyNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewApiKeyNotFound returns new instance of ApiKeyNotFound error.
+func NewApiKeyNotFound(apiKeyIdArg string) *ApiKeyNotFound {
+	return &ApiKeyNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), apiKeyNotFound: apiKeyNotFound{ApiKeyId: apiKeyIdArg}}
+}
+
+// WrapWithApiKeyNotFound returns new instance of ApiKeyNotFound error wrapping an existing error.
+func WrapWithApiKeyNotFound(err error, apiKeyIdArg string) *ApiKeyNotFound {
+	return &ApiKeyNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, apiKeyNotFound: apiKeyNotFound{ApiKeyId: apiKeyIdArg}}
+}
+
+// ApiKeyNotFound is an error type.
+// M11.9 — apiKeyId doesn't exist, is already revoked, or (self-service) belongs to a different person than the caller — no oracle leak between those cases.
+type ApiKeyNotFound struct {
+	errorInstanceID uuid.UUID
+	apiKeyNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsApiKeyNotFound returns true if err is an instance of ApiKeyNotFound.
+func IsApiKeyNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*ApiKeyNotFound)
+	return ok
+}
+
+func (e *ApiKeyNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Core:ApiKeyNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *ApiKeyNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *ApiKeyNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *ApiKeyNotFound) Message() string {
+	return "NOT_FOUND Core:ApiKeyNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *ApiKeyNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *ApiKeyNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *ApiKeyNotFound) Name() string {
+	return "Core:ApiKeyNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *ApiKeyNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *ApiKeyNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"apiKeyId": e.ApiKeyId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *ApiKeyNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"apiKeyId": e.ApiKeyId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ApiKeyNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *ApiKeyNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ApiKeyNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e ApiKeyNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.apiKeyNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Core:ApiKeyNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *ApiKeyNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters apiKeyNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.apiKeyNotFound = parameters
+	return nil
+}
+
 type assignmentNotFound struct {
 	AssignmentId string `json:"assignmentId"`
 }
@@ -2543,9 +2693,158 @@ func (e *UnitNotFound) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type unknownPermissionCode struct{}
+
+func (o unknownPermissionCode) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *unknownPermissionCode) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewUnknownPermissionCode returns new instance of UnknownPermissionCode error.
+func NewUnknownPermissionCode() *UnknownPermissionCode {
+	return &UnknownPermissionCode{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), unknownPermissionCode: unknownPermissionCode{}}
+}
+
+// WrapWithUnknownPermissionCode returns new instance of UnknownPermissionCode error wrapping an existing error.
+func WrapWithUnknownPermissionCode(err error) *UnknownPermissionCode {
+	return &UnknownPermissionCode{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, unknownPermissionCode: unknownPermissionCode{}}
+}
+
+// UnknownPermissionCode is an error type.
+// M11.9 — createApiKey's permissionCodes contains a code outside the closed catalog, or an instance-scope code (never satisfiable via an API key — RequireInstanceAdmin hard-denies API-key subjects outright).
+type UnknownPermissionCode struct {
+	errorInstanceID uuid.UUID
+	unknownPermissionCode
+	cause error
+	stack werror.StackTrace
+}
+
+// IsUnknownPermissionCode returns true if err is an instance of UnknownPermissionCode.
+func IsUnknownPermissionCode(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*UnknownPermissionCode)
+	return ok
+}
+
+func (e *UnknownPermissionCode) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Core:UnknownPermissionCode (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *UnknownPermissionCode) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *UnknownPermissionCode) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *UnknownPermissionCode) Message() string {
+	return "INVALID_ARGUMENT Core:UnknownPermissionCode"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *UnknownPermissionCode) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *UnknownPermissionCode) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *UnknownPermissionCode) Name() string {
+	return "Core:UnknownPermissionCode"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *UnknownPermissionCode) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *UnknownPermissionCode) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *UnknownPermissionCode) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnknownPermissionCode) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *UnknownPermissionCode) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnknownPermissionCode) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e UnknownPermissionCode) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.unknownPermissionCode)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Core:UnknownPermissionCode", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *UnknownPermissionCode) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters unknownPermissionCode
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.unknownPermissionCode = parameters
+	return nil
+}
+
 func init() {
 	conjureerrors.RegisterErrorType("Core:AccountAlreadyExists", reflect.TypeOf(AccountAlreadyExists{}))
 	conjureerrors.RegisterErrorType("Core:AccountNotFound", reflect.TypeOf(AccountNotFound{}))
+	conjureerrors.RegisterErrorType("Core:ApiKeyNotFound", reflect.TypeOf(ApiKeyNotFound{}))
 	conjureerrors.RegisterErrorType("Core:AssignmentNotFound", reflect.TypeOf(AssignmentNotFound{}))
 	conjureerrors.RegisterErrorType("Core:CannotMergeSelf", reflect.TypeOf(CannotMergeSelf{}))
 	conjureerrors.RegisterErrorType("Core:ChildCreationExcluded", reflect.TypeOf(ChildCreationExcluded{}))
@@ -2561,4 +2860,5 @@ func init() {
 	conjureerrors.RegisterErrorType("Core:SessionNotFound", reflect.TypeOf(SessionNotFound{}))
 	conjureerrors.RegisterErrorType("Core:TaxonNotFound", reflect.TypeOf(TaxonNotFound{}))
 	conjureerrors.RegisterErrorType("Core:UnitNotFound", reflect.TypeOf(UnitNotFound{}))
+	conjureerrors.RegisterErrorType("Core:UnknownPermissionCode", reflect.TypeOf(UnknownPermissionCode{}))
 }

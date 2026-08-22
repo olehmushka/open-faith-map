@@ -199,6 +199,29 @@ func (s *SuperAdminService) RevokeSession(ctx context.Context, _ bearertoken.Tok
 	return nil
 }
 
+// ListApiKeys is M11.9's admin-oversight read — personId's full key history, active and revoked,
+// metadata only (toAPIApiKey's return type carries no secret/hash field).
+func (s *SuperAdminService) ListApiKeys(ctx context.Context, _ bearertoken.Token, personIdArg string) (gencore.ApiKeyPage, error) {
+	keys, err := s.app.ListApiKeys(ctx, personIdArg)
+	if err != nil {
+		return gencore.ApiKeyPage{}, mapErr(err, errCtx{PersonID: personIdArg})
+	}
+	out := make([]gencore.ApiKey, len(keys))
+	for i, k := range keys {
+		out[i] = toAPIApiKey(k)
+	}
+	return gencore.ApiKeyPage{ApiKeys: out}, nil
+}
+
+// RevokeApiKey is M11.9's admin-oversight revoke — incident response, killing a compromised key
+// without waiting on the owner.
+func (s *SuperAdminService) RevokeApiKey(ctx context.Context, _ bearertoken.Token, personIdArg, apiKeyIdArg string) error {
+	if err := s.app.RevokeApiKey(ctx, personIdArg, apiKeyIdArg); err != nil {
+		return mapErr(err, errCtx{PersonID: personIdArg, ApiKeyID: apiKeyIdArg})
+	}
+	return nil
+}
+
 // ListAuditLog uses the same real keyset-pagination trick as moderation's ListReports (M7,
 // docs/modules/hardening.md): query pageSize+1 rows, trim the extra one, encode its cursor as
 // nextPageToken — so the caller learns whether a next page exists with no second round trip.

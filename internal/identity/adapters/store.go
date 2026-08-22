@@ -536,3 +536,131 @@ func (s *Store) scanSession(row pgx.Row) (domain.Session, error) {
 	}
 	return sess, nil
 }
+
+// InsertApiKey creates a new identity_api_keys row (M11.9) — tokenHash is the caller's already-hashed
+// token (application.Service.CreateApiKey generates and hashes the raw ofm_-prefixed token; this
+// store method never sees or persists the raw value). permissionCodes is the owner's chosen allowlist,
+// already validated against the closed catalog by the caller.
+func (s *Store) InsertApiKey(ctx context.Context, personID, label, tokenHash string, permissionCodes []string) (domain.APIKey, error) {
+	return s.scanAPIKey(s.pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_api_keys (person_id, label, token_hash, permission_codes)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by`,
+		personID, label, tokenHash, permissionCodes))
+}
+
+// GetApiKeyByTokenHash resolves a raw API key's hash to its row — the authenticator's ResolveByAPIKey
+// hook. A revoked key resolves as ErrAPIKeyNotFound, same as an unknown hash — no oracle leak, mirroring
+// ResolveBySubject's own uniform-failure convention for a disabled account.
+func (s *Store) GetApiKeyByTokenHash(ctx context.Context, tokenHash string) (domain.APIKey, error) {
+	return s.scanAPIKey(s.pool.QueryRow(ctx, `
+		SELECT id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by
+		FROM openfaithmap.identity_api_keys
+		WHERE token_hash = $1 AND revoked_at IS NULL`, tokenHash))
+}
+
+// TouchApiKeyLastUsed bumps last_used_at, throttled the same interval and for the same reason
+// TouchSession throttles identity_sessions.last_seen_at (sessionTouchThrottle) — kept off the
+// per-request write hot path, one throttle knob reused rather than a second one added.
+func (s *Store) TouchApiKeyLastUsed(ctx context.Context, apiKeyID string) error {
+	key, err := s.scanAPIKey(s.pool.QueryRow(ctx, `
+		SELECT id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by
+		FROM openfaithmap.identity_api_keys
+		WHERE id = $1`, apiKeyID))
+	if err != nil {
+		return err
+	}
+	if key.LastUsedAt != nil && time.Since(*key.LastUsedAt) <= sessionTouchThrottle {
+		return nil
+	}
+	_, err = s.scanAPIKey(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_api_keys
+		SET last_used_at = now()
+		WHERE id = $1
+		RETURNING id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by`, apiKeyID))
+	return err
+}
+
+// ListApiKeysByPerson returns personID's not-yet-revoked keys, most recently created first — backs
+// both the self-service list and the admin-oversight list's default view.
+func (s *Store) ListApiKeysByPerson(ctx context.Context, personID string) ([]domain.APIKey, error) {
+	return s.queryAPIKeys(ctx, `
+		SELECT id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by
+		FROM openfaithmap.identity_api_keys
+		WHERE person_id = $1 AND revoked_at IS NULL
+		ORDER BY created_at DESC`, personID)
+}
+
+// ListApiKeysByPersonIncludingRevoked is the admin-oversight read — personID's full key history,
+// active and revoked, metadata only (the transport layer's Conjure type carries no
+// token/token-hash field at all, so this data can never leak the secret regardless of caller).
+func (s *Store) ListApiKeysByPersonIncludingRevoked(ctx context.Context, personID string) ([]domain.APIKey, error) {
+	return s.queryAPIKeys(ctx, `
+		SELECT id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by
+		FROM openfaithmap.identity_api_keys
+		WHERE person_id = $1
+		ORDER BY created_at DESC`, personID)
+}
+
+func (s *Store) queryAPIKeys(ctx context.Context, sql string, args ...any) ([]domain.APIKey, error) {
+	rows, err := s.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.APIKey
+	for rows.Next() {
+		key, err := s.scanAPIKey(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, key)
+	}
+	return out, rows.Err()
+}
+
+// RevokeApiKey sets revoked_at/revoked_by, scoped to personID so a caller can never revoke a key it
+// doesn't own — the same defensive WHERE-scoping RevokeMySession-style self-service calls rely on.
+// Idempotent: revoking an already-revoked key is a no-op that still returns the current row (matching
+// RevokeSession's own idempotency). revokedBy is the acting person (may differ from personID on the
+// admin-oversight path).
+func (s *Store) RevokeApiKey(ctx context.Context, apiKeyID, personID, revokedBy string) (domain.APIKey, error) {
+	return s.scanAPIKey(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_api_keys
+		SET revoked_at = COALESCE(revoked_at, now()), revoked_by = COALESCE(revoked_by, $3)
+		WHERE id = $1 AND person_id = $2
+		RETURNING id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by`,
+		apiKeyID, personID, revokedBy))
+}
+
+func (s *Store) scanAPIKey(row pgx.Row) (domain.APIKey, error) {
+	var key domain.APIKey
+	if err := row.Scan(&key.ID, &key.PersonID, &key.Label, &key.PermissionCodes, &key.CreatedAt, &key.LastUsedAt, &key.RevokedAt, &key.RevokedBy); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.APIKey{}, domain.ErrAPIKeyNotFound
+		}
+		return domain.APIKey{}, err
+	}
+	return key, nil
+}
+
+// ResolveByAPIKey maps a raw API key's hash to the account+person it belongs to, joining through to
+// the owning person's active account the same way ResolveBySubject joins identity_external_identities
+// to identity_accounts. Returns the key's stored permission-code allowlist alongside the resolution so
+// the authenticator can attach it to authz.Subject.APIKeyPermissionCodes. A revoked key, an unknown
+// hash, or an owner whose account is disabled/deleted all resolve as ErrIdentityNotFound — the same
+// uniform sentinel ResolveBySubject uses, so the authenticator needs no new error branch.
+func (s *Store) ResolveByAPIKey(ctx context.Context, tokenHash string) (domain.Resolution, []string, error) {
+	var out domain.Resolution
+	var permissionCodes []string
+	err := s.pool.QueryRow(ctx, `
+		SELECT a.person_id, a.id, COALESCE(a.email::text, ''), k.permission_codes
+		FROM openfaithmap.identity_api_keys k
+		JOIN openfaithmap.identity_accounts a ON a.person_id = k.person_id AND a.deleted_at IS NULL AND a.status = 'active'
+		WHERE k.token_hash = $1 AND k.revoked_at IS NULL`, tokenHash,
+	).Scan(&out.PersonID, &out.AccountID, &out.Email, &permissionCodes)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Resolution{}, nil, domain.ErrIdentityNotFound
+	}
+	return out, permissionCodes, err
+}

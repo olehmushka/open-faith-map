@@ -1,4 +1,5 @@
 import { IAccountStatus } from "./accountStatus";
+import { IApiKeyPage } from "./apiKeyPage";
 import { IAuditLogPage } from "./auditLogPage";
 import { IBulkGrantUnitRoleRequest } from "./bulkGrantUnitRoleRequest";
 import { IGrantInstanceAdminRequest } from "./grantInstanceAdminRequest";
@@ -57,6 +58,16 @@ export interface ICoreSuperAdminService {
     listSessions(personId: string): Promise<ISessionPage>;
     /** M11.3 — revokes one of personId's sessions, admin-scoped. */
     revokeSession(personId: string, sessionId: string): Promise<void>;
+    /**
+     * M11.9 — personId's active AND revoked API keys, admin-scoped, metadata only (ApiKey carries no secret/hash field, so this endpoint can never leak one). Incident-response visibility: lets an admin see a person's keys without the owner's cooperation.
+     *
+     */
+    listApiKeys(personId: string): Promise<IApiKeyPage>;
+    /**
+     * M11.9 — revokes one of personId's API keys, admin-scoped (incident response — kill a compromised key without waiting on the owner). Audit-logged distinctly from a self-revoke (REVOKE_API_KEY_ADMIN vs REVOKE_API_KEY) so the trail shows who actually acted.
+     *
+     */
+    revokeApiKey(personId: string, apiKeyId: string): Promise<void>;
     /**
      * M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
      *
@@ -348,6 +359,49 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
             [
                 personId,
                 sessionId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.9 — personId's active AND revoked API keys, admin-scoped, metadata only (ApiKey carries no secret/hash field, so this endpoint can never leak one). Incident-response visibility: lets an admin see a person's keys without the owner's cooperation.
+     *
+     */
+    public listApiKeys(personId: string): Promise<IApiKeyPage> {
+        return this.bridge.call<IApiKeyPage>(
+            "CoreSuperAdminService",
+            "listApiKeys",
+            "GET",
+            "/core/v1/super-admin/persons/{personId}/api-keys",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.9 — revokes one of personId's API keys, admin-scoped (incident response — kill a compromised key without waiting on the owner). Audit-logged distinctly from a self-revoke (REVOKE_API_KEY_ADMIN vs REVOKE_API_KEY) so the trail shows who actually acted.
+     *
+     */
+    public revokeApiKey(personId: string, apiKeyId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "CoreSuperAdminService",
+            "revokeApiKey",
+            "DELETE",
+            "/core/v1/super-admin/persons/{personId}/api-keys/{apiKeyId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                apiKeyId,
             ],
             __undefined,
             __undefined

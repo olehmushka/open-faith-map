@@ -37,7 +37,27 @@
     "registerLink": "Register a congregation (M2)",
     "reviewLink": "Review registration requests (operator)",
     "myCongregationLink": "My congregation",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "apiKeysLink": "API keys"
+  },
+  "ApiKeysPage": {
+    "heading": "API keys",
+    "intro": "Create a scoped, revocable credential for programmatic access to the API.",
+    "existingHeading": "Your API keys",
+    "noKeys": "No API keys.",
+    "createdAt": "Created {date}.",
+    "lastUsedAt": "last used {date}",
+    "revoke": "Revoke",
+    "createHeading": "Create a new key",
+    "labelField": "Label",
+    "labelPlaceholder": "What is this key for?",
+    "permissionCodesHeading": "Permissions",
+    "submit": "Create key",
+    "keyGenerated": "API key generated. Copy it now — it won't be shown again.",
+    "copyKey": "Copy",
+    "copied": "Copied!",
+    "errorUnknownPermissionCode": "One of the selected permissions is not valid.",
+    "errorGeneric": "Something went wrong. Please try again."
   },
   "MyCongregationPage": {
     "heading": "My congregation",
@@ -375,7 +395,12 @@
     "grantRole": "Надати роль",
     "mergeHeading": "Об'єднати з іншою особою",
     "mergeDescription": "Об'єднати запис-дублікат із цим записом.",
-    "mergeLink": "Об'єднати з іншою особою"
+    "mergeLink": "Об'єднати з іншою особою",
+    "apiKeysHeading": "API keys",
+    "noApiKeys": "No API keys.",
+    "apiKeyCreatedAt": "Created {date}.",
+    "apiKeyRevokedAt": "Revoked {date}.",
+    "revokeApiKey": "Revoke"
   },
   "SuperAdminMergePersonPage": {
     "heading": "Об'єднання з {name}",

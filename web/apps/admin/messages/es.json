@@ -37,7 +37,27 @@
     "registerLink": "Register a congregation (M2)",
     "reviewLink": "Review registration requests (operator)",
     "myCongregationLink": "My congregation",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "apiKeysLink": "API keys"
+  },
+  "ApiKeysPage": {
+    "heading": "API keys",
+    "intro": "Create a scoped, revocable credential for programmatic access to the API.",
+    "existingHeading": "Your API keys",
+    "noKeys": "No API keys.",
+    "createdAt": "Created {date}.",
+    "lastUsedAt": "last used {date}",
+    "revoke": "Revoke",
+    "createHeading": "Create a new key",
+    "labelField": "Label",
+    "labelPlaceholder": "What is this key for?",
+    "permissionCodesHeading": "Permissions",
+    "submit": "Create key",
+    "keyGenerated": "API key generated. Copy it now — it won't be shown again.",
+    "copyKey": "Copy",
+    "copied": "Copied!",
+    "errorUnknownPermissionCode": "One of the selected permissions is not valid.",
+    "errorGeneric": "Something went wrong. Please try again."
   },
   "MyCongregationPage": {
     "heading": "My congregation",
@@ -375,7 +395,12 @@
     "grantRole": "Conceder rol",
     "mergeHeading": "Fusionar con otra persona",
     "mergeDescription": "Fusionar un registro de persona duplicado con este.",
-    "mergeLink": "Fusionar con otra persona"
+    "mergeLink": "Fusionar con otra persona",
+    "apiKeysHeading": "API keys",
+    "noApiKeys": "No API keys.",
+    "apiKeyCreatedAt": "Created {date}.",
+    "apiKeyRevokedAt": "Revoked {date}.",
+    "revokeApiKey": "Revoke"
   },
   "SuperAdminMergePersonPage": {
     "heading": "Fusionar con {name}",

@@ -30,7 +30,7 @@ func TestHandleStripsSystemContextUnconditionally(t *testing.T) {
 	resolver := &fakeResolver{byIssuerSubject: map[[2]string]domain.Resolution{
 		{issuer, "sub-1"}: {PersonID: "p1", AccountID: "a1", Email: "a@example.com"},
 	}}
-	sessions := fakeSessionChecker{bySessionID: map[string]string{"sess-1": "a1"}}
+	sessions := &fakeSessionChecker{bySessionID: map[string]string{"sess-1": "a1"}}
 	auth := NewUnbound()
 	auth.Bind(validator, resolver, fakePersonDirectory{}, sessions, false)
 

@@ -345,6 +345,52 @@ types:
           displayName: string
           email: string
 
+      ApiKey:
+        docs: >
+          M11.9 — one identity_api_keys row, metadata only: no token or token hash field exists on
+          this type at all, so it is structurally impossible for any endpoint returning it to leak
+          the secret, regardless of caller (self-service or admin-oversight).
+        fields:
+          id: string
+          label: string
+          permissionCodes:
+            type: list<string>
+            docs: >
+              The owner's chosen allowlist at creation time. The effective permission set for a
+              request authenticated with this key is this list intersected with the owning person's
+              LIVE authz grants at request time — never wider than either alone.
+          createdAt: datetime
+          lastUsedAt: optional<datetime>
+          revokedAt: optional<datetime>
+      ApiKeyPage:
+        fields:
+          apiKeys: list<ApiKey>
+      CreateApiKeyRequest:
+        fields:
+          label: string
+          permissionCodes: list<string>
+      CreateApiKeyResult:
+        docs: >
+          M11.9 — token is the bare, one-time raw secret, prefixed "ofm_" so the authenticator can
+          cheaply distinguish it from a JWT bearer with no DB round-trip. Returned exactly once; only
+          its hash is ever persisted server-side (identity_api_keys.token_hash) — the same one-time-
+          secret shape InviteResult already uses.
+        fields:
+          id: string
+          label: string
+          permissionCodes: list<string>
+          token: string
+          createdAt: datetime
+      PermissionCodePage:
+        docs: >
+          M11.9 — the closed unit-scoped permission catalog (internal/authz/domain/permissions.go),
+          excluding instance-scope codes: an API key can never exercise one (RequireInstanceAdmin
+          hard-denies every API-key-authenticated subject, allowlist or not), so offering them in the
+          creation picker would be misleading. Self-scoped, not admin-only: every person needs this
+          for their own createApiKey picker.
+        fields:
+          codes: list<string>
+
     errors:
       PersonNotFound:
         namespace: Core
@@ -439,6 +485,22 @@ types:
         namespace: Core
         code: CONFLICT
         safe-args: {}
+      ApiKeyNotFound:
+        docs: >
+          M11.9 — apiKeyId doesn't exist, is already revoked, or (self-service) belongs to a
+          different person than the caller — no oracle leak between those cases.
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          apiKeyId: string
+      UnknownPermissionCode:
+        docs: >
+          M11.9 — createApiKey's permissionCodes contains a code outside the closed catalog, or an
+          instance-scope code (never satisfiable via an API key — RequireInstanceAdmin hard-denies
+          API-key subjects outright).
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
 
 services:
   CoreService:
@@ -487,6 +549,32 @@ services:
         docs: M11.5 — the caller's own active role assignments across every unit, self-scoped.
         http: GET /profile/roles
         returns: RoleAssignmentPage
+
+      listPermissionCatalog:
+        docs: >
+          M11.9 — the closed unit-scoped permission catalog, self-scoped since every person needs it
+          for their own createApiKey allowlist picker, not just admins. Static, no DB read.
+        http: GET /permission-catalog
+        returns: PermissionCodePage
+      listMyApiKeys:
+        docs: M11.9 — the caller's own active API keys, self-scoped.
+        http: GET /api-keys
+        returns: ApiKeyPage
+      createApiKey:
+        docs: >
+          M11.9 — mints a new API key for the caller, scoped to request.permissionCodes. Returns the
+          raw secret exactly once.
+        http: POST /api-keys
+        args:
+          request: CreateApiKeyRequest
+        returns: CreateApiKeyResult
+      revokeMyApiKey:
+        docs: M11.9 — revokes one of the caller's own API keys, self-scoped.
+        http: DELETE /api-keys/{apiKeyId}
+        args:
+          apiKeyId:
+            type: string
+            param-type: path
 
       getUnit:
         http: GET /units/{unitId}
@@ -731,6 +819,31 @@ services:
             type: string
             param-type: path
           sessionId:
+            type: string
+            param-type: path
+
+      listApiKeys:
+        docs: >
+          M11.9 — personId's active AND revoked API keys, admin-scoped, metadata only (ApiKey carries
+          no secret/hash field, so this endpoint can never leak one). Incident-response visibility:
+          lets an admin see a person's keys without the owner's cooperation.
+        http: GET /persons/{personId}/api-keys
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: ApiKeyPage
+      revokeApiKey:
+        docs: >
+          M11.9 — revokes one of personId's API keys, admin-scoped (incident response — kill a
+          compromised key without waiting on the owner). Audit-logged distinctly from a self-revoke
+          (REVOKE_API_KEY_ADMIN vs REVOKE_API_KEY) so the trail shows who actually acted.
+        http: DELETE /persons/{personId}/api-keys/{apiKeyId}
+        args:
+          personId:
+            type: string
+            param-type: path
+          apiKeyId:
             type: string
             param-type: path
 

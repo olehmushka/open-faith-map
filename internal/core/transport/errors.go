@@ -21,6 +21,7 @@ type errCtx struct {
 	TaxonID      string
 	AssignmentID string
 	SessionID    string
+	ApiKeyID     string
 }
 
 // mapErr maps a domain error to this contract's typed Conjure error. Any other error (an
@@ -59,6 +60,10 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewInviteNotFound()
 	case errors.Is(err, identitydomain.ErrCannotMergeSelf):
 		return gencore.NewCannotMergeSelf()
+	case errors.Is(err, identitydomain.ErrAPIKeyNotFound):
+		return gencore.NewApiKeyNotFound(c.ApiKeyID)
+	case errors.Is(err, identitydomain.ErrUnknownPermissionCode):
+		return gencore.NewUnknownPermissionCode()
 	case errors.Is(err, identitydomain.ErrAccountDisabled):
 		// No oracle leak to an anonymous invitee holding just a token guess (same reasoning
 		// D-AccountStatusEnforcement's own ResolveBySubject already applies): a disabled account

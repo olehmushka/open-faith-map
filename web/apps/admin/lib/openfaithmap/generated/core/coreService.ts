@@ -1,9 +1,13 @@
+import { IApiKeyPage } from "./apiKeyPage";
 import { ICountryPage } from "./countryPage";
+import { ICreateApiKeyRequest } from "./createApiKeyRequest";
+import { ICreateApiKeyResult } from "./createApiKeyResult";
 import { ICreateChildOrgRequest } from "./createChildOrgRequest";
 import { IGetPersonsRequest } from "./getPersonsRequest";
 import { IMembershipPage } from "./membershipPage";
 import { IOrgKindPage } from "./orgKindPage";
 import { IOrgProfile } from "./orgProfile";
+import { IPermissionCodePage } from "./permissionCodePage";
 import { IPerson } from "./person";
 import { IPersonPage } from "./personPage";
 import { IRegisterSessionRequest } from "./registerSessionRequest";
@@ -41,6 +45,20 @@ export interface ICoreService {
     updateMyProfile(request: IUpdateMyProfileRequest): Promise<IPerson>;
     /** M11.5 — the caller's own active role assignments across every unit, self-scoped. */
     listMyRoleAssignments(): Promise<IRoleAssignmentPage>;
+    /**
+     * M11.9 — the closed unit-scoped permission catalog, self-scoped since every person needs it for their own createApiKey allowlist picker, not just admins. Static, no DB read.
+     *
+     */
+    listPermissionCatalog(): Promise<IPermissionCodePage>;
+    /** M11.9 — the caller's own active API keys, self-scoped. */
+    listMyApiKeys(): Promise<IApiKeyPage>;
+    /**
+     * M11.9 — mints a new API key for the caller, scoped to request.permissionCodes. Returns the raw secret exactly once.
+     *
+     */
+    createApiKey(request: ICreateApiKeyRequest): Promise<ICreateApiKeyResult>;
+    /** M11.9 — revokes one of the caller's own API keys, self-scoped. */
+    revokeMyApiKey(apiKeyId: string): Promise<void>;
     getUnit(unitId: string): Promise<IUnit>;
     /** Free-text search over code/name, capped at limit (default/max 50). */
     listUnits(query?: string | null, limit?: number | null): Promise<IUnitPage>;
@@ -158,6 +176,78 @@ export class CoreService implements ICoreService {
             __undefined,
             __undefined,
             __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.9 — the closed unit-scoped permission catalog, self-scoped since every person needs it for their own createApiKey allowlist picker, not just admins. Static, no DB read.
+     *
+     */
+    public listPermissionCatalog(): Promise<IPermissionCodePage> {
+        return this.bridge.call<IPermissionCodePage>(
+            "CoreService",
+            "listPermissionCatalog",
+            "GET",
+            "/core/v1/permission-catalog",
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.9 — the caller's own active API keys, self-scoped. */
+    public listMyApiKeys(): Promise<IApiKeyPage> {
+        return this.bridge.call<IApiKeyPage>(
+            "CoreService",
+            "listMyApiKeys",
+            "GET",
+            "/core/v1/api-keys",
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.9 — mints a new API key for the caller, scoped to request.permissionCodes. Returns the raw secret exactly once.
+     *
+     */
+    public createApiKey(request: ICreateApiKeyRequest): Promise<ICreateApiKeyResult> {
+        return this.bridge.call<ICreateApiKeyResult>(
+            "CoreService",
+            "createApiKey",
+            "POST",
+            "/core/v1/api-keys",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M11.9 — revokes one of the caller's own API keys, self-scoped. */
+    public revokeMyApiKey(apiKeyId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "CoreService",
+            "revokeMyApiKey",
+            "DELETE",
+            "/core/v1/api-keys/{apiKeyId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                apiKeyId,
+            ],
             __undefined,
             __undefined
         );

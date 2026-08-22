@@ -29,6 +29,14 @@ type Subject struct {
 	// SessionID. RegisterSession (M11.3) records this on the new identity_sessions row server-side,
 	// rather than trusting a client-supplied issuer field on the request.
 	Issuer string
+	// APIKeyPermissionCodes is set only when the request was authenticated via an API key
+	// (internal/identity/middleware's ResolveByAPIKey path, M11.9), never for a session-based bearer.
+	// nil means "not an API-key request"; a non-nil-but-empty slice is a legitimately zero-permission
+	// key, not "unset" — Service.Require/RequireInstanceAdmin distinguish the two explicitly (see
+	// their own doc comments). The key is still a credential for PersonID, the same person-shaped
+	// subject every other request carries — this field only narrows what that person may exercise
+	// through THIS credential, it never widens it.
+	APIKeyPermissionCodes []string
 }
 
 type ctxKey struct{}

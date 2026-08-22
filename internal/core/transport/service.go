@@ -79,6 +79,44 @@ func (s *Service) UpdateMyProfile(ctx context.Context, _ bearertoken.Token, requ
 	return toAPIPerson(p), nil
 }
 
+func (s *Service) ListPermissionCatalog(ctx context.Context, _ bearertoken.Token) (gencore.PermissionCodePage, error) {
+	codes, err := s.app.ListPermissionCatalog(ctx)
+	if err != nil {
+		return gencore.PermissionCodePage{}, mapErr(err, errCtx{})
+	}
+	return gencore.PermissionCodePage{Codes: codes}, nil
+}
+
+func (s *Service) ListMyApiKeys(ctx context.Context, _ bearertoken.Token) (gencore.ApiKeyPage, error) {
+	keys, err := s.app.ListMyApiKeys(ctx)
+	if err != nil {
+		return gencore.ApiKeyPage{}, mapErr(err, errCtx{})
+	}
+	out := make([]gencore.ApiKey, len(keys))
+	for i, k := range keys {
+		out[i] = toAPIApiKey(k)
+	}
+	return gencore.ApiKeyPage{ApiKeys: out}, nil
+}
+
+func (s *Service) CreateApiKey(ctx context.Context, _ bearertoken.Token, requestArg gencore.CreateApiKeyRequest) (gencore.CreateApiKeyResult, error) {
+	result, err := s.app.CreateApiKey(ctx, requestArg.Label, requestArg.PermissionCodes)
+	if err != nil {
+		return gencore.CreateApiKeyResult{}, mapErr(err, errCtx{})
+	}
+	return gencore.CreateApiKeyResult{
+		Id: result.ID, Label: result.Label, PermissionCodes: result.PermissionCodes,
+		Token: result.Token, CreatedAt: datetime.DateTime(result.CreatedAt),
+	}, nil
+}
+
+func (s *Service) RevokeMyApiKey(ctx context.Context, _ bearertoken.Token, apiKeyIdArg string) error {
+	if err := s.app.RevokeMyApiKey(ctx, apiKeyIdArg); err != nil {
+		return mapErr(err, errCtx{ApiKeyID: apiKeyIdArg})
+	}
+	return nil
+}
+
 func (s *Service) ListMyRoleAssignments(ctx context.Context, _ bearertoken.Token) (gencore.RoleAssignmentPage, error) {
 	assignments, err := s.app.ListMyRoleAssignments(ctx)
 	if err != nil {
@@ -286,6 +324,17 @@ func toAPISession(sess identitydomain.Session, currentSessionID string) gencore.
 		Id: sess.ID, DeviceLabel: optionalStr(sess.DeviceLabel),
 		CreatedAt: datetime.DateTime(sess.CreatedAt), LastSeenAt: datetime.DateTime(sess.LastSeenAt),
 		IsCurrent: currentSessionID != "" && sess.ID == currentSessionID,
+	}
+}
+
+// toAPIApiKey converts one identity_api_keys row (M11.9) — metadata only, matching gencore.ApiKey's
+// own shape (no token/token-hash field exists on that type at all, so this converter cannot leak the
+// secret regardless of caller).
+func toAPIApiKey(k identitydomain.APIKey) gencore.ApiKey {
+	return gencore.ApiKey{
+		Id: k.ID, Label: k.Label, PermissionCodes: k.PermissionCodes,
+		CreatedAt: datetime.DateTime(k.CreatedAt), LastUsedAt: optionalDateTime(k.LastUsedAt),
+		RevokedAt: optionalDateTime(k.RevokedAt),
 	}
 }
 

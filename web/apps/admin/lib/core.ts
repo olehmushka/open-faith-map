@@ -18,9 +18,11 @@ import { auth } from "@/auth";
 import { createOpenFaithMapClient } from "./openfaithmap";
 import type {
   IAccountStatus,
+  IApiKey,
   IAuditLogEntry,
   IAuditLogPage,
   ICountry,
+  ICreateApiKeyResult,
   ICreateChildOrgRequest,
   IInstanceAdminGrant,
   IInviteInfo,
@@ -61,6 +63,8 @@ export type InviteResult = IInviteResult;
 export type InviteInfo = IInviteInfo;
 export type MergePreview = IMergePreview;
 export type MergeResult = IMergeResult;
+export type ApiKey = IApiKey;
+export type CreateApiKeyResult = ICreateApiKeyResult;
 
 export class CoreApiError extends Error {
   constructor(
@@ -211,6 +215,28 @@ export async function resolveInvite(token: string): Promise<InviteInfo> {
   return unwrap(anonymousClient.corePublic.resolveInvite({ token }));
 }
 
+/** M11.9 — the closed unit-scoped permission catalog, self-scoped (every person needs it for their own createApiKey picker). */
+export async function listPermissionCatalog(): Promise<string[]> {
+  const page = await unwrap((await client()).core.listPermissionCatalog());
+  return page.codes;
+}
+
+/** M11.9 — the caller's own active API keys, self-scoped. */
+export async function listMyApiKeys(): Promise<ApiKey[]> {
+  const page = await unwrap((await client()).core.listMyApiKeys());
+  return page.apiKeys;
+}
+
+/** M11.9 — mints a new API key for the caller, scoped to permissionCodes. token is returned exactly once. */
+export async function createApiKey(label: string, permissionCodes: string[]): Promise<CreateApiKeyResult> {
+  return unwrap((await client()).core.createApiKey({ label, permissionCodes }));
+}
+
+/** M11.9 — revokes one of the caller's own API keys, self-scoped. */
+export async function revokeMyApiKey(apiKeyId: string): Promise<void> {
+  return unwrap((await client()).core.revokeMyApiKey(apiKeyId));
+}
+
 // ---- super-admin (gated server-side by RequireInstanceAdmin) ----
 
 export async function searchPersons(query?: string, limit = 50): Promise<Person[]> {
@@ -290,6 +316,17 @@ export async function listSessions(personId: string): Promise<Session[]> {
 /** M11.3 — revokes one of personId's sessions, admin-scoped. */
 export async function revokeSession(personId: string, sessionId: string): Promise<void> {
   return unwrap((await client()).coreSuperAdmin.revokeSession(personId, sessionId));
+}
+
+/** M11.9 — personId's full API key history (active and revoked), admin-scoped incident-response visibility. */
+export async function listApiKeys(personId: string): Promise<ApiKey[]> {
+  const page = await unwrap((await client()).coreSuperAdmin.listApiKeys(personId));
+  return page.apiKeys;
+}
+
+/** M11.9 — revokes one of personId's API keys, admin-scoped (incident response). */
+export async function revokeApiKey(personId: string, apiKeyId: string): Promise<void> {
+  return unwrap((await client()).coreSuperAdmin.revokeApiKey(personId, apiKeyId));
 }
 
 export interface AuditLogFilter {

@@ -1007,6 +1007,120 @@ func TestMergePersonsIntegration(t *testing.T) {
 	}
 }
 
+// TestApiKeysAdminOversightIntegration proves M11.9's admin-oversight surface against a real
+// Postgres instance: an instance admin can list and revoke ANOTHER person's API key (incident
+// response — the reason this surface exists at all, per the milestone's own scoping decision with
+// the user), the response never carries a secret/hash at the JSON level (defense-in-depth on top of
+// gencore.ApiKey's own structural guarantee — it has no such field), and the resulting audit row uses
+// the distinct REVOKE_API_KEY_ADMIN action with the ADMIN as actor, not the key's owner — proving the
+// audit trail visibly distinguishes an admin-initiated revoke from a self-revoke.
+//
+//	DATABASE_URL="postgres://openfaithmap:dev@localhost:5432/postgres?sslmode=disable" \
+//	  go test ./internal/core/... -run TestApiKeysAdminOversightIntegration -v
+func TestApiKeysAdminOversightIntegration(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set DATABASE_URL to run against a live Postgres instance")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, auditLogSvc, pool)
+
+	var adminID, ownerID string
+	t.Cleanup(func() {
+		bg := context.Background()
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log DISABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: disable reject_mutation: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_audit_log WHERE actor_person_id = ANY($1)`, []string{adminID, ownerID}); err != nil {
+			t.Errorf("cleanup: delete audit rows: %v", err)
+		}
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log ENABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: re-enable reject_mutation: %v", err)
+		}
+		if ownerID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_api_keys WHERE person_id = $1`, ownerID); err != nil {
+				t.Errorf("cleanup: delete api keys: %v", err)
+			}
+		}
+		for _, id := range []string{adminID, ownerID} {
+			if id == "" {
+				continue
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_persons WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete person %s: %v", id, err)
+			}
+		}
+	})
+
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_persons (display_name, given, surname)
+		VALUES ('M11.9 Admin', 'M11.9', 'Admin') RETURNING id`).Scan(&adminID); err != nil {
+		t.Fatalf("insert admin person: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_persons (display_name, given, surname)
+		VALUES ('M11.9 Owner', 'M11.9', 'Owner') RETURNING id`).Scan(&ownerID); err != nil {
+		t.Fatalf("insert owner person: %v", err)
+	}
+
+	ownerCtx := authz.NewContext(ctx, authz.Subject{PersonID: ownerID})
+	created, err := coreApp.CreateApiKey(ownerCtx, "M11.9 admin-oversight test key", []string{"person.read"})
+	if err != nil {
+		t.Fatalf("CreateApiKey(owner): %v", err)
+	}
+
+	// The admin sees the owner's key via the admin-scoped read, with no secret/hash at the JSON
+	// level — serialize through the actual gencore.ApiKey shape the wire response uses, the same
+	// structural check the transport layer's own toAPIApiKey converter relies on.
+	adminCtx := authz.NewContext(ctx, authz.Subject{PersonID: adminID})
+	keys, err := coreApp.ListApiKeys(adminCtx, ownerID)
+	if err != nil {
+		t.Fatalf("ListApiKeys(admin, owner): %v", err)
+	}
+	var found bool
+	for _, k := range keys {
+		if k.ID != created.ID {
+			continue
+		}
+		found = true
+		raw, err := json.Marshal(k)
+		if err != nil {
+			t.Fatalf("marshal ApiKey: %v", err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatalf("unmarshal ApiKey: %v", err)
+		}
+		for _, secretField := range []string{"token", "Token", "tokenHash", "TokenHash"} {
+			if _, ok := m[secretField]; ok {
+				t.Errorf("admin-scoped ApiKey JSON unexpectedly carries field %q: %v", secretField, m)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("ListApiKeys(admin, owner) = %+v, want it to include %q", keys, created.ID)
+	}
+
+	// Admin revokes the owner's key (incident response) — audited distinctly from a self-revoke.
+	if err := coreApp.RevokeApiKey(adminCtx, ownerID, created.ID); err != nil {
+		t.Fatalf("RevokeApiKey(admin, owner, key): %v", err)
+	}
+	row := mustAuditRow(ctx, t, pool, "REVOKE_API_KEY_ADMIN", created.ID)
+	if row.actorPersonID != adminID {
+		t.Errorf("REVOKE_API_KEY_ADMIN audit row actor = %q, want the ADMIN (%q), not the key's owner", row.actorPersonID, adminID)
+	}
+	assertNoAuditRow(ctx, t, pool, "REVOKE_API_KEY", created.ID)
+}
+
 func errorsIs(err, target error) bool {
 	for err != nil {
 		if err == target {
