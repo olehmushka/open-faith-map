@@ -6,6 +6,8 @@ package main
 import (
 	"context"
 
+	auditlogadapters "github.com/olehmushka/open-faith-map/internal/auditlog/adapters"
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzadapters "github.com/olehmushka/open-faith-map/internal/authz/adapters"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
@@ -45,6 +47,12 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	membershipSvc := membershipapplication.NewService(deps.Pool)
 	refdataSvc := refdataapplication.NewService(deps.Pool)
 
+	// M11.2: the audit-log module is new and self-contained (internal/auditlog) — its own store, no
+	// dependency on any other module — so it's built here alongside the rest of core's deps rather
+	// than in a dedicated registerAuditLog, matching how locationSvc/refdataSvc are also assembled
+	// inline for a single consumer.
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(deps.Pool))
+
 	deps.DirectorySvc = directorySvc
 	deps.AuthzSvc = authzSvc
 	deps.ReligionSvc = religionSvc
@@ -55,7 +63,7 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	// M10.7: the Conjure surface these modules gain via api/core.conjure.yml, for
 	// openfaithmap-admin — deps.IdentitySvc is already built by registerIdentity, which runs before
 	// this function (registerOrder in main.go).
-	coreAppSvc := coreapplication.NewService(directorySvc, religionSvc, membershipSvc, deps.IdentitySvc, refdataSvc, authzSvc)
+	coreAppSvc := coreapplication.NewService(directorySvc, religionSvc, membershipSvc, deps.IdentitySvc, refdataSvc, authzSvc, auditLogSvc)
 
 	coreTransportSvc := coretransport.NewService(coreAppSvc)
 	if err := gencore.RegisterRoutesCoreService(info.Router, coreTransportSvc); err != nil {

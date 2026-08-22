@@ -93,7 +93,7 @@ func TestAccountStatusIntegration(t *testing.T) {
 
 	// --- Deactivate: Resolve must now reject, LinkOnMatch must reject (not silently re-link or
 	// double-provision a second account for the same person).
-	if account, err := svc.Deactivate(ctx, carolID); err != nil || account.Status != domain.AccountStatusDisabled {
+	if _, account, err := svc.Deactivate(ctx, carolID); err != nil || account.Status != domain.AccountStatusDisabled {
 		t.Fatalf("Deactivate(carol) = (%+v, %v), want status=disabled, nil error", account, err)
 	}
 	if _, err := svc.Resolve(ctx, issuer, carolSubject); !errors.Is(err, domain.ErrIdentityNotFound) {
@@ -111,19 +111,19 @@ func TestAccountStatusIntegration(t *testing.T) {
 	}
 
 	// Deactivate is idempotent.
-	if account, err := svc.Deactivate(ctx, carolID); err != nil || account.Status != domain.AccountStatusDisabled {
+	if _, account, err := svc.Deactivate(ctx, carolID); err != nil || account.Status != domain.AccountStatusDisabled {
 		t.Errorf("Deactivate(already-disabled carol) = (%+v, %v), want status=disabled, nil error", account, err)
 	}
 
 	// --- Reactivate reverses it.
-	if account, err := svc.Reactivate(ctx, carolID); err != nil || account.Status != domain.AccountStatusActive {
+	if _, account, err := svc.Reactivate(ctx, carolID); err != nil || account.Status != domain.AccountStatusActive {
 		t.Fatalf("Reactivate(carol) = (%+v, %v), want status=active, nil error", account, err)
 	}
 	if res, err := svc.Resolve(ctx, issuer, carolSubject); err != nil || res.PersonID != carolID {
 		t.Errorf("Resolve(reactivated carol) = (%+v, %v), want carol resolved with no error", res, err)
 	}
 	// Reactivate is idempotent.
-	if account, err := svc.Reactivate(ctx, carolID); err != nil || account.Status != domain.AccountStatusActive {
+	if _, account, err := svc.Reactivate(ctx, carolID); err != nil || account.Status != domain.AccountStatusActive {
 		t.Errorf("Reactivate(already-active carol) = (%+v, %v), want status=active, nil error", account, err)
 	}
 
@@ -132,7 +132,7 @@ func TestAccountStatusIntegration(t *testing.T) {
 	if status, found, err := svc.AccountStatus(ctx, daveID); err != nil || found || status != "" {
 		t.Errorf("AccountStatus(dave, no account) = (%q, %v, %v), want (\"\", false, nil)", status, found, err)
 	}
-	if _, err := svc.Deactivate(ctx, daveID); !errors.Is(err, domain.ErrAccountNotFound) {
+	if _, _, err := svc.Deactivate(ctx, daveID); !errors.Is(err, domain.ErrAccountNotFound) {
 		t.Errorf("Deactivate(dave, no account) error = %v, want ErrAccountNotFound", err)
 	}
 }

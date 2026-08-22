@@ -761,6 +761,154 @@ func (e *InstanceAdminGrantNotFound) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type invalidPageToken struct{}
+
+func (o invalidPageToken) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *invalidPageToken) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewInvalidPageToken returns new instance of InvalidPageToken error.
+func NewInvalidPageToken() *InvalidPageToken {
+	return &InvalidPageToken{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), invalidPageToken: invalidPageToken{}}
+}
+
+// WrapWithInvalidPageToken returns new instance of InvalidPageToken error wrapping an existing error.
+func WrapWithInvalidPageToken(err error) *InvalidPageToken {
+	return &InvalidPageToken{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, invalidPageToken: invalidPageToken{}}
+}
+
+// InvalidPageToken is an error type.
+// M11.2 — listAuditLog's pageToken query argument is malformed or tampered — never silently reinterpreted as "start from page 1" (mirrors Moderation:InvalidPageToken/ Congregationimport:InvalidPageToken's identical M7 invariant). Declared in this file's own Core namespace rather than imported cross-module, same convention congregationimport.conjure.yml already uses for its own copy.
+type InvalidPageToken struct {
+	errorInstanceID uuid.UUID
+	invalidPageToken
+	cause error
+	stack werror.StackTrace
+}
+
+// IsInvalidPageToken returns true if err is an instance of InvalidPageToken.
+func IsInvalidPageToken(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*InvalidPageToken)
+	return ok
+}
+
+func (e *InvalidPageToken) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Core:InvalidPageToken (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *InvalidPageToken) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *InvalidPageToken) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *InvalidPageToken) Message() string {
+	return "INVALID_ARGUMENT Core:InvalidPageToken"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *InvalidPageToken) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *InvalidPageToken) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *InvalidPageToken) Name() string {
+	return "Core:InvalidPageToken"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *InvalidPageToken) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *InvalidPageToken) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *InvalidPageToken) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InvalidPageToken) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *InvalidPageToken) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InvalidPageToken) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e InvalidPageToken) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.invalidPageToken)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Core:InvalidPageToken", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *InvalidPageToken) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters invalidPageToken
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.invalidPageToken = parameters
+	return nil
+}
+
 type orgProfileNotFound struct {
 	UnitId string `json:"unitId"`
 }
@@ -1363,6 +1511,7 @@ func init() {
 	conjureerrors.RegisterErrorType("Core:ChildCreationExcluded", reflect.TypeOf(ChildCreationExcluded{}))
 	conjureerrors.RegisterErrorType("Core:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("Core:InstanceAdminGrantNotFound", reflect.TypeOf(InstanceAdminGrantNotFound{}))
+	conjureerrors.RegisterErrorType("Core:InvalidPageToken", reflect.TypeOf(InvalidPageToken{}))
 	conjureerrors.RegisterErrorType("Core:OrgProfileNotFound", reflect.TypeOf(OrgProfileNotFound{}))
 	conjureerrors.RegisterErrorType("Core:PersonNotFound", reflect.TypeOf(PersonNotFound{}))
 	conjureerrors.RegisterErrorType("Core:TaxonNotFound", reflect.TypeOf(TaxonNotFound{}))

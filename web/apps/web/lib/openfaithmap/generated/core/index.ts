@@ -1,6 +1,8 @@
 export * from "./accountNotFound";
 export * from "./accountStatus";
 export * from "./assignmentNotFound";
+export * from "./auditLogEntry";
+export * from "./auditLogPage";
 export * from "./childCreationExcluded";
 export * from "./coreService";
 export * from "./coreSuperAdminService";
@@ -14,6 +16,7 @@ export * from "./grantUnitRoleRequest";
 export * from "./instanceAdminGrant";
 export * from "./instanceAdminGrantNotFound";
 export * from "./instanceAdminPage";
+export * from "./invalidPageToken";
 export * from "./membership";
 export * from "./membershipPage";
 export * from "./orgClassification";

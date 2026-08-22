@@ -10,6 +10,7 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/conjure/internal/conjureerrors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	"github.com/palantir/pkg/bearertoken"
+	"github.com/palantir/pkg/datetime"
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
@@ -492,6 +493,8 @@ type CoreSuperAdminServiceClient interface {
 	DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
 	// M11.1 — reverses deactivateAccount. Idempotent.
 	ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 }
 
 type coreSuperAdminServiceClient struct {
@@ -684,6 +687,46 @@ func (c *coreSuperAdminServiceClient) ReactivateAccount(ctx context.Context, aut
 	return *returnVal, nil
 }
 
+func (c *coreSuperAdminServiceClient) ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
+	var returnVal *AuditLogPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListAuditLog"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/audit-log"))
+	queryParams := make(url.Values)
+	if actorPersonIdArg != nil {
+		queryParams.Set("actorPersonId", fmt.Sprint(*actorPersonIdArg))
+	}
+	if targetKindArg != nil {
+		queryParams.Set("targetKind", fmt.Sprint(*targetKindArg))
+	}
+	if targetIdArg != nil {
+		queryParams.Set("targetId", fmt.Sprint(*targetIdArg))
+	}
+	if fromArg != nil {
+		queryParams.Set("from", fmt.Sprint(*fromArg))
+	}
+	if toArg != nil {
+		queryParams.Set("to", fmt.Sprint(*toArg))
+	}
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(AuditLogPage), werror.WrapWithContextParams(ctx, err, "listAuditLog failed")
+	}
+	if returnVal == nil {
+		return *new(AuditLogPage), werror.ErrorWithContextParams(ctx, "listAuditLog response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // The super-admin surface replacing the deleted oikumenea-console (D-SuperAdminFold): people search, role catalog, per-unit role-assignment grant/list/revoke, and the instance-admin plane's own grant/list/revoke. Every endpoint in this service is gated as a whole route group by internal/authz/transport.RequireInstanceAdmin, attached once at registration (cmd/openfaithmap-api/register_core.go) — not per-handler, so no future endpoint added here can be added without inheriting the check.
 type CoreSuperAdminServiceClientWithAuth interface {
 	SearchPersons(ctx context.Context, queryArg *string, limitArg *int) (PersonPage, error)
@@ -700,6 +743,8 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	DeactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
 	// M11.1 — reverses deactivateAccount. Idempotent.
 	ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
+	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+	ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 }
 
 func NewCoreSuperAdminServiceClientWithAuth(client CoreSuperAdminServiceClient, authHeader bearertoken.Token) CoreSuperAdminServiceClientWithAuth {
@@ -753,6 +798,10 @@ func (c *coreSuperAdminServiceClientWithAuth) DeactivateAccount(ctx context.Cont
 
 func (c *coreSuperAdminServiceClientWithAuth) ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
 	return c.client.ReactivateAccount(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
+	return c.client.ListAuditLog(ctx, c.authHeader, actorPersonIdArg, targetKindArg, targetIdArg, fromArg, toArg, pageSizeArg, pageTokenArg)
 }
 
 func NewCoreSuperAdminServiceClientWithTokenProvider(client CoreSuperAdminServiceClient, tokenProvider httpclient.TokenProvider) CoreSuperAdminServiceClientWithAuth {
@@ -850,4 +899,12 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) ReactivateAccount(ctx con
 		return *new(AccountStatus), err
 	}
 	return c.client.ReactivateAccount(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AuditLogPage), err
+	}
+	return c.client.ListAuditLog(ctx, bearertoken.Token(token), actorPersonIdArg, targetKindArg, targetIdArg, fromArg, toArg, pageSizeArg, pageTokenArg)
 }

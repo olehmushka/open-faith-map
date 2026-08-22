@@ -1,4 +1,5 @@
 import { IAccountStatus } from "./accountStatus";
+import { IAuditLogPage } from "./auditLogPage";
 import { IGrantInstanceAdminRequest } from "./grantInstanceAdminRequest";
 import { IGrantUnitRoleRequest } from "./grantUnitRoleRequest";
 import { IInstanceAdminGrant } from "./instanceAdminGrant";
@@ -30,6 +31,11 @@ export interface ICoreSuperAdminService {
     deactivateAccount(personId: string): Promise<IAccountStatus>;
     /** M11.1 — reverses deactivateAccount. Idempotent. */
     reactivateAccount(personId: string): Promise<IAccountStatus>;
+    /**
+     * M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+     *
+     */
+    listAuditLog(actorPersonId?: string | null, targetKind?: string | null, targetId?: string | null, from?: string | null, to?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAuditLogPage>;
 }
 
 export class CoreSuperAdminService implements ICoreSuperAdminService {
@@ -214,6 +220,33 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
             [
                 personId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+     *
+     */
+    public listAuditLog(actorPersonId?: string | null, targetKind?: string | null, targetId?: string | null, from?: string | null, to?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAuditLogPage> {
+        return this.bridge.call<IAuditLogPage>(
+            "CoreSuperAdminService",
+            "listAuditLog",
+            "GET",
+            "/core/v1/super-admin/audit-log",
+            __undefined,
+            __undefined,
+            {
+                "actorPersonId": actorPersonId,
+                "targetKind": targetKind,
+                "targetId": targetId,
+                "from": from,
+                "to": to,
+                "pageSize": pageSize,
+                "pageToken": pageToken,
+            },
+            __undefined,
             __undefined,
             __undefined
         );

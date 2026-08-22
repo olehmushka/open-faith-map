@@ -196,6 +196,31 @@ types:
           personId: string
           status: string
 
+      AuditLogEntry:
+        docs: >
+          M11.2 — one append-only row of identity_audit_log. targetKind/targetId is an opaque
+          discriminator+ref pair (mirrors Moderation's target_kind/target_ref) since targets span
+          role assignments, instance-admin grants, and accounts today, and will span sessions/persons
+          later. before/after are optional — absent for a create/delete side respectively.
+        fields:
+          id: string
+          actorPersonId:
+            type: optional<string>
+            docs: Empty if the acting person was later deleted (the FK is ON DELETE SET NULL).
+          actorPersonName:
+            type: optional<string>
+            docs: Denormalized at read time; empty alongside actorPersonId.
+          action: string
+          targetKind: string
+          targetId: string
+          before: optional<any>
+          after: optional<any>
+          createdAt: datetime
+      AuditLogPage:
+        fields:
+          entries: list<AuditLogEntry>
+          nextPageToken: optional<string>
+
     errors:
       PersonNotFound:
         namespace: Core
@@ -244,6 +269,16 @@ types:
         code: NOT_FOUND
         safe-args:
           personId: string
+      InvalidPageToken:
+        docs: >
+          M11.2 — listAuditLog's pageToken query argument is malformed or tampered — never silently
+          reinterpreted as "start from page 1" (mirrors Moderation:InvalidPageToken/
+          Congregationimport:InvalidPageToken's identical M7 invariant). Declared in this file's own
+          Core namespace rather than imported cross-module, same convention
+          congregationimport.conjure.yml already uses for its own copy.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
 
 services:
   CoreService:
@@ -424,3 +459,33 @@ services:
             type: string
             param-type: path
         returns: AccountStatus
+
+      listAuditLog:
+        docs: >
+          M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset
+          paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7),
+          filterable by actor/target/date, all filters ANDed together when set.
+        http: GET /audit-log
+        args:
+          actorPersonId:
+            type: optional<string>
+            param-type: query
+          targetKind:
+            type: optional<string>
+            param-type: query
+          targetId:
+            type: optional<string>
+            param-type: query
+          from:
+            type: optional<datetime>
+            param-type: query
+          to:
+            type: optional<datetime>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: AuditLogPage

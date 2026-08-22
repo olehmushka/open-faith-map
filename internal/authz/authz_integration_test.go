@@ -95,7 +95,7 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	}
 
 	// --- GrantUnitRole (existing, M10.6) + ListRoleAssignmentsByUnit (new) + RevokeRoleAssignment (new).
-	if err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, ""); err != nil {
+	if _, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, ""); err != nil {
 		t.Fatalf("GrantUnitRole: %v", err)
 	}
 	assignments, err := svc.ListRoleAssignmentsByUnit(ctx, unit.ID)
@@ -107,7 +107,7 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	}
 	assignmentIDs = append(assignmentIDs, assignments[0].ID)
 
-	if err := svc.RevokeRoleAssignment(ctx, assignments[0].ID, ""); err != nil {
+	if _, err := svc.RevokeRoleAssignment(ctx, assignments[0].ID, ""); err != nil {
 		t.Fatalf("RevokeRoleAssignment: %v", err)
 	}
 	afterRevoke, err := svc.ListRoleAssignmentsByUnit(ctx, unit.ID)
@@ -117,7 +117,7 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	if len(afterRevoke) != 0 {
 		t.Errorf("ListRoleAssignmentsByUnit after revoke = %+v, want none", afterRevoke)
 	}
-	if err := svc.RevokeRoleAssignment(ctx, assignments[0].ID, ""); !errors.Is(err, domain.ErrAssignmentNotFound) {
+	if _, err := svc.RevokeRoleAssignment(ctx, assignments[0].ID, ""); !errors.Is(err, domain.ErrAssignmentNotFound) {
 		t.Errorf("RevokeRoleAssignment (already revoked) error = %v, want ErrAssignmentNotFound", err)
 	}
 
@@ -144,13 +144,13 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 		t.Errorf("RequireInstanceAdmin for a real instance admin = %v, want nil", err)
 	}
 
-	if err := svc.RevokeInstanceAdmin(ctx, personID, ""); err != nil {
+	if _, err := svc.RevokeInstanceAdmin(ctx, personID, ""); err != nil {
 		t.Fatalf("RevokeInstanceAdmin: %v", err)
 	}
 	if err := svc.RequireInstanceAdmin(adminCtx); !errors.Is(err, domain.ErrPermissionDenied) {
 		t.Errorf("RequireInstanceAdmin after revoke = %v, want ErrPermissionDenied", err)
 	}
-	if err := svc.RevokeInstanceAdmin(ctx, personID, ""); !errors.Is(err, domain.ErrInstanceAdminGrantNotFound) {
+	if _, err := svc.RevokeInstanceAdmin(ctx, personID, ""); !errors.Is(err, domain.ErrInstanceAdminGrantNotFound) {
 		t.Errorf("RevokeInstanceAdmin (already revoked) error = %v, want ErrInstanceAdminGrantNotFound", err)
 	}
 }

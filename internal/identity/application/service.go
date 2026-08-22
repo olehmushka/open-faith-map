@@ -145,20 +145,26 @@ func (s *Service) AccountStatus(ctx context.Context, personID string) (status st
 
 // Deactivate disables personID's account (D-AccountStatusEnforcement), rejecting further
 // authentication for it — see ResolveBySubject and LinkOnMatch. Idempotent: deactivating an
-// already-disabled account just re-asserts the state.
-func (s *Service) Deactivate(ctx context.Context, personID string) (domain.Account, error) {
+// already-disabled account just re-asserts the state. Returns both the pre- and post-update account
+// (M11.2: the super-admin caller uses before/after to log a real audit-trail snapshot with no second
+// read — setStatus already holds the pre-update row before mutating it).
+func (s *Service) Deactivate(ctx context.Context, personID string) (before, after domain.Account, err error) {
 	return s.setStatus(ctx, personID, domain.AccountStatusDisabled)
 }
 
 // Reactivate re-enables personID's account. Idempotent, mirroring Deactivate.
-func (s *Service) Reactivate(ctx context.Context, personID string) (domain.Account, error) {
+func (s *Service) Reactivate(ctx context.Context, personID string) (before, after domain.Account, err error) {
 	return s.setStatus(ctx, personID, domain.AccountStatusActive)
 }
 
-func (s *Service) setStatus(ctx context.Context, personID, status string) (domain.Account, error) {
-	account, err := s.store.GetActiveAccountByPerson(ctx, personID)
+func (s *Service) setStatus(ctx context.Context, personID, status string) (before, after domain.Account, err error) {
+	before, err = s.store.GetActiveAccountByPerson(ctx, personID)
 	if err != nil {
-		return domain.Account{}, err
+		return domain.Account{}, domain.Account{}, err
 	}
-	return s.store.SetAccountStatus(ctx, account.ID, status)
+	after, err = s.store.SetAccountStatus(ctx, before.ID, status)
+	if err != nil {
+		return domain.Account{}, domain.Account{}, err
+	}
+	return before, after, nil
 }

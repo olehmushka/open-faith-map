@@ -13,6 +13,7 @@ package application
 
 import (
 	"context"
+	"time"
 
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
@@ -26,6 +27,9 @@ import (
 	refdatadomain "github.com/olehmushka/open-faith-map/internal/refdata/domain"
 	religionapplication "github.com/olehmushka/open-faith-map/internal/religion/application"
 	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
+
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
+	auditlogdomain "github.com/olehmushka/open-faith-map/internal/auditlog/domain"
 )
 
 type Service struct {
@@ -35,6 +39,7 @@ type Service struct {
 	identity   *identityapplication.Service
 	refdata    *refdataapplication.Service
 	authz      *authz.Service
+	auditLog   *auditlogapplication.Service
 }
 
 func NewService(
@@ -44,11 +49,25 @@ func NewService(
 	identity *identityapplication.Service,
 	refdata *refdataapplication.Service,
 	authzSvc *authz.Service,
+	auditLog *auditlogapplication.Service,
 ) *Service {
 	return &Service{
 		directory: directory, religion: religion, membership: membership,
-		identity: identity, refdata: refdata, authz: authzSvc,
+		identity: identity, refdata: refdata, authz: authzSvc, auditLog: auditLog,
 	}
+}
+
+// requireSubject resolves ctx's subject or fails loud — the shared guard every mutating super-admin
+// method below applies before touching a store, so a missing subject can never reach s.authz/s.identity
+// with an empty grantedBy/revokedBy/actor (M11.2: once auditLog.Record hard-fails on a missing
+// subject, leaving a mutation itself tolerant of one would split-fail: the write succeeds with a NULL
+// actor while only the audit call errors).
+func (s *Service) requireSubject(ctx context.Context) (authz.Subject, error) {
+	subject, ok := authz.SubjectFromContext(ctx)
+	if !ok || subject.PersonID == "" {
+		return authz.Subject{}, authzdomain.ErrPermissionDenied
+	}
+	return subject, nil
 }
 
 // ---------------------------------------------------------------- whoami
@@ -181,14 +200,46 @@ func (s *Service) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) 
 	return s.authz.ListRoleAssignmentsByUnit(ctx, unitID)
 }
 
+// Audit action names — M11.2. Free text, not a DB enum (docs/architecture/decisions.md), since
+// future milestones (M11.3 session revocation, M11.7 bulk role assignment, M11.8 person merge) each
+// add their own without touching this table's schema.
+const (
+	auditActionGrantUnitRole        = "GRANT_UNIT_ROLE"
+	auditActionRevokeRoleAssignment = "REVOKE_ROLE_ASSIGNMENT"
+	auditActionGrantInstanceAdmin   = "GRANT_INSTANCE_ADMIN"
+	auditActionRevokeInstanceAdmin  = "REVOKE_INSTANCE_ADMIN"
+	auditActionDeactivateAccount    = "DEACTIVATE_ACCOUNT"
+	auditActionReactivateAccount    = "REACTIVATE_ACCOUNT"
+
+	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
+	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
+	auditTargetAccount        = "ACCOUNT"
+)
+
 func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string) error {
-	subject, _ := authz.SubjectFromContext(ctx)
-	return s.authz.GrantUnitRole(ctx, personID, roleID, unitID, subject.PersonID)
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return err
+	}
+	assignmentID, err := s.authz.GrantUnitRole(ctx, personID, roleID, unitID, subject.PersonID)
+	if err != nil {
+		return err
+	}
+	return s.auditLog.Record(ctx, auditActionGrantUnitRole, auditTargetRoleAssignment, assignmentID,
+		nil, map[string]any{"personId": personID, "roleId": roleID, "unitId": unitID})
 }
 
 func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID string) error {
-	subject, _ := authz.SubjectFromContext(ctx)
-	return s.authz.RevokeRoleAssignment(ctx, assignmentID, subject.PersonID)
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return err
+	}
+	before, err := s.authz.RevokeRoleAssignment(ctx, assignmentID, subject.PersonID)
+	if err != nil {
+		return err
+	}
+	return s.auditLog.Record(ctx, auditActionRevokeRoleAssignment, auditTargetRoleAssignment, assignmentID,
+		map[string]any{"personId": before.PersonID, "roleId": before.RoleID, "unitId": before.TargetUnitID, "scope": string(before.Scope)}, nil)
 }
 
 func (s *Service) ListInstanceAdmins(ctx context.Context) ([]authzdomain.InstanceAdminGrant, error) {
@@ -196,7 +247,10 @@ func (s *Service) ListInstanceAdmins(ctx context.Context) ([]authzdomain.Instanc
 }
 
 func (s *Service) GrantInstanceAdmin(ctx context.Context, personID string) (authzdomain.InstanceAdminGrant, error) {
-	subject, _ := authz.SubjectFromContext(ctx)
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return authzdomain.InstanceAdminGrant{}, err
+	}
 	id, err := s.authz.GrantInstanceAdmin(ctx, personID, subject.PersonID)
 	if err != nil {
 		return authzdomain.InstanceAdminGrant{}, err
@@ -207,17 +261,34 @@ func (s *Service) GrantInstanceAdmin(ctx context.Context, personID string) (auth
 	if err != nil {
 		return authzdomain.InstanceAdminGrant{}, err
 	}
+	grant := authzdomain.InstanceAdminGrant{ID: id, PersonID: personID}
 	for _, a := range admins {
 		if a.ID == id {
-			return a, nil
+			grant = a
+			break
 		}
 	}
-	return authzdomain.InstanceAdminGrant{ID: id, PersonID: personID}, nil
+	// map[string]any, not the raw grant struct: authzdomain.InstanceAdminGrant carries no json tags,
+	// so marshaling it directly would key the payload PersonId/PersonName (Go field casing) instead
+	// of the personId/roleId/unitId camelCase every other call site's audit payload uses.
+	if err := s.auditLog.Record(ctx, auditActionGrantInstanceAdmin, auditTargetInstanceAdmin, grant.ID, nil,
+		map[string]any{"personId": grant.PersonID, "personName": grant.PersonName}); err != nil {
+		return authzdomain.InstanceAdminGrant{}, err
+	}
+	return grant, nil
 }
 
 func (s *Service) RevokeInstanceAdmin(ctx context.Context, personID string) error {
-	subject, _ := authz.SubjectFromContext(ctx)
-	return s.authz.RevokeInstanceAdmin(ctx, personID, subject.PersonID)
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return err
+	}
+	before, err := s.authz.RevokeInstanceAdmin(ctx, personID, subject.PersonID)
+	if err != nil {
+		return err
+	}
+	return s.auditLog.Record(ctx, auditActionRevokeInstanceAdmin, auditTargetInstanceAdmin, before.ID,
+		map[string]any{"personId": before.PersonID}, nil)
 }
 
 // AccountStatusNone is the wire value for "this person has never had a login attached" — not an
@@ -244,17 +315,53 @@ func (s *Service) GetAccountStatus(ctx context.Context, personID string) (Accoun
 }
 
 func (s *Service) DeactivateAccount(ctx context.Context, personID string) (AccountStatus, error) {
-	account, err := s.identity.Deactivate(ctx, personID)
+	if _, err := s.requireSubject(ctx); err != nil {
+		return AccountStatus{}, err
+	}
+	before, after, err := s.identity.Deactivate(ctx, personID)
 	if err != nil {
+		return AccountStatus{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionDeactivateAccount, auditTargetAccount, personID,
+		map[string]any{"status": before.Status}, map[string]any{"status": after.Status}); err != nil {
+		return AccountStatus{}, err
+	}
+	return AccountStatus{PersonID: personID, Status: after.Status}, nil
+}
+
+func (s *Service) ReactivateAccount(ctx context.Context, personID string) (AccountStatus, error) {
+	if _, err := s.requireSubject(ctx); err != nil {
+		return AccountStatus{}, err
+	}
+	before, account, err := s.identity.Reactivate(ctx, personID)
+	if err != nil {
+		return AccountStatus{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionReactivateAccount, auditTargetAccount, personID,
+		map[string]any{"status": before.Status}, map[string]any{"status": account.Status}); err != nil {
 		return AccountStatus{}, err
 	}
 	return AccountStatus{PersonID: personID, Status: account.Status}, nil
 }
 
-func (s *Service) ReactivateAccount(ctx context.Context, personID string) (AccountStatus, error) {
-	account, err := s.identity.Reactivate(ctx, personID)
-	if err != nil {
-		return AccountStatus{}, err
-	}
-	return AccountStatus{PersonID: personID, Status: account.Status}, nil
+// AuditLogFilter narrows ListAuditLog by actor/target/date — every field optional, ANDed together
+// when set. Core's own copy of auditlogdomain.Filter's fields (not a type alias) so this file's
+// transport-facing surface doesn't leak an internal/auditlog import requirement onto its callers,
+// same reasoning OrgKind above gives for not re-exporting religion's own adapter-layer type.
+type AuditLogFilter struct {
+	ActorPersonID string
+	TargetKind    string
+	TargetID      string
+	From          *time.Time
+	To            *time.Time
+}
+
+// ListAuditLog answers the super-admin audit-log viewer's listAuditLog (M11.2) — pageSize+1 is the
+// caller's responsibility, same convention as moderation.Service.ListReports: transport trims the
+// extra row and encodes nextPageToken from it.
+func (s *Service) ListAuditLog(ctx context.Context, filter AuditLogFilter, pageSize int, after *auditlogdomain.PageCursor) ([]auditlogdomain.Entry, error) {
+	return s.auditLog.List(ctx, auditlogdomain.Filter{
+		ActorPersonID: filter.ActorPersonID, TargetKind: filter.TargetKind, TargetID: filter.TargetID,
+		From: filter.From, To: filter.To,
+	}, pageSize, after)
 }

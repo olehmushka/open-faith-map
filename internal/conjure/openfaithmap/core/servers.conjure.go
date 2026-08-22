@@ -11,6 +11,7 @@ import (
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-server/httpserver"
 	"github.com/palantir/pkg/bearertoken"
+	"github.com/palantir/pkg/datetime"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft/wresource"
 	"github.com/palantir/witchcraft-go-server/v2/wrouter"
@@ -357,6 +358,8 @@ type CoreSuperAdminService interface {
 	DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
 	// M11.1 — reverses deactivateAccount. Idempotent.
 	ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 }
 
 // RegisterRoutesCoreSuperAdminService registers handlers for the CoreSuperAdminService endpoints with a witchcraft wrouter.
@@ -398,6 +401,9 @@ func RegisterRoutesCoreSuperAdminService(router wrouter.Router, impl CoreSuperAd
 	}
 	if err := resource.Post("ReactivateAccount", "/core/v1/super-admin/persons/{personId}/reactivate", httpserver.NewJSONHandler(handler.HandleReactivateAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add reactivateAccount route")
+	}
+	if err := resource.Get("ListAuditLog", "/core/v1/super-admin/audit-log", httpserver.NewJSONHandler(handler.HandleListAuditLog, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAuditLog route")
 	}
 	return nil
 }
@@ -608,6 +614,63 @@ func (c *coreSuperAdminServiceHandler) HandleReactivateAccount(rw http.ResponseW
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
 	}
 	respArg, err := c.impl.ReactivateAccount(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleListAuditLog(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var actorPersonIdArg *string
+	if actorPersonIdArgStr := req.URL.Query().Get("actorPersonId"); actorPersonIdArgStr != "" {
+		actorPersonIdArgInternal := actorPersonIdArgStr
+		actorPersonIdArg = &actorPersonIdArgInternal
+	}
+	var targetKindArg *string
+	if targetKindArgStr := req.URL.Query().Get("targetKind"); targetKindArgStr != "" {
+		targetKindArgInternal := targetKindArgStr
+		targetKindArg = &targetKindArgInternal
+	}
+	var targetIdArg *string
+	if targetIdArgStr := req.URL.Query().Get("targetId"); targetIdArgStr != "" {
+		targetIdArgInternal := targetIdArgStr
+		targetIdArg = &targetIdArgInternal
+	}
+	var fromArg *datetime.DateTime
+	if fromArgStr := req.URL.Query().Get("from"); fromArgStr != "" {
+		fromArgInternal, err := datetime.ParseDateTime(fromArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"from\" as datetime")
+		}
+		fromArg = &fromArgInternal
+	}
+	var toArg *datetime.DateTime
+	if toArgStr := req.URL.Query().Get("to"); toArgStr != "" {
+		toArgInternal, err := datetime.ParseDateTime(toArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"to\" as datetime")
+		}
+		toArg = &toArgInternal
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := c.impl.ListAuditLog(req.Context(), bearertoken.Token(authHeader), actorPersonIdArg, targetKindArg, targetIdArg, fromArg, toArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}

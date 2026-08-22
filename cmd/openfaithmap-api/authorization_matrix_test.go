@@ -226,7 +226,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		})
 	})
 
-	// ---- category: instance-admin plane (CoreSuperAdminService — all 11 endpoints share one
+	// ---- category: instance-admin plane (CoreSuperAdminService — all 12 endpoints share one
 	// route-group gate, so this is the highest-value single check in the whole matrix: every
 	// subject except instance-admin must be refused by the SAME middleware, not per-handler logic) ----
 	t.Run("instance_admin_plane", func(t *testing.T) {
@@ -236,6 +236,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			{"listInstanceAdmins", "/core/v1/super-admin/instance-admins"},
 			// M11.1 — keeps the representative sample current with the new endpoints on this service.
 			{"getAccountStatus", "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/account-status"},
+			// M11.2 — same reasoning: listAuditLog must be refused by the same route-group gate too.
+			{"listAuditLog", "/core/v1/super-admin/audit-log"},
 		}
 		for _, ep := range endpoints {
 			t.Run(ep.name, func(t *testing.T) {
@@ -555,15 +557,7 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 }
 
 func insertRoleAssignment(ctx context.Context, pool *pgxpool.Pool, store *authzadapters.Store, personID, roleID, unitID string) (string, error) {
-	if err := store.InsertRoleAssignment(ctx, personID, roleID, unitID, personID); err != nil {
-		return "", err
-	}
-	// InsertRoleAssignment (M10.6) doesn't return the row's id — look it up by the unique
-	// (person, role, unit, active) index this repo's own conflict-as-success idempotency relies on.
-	var id string
-	err := pool.QueryRow(ctx, `
-		SELECT id FROM openfaithmap.authz_role_assignments
-		WHERE subject_person_id = $1 AND role_id = $2 AND target_unit_id = $3 AND revoked_at IS NULL`,
-		personID, roleID, unitID).Scan(&id)
-	return id, err
+	// InsertRoleAssignment now returns the row's id directly (M11.2 — the audit log needs a real
+	// target_id, including on the idempotent-conflict path), so no separate lookup query is needed.
+	return store.InsertRoleAssignment(ctx, personID, roleID, unitID, personID)
 }

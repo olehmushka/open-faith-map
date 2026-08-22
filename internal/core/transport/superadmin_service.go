@@ -5,11 +5,21 @@ package transport
 
 import (
 	"context"
+	"encoding/json"
+	"time"
 
+	auditlogdomain "github.com/olehmushka/open-faith-map/internal/auditlog/domain"
 	gencore "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/core"
 	"github.com/olehmushka/open-faith-map/internal/core/application"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
+)
+
+// defaultAuditLogPageSize/maxAuditLogPageSize mirror moderation's own unspecified-pageSize fallback
+// and provisional ceiling (M7, docs/modules/hardening.md) — not data-tuned, same as moderation's.
+const (
+	defaultAuditLogPageSize = 50
+	maxAuditLogPageSize     = 200
 )
 
 // SuperAdminService implements gencore.CoreSuperAdminService. Every route this type is registered
@@ -128,4 +138,79 @@ func (s *SuperAdminService) ReactivateAccount(ctx context.Context, _ bearertoken
 		return gencore.AccountStatus{}, mapErr(err, errCtx{PersonID: personIdArg})
 	}
 	return gencore.AccountStatus{PersonId: status.PersonID, Status: status.Status}, nil
+}
+
+// ListAuditLog uses the same real keyset-pagination trick as moderation's ListReports (M7,
+// docs/modules/hardening.md): query pageSize+1 rows, trim the extra one, encode its cursor as
+// nextPageToken — so the caller learns whether a next page exists with no second round trip.
+func (s *SuperAdminService) ListAuditLog(
+	ctx context.Context, _ bearertoken.Token,
+	actorPersonIdArg, targetKindArg, targetIdArg *string,
+	fromArg, toArg *datetime.DateTime,
+	pageSizeArg *int, pageTokenArg *string,
+) (gencore.AuditLogPage, error) {
+	var after *auditlogdomain.PageCursor
+	if pageTokenArg != nil {
+		c, err := decodeAuditCursor(*pageTokenArg)
+		if err != nil {
+			return gencore.AuditLogPage{}, gencore.NewInvalidPageToken()
+		}
+		after = &c
+	}
+	filter := application.AuditLogFilter{
+		ActorPersonID: derefStr(actorPersonIdArg),
+		TargetKind:    derefStr(targetKindArg),
+		TargetID:      derefStr(targetIdArg),
+	}
+	if fromArg != nil {
+		t := time.Time(*fromArg)
+		filter.From = &t
+	}
+	if toArg != nil {
+		t := time.Time(*toArg)
+		filter.To = &t
+	}
+	pageSize := auditLogPageSizeOrDefault(pageSizeArg)
+	entries, err := s.app.ListAuditLog(ctx, filter, pageSize+1, after)
+	if err != nil {
+		return gencore.AuditLogPage{}, mapErr(err, errCtx{})
+	}
+	var nextToken *string
+	if len(entries) > pageSize {
+		last := entries[pageSize-1]
+		t := encodeAuditCursor(auditlogdomain.PageCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		nextToken = &t
+		entries = entries[:pageSize]
+	}
+	out := make([]gencore.AuditLogEntry, len(entries))
+	for i, e := range entries {
+		out[i] = toAPIAuditLogEntry(e)
+	}
+	return gencore.AuditLogPage{Entries: out, NextPageToken: nextToken}, nil
+}
+
+func auditLogPageSizeOrDefault(p *int) int {
+	if p == nil || *p <= 0 {
+		return defaultAuditLogPageSize
+	}
+	if *p > maxAuditLogPageSize {
+		return maxAuditLogPageSize
+	}
+	return *p
+}
+
+func toAPIAuditLogEntry(e auditlogdomain.Entry) gencore.AuditLogEntry {
+	entry := gencore.AuditLogEntry{
+		Id: e.ID, ActorPersonId: optionalStr(e.ActorPersonID), ActorPersonName: optionalStr(e.ActorPersonName),
+		Action: e.Action, TargetKind: e.TargetKind, TargetId: e.TargetID, CreatedAt: datetime.DateTime(e.CreatedAt),
+	}
+	if len(e.Before) > 0 {
+		var v any = json.RawMessage(e.Before)
+		entry.Before = &v
+	}
+	if len(e.After) > 0 {
+		var v any = json.RawMessage(e.After)
+		entry.After = &v
+	}
+	return entry
 }

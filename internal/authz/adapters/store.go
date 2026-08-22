@@ -123,23 +123,30 @@ func (s *Store) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([
 // RevokeRoleAssignment soft-revokes assignmentID — sets revoked_at/revoked_by, only if it is
 // currently active. Returns domain.ErrAssignmentNotFound if it was already revoked or never existed;
 // unlike InsertRoleAssignment's insert-side idempotency, a repeat revoke has no natural "already
-// done" success reading.
-func (s *Store) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) error {
+// done" success reading. RETURNING the identity columns (M11.2) gives the caller a real "before"
+// snapshot for the audit log with no second read — the values are unchanged by this UPDATE, only
+// revoked_at/revoked_by are set.
+func (s *Store) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) (domain.RevokedRoleAssignment, error) {
 	var revokedByArg any
 	if revokedBy != "" {
 		revokedByArg = revokedBy
 	}
-	tag, err := s.pool.Exec(ctx, `
+	var out domain.RevokedRoleAssignment
+	var scope string
+	err := s.pool.QueryRow(ctx, `
 		UPDATE openfaithmap.authz_role_assignments
 		SET revoked_at = now(), revoked_by = $2
-		WHERE id = $1 AND revoked_at IS NULL`, assignmentID, revokedByArg)
+		WHERE id = $1 AND revoked_at IS NULL
+		RETURNING id, subject_person_id, role_id, target_unit_id, scope`, assignmentID, revokedByArg,
+	).Scan(&out.ID, &out.PersonID, &out.RoleID, &out.TargetUnitID, &scope)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.RevokedRoleAssignment{}, domain.ErrAssignmentNotFound
+		}
+		return domain.RevokedRoleAssignment{}, err
 	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrAssignmentNotFound
-	}
-	return nil
+	out.Scope = domain.Scope(scope)
+	return out, nil
 }
 
 // ListInstanceAdmins returns every active instance-admin grant, with the subject's display name
@@ -167,23 +174,29 @@ func (s *Store) ListInstanceAdmins(ctx context.Context) ([]domain.InstanceAdminG
 }
 
 // RevokeInstanceAdmin soft-revokes personID's active instance-admin grant, if any. Returns
-// domain.ErrInstanceAdminGrantNotFound if personID holds no active grant.
-func (s *Store) RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) error {
+// domain.ErrInstanceAdminGrantNotFound if personID holds no active grant. RETURNING the grant's own
+// id (M11.2) gives the audit log the same target_id GrantInstanceAdmin already uses, rather than
+// personID (which is also available, but the grant id is what identifies this specific plane
+// membership, same as RevokeRoleAssignment returning the assignment's own id).
+func (s *Store) RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) (domain.RevokedInstanceAdminGrant, error) {
 	var revokedByArg any
 	if revokedBy != "" {
 		revokedByArg = revokedBy
 	}
-	tag, err := s.pool.Exec(ctx, `
+	var out domain.RevokedInstanceAdminGrant
+	err := s.pool.QueryRow(ctx, `
 		UPDATE openfaithmap.authz_instance_admins
 		SET revoked_at = now(), revoked_by = $2
-		WHERE person_id = $1 AND revoked_at IS NULL`, personID, revokedByArg)
+		WHERE person_id = $1 AND revoked_at IS NULL
+		RETURNING id, person_id`, personID, revokedByArg,
+	).Scan(&out.ID, &out.PersonID)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.RevokedInstanceAdminGrant{}, domain.ErrInstanceAdminGrantNotFound
+		}
+		return domain.RevokedInstanceAdminGrant{}, err
 	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrInstanceAdminGrantNotFound
-	}
-	return nil
+	return out, nil
 }
 
 // ActiveGrantsForSubject fetches every active, unexpired role assignment for personID with its
@@ -247,8 +260,10 @@ func (s *Store) ActiveGrantsForSubject(ctx context.Context, personID string) ([]
 // identical to an existing active one (the unique index on subject/role/unit/scope/graph WHERE
 // revoked_at IS NULL) is treated as success, not an error — matching go-oikumenea's own
 // IsAssignmentConflict-as-success behaviour this replaces (registration/application/service.go's
-// ensureGrant).
-func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) error {
+// ensureGrant). Returns the assignment's id either way (M11.2: the audit log needs a real target_id
+// even on the idempotent-conflict path, so that path looks the existing row's id up rather than
+// returning empty).
+func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) (string, error) {
 	var grantedByArg any
 	if grantedBy != "" {
 		grantedByArg = grantedBy
@@ -261,9 +276,13 @@ func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targ
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "authz_role_assignments_active_idx" {
-			return nil
+			err := s.pool.QueryRow(ctx, `
+				SELECT id FROM openfaithmap.authz_role_assignments
+				WHERE subject_person_id = $1 AND role_id = $2 AND target_unit_id = $3 AND scope = 'unit' AND revoked_at IS NULL`,
+				personID, roleID, targetUnitID).Scan(&id)
+			return id, err
 		}
-		return err
+		return "", err
 	}
-	return nil
+	return id, nil
 }

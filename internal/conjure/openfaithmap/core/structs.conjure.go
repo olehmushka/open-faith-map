@@ -30,6 +30,79 @@ func (o *AccountStatus) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M11.2 — one append-only row of identity_audit_log. targetKind/targetId is an opaque discriminator+ref pair (mirrors Moderation's target_kind/target_ref) since targets span role assignments, instance-admin grants, and accounts today, and will span sessions/persons later. before/after are optional — absent for a create/delete side respectively.
+type AuditLogEntry struct {
+	Id string `json:"id"`
+	// Empty if the acting person was later deleted (the FK is ON DELETE SET NULL).
+	ActorPersonId *string `json:"actorPersonId,omitempty"`
+	// Denormalized at read time; empty alongside actorPersonId.
+	ActorPersonName *string           `json:"actorPersonName,omitempty"`
+	Action          string            `json:"action"`
+	TargetKind      string            `json:"targetKind"`
+	TargetId        string            `json:"targetId"`
+	Before          *interface{}      `json:"before,omitempty"`
+	After           *interface{}      `json:"after,omitempty"`
+	CreatedAt       datetime.DateTime `json:"createdAt"`
+}
+
+func (o AuditLogEntry) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AuditLogEntry) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type AuditLogPage struct {
+	Entries       []AuditLogEntry `json:"entries"`
+	NextPageToken *string         `json:"nextPageToken,omitempty"`
+}
+
+func (o AuditLogPage) MarshalJSON() ([]byte, error) {
+	if o.Entries == nil {
+		o.Entries = make([]AuditLogEntry, 0)
+	}
+	type _tmpAuditLogPage AuditLogPage
+	return safejson.Marshal(_tmpAuditLogPage(o))
+}
+
+func (o *AuditLogPage) UnmarshalJSON(data []byte) error {
+	type _tmpAuditLogPage AuditLogPage
+	var rawAuditLogPage _tmpAuditLogPage
+	if err := safejson.Unmarshal(data, &rawAuditLogPage); err != nil {
+		return err
+	}
+	if rawAuditLogPage.Entries == nil {
+		rawAuditLogPage.Entries = make([]AuditLogEntry, 0)
+	}
+	*o = AuditLogPage(rawAuditLogPage)
+	return nil
+}
+
+func (o AuditLogPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AuditLogPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Country struct {
 	Id string `json:"id"`
 	// ISO-3166-1 alpha-2.

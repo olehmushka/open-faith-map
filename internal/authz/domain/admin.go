@@ -48,3 +48,21 @@ type InstanceAdminGrant struct {
 	PersonName string
 	GrantedAt  time.Time
 }
+
+// RevokedRoleAssignment is the identity of the row RevokeRoleAssignment just revoked — returned so
+// M11.2's audit-log helper can log a real "before" snapshot without a second read (the UPDATE that
+// revokes it already has these columns in hand via RETURNING).
+type RevokedRoleAssignment struct {
+	ID           string
+	PersonID     string
+	RoleID       string
+	TargetUnitID string
+	Scope        Scope
+}
+
+// RevokedInstanceAdminGrant is the identity of the row RevokeInstanceAdmin just revoked — same
+// RETURNING-based reasoning as RevokedRoleAssignment.
+type RevokedInstanceAdminGrant struct {
+	ID       string
+	PersonID string
+}
