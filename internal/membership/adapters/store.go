@@ -138,3 +138,67 @@ func (s *Store) InsertMembershipFillingPosition(ctx context.Context, personID, u
 	}
 	return m, nil
 }
+
+// membershipRepointCollisionPredicate is shared by CountRepointableMemberships and
+// RepointMemberships (M11.8) so the preview and the real mutation can never disagree. The
+// position_id branch can never actually fire in practice — membership_memberships_one_holder_idx
+// already makes it structurally impossible for survivor and duplicate to hold the same position
+// concurrently — it's kept only for defensive symmetry with the plain-membership branch.
+const membershipRepointCollisionPredicate = `
+	EXISTS (
+		SELECT 1 FROM openfaithmap.membership_memberships s
+		WHERE s.person_id = $2 AND s.status = 'active' AND s.deleted_at IS NULL
+		  AND ((m.position_id IS NOT NULL AND s.position_id = m.position_id)
+		    OR (m.position_id IS NULL AND s.position_id IS NULL AND s.unit_id = m.unit_id))
+	)`
+
+// CountRepointableMemberships previews RepointMemberships' effect (M11.8) without mutating
+// anything: how many of duplicateID's active memberships would move onto survivorID untouched,
+// versus how many would instead be ended as redundant because survivorID already holds the same
+// unit/position membership.
+func (s *Store) CountRepointableMemberships(ctx context.Context, duplicateID, survivorID string) (toMove, toEnd int, err error) {
+	err = s.q.QueryRow(ctx, `
+		SELECT
+			count(*) FILTER (WHERE NOT (`+membershipRepointCollisionPredicate+`)),
+			count(*) FILTER (WHERE `+membershipRepointCollisionPredicate+`)
+		FROM openfaithmap.membership_memberships m
+		WHERE m.person_id = $1 AND m.status = 'active' AND m.deleted_at IS NULL`,
+		duplicateID, survivorID,
+	).Scan(&toMove, &toEnd)
+	return toMove, toEnd, err
+}
+
+// RepointMemberships moves every one of duplicateID's active memberships onto survivorID (M11.8's
+// MergePersons) — same repoint-or-end-redundant shape as authz's RepointRoleAssignments. Ended
+// (not deleted) rows use this table's own status='ended'+effective_to convention, mirroring how a
+// membership already ends elsewhere in this module. Must run inside the caller's own tx
+// (core/application.Service.MergePersons); no Begin/Commit here.
+func (s *Store) RepointMemberships(ctx context.Context, duplicateID, survivorID string) (movedIDs, endedIDs []string, err error) {
+	moveRows, err := s.q.Query(ctx, `
+		UPDATE openfaithmap.membership_memberships m
+		SET person_id = $2, updated_at = now()
+		WHERE m.person_id = $1 AND m.status = 'active' AND m.deleted_at IS NULL
+		  AND NOT (`+membershipRepointCollisionPredicate+`)
+		RETURNING m.id`, duplicateID, survivorID)
+	if err != nil {
+		return nil, nil, err
+	}
+	movedIDs, err = pgx.CollectRows(moveRows, pgx.RowTo[string])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	endRows, err := s.q.Query(ctx, `
+		UPDATE openfaithmap.membership_memberships
+		SET status = 'ended', effective_to = now(), updated_at = now()
+		WHERE person_id = $1 AND status = 'active' AND deleted_at IS NULL
+		RETURNING id`, duplicateID)
+	if err != nil {
+		return nil, nil, err
+	}
+	endedIDs, err = pgx.CollectRows(endRows, pgx.RowTo[string])
+	if err != nil {
+		return nil, nil, err
+	}
+	return movedIDs, endedIDs, nil
+}

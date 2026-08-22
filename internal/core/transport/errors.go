@@ -20,6 +20,8 @@ type errCtx struct {
 	UnitID       string
 	TaxonID      string
 	AssignmentID string
+	SessionID    string
+	ApiKeyID     string
 }
 
 // mapErr maps a domain error to this contract's typed Conjure error. Any other error (an
@@ -28,6 +30,8 @@ func mapErr(err error, c errCtx) error {
 	switch {
 	case errors.Is(err, identitydomain.ErrPersonNotFound):
 		return gencore.NewPersonNotFound(c.PersonID)
+	case errors.Is(err, identitydomain.ErrAccountNotFound):
+		return gencore.NewAccountNotFound(c.PersonID)
 	case errors.Is(err, directorydomain.ErrUnitNotFound):
 		return gencore.NewUnitNotFound(c.UnitID)
 	case errors.Is(err, religiondomain.ErrTaxonNotFound):
@@ -42,6 +46,29 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewAssignmentNotFound(c.AssignmentID)
 	case errors.Is(err, authzdomain.ErrInstanceAdminGrantNotFound):
 		return gencore.NewInstanceAdminGrantNotFound(c.PersonID)
+	case errors.Is(err, authzdomain.ErrEmptyPersonIDs):
+		return gencore.NewEmptyPersonIdsList()
+	case errors.Is(err, identitydomain.ErrSessionNotFound):
+		return gencore.NewSessionNotFound(c.SessionID)
+	case errors.Is(err, identitydomain.ErrAccountAlreadyExists):
+		return gencore.NewAccountAlreadyExists()
+	case errors.Is(err, identitydomain.ErrInviteAlreadyAccepted):
+		return gencore.NewInviteAlreadyAccepted()
+	case errors.Is(err, identitydomain.ErrInviteExpired):
+		return gencore.NewInviteExpired()
+	case errors.Is(err, identitydomain.ErrInviteNotFound):
+		return gencore.NewInviteNotFound()
+	case errors.Is(err, identitydomain.ErrCannotMergeSelf):
+		return gencore.NewCannotMergeSelf()
+	case errors.Is(err, identitydomain.ErrAPIKeyNotFound):
+		return gencore.NewApiKeyNotFound(c.ApiKeyID)
+	case errors.Is(err, identitydomain.ErrUnknownPermissionCode):
+		return gencore.NewUnknownPermissionCode()
+	case errors.Is(err, identitydomain.ErrAccountDisabled):
+		// No oracle leak to an anonymous invitee holding just a token guess (same reasoning
+		// D-AccountStatusEnforcement's own ResolveBySubject already applies): a disabled account
+		// behind a real invite reads identically to a nonexistent one.
+		return gencore.NewInviteNotFound()
 	default:
 		return err
 	}

@@ -16,7 +16,10 @@
 # first registration) could still browse these catalogs. CreateChildOrg is CoreService's one
 # exception: a real write, gated on religionorg.manage over the parent unit, the same convention
 # every other consumer module already follows before calling into internal/religion (which carries
-# zero authorization logic of its own, D-InProcessAuthz).
+# zero authorization logic of its own, D-InProcessAuthz). resolveInvite (M11.6) needs the opposite:
+# reachable with NO session at all (the invitee has never signed in yet) — which a per-service fixed
+# auth choice means CANNOT live on CoreService itself, so it gets its own CorePublicService below,
+# mirroring ContentPublicService's shape exactly.
 #
 # Generated Go lands in internal/conjure and is never hand-edited.
 types:
@@ -43,6 +46,12 @@ types:
           displayName: string
           createdAt: datetime
           updatedAt: datetime
+          lastActiveAt:
+            type: optional<datetime>
+            docs: >
+              M11.4 — most recent session activity (revoked-inclusive), populated only by
+              CoreSuperAdminService's searchPersons. Always absent from CoreService's getPerson/
+              getPersons, which don't compute it.
       PersonPage:
         fields:
           persons: list<Person>
@@ -176,6 +185,54 @@ types:
           personId: string
           roleId: string
           unitId: string
+      BulkGrantUnitRoleRequest:
+        docs: >
+          M11.7 — the batch variant of GrantUnitRoleRequest: the same role and unit, granted to every
+          id in personIds at once, atomically.
+        fields:
+          personIds: list<string>
+          roleId: string
+          unitId: string
+
+      MergePersonsRequest:
+        docs: M11.8 — the path's personId is always the survivor; duplicatePersonId is merged into it.
+        fields:
+          duplicatePersonId: string
+      MergePreview:
+        docs: >
+          M11.8 — what mergePersons(personId, duplicatePersonId) will move or end, computed
+          read-only so the admin UI can show it before the caller confirms. Does not consider
+          registration/moderation/vouching/congregationimport rows, which reference person ids as
+          opaque text with no FK and are out of scope for this milestone.
+        fields:
+          survivorId: string
+          duplicatePersonId: string
+          roleAssignmentsToMove: integer
+          roleAssignmentsToRevokeAsRedundant: integer
+          membershipsToMove: integer
+          membershipsToEndAsRedundant: integer
+          instanceAdminWillMove: boolean
+          instanceAdminWillBeRevokedAsRedundant: boolean
+          duplicateHasActiveAccount: boolean
+          accountConflict:
+            type: boolean
+            docs: >
+              True when the survivor already has their own active account — in that case the
+              duplicate's account is disabled (soft-merge) rather than moved, and its login stops
+              working. False means the duplicate's account (if any) simply moves onto the survivor.
+      MergeResult:
+        docs: M11.8 — what mergePersons actually did, for the audit record and the confirmation UI.
+        fields:
+          survivorId: string
+          duplicatePersonId: string
+          roleAssignmentsMoved: integer
+          roleAssignmentsRevokedRedundant: integer
+          membershipsMoved: integer
+          membershipsEnded: integer
+          instanceAdminMoved: boolean
+          instanceAdminRevokedRedundant: boolean
+          duplicateAccountMoved: boolean
+          duplicateAccountDisabled: boolean
 
       InstanceAdminGrant:
         fields:
@@ -189,6 +246,150 @@ types:
       GrantInstanceAdminRequest:
         fields:
           personId: string
+
+      AccountStatus:
+        docs: status is "active", "disabled", or "none" (the person has never had a login attached).
+        fields:
+          personId: string
+          status: string
+          lastActiveAt:
+            type: optional<datetime>
+            docs: >
+              M11.4 — most recent session activity (revoked-inclusive), absent for status "none" or an
+              account that has never had a session.
+
+      AuditLogEntry:
+        docs: >
+          M11.2 — one append-only row of identity_audit_log. targetKind/targetId is an opaque
+          discriminator+ref pair (mirrors Moderation's target_kind/target_ref) since targets span
+          role assignments, instance-admin grants, accounts, and (M11.3) sessions today, and will
+          span persons (M11.8 merge) later. before/after are optional — absent for a create/delete
+          side respectively.
+        fields:
+          id: string
+          actorPersonId:
+            type: optional<string>
+            docs: Empty if the acting person was later deleted (the FK is ON DELETE SET NULL).
+          actorPersonName:
+            type: optional<string>
+            docs: Denormalized at read time; empty alongside actorPersonId.
+          action: string
+          targetKind: string
+          targetId: string
+          before: optional<any>
+          after: optional<any>
+          createdAt: datetime
+      AuditLogPage:
+        fields:
+          entries: list<AuditLogEntry>
+          nextPageToken: optional<string>
+
+      UpdateMyProfileRequest:
+        docs: >
+          M11.5 — no personId field here, deliberately: the backend always updates the caller's own
+          person row, resolved from the already-verified request subject, never a client-supplied id.
+        fields:
+          displayName: string
+
+      RegisterSessionRequest:
+        docs: >
+          M11.3 — issuer is deliberately NOT a field here: the backend records the caller's own
+          already-verified bearer issuer (authz.Subject.Issuer), not a client-supplied value.
+        fields:
+          deviceLabel: optional<string>
+      Session:
+        docs: >
+          M11.3 — one row of identity_sessions: a NextAuth sign-in the backend can revoke
+          independently of every other session on the same account (D-SessionTracking — the reason
+          this exists at all rather than reusing account-status-disable's all-or-nothing shape).
+        fields:
+          id: string
+          deviceLabel:
+            type: optional<string>
+            docs: Best-effort User-Agent captured at sign-in; absent if it couldn't be read.
+          createdAt: datetime
+          lastSeenAt: datetime
+          isCurrent:
+            type: boolean
+            docs: True for the one session the caller's own request is presently authenticated with.
+      SessionPage:
+        fields:
+          sessions: list<Session>
+
+      InvitePersonRequest:
+        docs: M11.6 — pre-provisions a Person+Account for email/displayName and generates a one-time invite link.
+        fields:
+          email: string
+          displayName: string
+      InviteResult:
+        docs: >
+          M11.6 — token is the bare, one-time raw token, not a full URL: the admin app builds the
+          shareable link from its own known origin. Returned exactly once; only its hash is ever
+          persisted server-side.
+        fields:
+          personId: string
+          accountId: string
+          token: string
+          expiresAt: datetime
+      ResolveInviteRequest:
+        docs: >
+          M11.6 — a POST body, not a path/query token, so the one-time token never lands in a server
+          access log or browser history the way a GET with the token in the URL would.
+        fields:
+          token: string
+      InviteInfo:
+        docs: >
+          M11.6 — what a valid, still-pending invite reveals to its own not-yet-authenticated
+          invitee (the accept-invite landing page's welcome message). Deliberately minimal.
+        fields:
+          displayName: string
+          email: string
+
+      ApiKey:
+        docs: >
+          M11.9 — one identity_api_keys row, metadata only: no token or token hash field exists on
+          this type at all, so it is structurally impossible for any endpoint returning it to leak
+          the secret, regardless of caller (self-service or admin-oversight).
+        fields:
+          id: string
+          label: string
+          permissionCodes:
+            type: list<string>
+            docs: >
+              The owner's chosen allowlist at creation time. The effective permission set for a
+              request authenticated with this key is this list intersected with the owning person's
+              LIVE authz grants at request time — never wider than either alone.
+          createdAt: datetime
+          lastUsedAt: optional<datetime>
+          revokedAt: optional<datetime>
+      ApiKeyPage:
+        fields:
+          apiKeys: list<ApiKey>
+      CreateApiKeyRequest:
+        fields:
+          label: string
+          permissionCodes: list<string>
+      CreateApiKeyResult:
+        docs: >
+          M11.9 — token is the bare, one-time raw secret, prefixed "ofm_" so the authenticator can
+          cheaply distinguish it from a JWT bearer with no DB round-trip. Returned exactly once; only
+          its hash is ever persisted server-side (identity_api_keys.token_hash) — the same one-time-
+          secret shape InviteResult already uses.
+        fields:
+          id: string
+          label: string
+          permissionCodes: list<string>
+          token: string
+          createdAt: datetime
+      PermissionCodePage:
+        docs: >
+          M11.9 — the closed unit-scoped permission catalog (internal/authz/domain/permissions.go),
+          excluding instance-scope codes: an API key can never exercise one (RequireInstanceAdmin
+          hard-denies every API-key-authenticated subject, allowlist or not), so offering them in the
+          creation picker would be misleading. Self-scoped, not admin-only: every person needs this
+          for their own createApiKey picker.
+        fields:
+          codes: list<string>
 
     errors:
       PersonNotFound:
@@ -232,6 +433,74 @@ types:
         code: NOT_FOUND
         safe-args:
           personId: string
+      AccountNotFound:
+        docs: The person has no account (deactivate/reactivate need one to exist).
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          personId: string
+      EmptyPersonIdsList:
+        docs: M11.7 — bulkGrantUnitRole's personIds must contain at least one id.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      CannotMergeSelf:
+        docs: M11.8 — mergePersons/previewMergePersons's personId and duplicatePersonId must differ.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      InvalidPageToken:
+        docs: >
+          M11.2 — listAuditLog's pageToken query argument is malformed or tampered — never silently
+          reinterpreted as "start from page 1" (mirrors Moderation:InvalidPageToken/
+          Congregationimport:InvalidPageToken's identical M7 invariant). Declared in this file's own
+          Core namespace rather than imported cross-module, same convention
+          congregationimport.conjure.yml already uses for its own copy.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      SessionNotFound:
+        docs: M11.3 — sessionId doesn't exist, or belongs to a different person's/caller's account.
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          sessionId: string
+      AccountAlreadyExists:
+        docs: M11.6 — invitePerson's email already has an active account; no safe-args (the email itself is not safe to log).
+        namespace: Core
+        code: CONFLICT
+        safe-args: {}
+      InviteNotFound:
+        docs: M11.6 — resolveInvite's token doesn't match any invite; no safe-args (the token itself is not safe to log).
+        namespace: Core
+        code: NOT_FOUND
+        safe-args: {}
+      InviteExpired:
+        docs: M11.6 — the invite's expiresAt has passed.
+        namespace: Core
+        code: CONFLICT
+        safe-args: {}
+      InviteAlreadyAccepted:
+        docs: M11.6 — the invitee has already signed in and JIT-linked this invite's account.
+        namespace: Core
+        code: CONFLICT
+        safe-args: {}
+      ApiKeyNotFound:
+        docs: >
+          M11.9 — apiKeyId doesn't exist, is already revoked, or (self-service) belongs to a
+          different person than the caller — no oracle leak between those cases.
+        namespace: Core
+        code: NOT_FOUND
+        safe-args:
+          apiKeyId: string
+      UnknownPermissionCode:
+        docs: >
+          M11.9 — createApiKey's permissionCodes contains a code outside the closed catalog, or an
+          instance-scope code (never satisfiable via an API key — RequireInstanceAdmin hard-denies
+          API-key subjects outright).
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
 
 services:
   CoreService:
@@ -247,6 +516,66 @@ services:
       whoami:
         http: GET /whoami
         returns: Whoami
+
+      registerSession:
+        docs: >
+          M11.3 — creates the identity_sessions row backing a just-completed NextAuth sign-in.
+          Exempt from the per-request session-id check every other endpoint now requires
+          (internal/identity/middleware's sessionExemptRoutes) — this is what creates that row, so
+          it cannot itself require one to already exist.
+        http: POST /sessions
+        args:
+          request: RegisterSessionRequest
+        returns: Session
+      listMySessions:
+        docs: M11.3 — the caller's own active sessions, self-scoped.
+        http: GET /sessions
+        returns: SessionPage
+      revokeMySession:
+        docs: M11.3 — revokes one of the caller's own sessions, self-scoped.
+        http: DELETE /sessions/{sessionId}
+        args:
+          sessionId:
+            type: string
+            param-type: path
+
+      updateMyProfile:
+        docs: M11.5 — updates the caller's own display name, self-scoped.
+        http: PUT /profile
+        args:
+          request: UpdateMyProfileRequest
+        returns: Person
+      listMyRoleAssignments:
+        docs: M11.5 — the caller's own active role assignments across every unit, self-scoped.
+        http: GET /profile/roles
+        returns: RoleAssignmentPage
+
+      listPermissionCatalog:
+        docs: >
+          M11.9 — the closed unit-scoped permission catalog, self-scoped since every person needs it
+          for their own createApiKey allowlist picker, not just admins. Static, no DB read.
+        http: GET /permission-catalog
+        returns: PermissionCodePage
+      listMyApiKeys:
+        docs: M11.9 — the caller's own active API keys, self-scoped.
+        http: GET /api-keys
+        returns: ApiKeyPage
+      createApiKey:
+        docs: >
+          M11.9 — mints a new API key for the caller, scoped to request.permissionCodes. Returns the
+          raw secret exactly once.
+        http: POST /api-keys
+        args:
+          request: CreateApiKeyRequest
+        returns: CreateApiKeyResult
+      revokeMyApiKey:
+        docs: M11.9 — revokes one of the caller's own API keys, self-scoped.
+        http: DELETE /api-keys/{apiKeyId}
+        args:
+          apiKeyId:
+            type: string
+            param-type: path
+
       getUnit:
         http: GET /units/{unitId}
         args:
@@ -330,6 +659,28 @@ services:
           request: GetPersonsRequest
         returns: PersonPage
 
+  CorePublicService:
+    name: Core Public Service
+    package: openfaithmap.core
+    base-path: /core/v1/public
+    docs: >
+      M11.6 — genuinely anonymous, mirroring ContentPublicService's own shape (no default-auth: a
+      Conjure service's auth is a fixed per-service choice — see this file's own header comment —
+      so an endpoint reachable with no bearer at all cannot live on CoreService, which sets
+      default-auth: header). The invitee has no session yet (they haven't signed in for the first
+      time), the same reasoning D-AdminSurface gives for ContentPublicService, just admin-side
+      instead of web-side. internal/identity/middleware's isBypassPath also carries a matching
+      /core/v1/public prefix bypass, the same mechanism /content/v1/public already uses.
+    endpoints:
+      resolveInvite:
+        docs: >
+          Validates an invite token for its own not-yet-authenticated invitee, ahead of their first
+          sign-in.
+        http: POST /invites/resolve
+        args:
+          request: ResolveInviteRequest
+        returns: InviteInfo
+
   CoreSuperAdminService:
     name: Core Super Admin Service
     package: openfaithmap.core
@@ -367,6 +718,16 @@ services:
         http: POST /role-assignments
         args:
           request: GrantUnitRoleRequest
+      bulkGrantUnitRole:
+        docs: >
+          M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A
+          fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's
+          POST /persons/invite collided with an existing {personId} wildcard sibling and caused a
+          boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as
+          a wildcard sibling here, so this avoids the same class of collision.
+        http: POST /bulk-role-assignments
+        args:
+          request: BulkGrantUnitRoleRequest
       revokeRoleAssignment:
         http: DELETE /role-assignments/{assignmentId}
         args:
@@ -387,3 +748,146 @@ services:
           personId:
             type: string
             param-type: path
+
+      getAccountStatus:
+        docs: M11.1 — D-AccountStatusEnforcement.
+        http: GET /persons/{personId}/account-status
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: AccountStatus
+      deactivateAccount:
+        docs: M11.1 — rejects further authentication for this person's account. Idempotent.
+        http: POST /persons/{personId}/deactivate
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: AccountStatus
+      reactivateAccount:
+        docs: M11.1 — reverses deactivateAccount. Idempotent.
+        http: POST /persons/{personId}/reactivate
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: AccountStatus
+
+      previewMergePersons:
+        docs: >
+          M11.8 — read-only preview of what mergePersons would move/end for (personId as survivor,
+          duplicatePersonId). Out of scope: registration/moderation/vouching/congregationimport
+          rows, which reference person ids as opaque text with no FK.
+        http: POST /persons/{personId}/merge-preview
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: MergePersonsRequest
+        returns: MergePreview
+      mergePersons:
+        docs: >
+          M11.8 — reassigns duplicatePersonId's active role-assignment and membership rows onto
+          personId (the survivor); moves the duplicate's account onto the survivor if the survivor
+          has none, otherwise disables the duplicate's account (soft-merge — its login stops
+          working); soft-deletes the duplicate person; audit-logs the merge. Destructive-shaped and
+          irreversible. Out of scope: registration/moderation/vouching/congregationimport rows
+          (opaque text, no FK) — those keep referencing the pre-merge duplicate id. The admin UI
+          calls previewMergePersons first.
+        http: POST /persons/{personId}/merge
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: MergePersonsRequest
+        returns: MergeResult
+
+      listSessions:
+        docs: M11.3 — personId's active sessions, admin-scoped.
+        http: GET /persons/{personId}/sessions
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: SessionPage
+      revokeSession:
+        docs: M11.3 — revokes one of personId's sessions, admin-scoped.
+        http: DELETE /persons/{personId}/sessions/{sessionId}
+        args:
+          personId:
+            type: string
+            param-type: path
+          sessionId:
+            type: string
+            param-type: path
+
+      listApiKeys:
+        docs: >
+          M11.9 — personId's active AND revoked API keys, admin-scoped, metadata only (ApiKey carries
+          no secret/hash field, so this endpoint can never leak one). Incident-response visibility:
+          lets an admin see a person's keys without the owner's cooperation.
+        http: GET /persons/{personId}/api-keys
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: ApiKeyPage
+      revokeApiKey:
+        docs: >
+          M11.9 — revokes one of personId's API keys, admin-scoped (incident response — kill a
+          compromised key without waiting on the owner). Audit-logged distinctly from a self-revoke
+          (REVOKE_API_KEY_ADMIN vs REVOKE_API_KEY) so the trail shows who actually acted.
+        http: DELETE /persons/{personId}/api-keys/{apiKeyId}
+        args:
+          personId:
+            type: string
+            param-type: path
+          apiKeyId:
+            type: string
+            param-type: path
+
+      listAuditLog:
+        docs: >
+          M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset
+          paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7),
+          filterable by actor/target/date, all filters ANDed together when set.
+        http: GET /audit-log
+        args:
+          actorPersonId:
+            type: optional<string>
+            param-type: query
+          targetKind:
+            type: optional<string>
+            param-type: query
+          targetId:
+            type: optional<string>
+            param-type: query
+          from:
+            type: optional<datetime>
+            param-type: query
+          to:
+            type: optional<datetime>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: AuditLogPage
+
+      invitePerson:
+        docs: >
+          M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName
+          and returns a one-time invite token; the admin app builds the shareable link from its own
+          origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on
+          the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites
+          path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation
+          has no existing personId to path-parameter against — and httprouter's radix tree can't
+          have a static "invite" segment as a sibling of the existing ":personId" wildcard under
+          /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+        http: POST /invites
+        args:
+          request: InvitePersonRequest
+        returns: InviteResult

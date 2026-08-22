@@ -6,6 +6,7 @@ package authz
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/olehmushka/open-faith-map/internal/authz/domain"
 )
@@ -16,18 +17,26 @@ import (
 type GrantStore interface {
 	IsActiveInstanceAdmin(ctx context.Context, personID string) (bool, error)
 	ActiveGrantsForSubject(ctx context.Context, personID string) ([]domain.ActiveGrant, error)
-	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) error
+	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) (string, error)
+	// BulkInsertRoleAssignments is M11.7's batch variant: the same grant, for many personIDs, one
+	// role, one unit, all inside a single transaction — no per-row idempotent-conflict error, see the
+	// adapter's own doc comment for why it can't just loop InsertRoleAssignment.
+	BulkInsertRoleAssignments(ctx context.Context, personIDs []string, roleID, targetUnitID, grantedBy string) ([]string, error)
 
 	// The M10.7 super-admin surface: the role catalog, per-unit assignment listing/revocation, and
 	// the instance-admin plane's own list/grant/revoke — all new at M10.7 (InsertInstanceAdmin
 	// already existed, for the boot seed; nothing else on the instance-admin plane had a Service
-	// wrapper until now).
+	// wrapper until now). RevokeRoleAssignment/RevokeInstanceAdmin return the revoked row's identity
+	// (M11.2) so the audit-log helper has a real "before" snapshot with no second read.
 	ListRoles(ctx context.Context) ([]domain.Role, error)
 	ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([]domain.RoleAssignment, error)
-	RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) error
+	// ListRoleAssignmentsByPerson is M11.5's self-service read: the caller's own active role
+	// assignments across every unit, personID always the resolved subject's — never a request param.
+	ListRoleAssignmentsByPerson(ctx context.Context, personID string) ([]domain.RoleAssignment, error)
+	RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) (domain.RevokedRoleAssignment, error)
 	ListInstanceAdmins(ctx context.Context) ([]domain.InstanceAdminGrant, error)
 	InsertInstanceAdmin(ctx context.Context, personID, grantedBy string) (string, error)
-	RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) error
+	RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) (domain.RevokedInstanceAdminGrant, error)
 }
 
 // Service is the module's composition: the pure PDP engine plus the store that fetches the authority
@@ -53,6 +62,15 @@ func (s *Service) Require(ctx context.Context, action domain.Permission, unitID 
 	}
 	subject, ok := SubjectFromContext(ctx)
 	if !ok || subject.PersonID == "" {
+		return domain.ErrPermissionDenied
+	}
+	// M11.9: an API-key-authenticated subject may exercise at most its key's stored allowlist, on top
+	// of (never instead of) whatever its owning person actually holds — this is the "allowlist ∩ live
+	// grants" intersection's first half, checked as a cheap short-circuit before the second half (the
+	// unmodified enforce/decide path below, which already answers "does PersonID currently hold
+	// action"). subject.APIKeyPermissionCodes == nil means this is an ordinary session-based request,
+	// not narrowed at all.
+	if subject.APIKeyPermissionCodes != nil && !slices.Contains(subject.APIKeyPermissionCodes, string(action)) {
 		return domain.ErrPermissionDenied
 	}
 	return s.enforce(ctx, subject.PersonID, action, unitID)
@@ -81,9 +99,22 @@ func (s *Service) enforce(ctx context.Context, subjectPersonID string, action do
 // GrantUnitRole grants personID roleID on unitID, scope "unit" — M10.6's registration cutover is
 // the first caller (approval-time congregation-admin grant). No epoch bump, no cache to invalidate
 // (D-InProcessAuthz's amendment: grants are read fresh per request), so a grant is visible to the
-// very next Require call with no extra step.
-func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, grantedByPersonID string) error {
+// very next Require call with no extra step. Returns the assignment's id (M11.2: super-admin callers
+// use it as the audit log's target_id).
+func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, grantedByPersonID string) (string, error) {
 	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, grantedByPersonID)
+}
+
+// BulkGrantUnitRole grants roleID on unitID to every personID in one batch, atomically (M11.7).
+// Returns the resulting assignment ids in the same order as personIDs, so callers can pair each id
+// back to the person it belongs to (e.g. for per-row audit logging) with no extra lookup. No dedup
+// of personIDs: the store's upsert already absorbs a duplicate id harmlessly, and a same-order,
+// same-length 1:1 pairing with the input is simpler to reason about than reordering logic.
+func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID, grantedByPersonID string) ([]string, error) {
+	if len(personIDs) == 0 {
+		return nil, domain.ErrEmptyPersonIDs
+	}
+	return s.store.BulkInsertRoleAssignments(ctx, personIDs, roleID, unitID, grantedByPersonID)
 }
 
 // RequireInstanceAdmin is the shared, hard-to-misuse enforcer for the instance-admin plane
@@ -98,6 +129,16 @@ func (s *Service) RequireInstanceAdmin(ctx context.Context) error {
 	}
 	subject, ok := SubjectFromContext(ctx)
 	if !ok || subject.PersonID == "" {
+		return domain.ErrPermissionDenied
+	}
+	// M11.9: an API-key subject is denied outright, unconditionally — never checked against
+	// IsActiveInstanceAdmin at all, even when the key's owner genuinely is an instance admin. The
+	// instance-admin plane is PDP.Decide's "allow everything" bypass; letting a key ride it would make
+	// its allowlist meaningless the moment the owner is later granted instance-admin, with no
+	// re-issuance and no visible change to the key itself. CreateApiKey correspondingly refuses to
+	// let a key's allowlist contain any instance-scope permission code, since it could never actually
+	// be exercised through this hard deny.
+	if subject.APIKeyPermissionCodes != nil {
 		return domain.ErrPermissionDenied
 	}
 	isAdmin, err := s.store.IsActiveInstanceAdmin(ctx, subject.PersonID)
@@ -121,8 +162,16 @@ func (s *Service) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) 
 	return s.store.ListRoleAssignmentsByUnit(ctx, unitID)
 }
 
-// RevokeRoleAssignment revokes assignmentID, recording revokedByPersonID.
-func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedByPersonID string) error {
+// ListRoleAssignmentsByPerson returns personID's own active role assignments across every unit —
+// M11.5's self-service profile page. Unlike ListRoleAssignmentsByUnit, callers must derive personID
+// from the resolved request subject only, never a client-supplied argument.
+func (s *Service) ListRoleAssignmentsByPerson(ctx context.Context, personID string) ([]domain.RoleAssignment, error) {
+	return s.store.ListRoleAssignmentsByPerson(ctx, personID)
+}
+
+// RevokeRoleAssignment revokes assignmentID, recording revokedByPersonID. Returns the revoked row's
+// identity (M11.2: the audit log's "before" snapshot).
+func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedByPersonID string) (domain.RevokedRoleAssignment, error) {
 	return s.store.RevokeRoleAssignment(ctx, assignmentID, revokedByPersonID)
 }
 
@@ -139,7 +188,8 @@ func (s *Service) GrantInstanceAdmin(ctx context.Context, personID, grantedByPer
 }
 
 // RevokeInstanceAdmin revokes personID's active instance-admin grant, recording revokedByPersonID.
-func (s *Service) RevokeInstanceAdmin(ctx context.Context, personID, revokedByPersonID string) error {
+// Returns the revoked grant's identity (M11.2: the audit log's "before" snapshot).
+func (s *Service) RevokeInstanceAdmin(ctx context.Context, personID, revokedByPersonID string) (domain.RevokedInstanceAdminGrant, error) {
 	return s.store.RevokeInstanceAdmin(ctx, personID, revokedByPersonID)
 }
 

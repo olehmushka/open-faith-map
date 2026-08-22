@@ -10,12 +10,62 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/conjure/internal/conjureerrors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	"github.com/palantir/pkg/bearertoken"
+	"github.com/palantir/pkg/datetime"
 	werror "github.com/palantir/witchcraft-go-error"
 )
+
+// M11.6 — genuinely anonymous, mirroring ContentPublicService's own shape (no default-auth: a Conjure service's auth is a fixed per-service choice — see this file's own header comment — so an endpoint reachable with no bearer at all cannot live on CoreService, which sets default-auth: header). The invitee has no session yet (they haven't signed in for the first time), the same reasoning D-AdminSurface gives for ContentPublicService, just admin-side instead of web-side. internal/identity/middleware's isBypassPath also carries a matching /core/v1/public prefix bypass, the same mechanism /content/v1/public already uses.
+type CorePublicServiceClient interface {
+	// Validates an invite token for its own not-yet-authenticated invitee, ahead of their first sign-in.
+	ResolveInvite(ctx context.Context, requestArg ResolveInviteRequest) (InviteInfo, error)
+}
+
+type corePublicServiceClient struct {
+	client httpclient.Client
+}
+
+func NewCorePublicServiceClient(client httpclient.Client) CorePublicServiceClient {
+	return &corePublicServiceClient{client: client}
+}
+
+func (c *corePublicServiceClient) ResolveInvite(ctx context.Context, requestArg ResolveInviteRequest) (InviteInfo, error) {
+	var returnVal *InviteInfo
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ResolveInvite"))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/public/invites/resolve"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(InviteInfo), werror.WrapWithContextParams(ctx, err, "resolveInvite failed")
+	}
+	if returnVal == nil {
+		return *new(InviteInfo), werror.ErrorWithContextParams(ctx, "resolveInvite response cannot be nil")
+	}
+	return *returnVal, nil
+}
 
 // The admin app's session-gated reads over the in-process core (units, taxa, countries, org kinds/profiles, memberships, persons) plus its one gated write, createChildOrg. See file header for exactly which endpoints carry an authorization gate beyond the session itself.
 type CoreServiceClient interface {
 	Whoami(ctx context.Context, authHeader bearertoken.Token) (Whoami, error)
+	// M11.3 — creates the identity_sessions row backing a just-completed NextAuth sign-in. Exempt from the per-request session-id check every other endpoint now requires (internal/identity/middleware's sessionExemptRoutes) — this is what creates that row, so it cannot itself require one to already exist.
+	RegisterSession(ctx context.Context, authHeader bearertoken.Token, requestArg RegisterSessionRequest) (Session, error)
+	// M11.3 — the caller's own active sessions, self-scoped.
+	ListMySessions(ctx context.Context, authHeader bearertoken.Token) (SessionPage, error)
+	// M11.3 — revokes one of the caller's own sessions, self-scoped.
+	RevokeMySession(ctx context.Context, authHeader bearertoken.Token, sessionIdArg string) error
+	// M11.5 — updates the caller's own display name, self-scoped.
+	UpdateMyProfile(ctx context.Context, authHeader bearertoken.Token, requestArg UpdateMyProfileRequest) (Person, error)
+	// M11.5 — the caller's own active role assignments across every unit, self-scoped.
+	ListMyRoleAssignments(ctx context.Context, authHeader bearertoken.Token) (RoleAssignmentPage, error)
+	// M11.9 — the closed unit-scoped permission catalog, self-scoped since every person needs it for their own createApiKey allowlist picker, not just admins. Static, no DB read.
+	ListPermissionCatalog(ctx context.Context, authHeader bearertoken.Token) (PermissionCodePage, error)
+	// M11.9 — the caller's own active API keys, self-scoped.
+	ListMyApiKeys(ctx context.Context, authHeader bearertoken.Token) (ApiKeyPage, error)
+	// M11.9 — mints a new API key for the caller, scoped to request.permissionCodes. Returns the raw secret exactly once.
+	CreateApiKey(ctx context.Context, authHeader bearertoken.Token, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error)
+	// M11.9 — revokes one of the caller's own API keys, self-scoped.
+	RevokeMyApiKey(ctx context.Context, authHeader bearertoken.Token, apiKeyIdArg string) error
 	GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
@@ -57,6 +107,152 @@ func (c *coreServiceClient) Whoami(ctx context.Context, authHeader bearertoken.T
 		return *new(Whoami), werror.ErrorWithContextParams(ctx, "whoami response cannot be nil")
 	}
 	return *returnVal, nil
+}
+
+func (c *coreServiceClient) RegisterSession(ctx context.Context, authHeader bearertoken.Token, requestArg RegisterSessionRequest) (Session, error) {
+	var returnVal *Session
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RegisterSession"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/sessions"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Session), werror.WrapWithContextParams(ctx, err, "registerSession failed")
+	}
+	if returnVal == nil {
+		return *new(Session), werror.ErrorWithContextParams(ctx, "registerSession response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) ListMySessions(ctx context.Context, authHeader bearertoken.Token) (SessionPage, error) {
+	var returnVal *SessionPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListMySessions"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/sessions"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(SessionPage), werror.WrapWithContextParams(ctx, err, "listMySessions failed")
+	}
+	if returnVal == nil {
+		return *new(SessionPage), werror.ErrorWithContextParams(ctx, "listMySessions response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) RevokeMySession(ctx context.Context, authHeader bearertoken.Token, sessionIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokeMySession"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/sessions/%s", url.PathEscape(fmt.Sprint(sessionIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "revokeMySession failed")
+	}
+	return nil
+}
+
+func (c *coreServiceClient) UpdateMyProfile(ctx context.Context, authHeader bearertoken.Token, requestArg UpdateMyProfileRequest) (Person, error) {
+	var returnVal *Person
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateMyProfile"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/profile"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Person), werror.WrapWithContextParams(ctx, err, "updateMyProfile failed")
+	}
+	if returnVal == nil {
+		return *new(Person), werror.ErrorWithContextParams(ctx, "updateMyProfile response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) ListMyRoleAssignments(ctx context.Context, authHeader bearertoken.Token) (RoleAssignmentPage, error) {
+	var returnVal *RoleAssignmentPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListMyRoleAssignments"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/profile/roles"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(RoleAssignmentPage), werror.WrapWithContextParams(ctx, err, "listMyRoleAssignments failed")
+	}
+	if returnVal == nil {
+		return *new(RoleAssignmentPage), werror.ErrorWithContextParams(ctx, "listMyRoleAssignments response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) ListPermissionCatalog(ctx context.Context, authHeader bearertoken.Token) (PermissionCodePage, error) {
+	var returnVal *PermissionCodePage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPermissionCatalog"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/permission-catalog"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(PermissionCodePage), werror.WrapWithContextParams(ctx, err, "listPermissionCatalog failed")
+	}
+	if returnVal == nil {
+		return *new(PermissionCodePage), werror.ErrorWithContextParams(ctx, "listPermissionCatalog response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) ListMyApiKeys(ctx context.Context, authHeader bearertoken.Token) (ApiKeyPage, error) {
+	var returnVal *ApiKeyPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListMyApiKeys"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/api-keys"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ApiKeyPage), werror.WrapWithContextParams(ctx, err, "listMyApiKeys failed")
+	}
+	if returnVal == nil {
+		return *new(ApiKeyPage), werror.ErrorWithContextParams(ctx, "listMyApiKeys response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) CreateApiKey(ctx context.Context, authHeader bearertoken.Token, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error) {
+	var returnVal *CreateApiKeyResult
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreateApiKey"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/api-keys"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(CreateApiKeyResult), werror.WrapWithContextParams(ctx, err, "createApiKey failed")
+	}
+	if returnVal == nil {
+		return *new(CreateApiKeyResult), werror.ErrorWithContextParams(ctx, "createApiKey response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) RevokeMyApiKey(ctx context.Context, authHeader bearertoken.Token, apiKeyIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokeMyApiKey"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/api-keys/%s", url.PathEscape(fmt.Sprint(apiKeyIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "revokeMyApiKey failed")
+	}
+	return nil
 }
 
 func (c *coreServiceClient) GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error) {
@@ -284,6 +480,24 @@ func (c *coreServiceClient) GetPersons(ctx context.Context, authHeader bearertok
 // The admin app's session-gated reads over the in-process core (units, taxa, countries, org kinds/profiles, memberships, persons) plus its one gated write, createChildOrg. See file header for exactly which endpoints carry an authorization gate beyond the session itself.
 type CoreServiceClientWithAuth interface {
 	Whoami(ctx context.Context) (Whoami, error)
+	// M11.3 — creates the identity_sessions row backing a just-completed NextAuth sign-in. Exempt from the per-request session-id check every other endpoint now requires (internal/identity/middleware's sessionExemptRoutes) — this is what creates that row, so it cannot itself require one to already exist.
+	RegisterSession(ctx context.Context, requestArg RegisterSessionRequest) (Session, error)
+	// M11.3 — the caller's own active sessions, self-scoped.
+	ListMySessions(ctx context.Context) (SessionPage, error)
+	// M11.3 — revokes one of the caller's own sessions, self-scoped.
+	RevokeMySession(ctx context.Context, sessionIdArg string) error
+	// M11.5 — updates the caller's own display name, self-scoped.
+	UpdateMyProfile(ctx context.Context, requestArg UpdateMyProfileRequest) (Person, error)
+	// M11.5 — the caller's own active role assignments across every unit, self-scoped.
+	ListMyRoleAssignments(ctx context.Context) (RoleAssignmentPage, error)
+	// M11.9 — the closed unit-scoped permission catalog, self-scoped since every person needs it for their own createApiKey allowlist picker, not just admins. Static, no DB read.
+	ListPermissionCatalog(ctx context.Context) (PermissionCodePage, error)
+	// M11.9 — the caller's own active API keys, self-scoped.
+	ListMyApiKeys(ctx context.Context) (ApiKeyPage, error)
+	// M11.9 — mints a new API key for the caller, scoped to request.permissionCodes. Returns the raw secret exactly once.
+	CreateApiKey(ctx context.Context, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error)
+	// M11.9 — revokes one of the caller's own API keys, self-scoped.
+	RevokeMyApiKey(ctx context.Context, apiKeyIdArg string) error
 	GetUnit(ctx context.Context, unitIdArg string) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, queryArg *string, limitArg *int) (UnitPage, error)
@@ -313,6 +527,42 @@ type coreServiceClientWithAuth struct {
 
 func (c *coreServiceClientWithAuth) Whoami(ctx context.Context) (Whoami, error) {
 	return c.client.Whoami(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) RegisterSession(ctx context.Context, requestArg RegisterSessionRequest) (Session, error) {
+	return c.client.RegisterSession(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) ListMySessions(ctx context.Context) (SessionPage, error) {
+	return c.client.ListMySessions(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) RevokeMySession(ctx context.Context, sessionIdArg string) error {
+	return c.client.RevokeMySession(ctx, c.authHeader, sessionIdArg)
+}
+
+func (c *coreServiceClientWithAuth) UpdateMyProfile(ctx context.Context, requestArg UpdateMyProfileRequest) (Person, error) {
+	return c.client.UpdateMyProfile(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) ListMyRoleAssignments(ctx context.Context) (RoleAssignmentPage, error) {
+	return c.client.ListMyRoleAssignments(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) ListPermissionCatalog(ctx context.Context) (PermissionCodePage, error) {
+	return c.client.ListPermissionCatalog(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) ListMyApiKeys(ctx context.Context) (ApiKeyPage, error) {
+	return c.client.ListMyApiKeys(ctx, c.authHeader)
+}
+
+func (c *coreServiceClientWithAuth) CreateApiKey(ctx context.Context, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error) {
+	return c.client.CreateApiKey(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) RevokeMyApiKey(ctx context.Context, apiKeyIdArg string) error {
+	return c.client.RevokeMyApiKey(ctx, c.authHeader, apiKeyIdArg)
 }
 
 func (c *coreServiceClientWithAuth) GetUnit(ctx context.Context, unitIdArg string) (Unit, error) {
@@ -378,6 +628,78 @@ func (c *coreServiceClientWithTokenProvider) Whoami(ctx context.Context) (Whoami
 		return *new(Whoami), err
 	}
 	return c.client.Whoami(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) RegisterSession(ctx context.Context, requestArg RegisterSessionRequest) (Session, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Session), err
+	}
+	return c.client.RegisterSession(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) ListMySessions(ctx context.Context) (SessionPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(SessionPage), err
+	}
+	return c.client.ListMySessions(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) RevokeMySession(ctx context.Context, sessionIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.RevokeMySession(ctx, bearertoken.Token(token), sessionIdArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) UpdateMyProfile(ctx context.Context, requestArg UpdateMyProfileRequest) (Person, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Person), err
+	}
+	return c.client.UpdateMyProfile(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) ListMyRoleAssignments(ctx context.Context) (RoleAssignmentPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(RoleAssignmentPage), err
+	}
+	return c.client.ListMyRoleAssignments(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) ListPermissionCatalog(ctx context.Context) (PermissionCodePage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PermissionCodePage), err
+	}
+	return c.client.ListPermissionCatalog(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) ListMyApiKeys(ctx context.Context) (ApiKeyPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ApiKeyPage), err
+	}
+	return c.client.ListMyApiKeys(ctx, bearertoken.Token(token))
+}
+
+func (c *coreServiceClientWithTokenProvider) CreateApiKey(ctx context.Context, requestArg CreateApiKeyRequest) (CreateApiKeyResult, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(CreateApiKeyResult), err
+	}
+	return c.client.CreateApiKey(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) RevokeMyApiKey(ctx context.Context, apiKeyIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.RevokeMyApiKey(ctx, bearertoken.Token(token), apiKeyIdArg)
 }
 
 func (c *coreServiceClientWithTokenProvider) GetUnit(ctx context.Context, unitIdArg string) (Unit, error) {
@@ -482,10 +804,34 @@ type CoreSuperAdminServiceClient interface {
 	ListRoles(ctx context.Context, authHeader bearertoken.Token) (RolePage, error)
 	ListRoleAssignmentsByUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (RoleAssignmentPage, error)
 	GrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg GrantUnitRoleRequest) error
+	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
+	BulkGrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context, authHeader bearertoken.Token) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
+	// M11.1 — D-AccountStatusEnforcement.
+	GetAccountStatus(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.1 — rejects further authentication for this person's account. Idempotent.
+	DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.1 — reverses deactivateAccount. Idempotent.
+	ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error)
+	// M11.8 — read-only preview of what mergePersons would move/end for (personId as survivor, duplicatePersonId). Out of scope: registration/moderation/vouching/congregationimport rows, which reference person ids as opaque text with no FK.
+	PreviewMergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error)
+	// M11.8 — reassigns duplicatePersonId's active role-assignment and membership rows onto personId (the survivor); moves the duplicate's account onto the survivor if the survivor has none, otherwise disables the duplicate's account (soft-merge — its login stops working); soft-deletes the duplicate person; audit-logs the merge. Destructive-shaped and irreversible. Out of scope: registration/moderation/vouching/congregationimport rows (opaque text, no FK) — those keep referencing the pre-merge duplicate id. The admin UI calls previewMergePersons first.
+	MergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error)
+	// M11.3 — personId's active sessions, admin-scoped.
+	ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error)
+	// M11.3 — revokes one of personId's sessions, admin-scoped.
+	RevokeSession(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sessionIdArg string) error
+	// M11.9 — personId's active AND revoked API keys, admin-scoped, metadata only (ApiKey carries no secret/hash field, so this endpoint can never leak one). Incident-response visibility: lets an admin see a person's keys without the owner's cooperation.
+	ListApiKeys(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (ApiKeyPage, error)
+	// M11.9 — revokes one of personId's API keys, admin-scoped (incident response — kill a compromised key without waiting on the owner). Audit-logged distinctly from a self-revoke (REVOKE_API_KEY_ADMIN vs REVOKE_API_KEY) so the trail shows who actually acted.
+	RevokeApiKey(ctx context.Context, authHeader bearertoken.Token, personIdArg string, apiKeyIdArg string) error
+	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
+	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+	InvitePerson(ctx context.Context, authHeader bearertoken.Token, requestArg InvitePersonRequest) (InviteResult, error)
 }
 
 type coreSuperAdminServiceClient struct {
@@ -568,6 +914,19 @@ func (c *coreSuperAdminServiceClient) GrantUnitRole(ctx context.Context, authHea
 	return nil
 }
 
+func (c *coreSuperAdminServiceClient) BulkGrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg BulkGrantUnitRoleRequest) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("BulkGrantUnitRole"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/bulk-role-assignments"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "bulkGrantUnitRole failed")
+	}
+	return nil
+}
+
 func (c *coreSuperAdminServiceClient) RevokeRoleAssignment(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error {
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokeRoleAssignment"))
@@ -627,16 +986,243 @@ func (c *coreSuperAdminServiceClient) RevokeInstanceAdmin(ctx context.Context, a
 	return nil
 }
 
+func (c *coreSuperAdminServiceClient) GetAccountStatus(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error) {
+	var returnVal *AccountStatus
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetAccountStatus"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/account-status", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(AccountStatus), werror.WrapWithContextParams(ctx, err, "getAccountStatus failed")
+	}
+	if returnVal == nil {
+		return *new(AccountStatus), werror.ErrorWithContextParams(ctx, "getAccountStatus response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) DeactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error) {
+	var returnVal *AccountStatus
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeactivateAccount"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/deactivate", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(AccountStatus), werror.WrapWithContextParams(ctx, err, "deactivateAccount failed")
+	}
+	if returnVal == nil {
+		return *new(AccountStatus), werror.ErrorWithContextParams(ctx, "deactivateAccount response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) ReactivateAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (AccountStatus, error) {
+	var returnVal *AccountStatus
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ReactivateAccount"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/reactivate", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(AccountStatus), werror.WrapWithContextParams(ctx, err, "reactivateAccount failed")
+	}
+	if returnVal == nil {
+		return *new(AccountStatus), werror.ErrorWithContextParams(ctx, "reactivateAccount response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) PreviewMergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error) {
+	var returnVal *MergePreview
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("PreviewMergePersons"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/merge-preview", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(MergePreview), werror.WrapWithContextParams(ctx, err, "previewMergePersons failed")
+	}
+	if returnVal == nil {
+		return *new(MergePreview), werror.ErrorWithContextParams(ctx, "previewMergePersons response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) MergePersons(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error) {
+	var returnVal *MergeResult
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("MergePersons"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/merge", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(MergeResult), werror.WrapWithContextParams(ctx, err, "mergePersons failed")
+	}
+	if returnVal == nil {
+		return *new(MergeResult), werror.ErrorWithContextParams(ctx, "mergePersons response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) ListSessions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (SessionPage, error) {
+	var returnVal *SessionPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListSessions"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/sessions", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(SessionPage), werror.WrapWithContextParams(ctx, err, "listSessions failed")
+	}
+	if returnVal == nil {
+		return *new(SessionPage), werror.ErrorWithContextParams(ctx, "listSessions response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) RevokeSession(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sessionIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokeSession"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/sessions/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(sessionIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "revokeSession failed")
+	}
+	return nil
+}
+
+func (c *coreSuperAdminServiceClient) ListApiKeys(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (ApiKeyPage, error) {
+	var returnVal *ApiKeyPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListApiKeys"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/api-keys", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ApiKeyPage), werror.WrapWithContextParams(ctx, err, "listApiKeys failed")
+	}
+	if returnVal == nil {
+		return *new(ApiKeyPage), werror.ErrorWithContextParams(ctx, "listApiKeys response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) RevokeApiKey(ctx context.Context, authHeader bearertoken.Token, personIdArg string, apiKeyIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokeApiKey"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/persons/%s/api-keys/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(apiKeyIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "revokeApiKey failed")
+	}
+	return nil
+}
+
+func (c *coreSuperAdminServiceClient) ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
+	var returnVal *AuditLogPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListAuditLog"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/audit-log"))
+	queryParams := make(url.Values)
+	if actorPersonIdArg != nil {
+		queryParams.Set("actorPersonId", fmt.Sprint(*actorPersonIdArg))
+	}
+	if targetKindArg != nil {
+		queryParams.Set("targetKind", fmt.Sprint(*targetKindArg))
+	}
+	if targetIdArg != nil {
+		queryParams.Set("targetId", fmt.Sprint(*targetIdArg))
+	}
+	if fromArg != nil {
+		queryParams.Set("from", fmt.Sprint(*fromArg))
+	}
+	if toArg != nil {
+		queryParams.Set("to", fmt.Sprint(*toArg))
+	}
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(AuditLogPage), werror.WrapWithContextParams(ctx, err, "listAuditLog failed")
+	}
+	if returnVal == nil {
+		return *new(AuditLogPage), werror.ErrorWithContextParams(ctx, "listAuditLog response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreSuperAdminServiceClient) InvitePerson(ctx context.Context, authHeader bearertoken.Token, requestArg InvitePersonRequest) (InviteResult, error) {
+	var returnVal *InviteResult
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("InvitePerson"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/invites"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(InviteResult), werror.WrapWithContextParams(ctx, err, "invitePerson failed")
+	}
+	if returnVal == nil {
+		return *new(InviteResult), werror.ErrorWithContextParams(ctx, "invitePerson response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // The super-admin surface replacing the deleted oikumenea-console (D-SuperAdminFold): people search, role catalog, per-unit role-assignment grant/list/revoke, and the instance-admin plane's own grant/list/revoke. Every endpoint in this service is gated as a whole route group by internal/authz/transport.RequireInstanceAdmin, attached once at registration (cmd/openfaithmap-api/register_core.go) — not per-handler, so no future endpoint added here can be added without inheriting the check.
 type CoreSuperAdminServiceClientWithAuth interface {
 	SearchPersons(ctx context.Context, queryArg *string, limitArg *int) (PersonPage, error)
 	ListRoles(ctx context.Context) (RolePage, error)
 	ListRoleAssignmentsByUnit(ctx context.Context, unitIdArg string) (RoleAssignmentPage, error)
 	GrantUnitRole(ctx context.Context, requestArg GrantUnitRoleRequest) error
+	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
+	BulkGrantUnitRole(ctx context.Context, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, personIdArg string) error
+	// M11.1 — D-AccountStatusEnforcement.
+	GetAccountStatus(ctx context.Context, personIdArg string) (AccountStatus, error)
+	// M11.1 — rejects further authentication for this person's account. Idempotent.
+	DeactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
+	// M11.1 — reverses deactivateAccount. Idempotent.
+	ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error)
+	// M11.8 — read-only preview of what mergePersons would move/end for (personId as survivor, duplicatePersonId). Out of scope: registration/moderation/vouching/congregationimport rows, which reference person ids as opaque text with no FK.
+	PreviewMergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error)
+	// M11.8 — reassigns duplicatePersonId's active role-assignment and membership rows onto personId (the survivor); moves the duplicate's account onto the survivor if the survivor has none, otherwise disables the duplicate's account (soft-merge — its login stops working); soft-deletes the duplicate person; audit-logs the merge. Destructive-shaped and irreversible. Out of scope: registration/moderation/vouching/congregationimport rows (opaque text, no FK) — those keep referencing the pre-merge duplicate id. The admin UI calls previewMergePersons first.
+	MergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error)
+	// M11.3 — personId's active sessions, admin-scoped.
+	ListSessions(ctx context.Context, personIdArg string) (SessionPage, error)
+	// M11.3 — revokes one of personId's sessions, admin-scoped.
+	RevokeSession(ctx context.Context, personIdArg string, sessionIdArg string) error
+	// M11.9 — personId's active AND revoked API keys, admin-scoped, metadata only (ApiKey carries no secret/hash field, so this endpoint can never leak one). Incident-response visibility: lets an admin see a person's keys without the owner's cooperation.
+	ListApiKeys(ctx context.Context, personIdArg string) (ApiKeyPage, error)
+	// M11.9 — revokes one of personId's API keys, admin-scoped (incident response — kill a compromised key without waiting on the owner). Audit-logged distinctly from a self-revoke (REVOKE_API_KEY_ADMIN vs REVOKE_API_KEY) so the trail shows who actually acted.
+	RevokeApiKey(ctx context.Context, personIdArg string, apiKeyIdArg string) error
+	// M11.2 — the shared logging helper's read side: every mutating super-admin action, keyset paginated (same real-pagination convention as Moderation's listReports/listAppeals, M7), filterable by actor/target/date, all filters ANDed together when set.
+	ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
+	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
+	InvitePerson(ctx context.Context, requestArg InvitePersonRequest) (InviteResult, error)
 }
 
 func NewCoreSuperAdminServiceClientWithAuth(client CoreSuperAdminServiceClient, authHeader bearertoken.Token) CoreSuperAdminServiceClientWithAuth {
@@ -664,6 +1250,10 @@ func (c *coreSuperAdminServiceClientWithAuth) GrantUnitRole(ctx context.Context,
 	return c.client.GrantUnitRole(ctx, c.authHeader, requestArg)
 }
 
+func (c *coreSuperAdminServiceClientWithAuth) BulkGrantUnitRole(ctx context.Context, requestArg BulkGrantUnitRoleRequest) error {
+	return c.client.BulkGrantUnitRole(ctx, c.authHeader, requestArg)
+}
+
 func (c *coreSuperAdminServiceClientWithAuth) RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error {
 	return c.client.RevokeRoleAssignment(ctx, c.authHeader, assignmentIdArg)
 }
@@ -678,6 +1268,50 @@ func (c *coreSuperAdminServiceClientWithAuth) GrantInstanceAdmin(ctx context.Con
 
 func (c *coreSuperAdminServiceClientWithAuth) RevokeInstanceAdmin(ctx context.Context, personIdArg string) error {
 	return c.client.RevokeInstanceAdmin(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) GetAccountStatus(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	return c.client.GetAccountStatus(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) DeactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	return c.client.DeactivateAccount(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	return c.client.ReactivateAccount(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) PreviewMergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error) {
+	return c.client.PreviewMergePersons(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) MergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error) {
+	return c.client.MergePersons(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ListSessions(ctx context.Context, personIdArg string) (SessionPage, error) {
+	return c.client.ListSessions(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) RevokeSession(ctx context.Context, personIdArg string, sessionIdArg string) error {
+	return c.client.RevokeSession(ctx, c.authHeader, personIdArg, sessionIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ListApiKeys(ctx context.Context, personIdArg string) (ApiKeyPage, error) {
+	return c.client.ListApiKeys(ctx, c.authHeader, personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) RevokeApiKey(ctx context.Context, personIdArg string, apiKeyIdArg string) error {
+	return c.client.RevokeApiKey(ctx, c.authHeader, personIdArg, apiKeyIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
+	return c.client.ListAuditLog(ctx, c.authHeader, actorPersonIdArg, targetKindArg, targetIdArg, fromArg, toArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) InvitePerson(ctx context.Context, requestArg InvitePersonRequest) (InviteResult, error) {
+	return c.client.InvitePerson(ctx, c.authHeader, requestArg)
 }
 
 func NewCoreSuperAdminServiceClientWithTokenProvider(client CoreSuperAdminServiceClient, tokenProvider httpclient.TokenProvider) CoreSuperAdminServiceClientWithAuth {
@@ -721,6 +1355,14 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) GrantUnitRole(ctx context
 	return c.client.GrantUnitRole(ctx, bearertoken.Token(token), requestArg)
 }
 
+func (c *coreSuperAdminServiceClientWithTokenProvider) BulkGrantUnitRole(ctx context.Context, requestArg BulkGrantUnitRoleRequest) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.BulkGrantUnitRole(ctx, bearertoken.Token(token), requestArg)
+}
+
 func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
@@ -751,4 +1393,92 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeInstanceAdmin(ctx c
 		return err
 	}
 	return c.client.RevokeInstanceAdmin(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) GetAccountStatus(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AccountStatus), err
+	}
+	return c.client.GetAccountStatus(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) DeactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AccountStatus), err
+	}
+	return c.client.DeactivateAccount(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ReactivateAccount(ctx context.Context, personIdArg string) (AccountStatus, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AccountStatus), err
+	}
+	return c.client.ReactivateAccount(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) PreviewMergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergePreview, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(MergePreview), err
+	}
+	return c.client.PreviewMergePersons(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) MergePersons(ctx context.Context, personIdArg string, requestArg MergePersonsRequest) (MergeResult, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(MergeResult), err
+	}
+	return c.client.MergePersons(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ListSessions(ctx context.Context, personIdArg string) (SessionPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(SessionPage), err
+	}
+	return c.client.ListSessions(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeSession(ctx context.Context, personIdArg string, sessionIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.RevokeSession(ctx, bearertoken.Token(token), personIdArg, sessionIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ListApiKeys(ctx context.Context, personIdArg string) (ApiKeyPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ApiKeyPage), err
+	}
+	return c.client.ListApiKeys(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeApiKey(ctx context.Context, personIdArg string, apiKeyIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.RevokeApiKey(ctx, bearertoken.Token(token), personIdArg, apiKeyIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AuditLogPage), err
+	}
+	return c.client.ListAuditLog(ctx, bearertoken.Token(token), actorPersonIdArg, targetKindArg, targetIdArg, fromArg, toArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) InvitePerson(ctx context.Context, requestArg InvitePersonRequest) (InviteResult, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(InviteResult), err
+	}
+	return c.client.InvitePerson(ctx, bearertoken.Token(token), requestArg)
 }

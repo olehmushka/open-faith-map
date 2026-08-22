@@ -8,6 +8,236 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+// status is "active", "disabled", or "none" (the person has never had a login attached).
+type AccountStatus struct {
+	PersonId string `json:"personId"`
+	Status   string `json:"status"`
+	// M11.4 — most recent session activity (revoked-inclusive), absent for status "none" or an account that has never had a session.
+	LastActiveAt *datetime.DateTime `json:"lastActiveAt,omitempty"`
+}
+
+func (o AccountStatus) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AccountStatus) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.9 — one identity_api_keys row, metadata only: no token or token hash field exists on this type at all, so it is structurally impossible for any endpoint returning it to leak the secret, regardless of caller (self-service or admin-oversight).
+type ApiKey struct {
+	Id    string `json:"id"`
+	Label string `json:"label"`
+	// The owner's chosen allowlist at creation time. The effective permission set for a request authenticated with this key is this list intersected with the owning person's LIVE authz grants at request time — never wider than either alone.
+	PermissionCodes []string           `json:"permissionCodes"`
+	CreatedAt       datetime.DateTime  `json:"createdAt"`
+	LastUsedAt      *datetime.DateTime `json:"lastUsedAt,omitempty"`
+	RevokedAt       *datetime.DateTime `json:"revokedAt,omitempty"`
+}
+
+func (o ApiKey) MarshalJSON() ([]byte, error) {
+	if o.PermissionCodes == nil {
+		o.PermissionCodes = make([]string, 0)
+	}
+	type _tmpApiKey ApiKey
+	return safejson.Marshal(_tmpApiKey(o))
+}
+
+func (o *ApiKey) UnmarshalJSON(data []byte) error {
+	type _tmpApiKey ApiKey
+	var rawApiKey _tmpApiKey
+	if err := safejson.Unmarshal(data, &rawApiKey); err != nil {
+		return err
+	}
+	if rawApiKey.PermissionCodes == nil {
+		rawApiKey.PermissionCodes = make([]string, 0)
+	}
+	*o = ApiKey(rawApiKey)
+	return nil
+}
+
+func (o ApiKey) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ApiKey) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type ApiKeyPage struct {
+	ApiKeys []ApiKey `json:"apiKeys"`
+}
+
+func (o ApiKeyPage) MarshalJSON() ([]byte, error) {
+	if o.ApiKeys == nil {
+		o.ApiKeys = make([]ApiKey, 0)
+	}
+	type _tmpApiKeyPage ApiKeyPage
+	return safejson.Marshal(_tmpApiKeyPage(o))
+}
+
+func (o *ApiKeyPage) UnmarshalJSON(data []byte) error {
+	type _tmpApiKeyPage ApiKeyPage
+	var rawApiKeyPage _tmpApiKeyPage
+	if err := safejson.Unmarshal(data, &rawApiKeyPage); err != nil {
+		return err
+	}
+	if rawApiKeyPage.ApiKeys == nil {
+		rawApiKeyPage.ApiKeys = make([]ApiKey, 0)
+	}
+	*o = ApiKeyPage(rawApiKeyPage)
+	return nil
+}
+
+func (o ApiKeyPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ApiKeyPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.2 — one append-only row of identity_audit_log. targetKind/targetId is an opaque discriminator+ref pair (mirrors Moderation's target_kind/target_ref) since targets span role assignments, instance-admin grants, accounts, and (M11.3) sessions today, and will span persons (M11.8 merge) later. before/after are optional — absent for a create/delete side respectively.
+type AuditLogEntry struct {
+	Id string `json:"id"`
+	// Empty if the acting person was later deleted (the FK is ON DELETE SET NULL).
+	ActorPersonId *string `json:"actorPersonId,omitempty"`
+	// Denormalized at read time; empty alongside actorPersonId.
+	ActorPersonName *string           `json:"actorPersonName,omitempty"`
+	Action          string            `json:"action"`
+	TargetKind      string            `json:"targetKind"`
+	TargetId        string            `json:"targetId"`
+	Before          *interface{}      `json:"before,omitempty"`
+	After           *interface{}      `json:"after,omitempty"`
+	CreatedAt       datetime.DateTime `json:"createdAt"`
+}
+
+func (o AuditLogEntry) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AuditLogEntry) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type AuditLogPage struct {
+	Entries       []AuditLogEntry `json:"entries"`
+	NextPageToken *string         `json:"nextPageToken,omitempty"`
+}
+
+func (o AuditLogPage) MarshalJSON() ([]byte, error) {
+	if o.Entries == nil {
+		o.Entries = make([]AuditLogEntry, 0)
+	}
+	type _tmpAuditLogPage AuditLogPage
+	return safejson.Marshal(_tmpAuditLogPage(o))
+}
+
+func (o *AuditLogPage) UnmarshalJSON(data []byte) error {
+	type _tmpAuditLogPage AuditLogPage
+	var rawAuditLogPage _tmpAuditLogPage
+	if err := safejson.Unmarshal(data, &rawAuditLogPage); err != nil {
+		return err
+	}
+	if rawAuditLogPage.Entries == nil {
+		rawAuditLogPage.Entries = make([]AuditLogEntry, 0)
+	}
+	*o = AuditLogPage(rawAuditLogPage)
+	return nil
+}
+
+func (o AuditLogPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AuditLogPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.7 — the batch variant of GrantUnitRoleRequest: the same role and unit, granted to every id in personIds at once, atomically.
+type BulkGrantUnitRoleRequest struct {
+	PersonIds []string `json:"personIds"`
+	RoleId    string   `json:"roleId"`
+	UnitId    string   `json:"unitId"`
+}
+
+func (o BulkGrantUnitRoleRequest) MarshalJSON() ([]byte, error) {
+	if o.PersonIds == nil {
+		o.PersonIds = make([]string, 0)
+	}
+	type _tmpBulkGrantUnitRoleRequest BulkGrantUnitRoleRequest
+	return safejson.Marshal(_tmpBulkGrantUnitRoleRequest(o))
+}
+
+func (o *BulkGrantUnitRoleRequest) UnmarshalJSON(data []byte) error {
+	type _tmpBulkGrantUnitRoleRequest BulkGrantUnitRoleRequest
+	var rawBulkGrantUnitRoleRequest _tmpBulkGrantUnitRoleRequest
+	if err := safejson.Unmarshal(data, &rawBulkGrantUnitRoleRequest); err != nil {
+		return err
+	}
+	if rawBulkGrantUnitRoleRequest.PersonIds == nil {
+		rawBulkGrantUnitRoleRequest.PersonIds = make([]string, 0)
+	}
+	*o = BulkGrantUnitRoleRequest(rawBulkGrantUnitRoleRequest)
+	return nil
+}
+
+func (o BulkGrantUnitRoleRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *BulkGrantUnitRoleRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Country struct {
 	Id string `json:"id"`
 	// ISO-3166-1 alpha-2.
@@ -89,6 +319,94 @@ func (o CountryPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *CountryPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type CreateApiKeyRequest struct {
+	Label           string   `json:"label"`
+	PermissionCodes []string `json:"permissionCodes"`
+}
+
+func (o CreateApiKeyRequest) MarshalJSON() ([]byte, error) {
+	if o.PermissionCodes == nil {
+		o.PermissionCodes = make([]string, 0)
+	}
+	type _tmpCreateApiKeyRequest CreateApiKeyRequest
+	return safejson.Marshal(_tmpCreateApiKeyRequest(o))
+}
+
+func (o *CreateApiKeyRequest) UnmarshalJSON(data []byte) error {
+	type _tmpCreateApiKeyRequest CreateApiKeyRequest
+	var rawCreateApiKeyRequest _tmpCreateApiKeyRequest
+	if err := safejson.Unmarshal(data, &rawCreateApiKeyRequest); err != nil {
+		return err
+	}
+	if rawCreateApiKeyRequest.PermissionCodes == nil {
+		rawCreateApiKeyRequest.PermissionCodes = make([]string, 0)
+	}
+	*o = CreateApiKeyRequest(rawCreateApiKeyRequest)
+	return nil
+}
+
+func (o CreateApiKeyRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateApiKeyRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.9 — token is the bare, one-time raw secret, prefixed "ofm_" so the authenticator can cheaply distinguish it from a JWT bearer with no DB round-trip. Returned exactly once; only its hash is ever persisted server-side (identity_api_keys.token_hash) — the same one-time- secret shape InviteResult already uses.
+type CreateApiKeyResult struct {
+	Id              string            `json:"id"`
+	Label           string            `json:"label"`
+	PermissionCodes []string          `json:"permissionCodes"`
+	Token           string            `json:"token"`
+	CreatedAt       datetime.DateTime `json:"createdAt"`
+}
+
+func (o CreateApiKeyResult) MarshalJSON() ([]byte, error) {
+	if o.PermissionCodes == nil {
+		o.PermissionCodes = make([]string, 0)
+	}
+	type _tmpCreateApiKeyResult CreateApiKeyResult
+	return safejson.Marshal(_tmpCreateApiKeyResult(o))
+}
+
+func (o *CreateApiKeyResult) UnmarshalJSON(data []byte) error {
+	type _tmpCreateApiKeyResult CreateApiKeyResult
+	var rawCreateApiKeyResult _tmpCreateApiKeyResult
+	if err := safejson.Unmarshal(data, &rawCreateApiKeyResult); err != nil {
+		return err
+	}
+	if rawCreateApiKeyResult.PermissionCodes == nil {
+		rawCreateApiKeyResult.PermissionCodes = make([]string, 0)
+	}
+	*o = CreateApiKeyResult(rawCreateApiKeyResult)
+	return nil
+}
+
+func (o CreateApiKeyResult) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateApiKeyResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -267,6 +585,74 @@ func (o *InstanceAdminPage) UnmarshalYAML(unmarshal func(interface{}) error) err
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M11.6 — what a valid, still-pending invite reveals to its own not-yet-authenticated invitee (the accept-invite landing page's welcome message). Deliberately minimal.
+type InviteInfo struct {
+	DisplayName string `json:"displayName"`
+	Email       string `json:"email"`
+}
+
+func (o InviteInfo) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *InviteInfo) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.6 — pre-provisions a Person+Account for email/displayName and generates a one-time invite link.
+type InvitePersonRequest struct {
+	Email       string `json:"email"`
+	DisplayName string `json:"displayName"`
+}
+
+func (o InvitePersonRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *InvitePersonRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.6 — token is the bare, one-time raw token, not a full URL: the admin app builds the shareable link from its own known origin. Returned exactly once; only its hash is ever persisted server-side.
+type InviteResult struct {
+	PersonId  string            `json:"personId"`
+	AccountId string            `json:"accountId"`
+	Token     string            `json:"token"`
+	ExpiresAt datetime.DateTime `json:"expiresAt"`
+}
+
+func (o InviteResult) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *InviteResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Membership struct {
 	Id            string            `json:"id"`
 	PersonId      string            `json:"personId"`
@@ -326,6 +712,88 @@ func (o MembershipPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *MembershipPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.8 — the path's personId is always the survivor; duplicatePersonId is merged into it.
+type MergePersonsRequest struct {
+	DuplicatePersonId string `json:"duplicatePersonId"`
+}
+
+func (o MergePersonsRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MergePersonsRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.8 — what mergePersons(personId, duplicatePersonId) will move or end, computed read-only so the admin UI can show it before the caller confirms. Does not consider registration/moderation/vouching/congregationimport rows, which reference person ids as opaque text with no FK and are out of scope for this milestone.
+type MergePreview struct {
+	SurvivorId                            string `json:"survivorId"`
+	DuplicatePersonId                     string `json:"duplicatePersonId"`
+	RoleAssignmentsToMove                 int    `json:"roleAssignmentsToMove"`
+	RoleAssignmentsToRevokeAsRedundant    int    `json:"roleAssignmentsToRevokeAsRedundant"`
+	MembershipsToMove                     int    `json:"membershipsToMove"`
+	MembershipsToEndAsRedundant           int    `json:"membershipsToEndAsRedundant"`
+	InstanceAdminWillMove                 bool   `json:"instanceAdminWillMove"`
+	InstanceAdminWillBeRevokedAsRedundant bool   `json:"instanceAdminWillBeRevokedAsRedundant"`
+	DuplicateHasActiveAccount             bool   `json:"duplicateHasActiveAccount"`
+	// True when the survivor already has their own active account — in that case the duplicate's account is disabled (soft-merge) rather than moved, and its login stops working. False means the duplicate's account (if any) simply moves onto the survivor.
+	AccountConflict bool `json:"accountConflict"`
+}
+
+func (o MergePreview) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MergePreview) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.8 — what mergePersons actually did, for the audit record and the confirmation UI.
+type MergeResult struct {
+	SurvivorId                      string `json:"survivorId"`
+	DuplicatePersonId               string `json:"duplicatePersonId"`
+	RoleAssignmentsMoved            int    `json:"roleAssignmentsMoved"`
+	RoleAssignmentsRevokedRedundant int    `json:"roleAssignmentsRevokedRedundant"`
+	MembershipsMoved                int    `json:"membershipsMoved"`
+	MembershipsEnded                int    `json:"membershipsEnded"`
+	InstanceAdminMoved              bool   `json:"instanceAdminMoved"`
+	InstanceAdminRevokedRedundant   bool   `json:"instanceAdminRevokedRedundant"`
+	DuplicateAccountMoved           bool   `json:"duplicateAccountMoved"`
+	DuplicateAccountDisabled        bool   `json:"duplicateAccountDisabled"`
+}
+
+func (o MergeResult) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MergeResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -466,6 +934,48 @@ func (o *OrgProfile) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M11.9 — the closed unit-scoped permission catalog (internal/authz/domain/permissions.go), excluding instance-scope codes: an API key can never exercise one (RequireInstanceAdmin hard-denies every API-key-authenticated subject, allowlist or not), so offering them in the creation picker would be misleading. Self-scoped, not admin-only: every person needs this for their own createApiKey picker.
+type PermissionCodePage struct {
+	Codes []string `json:"codes"`
+}
+
+func (o PermissionCodePage) MarshalJSON() ([]byte, error) {
+	if o.Codes == nil {
+		o.Codes = make([]string, 0)
+	}
+	type _tmpPermissionCodePage PermissionCodePage
+	return safejson.Marshal(_tmpPermissionCodePage(o))
+}
+
+func (o *PermissionCodePage) UnmarshalJSON(data []byte) error {
+	type _tmpPermissionCodePage PermissionCodePage
+	var rawPermissionCodePage _tmpPermissionCodePage
+	if err := safejson.Unmarshal(data, &rawPermissionCodePage); err != nil {
+		return err
+	}
+	if rawPermissionCodePage.Codes == nil {
+		rawPermissionCodePage.Codes = make([]string, 0)
+	}
+	*o = PermissionCodePage(rawPermissionCodePage)
+	return nil
+}
+
+func (o PermissionCodePage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PermissionCodePage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Person struct {
 	Id string `json:"id"`
 	// Optional stable external id, unique among active persons.
@@ -473,6 +983,8 @@ type Person struct {
 	DisplayName string            `json:"displayName"`
 	CreatedAt   datetime.DateTime `json:"createdAt"`
 	UpdatedAt   datetime.DateTime `json:"updatedAt"`
+	// M11.4 — most recent session activity (revoked-inclusive), populated only by CoreSuperAdminService's searchPersons. Always absent from CoreService's getPerson/ getPersons, which don't compute it.
+	LastActiveAt *datetime.DateTime `json:"lastActiveAt,omitempty"`
 }
 
 func (o Person) MarshalYAML() (interface{}, error) {
@@ -525,6 +1037,48 @@ func (o PersonPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *PersonPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.3 — issuer is deliberately NOT a field here: the backend records the caller's own already-verified bearer issuer (authz.Subject.Issuer), not a client-supplied value.
+type RegisterSessionRequest struct {
+	DeviceLabel *string `json:"deviceLabel,omitempty"`
+}
+
+func (o RegisterSessionRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *RegisterSessionRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.6 — a POST body, not a path/query token, so the one-time token never lands in a server access log or browser history the way a GET with the token in the URL would.
+type ResolveInviteRequest struct {
+	Token string `json:"token"`
+}
+
+func (o ResolveInviteRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ResolveInviteRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -658,6 +1212,74 @@ func (o RolePage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *RolePage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.3 — one row of identity_sessions: a NextAuth sign-in the backend can revoke independently of every other session on the same account (D-SessionTracking — the reason this exists at all rather than reusing account-status-disable's all-or-nothing shape).
+type Session struct {
+	Id string `json:"id"`
+	// Best-effort User-Agent captured at sign-in; absent if it couldn't be read.
+	DeviceLabel *string           `json:"deviceLabel,omitempty"`
+	CreatedAt   datetime.DateTime `json:"createdAt"`
+	LastSeenAt  datetime.DateTime `json:"lastSeenAt"`
+	// True for the one session the caller's own request is presently authenticated with.
+	IsCurrent bool `json:"isCurrent"`
+}
+
+func (o Session) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Session) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type SessionPage struct {
+	Sessions []Session `json:"sessions"`
+}
+
+func (o SessionPage) MarshalJSON() ([]byte, error) {
+	if o.Sessions == nil {
+		o.Sessions = make([]Session, 0)
+	}
+	type _tmpSessionPage SessionPage
+	return safejson.Marshal(_tmpSessionPage(o))
+}
+
+func (o *SessionPage) UnmarshalJSON(data []byte) error {
+	type _tmpSessionPage SessionPage
+	var rawSessionPage _tmpSessionPage
+	if err := safejson.Unmarshal(data, &rawSessionPage); err != nil {
+		return err
+	}
+	if rawSessionPage.Sessions == nil {
+		rawSessionPage.Sessions = make([]Session, 0)
+	}
+	*o = SessionPage(rawSessionPage)
+	return nil
+}
+
+func (o SessionPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SessionPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -859,6 +1481,27 @@ func (o UnitRefPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UnitRefPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M11.5 — no personId field here, deliberately: the backend always updates the caller's own person row, resolved from the already-verified request subject, never a client-supplied id.
+type UpdateMyProfileRequest struct {
+	DisplayName string `json:"displayName"`
+}
+
+func (o UpdateMyProfileRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateMyProfileRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

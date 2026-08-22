@@ -8,10 +8,18 @@ package adapters
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/identity/domain"
 )
+
+// sessionTouchThrottle is TouchSession's minimum interval between last_seen_at writes — M11.3's
+// build-time decision to keep the per-request session check off the write hot path (see
+// docs/milestones.md's M11.3 row and D-SessionTracking's Consequences). Not configurable: no
+// existing precedent in this codebase for exposing this class of tuning knob as an env var.
+const sessionTouchThrottle = 60 * time.Second
 
 // Querier is satisfied by both *pgxpool.Pool and pgx.Tx, so a Store can be bound either to the pool
 // for normal request-scoped calls or to a single pgx.Tx for the boot-time admin seed's atomic
@@ -96,18 +104,44 @@ func (s *Store) GetPersons(ctx context.Context, ids []string) ([]domain.Person, 
 	return out, rows.Err()
 }
 
+// UpdateDisplayName sets personID's display_name — M11.5's self-service profile page, the first
+// person-mutation store method in this module (GetPerson/GetPersons/SearchPersons are all reads;
+// InsertPerson is the boot-time/registration insert path, not an update). Callers must resolve
+// personID from the request's own subject, never a client-supplied argument — this method itself
+// enforces no ownership, same "data layer, no subject resolution" shape RevokeMySession's store call
+// already uses.
+func (s *Store) UpdateDisplayName(ctx context.Context, personID, displayName string) (domain.Person, error) {
+	return s.scanPerson(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_persons
+		SET display_name = $2, updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, code, display_name, created_at, updated_at`, personID, displayName))
+}
+
 // SearchPersons is the M10.7 super-admin people screen's search — case-insensitive substring match
 // on display name or code, capped at limit (default/max 50).
+// SearchPersons backs the super-admin people list, so unlike GetPerson/GetPersons (shared with
+// non-admin CoreService reads) it also computes each result's M11.4 last-active signal in the same
+// round trip — a revoked-inclusive MAX(last_seen_at) per account, not filtered by
+// ListActiveSessionsByAccount's own revoked_at IS NULL predicate. Scanned separately from
+// scanPerson (an extra column) rather than changing that shared helper, so GetPerson/GetPersons stay
+// untouched and don't pay for the join.
 func (s *Store) SearchPersons(ctx context.Context, query string, limit int) ([]domain.Person, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 50
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, code, display_name, created_at, updated_at
-		FROM openfaithmap.identity_persons
-		WHERE deleted_at IS NULL
-		  AND ($1 = '' OR display_name ILIKE '%' || $1 || '%' OR code ILIKE '%' || $1 || '%')
-		ORDER BY display_name
+		SELECT p.id, p.code, p.display_name, p.created_at, p.updated_at, las.last_active
+		FROM openfaithmap.identity_persons p
+		LEFT JOIN openfaithmap.identity_accounts a ON a.person_id = p.id AND a.deleted_at IS NULL
+		LEFT JOIN (
+			SELECT account_id, MAX(last_seen_at) AS last_active
+			FROM openfaithmap.identity_sessions
+			GROUP BY account_id
+		) las ON las.account_id = a.id
+		WHERE p.deleted_at IS NULL
+		  AND ($1 = '' OR p.display_name ILIKE '%' || $1 || '%' OR p.code ILIKE '%' || $1 || '%')
+		ORDER BY p.display_name
 		LIMIT $2`, query, limit)
 	if err != nil {
 		return nil, err
@@ -115,18 +149,26 @@ func (s *Store) SearchPersons(ctx context.Context, query string, limit int) ([]d
 	defer rows.Close()
 	var out []domain.Person
 	for rows.Next() {
-		p, err := s.scanPerson(rows)
-		if err != nil {
+		var p domain.Person
+		var code *string
+		if err := rows.Scan(&p.ID, &code, &p.DisplayName, &p.CreatedAt, &p.UpdatedAt, &p.LastActiveAt); err != nil {
 			return nil, err
+		}
+		if code != nil {
+			p.Code = *code
 		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
 }
 
+// GetActiveAccountByPerson returns personID's account regardless of its status — "Active" here means
+// only "not soft-deleted" (deleted_at IS NULL), same convention as GetActiveAccountByEmail below.
+// Callers that care whether the account is usable must check the returned Account.Status themselves
+// (see application.Service.LinkOnMatch for why filtering status out in SQL here would be wrong).
 func (s *Store) GetActiveAccountByPerson(ctx context.Context, personID string) (domain.Account, error) {
 	return s.scanAccount(s.pool.QueryRow(ctx, `
-		SELECT id, person_id, COALESCE(email::text, ''), created_at, updated_at
+		SELECT id, person_id, COALESCE(email::text, ''), status, created_at, updated_at
 		FROM openfaithmap.identity_accounts
 		WHERE person_id = $1 AND deleted_at IS NULL`, personID))
 }
@@ -136,7 +178,7 @@ func (s *Store) GetActiveAccountByEmail(ctx context.Context, email string) (doma
 	// (identity_accounts_email_active_idx) makes "the single account" true by construction — no
 	// ambiguous-match case to resolve in Go.
 	return s.scanAccount(s.pool.QueryRow(ctx, `
-		SELECT id, person_id, COALESCE(email::text, ''), created_at, updated_at
+		SELECT id, person_id, COALESCE(email::text, ''), status, created_at, updated_at
 		FROM openfaithmap.identity_accounts
 		WHERE email = $1 AND deleted_at IS NULL`, email))
 }
@@ -149,12 +191,22 @@ func (s *Store) InsertAccount(ctx context.Context, personID, email string) (doma
 	return s.scanAccount(s.pool.QueryRow(ctx, `
 		INSERT INTO openfaithmap.identity_accounts (person_id, email)
 		VALUES ($1, $2)
-		RETURNING id, person_id, COALESCE(email::text, ''), created_at, updated_at`, personID, emailArg))
+		RETURNING id, person_id, COALESCE(email::text, ''), status, created_at, updated_at`, personID, emailArg))
+}
+
+// SetAccountStatus sets accountID's status (domain.AccountStatusActive/AccountStatusDisabled) and
+// returns the updated row — backs application.Service.Deactivate/Reactivate.
+func (s *Store) SetAccountStatus(ctx context.Context, accountID, status string) (domain.Account, error) {
+	return s.scanAccount(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_accounts
+		SET status = $2
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, person_id, COALESCE(email::text, ''), status, created_at, updated_at`, accountID, status))
 }
 
 func (s *Store) scanAccount(row pgx.Row) (domain.Account, error) {
 	var a domain.Account
-	if err := row.Scan(&a.ID, &a.PersonID, &a.Email, &a.CreatedAt, &a.UpdatedAt); err != nil {
+	if err := row.Scan(&a.ID, &a.PersonID, &a.Email, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Account{}, domain.ErrAccountNotFound
 		}
@@ -163,13 +215,15 @@ func (s *Store) scanAccount(row pgx.Row) (domain.Account, error) {
 	return a, nil
 }
 
-// ResolveBySubject maps a verified (issuer, subject) to the account+person it federates to.
+// ResolveBySubject maps a verified (issuer, subject) to the account+person it federates to. A
+// disabled account (D-AccountStatusEnforcement) resolves as ErrIdentityNotFound, same as an unknown
+// one — no oracle leak, and it reuses the authenticator's existing uniform-401 path.
 func (s *Store) ResolveBySubject(ctx context.Context, issuer, subject string) (domain.Resolution, error) {
 	var out domain.Resolution
 	err := s.pool.QueryRow(ctx, `
 		SELECT a.person_id, a.id, COALESCE(a.email::text, '')
 		FROM openfaithmap.identity_external_identities x
-		JOIN openfaithmap.identity_accounts a ON a.id = x.account_id AND a.deleted_at IS NULL
+		JOIN openfaithmap.identity_accounts a ON a.id = x.account_id AND a.deleted_at IS NULL AND a.status = 'active'
 		WHERE x.issuer = $1 AND x.subject = $2`, issuer, subject,
 	).Scan(&out.PersonID, &out.AccountID, &out.Email)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -192,4 +246,421 @@ func (s *Store) InsertIdentity(ctx context.Context, accountID, issuer, subject s
 		return domain.ExternalIdentity{}, err
 	}
 	return domain.ExternalIdentity{ID: id, AccountID: accountID, Issuer: issuer, Subject: subject}, nil
+}
+
+// InsertSession creates a new identity_sessions row (M11.3) — one per NextAuth sign-in. deviceLabel
+// is best-effort (User-Agent captured at sign-in) and may be empty.
+func (s *Store) InsertSession(ctx context.Context, accountID, issuer, deviceLabel string) (domain.Session, error) {
+	var deviceLabelArg any
+	if deviceLabel != "" {
+		deviceLabelArg = deviceLabel
+	}
+	return s.scanSession(s.pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_sessions (account_id, issuer, device_label)
+		VALUES ($1, $2, $3)
+		RETURNING id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at`,
+		accountID, issuer, deviceLabelArg))
+}
+
+// GetSession reads a single session by id, revoked or not — callers that care whether it's usable
+// check the returned Session.RevokedAt themselves (same convention GetActiveAccountByPerson uses
+// for Account.Status).
+func (s *Store) GetSession(ctx context.Context, sessionID string) (domain.Session, error) {
+	return s.scanSession(s.pool.QueryRow(ctx, `
+		SELECT id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at
+		FROM openfaithmap.identity_sessions
+		WHERE id = $1`, sessionID))
+}
+
+// ListActiveSessionsByAccount returns accountID's not-yet-revoked sessions, most recently active
+// first — backs application.Service.ListSessions/ListMySessions.
+func (s *Store) ListActiveSessionsByAccount(ctx context.Context, accountID string) ([]domain.Session, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at
+		FROM openfaithmap.identity_sessions
+		WHERE account_id = $1 AND revoked_at IS NULL
+		ORDER BY last_seen_at DESC`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Session
+	for rows.Next() {
+		sess, err := s.scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, sess)
+	}
+	return out, rows.Err()
+}
+
+// TouchSession validates sessionID (ErrSessionNotFound / ErrSessionRevoked) and, on the happy path,
+// bumps last_seen_at — but only when the existing value is more than sessionTouchThrottle stale, so
+// a burst of requests from one still-fresh session costs one read, not one write, per request. This
+// backs the per-request check in internal/identity/middleware.Authenticator.Handle.
+func (s *Store) TouchSession(ctx context.Context, sessionID string) (domain.Session, error) {
+	sess, err := s.GetSession(ctx, sessionID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if sess.RevokedAt != nil {
+		return sess, domain.ErrSessionRevoked
+	}
+	if time.Since(sess.LastSeenAt) <= sessionTouchThrottle {
+		return sess, nil
+	}
+	return s.scanSession(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_sessions
+		SET last_seen_at = now()
+		WHERE id = $1
+		RETURNING id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at`, sessionID))
+}
+
+// LastActiveAtByAccount returns accountID's most recent session activity — MAX(last_seen_at) across
+// all of its sessions, revoked or not (M11.4's revoked-inclusive decision: an admin revoking a
+// session shouldn't retroactively erase the historical fact that the person was active). Nil if the
+// account has never had a session. Backs application.Service.AccountStatus for the person detail page
+// (SearchPersons computes the same signal itself, batched, for the people list).
+func (s *Store) LastActiveAtByAccount(ctx context.Context, accountID string) (*time.Time, error) {
+	var lastActive *time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT MAX(last_seen_at)
+		FROM openfaithmap.identity_sessions
+		WHERE account_id = $1`, accountID).Scan(&lastActive)
+	return lastActive, err
+}
+
+// RevokeSession sets revoked_at. Idempotent: revoking an already-revoked session is a no-op that
+// still returns the current row (matching SetAccountStatus's own idempotency).
+func (s *Store) RevokeSession(ctx context.Context, sessionID string) (domain.Session, error) {
+	return s.scanSession(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_sessions
+		SET revoked_at = COALESCE(revoked_at, now())
+		WHERE id = $1
+		RETURNING id, account_id, issuer, device_label, created_at, last_seen_at, revoked_at`, sessionID))
+}
+
+// InsertInvite creates a new identity_invites row (M11.6) — tokenHash is the caller's already-hashed
+// token (application.Service.CreateInvite generates and hashes the raw token; this store method
+// never sees or persists the raw value).
+func (s *Store) InsertInvite(ctx context.Context, personID, accountID, email, tokenHash, invitedBy string, expiresAt time.Time) (domain.Invite, error) {
+	return s.scanInvite(s.pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_invites (person_id, account_id, email, token_hash, invited_by, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, person_id, account_id, email::text, status, invited_by, expires_at, created_at, accepted_at`,
+		personID, accountID, email, tokenHash, invitedBy, expiresAt))
+}
+
+// InsertPersonAccountInvite runs the three inserts CreateInvite needs — Person, Account, Invite — in
+// ONE transaction, the same atomicity shape internal/identity/bootstrap's own person+account+
+// identity+instance-admin write already uses. Without this, a failure on the last insert (a real
+// possibility: network blip, pool exhaustion) would leave behind an orphaned active Person+Account
+// with no Invite — silently and permanently blocking any future invite to that email, since
+// CreateInvite's own duplicate-email check would then see an active account that no admin can ever
+// retrieve a link for. Requires the Store to be pool-bound (ok fails only if this Store is already
+// itself bound to a pgx.Tx, which never happens on the normal request path).
+func (s *Store) InsertPersonAccountInvite(ctx context.Context, displayName, email, tokenHash, invitedBy string, expiresAt time.Time) (domain.Invite, error) {
+	pool, ok := s.pool.(*pgxpool.Pool)
+	if !ok {
+		return domain.Invite{}, errors.New("InsertPersonAccountInvite requires a pool-bound Store")
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return domain.Invite{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	txStore := NewStore(tx)
+	person, err := txStore.InsertPerson(ctx, domain.Person{DisplayName: displayName})
+	if err != nil {
+		return domain.Invite{}, err
+	}
+	account, err := txStore.InsertAccount(ctx, person.ID, email)
+	if err != nil {
+		return domain.Invite{}, err
+	}
+	invite, err := txStore.InsertInvite(ctx, person.ID, account.ID, email, tokenHash, invitedBy, expiresAt)
+	if err != nil {
+		return domain.Invite{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Invite{}, err
+	}
+	return invite, nil
+}
+
+// PreviewMergeIdentity previews MergePersonIdentity's effect (M11.8) without mutating anything:
+// whether duplicateID has an active account at all, and if so, whether survivorID also has one
+// (accountConflict) — the case where the duplicate's account will be disabled rather than moved.
+// Reuses GetActiveAccountByPerson rather than raw SQL so the preview can never drift from what a
+// merge actually checks.
+func (s *Store) PreviewMergeIdentity(ctx context.Context, survivorID, duplicateID string) (duplicateHasActiveAccount, accountConflict bool, err error) {
+	if _, err := s.GetActiveAccountByPerson(ctx, duplicateID); err != nil {
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	if _, err := s.GetActiveAccountByPerson(ctx, survivorID); err != nil {
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			return true, false, nil
+		}
+		return false, false, err
+	}
+	return true, true, nil
+}
+
+// MergePersonIdentity does the identity-side work of M11.8's MergePersons, reflecting the
+// soft-merge-only decision (re-pointing the duplicate's external identity onto the survivor's own
+// account, so the same human could keep logging in with either, was considered and declined):
+//   - duplicateID has no active account: nothing to move; only the final soft-delete below runs.
+//   - duplicateID has one and survivorID has none (no conflict): the whole account row moves onto
+//     survivorID. External identities come along for free — they FK to account_id, not person_id.
+//   - both have an active account (the conflict case): duplicateID's account is disabled
+//     (status='disabled', deleted_at=now()) and its sessions revoked. Its external identity stays
+//     attached to that now-disabled account and stops resolving (M11.1's existing account-status
+//     gate already blocks a disabled account; the session revoke is defense-in-depth, matching this
+//     arc's other revoke flows).
+//
+// Always: duplicateID's own person row is soft-deleted (status='deactivated', deleted_at=now()).
+// Must run inside the caller's own tx (core/application.Service.MergePersons); no Begin/Commit here.
+func (s *Store) MergePersonIdentity(ctx context.Context, survivorID, duplicateID string) (accountMoved, accountDisabled bool, err error) {
+	duplicateAccount, err := s.GetActiveAccountByPerson(ctx, duplicateID)
+	switch {
+	case errors.Is(err, domain.ErrAccountNotFound):
+		// No account to move or disable — falls through to the person soft-delete below.
+	case err != nil:
+		return false, false, err
+	default:
+		_, survivorErr := s.GetActiveAccountByPerson(ctx, survivorID)
+		switch {
+		case errors.Is(survivorErr, domain.ErrAccountNotFound):
+			var movedID string
+			if err := s.pool.QueryRow(ctx, `
+				UPDATE openfaithmap.identity_accounts
+				SET person_id = $2, updated_at = now()
+				WHERE id = $1
+				RETURNING id`, duplicateAccount.ID, survivorID).Scan(&movedID); err != nil {
+				return false, false, err
+			}
+			accountMoved = true
+		case survivorErr != nil:
+			return false, false, survivorErr
+		default:
+			var disabledID string
+			if err := s.pool.QueryRow(ctx, `
+				UPDATE openfaithmap.identity_accounts
+				SET status = $2, deleted_at = now(), updated_at = now()
+				WHERE id = $1
+				RETURNING id`, duplicateAccount.ID, domain.AccountStatusDisabled).Scan(&disabledID); err != nil {
+				return false, false, err
+			}
+			revokeRows, err := s.pool.Query(ctx, `
+				UPDATE openfaithmap.identity_sessions
+				SET revoked_at = now()
+				WHERE account_id = $1 AND revoked_at IS NULL
+				RETURNING id`, duplicateAccount.ID)
+			if err != nil {
+				return false, false, err
+			}
+			if _, err := pgx.CollectRows(revokeRows, pgx.RowTo[string]); err != nil {
+				return false, false, err
+			}
+			accountDisabled = true
+		}
+	}
+
+	var deletedID string
+	if err := s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_persons
+		SET status = $2, deleted_at = now(), updated_at = now()
+		WHERE id = $1
+		RETURNING id`, duplicateID, domain.PersonStatusDeactivated).Scan(&deletedID); err != nil {
+		return accountMoved, accountDisabled, err
+	}
+	return accountMoved, accountDisabled, nil
+}
+
+// GetInviteByTokenHash looks up an invite by its hashed token, pending or accepted — callers that
+// care whether it's still usable check the returned Invite.Status/ExpiresAt themselves, same
+// convention GetSession uses for RevokedAt.
+func (s *Store) GetInviteByTokenHash(ctx context.Context, tokenHash string) (domain.Invite, error) {
+	return s.scanInvite(s.pool.QueryRow(ctx, `
+		SELECT id, person_id, account_id, email::text, status, invited_by, expires_at, created_at, accepted_at
+		FROM openfaithmap.identity_invites
+		WHERE token_hash = $1`, tokenHash))
+}
+
+// MarkInviteAcceptedByAccount flips accountID's pending invite (if any) to accepted — called from
+// LinkOnMatch right after a successful InsertIdentity, the exact moment JIT actually links the
+// account. Idempotent no-op if accountID has no pending invite (an account created outside the
+// invite flow, or one whose invite was already accepted) — QueryRow/RETURNING, not Exec, since
+// Querier (bound to either *pgxpool.Pool or a pgx.Tx) declares no Exec method.
+func (s *Store) MarkInviteAcceptedByAccount(ctx context.Context, accountID string) error {
+	var id string
+	err := s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_invites
+		SET status = 'accepted', accepted_at = now()
+		WHERE account_id = $1 AND status = 'pending'
+		RETURNING id`, accountID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	return err
+}
+
+func (s *Store) scanInvite(row pgx.Row) (domain.Invite, error) {
+	var inv domain.Invite
+	if err := row.Scan(&inv.ID, &inv.PersonID, &inv.AccountID, &inv.Email, &inv.Status, &inv.InvitedBy,
+		&inv.ExpiresAt, &inv.CreatedAt, &inv.AcceptedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Invite{}, domain.ErrInviteNotFound
+		}
+		return domain.Invite{}, err
+	}
+	return inv, nil
+}
+
+func (s *Store) scanSession(row pgx.Row) (domain.Session, error) {
+	var sess domain.Session
+	var deviceLabel *string
+	if err := row.Scan(&sess.ID, &sess.AccountID, &sess.Issuer, &deviceLabel, &sess.CreatedAt, &sess.LastSeenAt, &sess.RevokedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Session{}, domain.ErrSessionNotFound
+		}
+		return domain.Session{}, err
+	}
+	if deviceLabel != nil {
+		sess.DeviceLabel = *deviceLabel
+	}
+	return sess, nil
+}
+
+// InsertApiKey creates a new identity_api_keys row (M11.9) — tokenHash is the caller's already-hashed
+// token (application.Service.CreateApiKey generates and hashes the raw ofm_-prefixed token; this
+// store method never sees or persists the raw value). permissionCodes is the owner's chosen allowlist,
+// already validated against the closed catalog by the caller.
+func (s *Store) InsertApiKey(ctx context.Context, personID, label, tokenHash string, permissionCodes []string) (domain.APIKey, error) {
+	return s.scanAPIKey(s.pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_api_keys (person_id, label, token_hash, permission_codes)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by`,
+		personID, label, tokenHash, permissionCodes))
+}
+
+// GetApiKeyByTokenHash resolves a raw API key's hash to its row — the authenticator's ResolveByAPIKey
+// hook. A revoked key resolves as ErrAPIKeyNotFound, same as an unknown hash — no oracle leak, mirroring
+// ResolveBySubject's own uniform-failure convention for a disabled account.
+func (s *Store) GetApiKeyByTokenHash(ctx context.Context, tokenHash string) (domain.APIKey, error) {
+	return s.scanAPIKey(s.pool.QueryRow(ctx, `
+		SELECT id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by
+		FROM openfaithmap.identity_api_keys
+		WHERE token_hash = $1 AND revoked_at IS NULL`, tokenHash))
+}
+
+// TouchApiKeyLastUsed bumps last_used_at, throttled the same interval and for the same reason
+// TouchSession throttles identity_sessions.last_seen_at (sessionTouchThrottle) — kept off the
+// per-request write hot path, one throttle knob reused rather than a second one added.
+func (s *Store) TouchApiKeyLastUsed(ctx context.Context, apiKeyID string) error {
+	key, err := s.scanAPIKey(s.pool.QueryRow(ctx, `
+		SELECT id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by
+		FROM openfaithmap.identity_api_keys
+		WHERE id = $1`, apiKeyID))
+	if err != nil {
+		return err
+	}
+	if key.LastUsedAt != nil && time.Since(*key.LastUsedAt) <= sessionTouchThrottle {
+		return nil
+	}
+	_, err = s.scanAPIKey(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_api_keys
+		SET last_used_at = now()
+		WHERE id = $1
+		RETURNING id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by`, apiKeyID))
+	return err
+}
+
+// ListApiKeysByPerson returns personID's not-yet-revoked keys, most recently created first — backs
+// both the self-service list and the admin-oversight list's default view.
+func (s *Store) ListApiKeysByPerson(ctx context.Context, personID string) ([]domain.APIKey, error) {
+	return s.queryAPIKeys(ctx, `
+		SELECT id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by
+		FROM openfaithmap.identity_api_keys
+		WHERE person_id = $1 AND revoked_at IS NULL
+		ORDER BY created_at DESC`, personID)
+}
+
+// ListApiKeysByPersonIncludingRevoked is the admin-oversight read — personID's full key history,
+// active and revoked, metadata only (the transport layer's Conjure type carries no
+// token/token-hash field at all, so this data can never leak the secret regardless of caller).
+func (s *Store) ListApiKeysByPersonIncludingRevoked(ctx context.Context, personID string) ([]domain.APIKey, error) {
+	return s.queryAPIKeys(ctx, `
+		SELECT id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by
+		FROM openfaithmap.identity_api_keys
+		WHERE person_id = $1
+		ORDER BY created_at DESC`, personID)
+}
+
+func (s *Store) queryAPIKeys(ctx context.Context, sql string, args ...any) ([]domain.APIKey, error) {
+	rows, err := s.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.APIKey
+	for rows.Next() {
+		key, err := s.scanAPIKey(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, key)
+	}
+	return out, rows.Err()
+}
+
+// RevokeApiKey sets revoked_at/revoked_by, scoped to personID so a caller can never revoke a key it
+// doesn't own — the same defensive WHERE-scoping RevokeMySession-style self-service calls rely on.
+// Idempotent: revoking an already-revoked key is a no-op that still returns the current row (matching
+// RevokeSession's own idempotency). revokedBy is the acting person (may differ from personID on the
+// admin-oversight path).
+func (s *Store) RevokeApiKey(ctx context.Context, apiKeyID, personID, revokedBy string) (domain.APIKey, error) {
+	return s.scanAPIKey(s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.identity_api_keys
+		SET revoked_at = COALESCE(revoked_at, now()), revoked_by = COALESCE(revoked_by, $3)
+		WHERE id = $1 AND person_id = $2
+		RETURNING id, person_id, label, permission_codes, created_at, last_used_at, revoked_at, revoked_by`,
+		apiKeyID, personID, revokedBy))
+}
+
+func (s *Store) scanAPIKey(row pgx.Row) (domain.APIKey, error) {
+	var key domain.APIKey
+	if err := row.Scan(&key.ID, &key.PersonID, &key.Label, &key.PermissionCodes, &key.CreatedAt, &key.LastUsedAt, &key.RevokedAt, &key.RevokedBy); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.APIKey{}, domain.ErrAPIKeyNotFound
+		}
+		return domain.APIKey{}, err
+	}
+	return key, nil
+}
+
+// ResolveByAPIKey maps a raw API key's hash to the account+person it belongs to, joining through to
+// the owning person's active account the same way ResolveBySubject joins identity_external_identities
+// to identity_accounts. Returns the key's stored permission-code allowlist alongside the resolution so
+// the authenticator can attach it to authz.Subject.APIKeyPermissionCodes. A revoked key, an unknown
+// hash, or an owner whose account is disabled/deleted all resolve as ErrIdentityNotFound — the same
+// uniform sentinel ResolveBySubject uses, so the authenticator needs no new error branch.
+func (s *Store) ResolveByAPIKey(ctx context.Context, tokenHash string) (domain.Resolution, []string, error) {
+	var out domain.Resolution
+	var permissionCodes []string
+	err := s.pool.QueryRow(ctx, `
+		SELECT a.person_id, a.id, COALESCE(a.email::text, ''), k.permission_codes
+		FROM openfaithmap.identity_api_keys k
+		JOIN openfaithmap.identity_accounts a ON a.person_id = k.person_id AND a.deleted_at IS NULL AND a.status = 'active'
+		WHERE k.token_hash = $1 AND k.revoked_at IS NULL`, tokenHash,
+	).Scan(&out.PersonID, &out.AccountID, &out.Email, &permissionCodes)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Resolution{}, nil, domain.ErrIdentityNotFound
+	}
+	return out, permissionCodes, err
 }

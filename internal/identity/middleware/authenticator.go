@@ -27,11 +27,24 @@ type Resolver interface {
 	// PersonIDByAccountEmail backs D-JIT's attribute arm: the person behind the single active
 	// account carrying this IdP-asserted email, and whether one was found.
 	PersonIDByAccountEmail(ctx context.Context, email string) (string, bool, error)
+	// ResolveByAPIKey maps a raw, domain.APIKeyTokenPrefix-shaped bearer to the owning person's PDP
+	// subject plus the key's stored permission-code allowlist (M11.9) — the "new resolution path
+	// alongside ResolveBySubject" the milestone spec calls for. No JIT applies to this path: an API
+	// key is already bound to a specific person at creation time.
+	ResolveByAPIKey(ctx context.Context, rawToken string) (domain.Resolution, []string, error)
 }
 
 // PersonDirectory resolves a token claim value to an existing person (D-JIT: claim -> person.code).
 type PersonDirectory interface {
 	PersonIDByCode(ctx context.Context, code string) (string, bool, error)
+}
+
+// SessionChecker validates an X-Session-Id header value (M11.3, D-SessionTracking): present,
+// unrevoked, and touched (last_seen_at bumped, throttled — see adapters.sessionTouchThrottle).
+// Returns the session's account id so Handle can cross-check it against the bearer-resolved
+// account. internal/identity/application.Service satisfies it.
+type SessionChecker interface {
+	Touch(ctx context.Context, sessionID string) (accountID string, err error)
 }
 
 // Authenticator is the inbound-token validation middleware, matching wrouter's
@@ -47,6 +60,7 @@ type bound struct {
 	validator  *Validator
 	resolver   Resolver
 	persons    PersonDirectory
+	sessions   SessionChecker
 	jitEnabled bool
 	jitMatch   string // JITMatchCode | JITMatchAccountEmail; read off the validator, not a Bind arg
 }
@@ -54,13 +68,13 @@ type bound struct {
 // NewUnbound builds an Authenticator whose validator/resolver are wired later via Bind.
 func NewUnbound() *Authenticator { return &Authenticator{} }
 
-// Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), and the
-// JIT-enabled flag. Called once at boot.
-func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, jitEnabled bool) {
+// Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), the
+// session checker (M11.3), and the JIT-enabled flag. Called once at boot.
+func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, sessions SessionChecker, jitEnabled bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.bound = &bound{
-		validator: validator, resolver: resolver, persons: persons, jitEnabled: jitEnabled,
+		validator: validator, resolver: resolver, persons: persons, sessions: sessions, jitEnabled: jitEnabled,
 		jitMatch: validator.JITMatch(),
 	}
 }
@@ -108,6 +122,28 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		return
 	}
 
+	// M11.9: an API-key-shaped bearer (domain.APIKeyTokenPrefix, "ofm_") is never a JWT — branch here,
+	// before b.validator.Validate ever attempts to parse it as one. This is a different resolution
+	// path entirely, not an issuer-based carve-out of the JWT path below (the M11.3 comment on the
+	// session-id check two blocks down is about THAT path, not this one): an API key is itself the
+	// credential, has no NextAuth session to forward, and so is unconditionally exempt from the
+	// X-Session-Id check by construction — it never reaches that block at all. No JIT fallback applies
+	// either (JIT is specifically (issuer, subject)-claim matching; an API key is already bound to one
+	// person at creation time).
+	if strings.HasPrefix(raw, domain.APIKeyTokenPrefix) {
+		res, permCodes, err := b.resolver.ResolveByAPIKey(r.Context(), raw)
+		if err != nil {
+			unauthorized(rw)
+			return
+		}
+		ctx := authz.NewContext(r.Context(), authz.Subject{
+			PersonID: res.PersonID, AccountID: res.AccountID, Email: res.Email,
+			APIKeyPermissionCodes: permCodes,
+		})
+		next.ServeHTTP(rw, r.WithContext(ctx))
+		return
+	}
+
 	claims, err := b.validator.Validate(r.Context(), raw)
 	if err != nil {
 		unauthorized(rw)
@@ -119,7 +155,31 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		unauthorized(rw)
 		return
 	}
-	ctx := authz.NewContext(r.Context(), authz.Subject{PersonID: res.PersonID, AccountID: res.AccountID, Email: res.Email})
+
+	// M11.3, D-SessionTracking: a valid, unrevoked session id must accompany the bearer on every
+	// authenticated request — except registerSession itself (sessionExemptRoutes), which is what
+	// CREATES the row a session id would otherwise need to already exist. No issuer-based carve-out:
+	// this applies to dev/local-issuer tokens the same as real Google ID tokens (confirmed decision,
+	// docs/milestones.md's M11.3 row) — cmd/openfaithmap-api/authorization_matrix_test.go and
+	// scripts/mint-local-token both insert a real identity_sessions row for every token they mint.
+	var sessionID string
+	if !isSessionExemptPath(r.Method, r.URL.Path) {
+		sessionID = r.Header.Get(SessionIDHeader)
+		if sessionID == "" {
+			unauthorized(rw)
+			return
+		}
+		sessAccountID, err := b.sessions.Touch(r.Context(), sessionID)
+		if err != nil || sessAccountID != res.AccountID {
+			unauthorized(rw)
+			return
+		}
+	}
+
+	ctx := authz.NewContext(r.Context(), authz.Subject{
+		PersonID: res.PersonID, AccountID: res.AccountID, Email: res.Email,
+		SessionID: sessionID, Issuer: claims.Issuer,
+	})
 	next.ServeHTTP(rw, r.WithContext(ctx))
 }
 
@@ -204,15 +264,46 @@ var anonymousRoutes = []anonymousRoute{
 	{http.MethodPost, "/moderation/v1/exclusion-check"},
 }
 
+// SessionIDHeader carries the NextAuth-issued session id (M11.3, D-SessionTracking) — a separate
+// signal from the Authorization bearer, since the bearer is Google's own signed ID token and cannot
+// carry a custom claim NextAuth controls. See web/apps/admin/lib/core.ts's client() for the sender
+// side.
+const SessionIDHeader = "X-Session-Id"
+
+// sessionExemptRoutes is the one endpoint allowed to skip the session-presence check every other
+// authenticated request now goes through: registerSession creates the very identity_sessions row a
+// session id would otherwise need to already exist, so requiring one here would make it
+// unreachable. Still requires a fully valid bearer — only the NEW session check is skipped, not
+// authentication itself (unlike anonymousRoutes/isBypassPath above, which skip both).
+var sessionExemptRoutes = []anonymousRoute{
+	{http.MethodPost, "/core/v1/sessions"},
+}
+
+// isSessionExemptPath reports whether (method, path) is exempt from the per-request session-id
+// check (sessionExemptRoutes) — not from authentication itself.
+func isSessionExemptPath(method, path string) bool {
+	for _, r := range sessionExemptRoutes {
+		if r.method == method && r.path == path {
+			return true
+		}
+	}
+	return false
+}
+
 // isBypassPath reports whether (method, path) belongs to either the management/diagnostic surface
 // (readiness/liveness/health, debug diagnostics — a path prefix is safe here, nothing else lives
 // under /status or /debug) or a genuinely anonymous product endpoint (method+path exact match, or
-// content's own distinct /content/v1/public prefix).
+// a distinct .../public path prefix — content's own /content/v1/public, and M11.6's
+// /core/v1/public, the admin-side counterpart: the invitee genuinely has no session yet, not "this
+// app never forwards one," but the mechanism is identical).
 func isBypassPath(method, path string) bool {
 	if strings.HasPrefix(path, "/status") || strings.HasPrefix(path, "/debug") {
 		return true
 	}
 	if strings.HasPrefix(path, "/content/v1/public") {
+		return true
+	}
+	if strings.HasPrefix(path, "/core/v1/public") {
 		return true
 	}
 	for _, r := range anonymousRoutes {

@@ -15,6 +15,9 @@ import (
 var (
 	ErrAssignmentNotFound         = errors.New("authz: role assignment not found or already revoked")
 	ErrInstanceAdminGrantNotFound = errors.New("authz: instance-admin grant not found or already revoked")
+	// ErrEmptyPersonIDs is BulkGrantUnitRole's (M11.7) own validation failure — an empty batch has
+	// nothing to grant and nothing to audit-log, so it's rejected before any store call.
+	ErrEmptyPersonIDs = errors.New("authz: personIDs must not be empty")
 )
 
 // Role is authz_roles — the grantable role catalog, read by M10.7's super-admin role-grant screen.
@@ -47,4 +50,22 @@ type InstanceAdminGrant struct {
 	PersonID   string
 	PersonName string
 	GrantedAt  time.Time
+}
+
+// RevokedRoleAssignment is the identity of the row RevokeRoleAssignment just revoked — returned so
+// M11.2's audit-log helper can log a real "before" snapshot without a second read (the UPDATE that
+// revokes it already has these columns in hand via RETURNING).
+type RevokedRoleAssignment struct {
+	ID           string
+	PersonID     string
+	RoleID       string
+	TargetUnitID string
+	Scope        Scope
+}
+
+// RevokedInstanceAdminGrant is the identity of the row RevokeInstanceAdmin just revoked — same
+// RETURNING-based reasoning as RevokedRoleAssignment.
+type RevokedInstanceAdminGrant struct {
+	ID       string
+	PersonID string
 }

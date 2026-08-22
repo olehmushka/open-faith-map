@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/authz/domain"
 )
 
@@ -120,26 +121,63 @@ func (s *Store) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) ([
 	return out, rows.Err()
 }
 
+// ListRoleAssignmentsByPerson lists personID's own active role assignments, across every unit — M11.5's
+// self-service profile page. Mirrors ListRoleAssignmentsByUnit's query shape exactly, filtered on
+// subject_person_id instead of target_unit_id; PersonName is always the caller's own name here, but
+// scanned via the same domain.RoleAssignment shape rather than a narrower one, so both listings stay
+// interchangeable for any future shared rendering.
+func (s *Store) ListRoleAssignmentsByPerson(ctx context.Context, personID string) ([]domain.RoleAssignment, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code, a.target_unit_id, a.scope, a.granted_at
+		FROM openfaithmap.authz_role_assignments a
+		JOIN openfaithmap.authz_roles r ON r.id = a.role_id
+		JOIN openfaithmap.identity_persons p ON p.id = a.subject_person_id
+		WHERE a.subject_person_id = $1 AND a.revoked_at IS NULL
+		ORDER BY a.granted_at DESC`, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.RoleAssignment
+	for rows.Next() {
+		var a domain.RoleAssignment
+		var scope string
+		if err := rows.Scan(&a.ID, &a.PersonID, &a.PersonName, &a.RoleID, &a.RoleCode, &a.TargetUnitID, &scope, &a.GrantedAt); err != nil {
+			return nil, err
+		}
+		a.Scope = domain.Scope(scope)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // RevokeRoleAssignment soft-revokes assignmentID — sets revoked_at/revoked_by, only if it is
 // currently active. Returns domain.ErrAssignmentNotFound if it was already revoked or never existed;
 // unlike InsertRoleAssignment's insert-side idempotency, a repeat revoke has no natural "already
-// done" success reading.
-func (s *Store) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) error {
+// done" success reading. RETURNING the identity columns (M11.2) gives the caller a real "before"
+// snapshot for the audit log with no second read — the values are unchanged by this UPDATE, only
+// revoked_at/revoked_by are set.
+func (s *Store) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) (domain.RevokedRoleAssignment, error) {
 	var revokedByArg any
 	if revokedBy != "" {
 		revokedByArg = revokedBy
 	}
-	tag, err := s.pool.Exec(ctx, `
+	var out domain.RevokedRoleAssignment
+	var scope string
+	err := s.pool.QueryRow(ctx, `
 		UPDATE openfaithmap.authz_role_assignments
 		SET revoked_at = now(), revoked_by = $2
-		WHERE id = $1 AND revoked_at IS NULL`, assignmentID, revokedByArg)
+		WHERE id = $1 AND revoked_at IS NULL
+		RETURNING id, subject_person_id, role_id, target_unit_id, scope`, assignmentID, revokedByArg,
+	).Scan(&out.ID, &out.PersonID, &out.RoleID, &out.TargetUnitID, &scope)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.RevokedRoleAssignment{}, domain.ErrAssignmentNotFound
+		}
+		return domain.RevokedRoleAssignment{}, err
 	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrAssignmentNotFound
-	}
-	return nil
+	out.Scope = domain.Scope(scope)
+	return out, nil
 }
 
 // ListInstanceAdmins returns every active instance-admin grant, with the subject's display name
@@ -167,23 +205,29 @@ func (s *Store) ListInstanceAdmins(ctx context.Context) ([]domain.InstanceAdminG
 }
 
 // RevokeInstanceAdmin soft-revokes personID's active instance-admin grant, if any. Returns
-// domain.ErrInstanceAdminGrantNotFound if personID holds no active grant.
-func (s *Store) RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) error {
+// domain.ErrInstanceAdminGrantNotFound if personID holds no active grant. RETURNING the grant's own
+// id (M11.2) gives the audit log the same target_id GrantInstanceAdmin already uses, rather than
+// personID (which is also available, but the grant id is what identifies this specific plane
+// membership, same as RevokeRoleAssignment returning the assignment's own id).
+func (s *Store) RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) (domain.RevokedInstanceAdminGrant, error) {
 	var revokedByArg any
 	if revokedBy != "" {
 		revokedByArg = revokedBy
 	}
-	tag, err := s.pool.Exec(ctx, `
+	var out domain.RevokedInstanceAdminGrant
+	err := s.pool.QueryRow(ctx, `
 		UPDATE openfaithmap.authz_instance_admins
 		SET revoked_at = now(), revoked_by = $2
-		WHERE person_id = $1 AND revoked_at IS NULL`, personID, revokedByArg)
+		WHERE person_id = $1 AND revoked_at IS NULL
+		RETURNING id, person_id`, personID, revokedByArg,
+	).Scan(&out.ID, &out.PersonID)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.RevokedInstanceAdminGrant{}, domain.ErrInstanceAdminGrantNotFound
+		}
+		return domain.RevokedInstanceAdminGrant{}, err
 	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrInstanceAdminGrantNotFound
-	}
-	return nil
+	return out, nil
 }
 
 // ActiveGrantsForSubject fetches every active, unexpired role assignment for personID with its
@@ -247,8 +291,10 @@ func (s *Store) ActiveGrantsForSubject(ctx context.Context, personID string) ([]
 // identical to an existing active one (the unique index on subject/role/unit/scope/graph WHERE
 // revoked_at IS NULL) is treated as success, not an error — matching go-oikumenea's own
 // IsAssignmentConflict-as-success behaviour this replaces (registration/application/service.go's
-// ensureGrant).
-func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) error {
+// ensureGrant). Returns the assignment's id either way (M11.2: the audit log needs a real target_id
+// even on the idempotent-conflict path, so that path looks the existing row's id up rather than
+// returning empty).
+func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) (string, error) {
 	var grantedByArg any
 	if grantedBy != "" {
 		grantedByArg = grantedBy
@@ -261,9 +307,188 @@ func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targ
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "authz_role_assignments_active_idx" {
-			return nil
+			err := s.pool.QueryRow(ctx, `
+				SELECT id FROM openfaithmap.authz_role_assignments
+				WHERE subject_person_id = $1 AND role_id = $2 AND target_unit_id = $3 AND scope = 'unit' AND revoked_at IS NULL`,
+				personID, roleID, targetUnitID).Scan(&id)
+			return id, err
 		}
-		return err
+		return "", err
 	}
-	return nil
+	return id, nil
+}
+
+// BulkInsertRoleAssignments grants roleID on targetUnitID to every personID in one batch, all inside
+// a single transaction (M11.7's own explicit ask). Deliberately does NOT reuse InsertRoleAssignment's
+// catch-23505-then-SELECT body: once multiple statements share one explicit pgx.Tx, a caught 23505
+// aborts the whole transaction (Postgres error 25P02, "current transaction is aborted") — every
+// subsequent statement, including the rest of the batch, would fail until rollback. Uses a real
+// upsert instead, so the idempotent-conflict path never raises an error at all. The ON CONFLICT
+// target must match authz_role_assignments_active_idx's own partial-index predicate exactly
+// (migrations/0009_core_authz.sql) — that index is a bare CREATE UNIQUE INDEX, not a named
+// constraint, so ON CONFLICT ON CONSTRAINT can't resolve it. DO UPDATE (not DO NOTHING) is required
+// so RETURNING id still fires on the conflict branch. Requires a pool-bound Store, same as
+// InsertPersonAccountInvite (internal/identity/adapters/store.go).
+func (s *Store) BulkInsertRoleAssignments(ctx context.Context, personIDs []string, roleID, targetUnitID, grantedBy string) ([]string, error) {
+	pool, ok := s.pool.(*pgxpool.Pool)
+	if !ok {
+		return nil, errors.New("BulkInsertRoleAssignments requires a pool-bound Store")
+	}
+	var grantedByArg any
+	if grantedBy != "" {
+		grantedByArg = grantedBy
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	ids := make([]string, 0, len(personIDs))
+	for _, personID := range personIDs {
+		var id string
+		err := tx.QueryRow(ctx, `
+			INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, granted_by)
+			VALUES ($1, $2, $3, 'unit', $4)
+			ON CONFLICT (subject_person_id, role_id, target_unit_id, scope, graph_id) WHERE revoked_at IS NULL
+			DO UPDATE SET updated_at = now()
+			RETURNING id`, personID, roleID, targetUnitID, grantedByArg).Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// CountRepointableRoleAssignments previews RepointRoleAssignments' own two-statement effect
+// (M11.8) without mutating anything: how many of duplicateID's active role assignments would move
+// onto survivorID untouched, versus how many would instead be revoked as redundant because
+// survivorID already holds an identical active grant (same role/unit/scope/graph). Mirrors
+// RepointRoleAssignments' NOT EXISTS predicate exactly so the preview and the real mutation can
+// never disagree.
+func (s *Store) CountRepointableRoleAssignments(ctx context.Context, duplicateID, survivorID string) (toMove, toRevoke int, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT
+			count(*) FILTER (WHERE NOT EXISTS (
+				SELECT 1 FROM openfaithmap.authz_role_assignments s
+				WHERE s.subject_person_id = $2 AND s.role_id = ra.role_id AND s.target_unit_id = ra.target_unit_id
+				  AND s.scope = ra.scope AND s.graph_id IS NOT DISTINCT FROM ra.graph_id AND s.revoked_at IS NULL
+			)),
+			count(*) FILTER (WHERE EXISTS (
+				SELECT 1 FROM openfaithmap.authz_role_assignments s
+				WHERE s.subject_person_id = $2 AND s.role_id = ra.role_id AND s.target_unit_id = ra.target_unit_id
+				  AND s.scope = ra.scope AND s.graph_id IS NOT DISTINCT FROM ra.graph_id AND s.revoked_at IS NULL
+			))
+		FROM openfaithmap.authz_role_assignments ra
+		WHERE ra.subject_person_id = $1 AND ra.revoked_at IS NULL`, duplicateID, survivorID,
+	).Scan(&toMove, &toRevoke)
+	return toMove, toRevoke, err
+}
+
+// RepointRoleAssignments moves every one of duplicateID's active role assignments onto survivorID
+// (M11.8's MergePersons). A set-based two-statement pattern rather than BulkInsertRoleAssignments'
+// per-row loop: the input here is "every active row belonging to one person," which SQL already
+// expresses as one predicate. The first UPDATE repoints whatever doesn't collide with a grant
+// survivorID already holds; the second revokes whatever is still left under duplicateID afterward
+// (i.e. exactly the rows that collided) as redundant, not deleted — matching this codebase's
+// existing revoke-not-delete convention (RevokeRoleAssignment). Must run inside the same tx as the
+// caller's other MergePersons store calls (core/application.Service.MergePersons), so this method
+// takes no Begin/Commit itself and works against whatever s.pool is bound to.
+func (s *Store) RepointRoleAssignments(ctx context.Context, duplicateID, survivorID, actorID string) (movedIDs, revokedIDs []string, err error) {
+	moveRows, err := s.pool.Query(ctx, `
+		UPDATE openfaithmap.authz_role_assignments ra
+		SET subject_person_id = $2, updated_at = now()
+		WHERE ra.subject_person_id = $1 AND ra.revoked_at IS NULL
+		  AND NOT EXISTS (
+		    SELECT 1 FROM openfaithmap.authz_role_assignments s
+		    WHERE s.subject_person_id = $2 AND s.role_id = ra.role_id AND s.target_unit_id = ra.target_unit_id
+		      AND s.scope = ra.scope AND s.graph_id IS NOT DISTINCT FROM ra.graph_id AND s.revoked_at IS NULL
+		  )
+		RETURNING ra.id`, duplicateID, survivorID)
+	if err != nil {
+		return nil, nil, err
+	}
+	movedIDs, err = pgx.CollectRows(moveRows, pgx.RowTo[string])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var revokedByArg any
+	if actorID != "" {
+		revokedByArg = actorID
+	}
+	revokeRows, err := s.pool.Query(ctx, `
+		UPDATE openfaithmap.authz_role_assignments
+		SET revoked_at = now(), revoked_by = $2
+		WHERE subject_person_id = $1 AND revoked_at IS NULL
+		RETURNING id`, duplicateID, revokedByArg)
+	if err != nil {
+		return nil, nil, err
+	}
+	revokedIDs, err = pgx.CollectRows(revokeRows, pgx.RowTo[string])
+	if err != nil {
+		return nil, nil, err
+	}
+	return movedIDs, revokedIDs, nil
+}
+
+// PreviewRepointInstanceAdmin previews RepointInstanceAdmin's effect (M11.8) without mutating
+// anything: whether duplicateID's active instance-admin grant (if any) would move onto survivorID,
+// or would instead be revoked as redundant because survivorID already holds one.
+func (s *Store) PreviewRepointInstanceAdmin(ctx context.Context, duplicateID, survivorID string) (willMove, willRevoke bool, err error) {
+	var duplicateIsAdmin, survivorIsAdmin bool
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM openfaithmap.authz_instance_admins WHERE person_id = $1 AND revoked_at IS NULL)`,
+		duplicateID).Scan(&duplicateIsAdmin); err != nil {
+		return false, false, err
+	}
+	if !duplicateIsAdmin {
+		return false, false, nil
+	}
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM openfaithmap.authz_instance_admins WHERE person_id = $1 AND revoked_at IS NULL)`,
+		survivorID).Scan(&survivorIsAdmin); err != nil {
+		return false, false, err
+	}
+	return !survivorIsAdmin, survivorIsAdmin, nil
+}
+
+// RepointInstanceAdmin moves duplicateID's active instance-admin grant (if any) onto survivorID —
+// same repoint-or-revoke-redundant shape as RepointRoleAssignments, simplified to the plane's own
+// single-key uniqueness (authz_instance_admins_person_active_idx has no compound key to match).
+func (s *Store) RepointInstanceAdmin(ctx context.Context, duplicateID, survivorID, actorID string) (moved, revoked bool, err error) {
+	var movedID string
+	err = s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.authz_instance_admins a
+		SET person_id = $2, updated_at = now()
+		WHERE a.person_id = $1 AND a.revoked_at IS NULL
+		  AND NOT EXISTS (
+		    SELECT 1 FROM openfaithmap.authz_instance_admins s WHERE s.person_id = $2 AND s.revoked_at IS NULL
+		  )
+		RETURNING a.id`, duplicateID, survivorID).Scan(&movedID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return false, false, err
+	}
+	moved = movedID != ""
+
+	var revokedByArg any
+	if actorID != "" {
+		revokedByArg = actorID
+	}
+	var revokedID string
+	err = s.pool.QueryRow(ctx, `
+		UPDATE openfaithmap.authz_instance_admins
+		SET revoked_at = now(), revoked_by = $2
+		WHERE person_id = $1 AND revoked_at IS NULL
+		RETURNING id`, duplicateID, revokedByArg).Scan(&revokedID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return false, false, err
+	}
+	revoked = revokedID != ""
+	return moved, revoked, nil
 }

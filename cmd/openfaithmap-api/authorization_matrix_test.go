@@ -51,8 +51,20 @@ type matrixSubjects struct {
 	moderator      string
 	instanceAdmin  string
 
+	// M11.3: every non-anonymous subject also carries its own identity_sessions row id, sent as
+	// X-Session-Id alongside the bearer — the per-request session check (D-SessionTracking) applies
+	// to dev-issued tokens the same as real Google ID tokens, no issuer-based carve-out (confirmed
+	// decision, docs/milestones.md's M11.3 row).
+	congAdminOwnSession   string
+	congAdminOtherSession string
+	operatorSession       string
+	moderatorSession      string
+	instanceAdminSession  string
+
 	unitA string // congAdminOwn's own unit
 	unitB string // congAdminOther's own unit — "other" relative to unitA
+
+	instanceAdminPersonID string // M11.1's getAccountStatus needs a real personId path segment
 }
 
 func TestAuthorizationMatrix(t *testing.T) {
@@ -93,7 +105,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		}
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
-				status, _ := doReq(t, client, apiBase, c.method, c.path, "", c.body)
+				status, _ := doReq(t, client, apiBase, c.method, c.path, "", "", c.body)
 				if status == http.StatusUnauthorized {
 					t.Errorf("%s: got 401 with no token — should be reachable anonymously", c.name)
 				}
@@ -117,11 +129,11 @@ func TestAuthorizationMatrix(t *testing.T) {
 		}
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
-				anonStatus, _ := doReq(t, client, apiBase, c.method, c.path, "", nil)
+				anonStatus, _ := doReq(t, client, apiBase, c.method, c.path, "", "", nil)
 				if anonStatus != http.StatusUnauthorized {
 					t.Errorf("%s: anonymous got %d, want 401", c.name, anonStatus)
 				}
-				authStatus, body := doReq(t, client, apiBase, c.method, c.path, subj.congAdminOwn, nil)
+				authStatus, body := doReq(t, client, apiBase, c.method, c.path, subj.congAdminOwn, subj.congAdminOwnSession, nil)
 				if authStatus == http.StatusUnauthorized || authStatus == http.StatusForbidden {
 					t.Errorf("%s: authenticated (non-privileged) subject got %d, want a real response — body: %s", c.name, authStatus, body)
 				}
@@ -133,14 +145,14 @@ func TestAuthorizationMatrix(t *testing.T) {
 	t.Run("target_scoped_religionorg_manage", func(t *testing.T) {
 		t.Run("core_createChildOrg", func(t *testing.T) {
 			body := map[string]any{"parentUnitId": subj.unitA, "name": "Matrix Test Child", "orgKindId": nil}
-			anonStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units/children", "", body)
+			anonStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units/children", "", "", body)
 			assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
 
-			otherStatus, otherBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units/children", subj.congAdminOther, body)
+			otherStatus, otherBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units/children", subj.congAdminOther, subj.congAdminOtherSession, body)
 			assertStatus(t, "congAdminOther (wrong unit)", otherStatus, http.StatusForbidden)
 			assertErrorName(t, otherBody, "Core:Forbidden")
 
-			ownStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units/children", subj.congAdminOwn, body)
+			ownStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units/children", subj.congAdminOwn, subj.congAdminOwnSession, body)
 			if ownStatus != http.StatusOK && ownStatus != http.StatusCreated {
 				t.Errorf("congAdminOwn (own unit): status = %d, want 200/201", ownStatus)
 			}
@@ -157,17 +169,17 @@ func TestAuthorizationMatrix(t *testing.T) {
 				"claimantPersonId": subj.instanceAdmin, "congregationUnitId": subj.unitB,
 				"guarantorCongregationUnitId": subj.unitB,
 			}
-			anonStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/vouching/v1/vouches", "", deniedBody)
+			anonStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/vouching/v1/vouches", "", "", deniedBody)
 			assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
 
-			deniedStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/vouching/v1/vouches", subj.congAdminOwn, deniedBody)
+			deniedStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/vouching/v1/vouches", subj.congAdminOwn, subj.congAdminOwnSession, deniedBody)
 			assertStatus(t, "congAdminOwn (no standing on unitB, the guarantor unit)", deniedStatus, http.StatusForbidden)
 
 			allowedBody := map[string]any{
 				"claimantPersonId": subj.instanceAdmin, "congregationUnitId": subj.unitB,
 				"guarantorCongregationUnitId": subj.unitA,
 			}
-			allowedStatus, allowedRespBody := doReq(t, client, apiBase, http.MethodPost, "/vouching/v1/vouches", subj.congAdminOwn, allowedBody)
+			allowedStatus, allowedRespBody := doReq(t, client, apiBase, http.MethodPost, "/vouching/v1/vouches", subj.congAdminOwn, subj.congAdminOwnSession, allowedBody)
 			if allowedStatus != http.StatusOK && allowedStatus != http.StatusCreated {
 				t.Errorf("congAdminOwn (own standing on unitA, the guarantor unit): status = %d, body: %s", allowedStatus, allowedRespBody)
 			}
@@ -175,29 +187,29 @@ func TestAuthorizationMatrix(t *testing.T) {
 
 		t.Run("registration_approveRequest_denied", func(t *testing.T) {
 			reqID := submitThrowawayRequest(t, client, apiBase, subj)
-			status, body := doReq(t, client, apiBase, http.MethodPost, "/registration/v1/requests/"+reqID+"/approve", subj.congAdminOwn, map[string]any{})
+			status, body := doReq(t, client, apiBase, http.MethodPost, "/registration/v1/requests/"+reqID+"/approve", subj.congAdminOwn, subj.congAdminOwnSession, map[string]any{})
 			assertStatus(t, "congAdminOwn (not an operator)", status, http.StatusForbidden)
 			assertErrorName(t, body, "Registration:Forbidden")
 		})
 
 		t.Run("congregationimport_runJurisdictionSync", func(t *testing.T) {
-			anonStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/congregation-import/v1/jurisdiction-sync/runs", "", map[string]any{"sourceCode": "wikidata-catholic"})
+			anonStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/congregation-import/v1/jurisdiction-sync/runs", "", "", map[string]any{"sourceCode": "wikidata-catholic"})
 			assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
 
-			status, body := doReq(t, client, apiBase, http.MethodPost, "/congregation-import/v1/jurisdiction-sync/runs", subj.congAdminOwn, map[string]any{"sourceCode": "wikidata-catholic"})
+			status, body := doReq(t, client, apiBase, http.MethodPost, "/congregation-import/v1/jurisdiction-sync/runs", subj.congAdminOwn, subj.congAdminOwnSession, map[string]any{"sourceCode": "wikidata-catholic"})
 			assertStatus(t, "congAdminOwn (not an operator)", status, http.StatusForbidden)
 			assertErrorName(t, body, "CongregationImport:Forbidden")
 		})
 
 		t.Run("congregationimport_listTaxonAliases", func(t *testing.T) {
-			anonStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/congregation-import/v1/taxon-aliases", "", nil)
+			anonStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/congregation-import/v1/taxon-aliases", "", "", nil)
 			assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
 
-			deniedStatus, deniedBody := doReq(t, client, apiBase, http.MethodGet, "/congregation-import/v1/taxon-aliases", subj.congAdminOwn, nil)
+			deniedStatus, deniedBody := doReq(t, client, apiBase, http.MethodGet, "/congregation-import/v1/taxon-aliases", subj.congAdminOwn, subj.congAdminOwnSession, nil)
 			assertStatus(t, "congAdminOwn (not an operator)", deniedStatus, http.StatusForbidden)
 			assertErrorName(t, deniedBody, "CongregationImport:Forbidden")
 
-			allowedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/congregation-import/v1/taxon-aliases", subj.operator, nil)
+			allowedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/congregation-import/v1/taxon-aliases", subj.operator, subj.operatorSession, nil)
 			assertStatus(t, "operator", allowedStatus, http.StatusOK)
 		})
 	})
@@ -205,56 +217,116 @@ func TestAuthorizationMatrix(t *testing.T) {
 	// ---- category: unit.lifecycle on root (platform-moderator) ----
 	t.Run("root_scoped_unit_lifecycle", func(t *testing.T) {
 		t.Run("moderation_listReports", func(t *testing.T) {
-			anonStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/moderation/v1/reports", "", nil)
+			anonStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/moderation/v1/reports", "", "", nil)
 			assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
 
-			deniedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/moderation/v1/reports", subj.congAdminOwn, nil)
+			deniedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/moderation/v1/reports", subj.congAdminOwn, subj.congAdminOwnSession, nil)
 			assertStatus(t, "congAdminOwn (not a moderator)", deniedStatus, http.StatusForbidden)
 
-			allowedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/moderation/v1/reports", subj.moderator, nil)
+			allowedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/moderation/v1/reports", subj.moderator, subj.moderatorSession, nil)
 			assertStatus(t, "platform-moderator", allowedStatus, http.StatusOK)
 		})
 
 		t.Run("vouching_listVouches", func(t *testing.T) {
-			deniedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/vouching/v1/vouches", subj.operator, nil)
+			deniedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/vouching/v1/vouches", subj.operator, subj.operatorSession, nil)
 			assertStatus(t, "operator (not a moderator)", deniedStatus, http.StatusForbidden)
 
-			allowedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/vouching/v1/vouches", subj.moderator, nil)
+			allowedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/vouching/v1/vouches", subj.moderator, subj.moderatorSession, nil)
 			assertStatus(t, "platform-moderator", allowedStatus, http.StatusOK)
 		})
 	})
 
-	// ---- category: instance-admin plane (CoreSuperAdminService — all 8 endpoints share one
+	// ---- category: instance-admin plane (CoreSuperAdminService — all 14 endpoints share one
 	// route-group gate, so this is the highest-value single check in the whole matrix: every
 	// subject except instance-admin must be refused by the SAME middleware, not per-handler logic) ----
 	t.Run("instance_admin_plane", func(t *testing.T) {
-		endpoints := []struct{ name, path string }{
-			{"searchPersons", "/core/v1/super-admin/persons"},
-			{"listRoles", "/core/v1/super-admin/roles"},
-			{"listInstanceAdmins", "/core/v1/super-admin/instance-admins"},
+		endpoints := []struct {
+			name, method, path string
+			// adminOK is every status code that counts as "instanceAdmin reached the real handler,
+			// past the route-group gate" — usually just 200, but revokeSession's synthetic sessionId
+			// legitimately 404s past the gate rather than succeeding, unlike every other subject
+			// below, who are all refused at 403 before the handler ever runs.
+			adminOK []int
+			// adminBody is sent only on the instanceAdmin call — the anonymous/denied checks below
+			// are refused at the route-group gate before any handler ever decodes a body, so nil is
+			// fine for those; nil here for every endpoint that doesn't need one.
+			adminBody any
+		}{
+			{"searchPersons", http.MethodGet, "/core/v1/super-admin/persons", []int{http.StatusOK}, nil},
+			{"listRoles", http.MethodGet, "/core/v1/super-admin/roles", []int{http.StatusOK}, nil},
+			{"listInstanceAdmins", http.MethodGet, "/core/v1/super-admin/instance-admins", []int{http.StatusOK}, nil},
+			// M11.1 — keeps the representative sample current with the new endpoints on this service.
+			{"getAccountStatus", http.MethodGet, "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/account-status", []int{http.StatusOK}, nil},
+			// M11.2 — same reasoning: listAuditLog must be refused by the same route-group gate too.
+			{"listAuditLog", http.MethodGet, "/core/v1/super-admin/audit-log", []int{http.StatusOK}, nil},
+			// M11.3 — same reasoning: listSessions/revokeSession must be refused by the same
+			// route-group gate too. revokeSession uses a syntactically valid but nonexistent
+			// sessionId — proving instanceAdmin reaches the handler (404) is enough; a real fixture
+			// isn't needed to prove the GATE is the same for every subject.
+			{"listSessions", http.MethodGet, "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/sessions", []int{http.StatusOK}, nil},
+			{"revokeSession", http.MethodDelete, "/core/v1/super-admin/persons/" + subj.instanceAdminPersonID + "/sessions/00000000-0000-8000-8000-000000000000", []int{http.StatusOK, http.StatusNotFound}, nil},
+			// M11.6 — same reasoning: invitePerson must be refused by the same route-group gate too.
+			// The email deliberately reuses an already-seeded subject's own address (never a fresh
+			// one) so instanceAdmin's call reliably 409s on Core:AccountAlreadyExists past the gate —
+			// proving the handler was reached with no new person/account/invite row left behind for
+			// every repeated run of this test.
+			{"invitePerson", http.MethodPost, "/core/v1/super-admin/invites", []int{http.StatusConflict}, map[string]any{"email": "matrix-instance-admin@example.com", "displayName": "Matrix Test Invitee"}},
+			// M11.7 — same reasoning: bulkGrantUnitRole must be refused by the same route-group gate
+			// too. An empty personIds list is side-effect-free (never touches the DB) and reliably
+			// 400s on Core:EmptyPersonIdsList past the gate, proving the handler was reached with no
+			// fixture needed.
+			{"bulkGrantUnitRole", http.MethodPost, "/core/v1/super-admin/bulk-role-assignments", []int{http.StatusBadRequest},
+				map[string]any{"personIds": []string{}, "roleId": "00000000-0000-8000-8000-000000000000", "unitId": "00000000-0000-8000-8000-000000000000"}},
 		}
 		for _, ep := range endpoints {
 			t.Run(ep.name, func(t *testing.T) {
-				anonStatus, _ := doReq(t, client, apiBase, http.MethodGet, ep.path, "", nil)
+				anonStatus, _ := doReq(t, client, apiBase, ep.method, ep.path, "", "", nil)
 				assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
 
 				for _, s := range []struct {
-					name  string
-					token string
+					name, token, sessionID string
 				}{
-					{"congAdminOwn", subj.congAdminOwn}, {"congAdminOther", subj.congAdminOther},
-					{"operator", subj.operator}, {"moderator", subj.moderator},
+					{"congAdminOwn", subj.congAdminOwn, subj.congAdminOwnSession},
+					{"congAdminOther", subj.congAdminOther, subj.congAdminOtherSession},
+					{"operator", subj.operator, subj.operatorSession},
+					{"moderator", subj.moderator, subj.moderatorSession},
 				} {
-					status, body := doReq(t, client, apiBase, http.MethodGet, ep.path, s.token, nil)
+					status, body := doReq(t, client, apiBase, ep.method, ep.path, s.token, s.sessionID, nil)
 					assertStatus(t, s.name, status, http.StatusForbidden)
 					assertErrorName(t, body, "Authz:InstanceAdminRequired")
 				}
 
-				adminStatus, _ := doReq(t, client, apiBase, http.MethodGet, ep.path, subj.instanceAdmin, nil)
-				assertStatus(t, "instanceAdmin", adminStatus, http.StatusOK)
+				adminStatus, _ := doReq(t, client, apiBase, ep.method, ep.path, subj.instanceAdmin, subj.instanceAdminSession, ep.adminBody)
+				if !containsStatus(ep.adminOK, adminStatus) {
+					t.Errorf("instanceAdmin: status = %d, want one of %v", adminStatus, ep.adminOK)
+				}
 			})
 		}
 	})
+
+	// ---- category: resolveInvite (M11.6) — the one CoreService endpoint reachable with NO bearer
+	// at all (internal/identity/middleware's anonymousRoutes), the opposite direction from every
+	// other check in this file. Proves the bypass is real (anonymous does NOT 401) and that an
+	// authenticated caller still gets a normal typed response too (the bypass doesn't special-case
+	// away the endpoint's own logic) — a bogus token both ways returns Core:InviteNotFound, not 401.
+	t.Run("resolveInvite_anonymous_bypass", func(t *testing.T) {
+		anonStatus, anonBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/public/invites/resolve", "", "", map[string]any{"token": "not-a-real-token"})
+		assertStatus(t, "anonymous", anonStatus, http.StatusNotFound)
+		assertErrorName(t, anonBody, "Core:InviteNotFound")
+
+		authedStatus, authedBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/public/invites/resolve", subj.congAdminOwn, subj.congAdminOwnSession, map[string]any{"token": "not-a-real-token"})
+		assertStatus(t, "congAdminOwn (endpoint is public either way)", authedStatus, http.StatusNotFound)
+		assertErrorName(t, authedBody, "Core:InviteNotFound")
+	})
+}
+
+func containsStatus(statuses []int, got int) bool {
+	for _, s := range statuses {
+		if s == got {
+			return true
+		}
+	}
+	return false
 }
 
 func assertStatus(t *testing.T, subject string, got, want int) {
@@ -285,7 +357,11 @@ func insecureClient() *http.Client {
 	}
 }
 
-func doReq(t *testing.T, client *http.Client, base, method, path, token string, body any) (int, []byte) {
+// doReq issues one HTTP request as (token, sessionID) — both empty for anonymous. sessionID is
+// sent as X-Session-Id (M11.3, D-SessionTracking): every authenticated request now needs one,
+// dev-issued tokens included (confirmed decision, docs/milestones.md's M11.3 row) — see
+// seedSubjects, which inserts a real identity_sessions row per minted subject.
+func doReq(t *testing.T, client *http.Client, base, method, path, token, sessionID string, body any) (int, []byte) {
 	t.Helper()
 	var reader io.Reader
 	if body != nil {
@@ -301,6 +377,9 @@ func doReq(t *testing.T, client *http.Client, base, method, path, token string, 
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if sessionID != "" {
+		req.Header.Set("X-Session-Id", sessionID)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
@@ -330,10 +409,10 @@ func mustTaxonID(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
 // cleaned up individually — swept by seedSubjects' own teardown via the submitter's person id.
 func submitThrowawayRequest(t *testing.T, client *http.Client, apiBase string, subj matrixSubjects) string {
 	t.Helper()
-	status, body := doReq(t, client, apiBase, http.MethodPost, "/registration/v1/requests", subj.congAdminOwn, map[string]any{
-		"taxonId":          mustTaxonIDViaHTTP(t, client, apiBase, subj.congAdminOwn),
+	status, body := doReq(t, client, apiBase, http.MethodPost, "/registration/v1/requests", subj.congAdminOwn, subj.congAdminOwnSession, map[string]any{
+		"taxonId":          mustTaxonIDViaHTTP(t, client, apiBase, subj.congAdminOwn, subj.congAdminOwnSession),
 		"congregationName": "Matrix Test Congregation",
-		"countryId":        mustCountryIDViaHTTP(t, client, apiBase, subj.congAdminOwn),
+		"countryId":        mustCountryIDViaHTTP(t, client, apiBase, subj.congAdminOwn, subj.congAdminOwnSession),
 		"coordinate":       map[string]any{"latitude": 50.45, "longitude": 30.52},
 	})
 	if status != http.StatusOK && status != http.StatusCreated {
@@ -348,9 +427,9 @@ func submitThrowawayRequest(t *testing.T, client *http.Client, apiBase string, s
 	return parsed.ID
 }
 
-func mustTaxonIDViaHTTP(t *testing.T, client *http.Client, apiBase, token string) string {
+func mustTaxonIDViaHTTP(t *testing.T, client *http.Client, apiBase, token, sessionID string) string {
 	t.Helper()
-	status, body := doReq(t, client, apiBase, http.MethodGet, "/core/v1/taxa?query=christianity&limit=1", token, nil)
+	status, body := doReq(t, client, apiBase, http.MethodGet, "/core/v1/taxa?query=christianity&limit=1", token, sessionID, nil)
 	if status != http.StatusOK {
 		t.Fatalf("listTaxa: status = %d, body: %s", status, body)
 	}
@@ -365,9 +444,9 @@ func mustTaxonIDViaHTTP(t *testing.T, client *http.Client, apiBase, token string
 	return parsed.Taxa[0].ID
 }
 
-func mustCountryIDViaHTTP(t *testing.T, client *http.Client, apiBase, token string) string {
+func mustCountryIDViaHTTP(t *testing.T, client *http.Client, apiBase, token, sessionID string) string {
 	t.Helper()
-	status, body := doReq(t, client, apiBase, http.MethodGet, "/core/v1/countries", token, nil)
+	status, body := doReq(t, client, apiBase, http.MethodGet, "/core/v1/countries", token, sessionID, nil)
 	if status != http.StatusOK {
 		t.Fatalf("listCountries: status = %d, body: %s", status, body)
 	}
@@ -423,6 +502,8 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 	}
 
 	tokens := map[string]string{}
+	sessionIDs := map[string]string{}
+	personIDByLabel := map[string]string{}
 	var personIDs, assignmentIDs, instanceAdminIDs []string
 
 	for _, sp := range specs {
@@ -431,6 +512,7 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 			t.Fatalf("insert person %s: %v", sp.label, err)
 		}
 		personIDs = append(personIDs, personID)
+		personIDByLabel[sp.label] = personID
 
 		var accountID string
 		if err := pool.QueryRow(ctx, `INSERT INTO openfaithmap.identity_accounts (person_id, email) VALUES ($1, $2) RETURNING id`, personID, sp.email).Scan(&accountID); err != nil {
@@ -439,6 +521,16 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 		if _, err := pool.Exec(ctx, `INSERT INTO openfaithmap.identity_external_identities (account_id, issuer, subject) VALUES ($1, $2, $3)`, accountID, devtoken.Issuer, sp.subject); err != nil {
 			t.Fatalf("insert external identity %s: %v", sp.label, err)
 		}
+		// M11.3: every non-anonymous request now needs a valid, unrevoked X-Session-Id alongside
+		// the bearer, dev-issued tokens included (no issuer-based carve-out) — insert the backing
+		// identity_sessions row directly rather than going through registerSession's HTTP endpoint
+		// (which itself requires an already-authenticated request). Cascades away with the account
+		// on cleanup below (identity_sessions.account_id ON DELETE CASCADE) — no separate teardown.
+		var sessionID string
+		if err := pool.QueryRow(ctx, `INSERT INTO openfaithmap.identity_sessions (account_id, issuer) VALUES ($1, $2) RETURNING id`, accountID, devtoken.Issuer).Scan(&sessionID); err != nil {
+			t.Fatalf("insert session for %s: %v", sp.label, err)
+		}
+		sessionIDs[sp.label] = sessionID
 
 		if sp.roleID != "" {
 			assignmentID, err := insertRoleAssignment(ctx, pool, authzStore, personID, sp.roleID, sp.targetUnit)
@@ -541,21 +633,22 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 		operator:       tokens["operator"],
 		moderator:      tokens["moderator"],
 		instanceAdmin:  tokens["instanceAdmin"],
-		unitA:          unitA.ID,
-		unitB:          unitB.ID,
+
+		congAdminOwnSession:   sessionIDs["congAdminOwn"],
+		congAdminOtherSession: sessionIDs["congAdminOther"],
+		operatorSession:       sessionIDs["operator"],
+		moderatorSession:      sessionIDs["moderator"],
+		instanceAdminSession:  sessionIDs["instanceAdmin"],
+
+		unitA: unitA.ID,
+		unitB: unitB.ID,
+
+		instanceAdminPersonID: personIDByLabel["instanceAdmin"],
 	}
 }
 
 func insertRoleAssignment(ctx context.Context, pool *pgxpool.Pool, store *authzadapters.Store, personID, roleID, unitID string) (string, error) {
-	if err := store.InsertRoleAssignment(ctx, personID, roleID, unitID, personID); err != nil {
-		return "", err
-	}
-	// InsertRoleAssignment (M10.6) doesn't return the row's id — look it up by the unique
-	// (person, role, unit, active) index this repo's own conflict-as-success idempotency relies on.
-	var id string
-	err := pool.QueryRow(ctx, `
-		SELECT id FROM openfaithmap.authz_role_assignments
-		WHERE subject_person_id = $1 AND role_id = $2 AND target_unit_id = $3 AND revoked_at IS NULL`,
-		personID, roleID, unitID).Scan(&id)
-	return id, err
+	// InsertRoleAssignment now returns the row's id directly (M11.2 — the audit log needs a real
+	// target_id, including on the idempotent-conflict path), so no separate lookup query is needed.
+	return store.InsertRoleAssignment(ctx, personID, roleID, unitID, personID)
 }

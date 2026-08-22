@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
 import {
+  bulkGrantUnitRole,
   grantInstanceAdmin,
   grantUnitRole,
   listInstanceAdmins,
@@ -8,12 +9,14 @@ import {
   listRoles,
   revokeInstanceAdmin,
   revokeRoleAssignment,
+  searchPersons,
 } from "@/lib/core";
 import { redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BulkGrantForm } from "./bulk-grant-form";
 
 // Super-admin role-grants console (M10.8): a unit picker over CoreSuperAdminService's
 // listRoleAssignmentsByUnit/grantUnitRole/revokeRoleAssignment, plus a separate instance-admins
@@ -25,16 +28,17 @@ export default async function SuperAdminRoleGrantsPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ unitId?: string }>;
+  searchParams: Promise<{ unitId?: string; personQuery?: string }>;
 }) {
   const { locale } = await params;
   const t = await getTranslations("SuperAdminRoleGrantsPage");
-  const { unitId } = await searchParams;
+  const { unitId, personQuery } = await searchParams;
 
-  const [roles, instanceAdmins, assignments] = await Promise.all([
+  const [roles, instanceAdmins, assignments, searchedPersons] = await Promise.all([
     listRoles(),
     listInstanceAdmins(),
     unitId ? listRoleAssignmentsByUnit(unitId) : Promise.resolve([]),
+    unitId && personQuery ? searchPersons(personQuery, 50) : Promise.resolve([]),
   ]);
 
   async function grantRole(formData: FormData) {
@@ -43,6 +47,15 @@ export default async function SuperAdminRoleGrantsPage({
     const personId = String(formData.get("personId") ?? "");
     const roleId = String(formData.get("roleId") ?? "");
     await grantUnitRole(personId, roleId, targetUnitId);
+    redirect({ href: `/admin/role-grants?unitId=${encodeURIComponent(targetUnitId)}`, locale });
+  }
+
+  async function bulkGrant(formData: FormData) {
+    "use server";
+    const targetUnitId = String(formData.get("unitId") ?? "");
+    const roleId = String(formData.get("roleId") ?? "");
+    const personIds = formData.getAll("personIds").map(String);
+    await bulkGrantUnitRole(personIds, roleId, targetUnitId);
     redirect({ href: `/admin/role-grants?unitId=${encodeURIComponent(targetUnitId)}`, locale });
   }
 
@@ -124,6 +137,16 @@ export default async function SuperAdminRoleGrantsPage({
                 {t("grant")}
               </Button>
             </form>
+          )}
+
+          {unitId && (
+            <BulkGrantForm
+              unitId={unitId}
+              personQuery={personQuery ?? ""}
+              persons={searchedPersons}
+              roles={roles}
+              action={bulkGrant}
+            />
           )}
         </CardContent>
       </Card>
