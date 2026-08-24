@@ -533,6 +533,95 @@ func scanUnitRefs(rows pgx.Rows) ([]domain.UnitRef, error) {
 	return out, rows.Err()
 }
 
+// ---------------------------------------------------------------- move jobs (M12.2)
+
+const moveJobSelectColumns = `
+	id, graph_id, unit_id, old_parent_unit_id, new_parent_unit_id,
+	status, performed_by_person_id, error, created_at, updated_at`
+
+// CreateMoveJob starts a new PENDING move job. Fails with a unique-violation if a non-FAILED job
+// already exists for (graphID, unitID) (directory_unit_move_jobs_live_idx) — callers should check
+// GetLiveMoveJob first to resume instead.
+func (s *Store) CreateMoveJob(ctx context.Context, graphID, unitID, oldParentUnitID, newParentUnitID, performedByPersonID string) (domain.MoveJob, error) {
+	return scanMoveJob(s.q.QueryRow(ctx, `
+		INSERT INTO openfaithmap.directory_unit_move_jobs
+			(graph_id, unit_id, old_parent_unit_id, new_parent_unit_id, performed_by_person_id)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING `+moveJobSelectColumns,
+		graphID, unitID, oldParentUnitID, newParentUnitID, performedByPersonID))
+}
+
+// GetLiveMoveJob returns the current in-progress job for (graphID, unitID), if one exists (at most
+// one can, per the store's own unique index) — the resume path for Move. FAILED and VERIFIED are
+// both terminal, not "live" — see directory_unit_move_jobs_live_idx's own doc comment for why VERIFIED
+// must not occupy the live slot forever.
+func (s *Store) GetLiveMoveJob(ctx context.Context, graphID, unitID string) (*domain.MoveJob, error) {
+	job, err := scanMoveJob(s.q.QueryRow(ctx, `
+		SELECT `+moveJobSelectColumns+`
+		FROM openfaithmap.directory_unit_move_jobs
+		WHERE graph_id = $1 AND unit_id = $2 AND status NOT IN ('FAILED', 'VERIFIED')`,
+		graphID, unitID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+// GetLatestMoveJob returns the most recently created job for (graphID, unitID) (FAILED or not), for
+// GetMoveStatus's read-only status display and Move's own currentParent resolution.
+func (s *Store) GetLatestMoveJob(ctx context.Context, graphID, unitID string) (*domain.MoveJob, error) {
+	job, err := scanMoveJob(s.q.QueryRow(ctx, `
+		SELECT `+moveJobSelectColumns+`
+		FROM openfaithmap.directory_unit_move_jobs
+		WHERE graph_id = $1 AND unit_id = $2
+		ORDER BY created_at DESC LIMIT 1`,
+		graphID, unitID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+// AdvanceMoveJob moves job id to status (NEW_EDGE_ADDED/OLD_EDGE_REMOVED/VERIFIED), clearing any
+// prior error.
+func (s *Store) AdvanceMoveJob(ctx context.Context, id string, status domain.MoveStatus) (domain.MoveJob, error) {
+	return scanMoveJob(s.q.QueryRow(ctx, `
+		UPDATE openfaithmap.directory_unit_move_jobs
+		SET status = $2, error = NULL
+		WHERE id = $1
+		RETURNING `+moveJobSelectColumns,
+		id, string(status)))
+}
+
+// FailMoveJob moves job id to FAILED with the given error message.
+func (s *Store) FailMoveJob(ctx context.Context, id, errMsg string) (domain.MoveJob, error) {
+	return scanMoveJob(s.q.QueryRow(ctx, `
+		UPDATE openfaithmap.directory_unit_move_jobs
+		SET status = 'FAILED', error = $2
+		WHERE id = $1
+		RETURNING `+moveJobSelectColumns,
+		id, errMsg))
+}
+
+func scanMoveJob(row pgx.Row) (domain.MoveJob, error) {
+	var j domain.MoveJob
+	var status string
+	if err := row.Scan(
+		&j.ID, &j.GraphID, &j.UnitID, &j.OldParentUnitID, &j.NewParentUnitID,
+		&status, &j.PerformedByPersonID, &j.Error, &j.CreatedAt, &j.UpdatedAt,
+	); err != nil {
+		return domain.MoveJob{}, err
+	}
+	j.Status = domain.MoveStatus(status)
+	return j, nil
+}
+
 // ---------------------------------------------------------------- domain.ClosurePort (internal/authz)
 
 // IsAncestorOrSelf satisfies internal/authz/domain.ClosurePort structurally — no import of

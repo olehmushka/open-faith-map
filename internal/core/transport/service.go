@@ -251,6 +251,37 @@ func (s *Service) DeleteUnit(ctx context.Context, _ bearertoken.Token, unitIdArg
 	return nil
 }
 
+// M12.2 — generic unit move/reparent.
+
+func (s *Service) MoveUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string, requestArg gencore.MoveUnitRequest) (gencore.UnitMoveJob, error) {
+	job, err := s.app.MoveUnit(ctx, unitIdArg, requestArg.NewParentUnitId, derefStr(requestArg.GraphCode))
+	if err != nil {
+		return gencore.UnitMoveJob{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return toAPIUnitMoveJob(job), nil
+}
+
+func (s *Service) GetUnitMoveStatus(ctx context.Context, _ bearertoken.Token, unitIdArg string, graphCodeArg *string) (*gencore.UnitMoveJob, error) {
+	job, err := s.app.GetUnitMoveStatus(ctx, unitIdArg, derefStr(graphCodeArg))
+	if err != nil {
+		return nil, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	if job == nil {
+		return nil, nil
+	}
+	out := toAPIUnitMoveJob(*job)
+	return &out, nil
+}
+
+func toAPIUnitMoveJob(j directorydomain.MoveJob) gencore.UnitMoveJob {
+	return gencore.UnitMoveJob{
+		Id: j.ID, GraphId: j.GraphID, UnitId: j.UnitID,
+		OldParentUnitId: j.OldParentUnitID, NewParentUnitId: j.NewParentUnitID,
+		Status: string(j.Status), PerformedByPersonId: j.PerformedByPersonID, Error: j.Error,
+		CreatedAt: datetime.DateTime(j.CreatedAt), UpdatedAt: datetime.DateTime(j.UpdatedAt),
+	}
+}
+
 func (s *Service) ListCountries(ctx context.Context, _ bearertoken.Token) (gencore.CountryPage, error) {
 	countries, err := s.app.ListCountries(ctx)
 	if err != nil {

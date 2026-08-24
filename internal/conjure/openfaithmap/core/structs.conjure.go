@@ -194,11 +194,13 @@ func (o *AuditLogPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// M11.7 — the batch variant of GrantUnitRoleRequest: the same role and unit, granted to every id in personIds at once, atomically.
+// M11.7 — the batch variant of GrantUnitRoleRequest: the same role, unit, and scope, granted to every id in personIds at once, atomically. scope/graphId follow GrantUnitRoleRequest's own rules (M12.2).
 type BulkGrantUnitRoleRequest struct {
 	PersonIds []string `json:"personIds"`
 	RoleId    string   `json:"roleId"`
 	UnitId    string   `json:"unitId"`
+	Scope     string   `json:"scope"`
+	GraphId   *string  `json:"graphId,omitempty"`
 }
 
 func (o BulkGrantUnitRoleRequest) MarshalJSON() ([]byte, error) {
@@ -523,10 +525,13 @@ func (o *GrantInstanceAdminRequest) UnmarshalYAML(unmarshal func(interface{}) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M12.2 — scope must be "unit" or "subtree"; graphId is required when scope is "subtree" (the graph a subtree grant cascades over) and must be omitted for "unit".
 type GrantUnitRoleRequest struct {
-	PersonId string `json:"personId"`
-	RoleId   string `json:"roleId"`
-	UnitId   string `json:"unitId"`
+	PersonId string  `json:"personId"`
+	RoleId   string  `json:"roleId"`
+	UnitId   string  `json:"unitId"`
+	Scope    string  `json:"scope"`
+	GraphId  *string `json:"graphId,omitempty"`
 }
 
 func (o GrantUnitRoleRequest) MarshalYAML() (interface{}, error) {
@@ -818,6 +823,28 @@ func (o MergeResult) MarshalYAML() (interface{}, error) {
 }
 
 func (o *MergeResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M12.2 — moveUnit's request. graphCode defaults to "canonical" when unset.
+type MoveUnitRequest struct {
+	NewParentUnitId string  `json:"newParentUnitId"`
+	GraphCode       *string `json:"graphCode,omitempty"`
+}
+
+func (o MoveUnitRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MoveUnitRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -1420,6 +1447,36 @@ func (o Unit) MarshalYAML() (interface{}, error) {
 }
 
 func (o *Unit) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M12.2 — one move attempt's resumable state: PENDING -> NEW_EDGE_ADDED -> OLD_EDGE_REMOVED -> VERIFIED, or FAILED at any step (error then set). At most one non-FAILED job exists per (graphId, unitId) at a time.
+type UnitMoveJob struct {
+	Id                  string            `json:"id"`
+	GraphId             string            `json:"graphId"`
+	UnitId              string            `json:"unitId"`
+	OldParentUnitId     string            `json:"oldParentUnitId"`
+	NewParentUnitId     string            `json:"newParentUnitId"`
+	Status              string            `json:"status"`
+	PerformedByPersonId string            `json:"performedByPersonId"`
+	Error               *string           `json:"error,omitempty"`
+	CreatedAt           datetime.DateTime `json:"createdAt"`
+	UpdatedAt           datetime.DateTime `json:"updatedAt"`
+}
+
+func (o UnitMoveJob) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitMoveJob) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

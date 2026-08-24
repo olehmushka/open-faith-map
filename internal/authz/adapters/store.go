@@ -285,32 +285,34 @@ func (s *Store) ActiveGrantsForSubject(ctx context.Context, personID string) ([]
 	return out, nil
 }
 
-// InsertRoleAssignment grants personID roleID on targetUnitID with scope "unit" (M10.6's own
-// callers — registration's congregation-admin grant, the boot-time first-admin's future role
-// grants — never need "subtree"; add a graphID param the day one does). Idempotent: a repeat grant
-// identical to an existing active one (the unique index on subject/role/unit/scope/graph WHERE
-// revoked_at IS NULL) is treated as success, not an error — matching go-oikumenea's own
-// IsAssignmentConflict-as-success behaviour this replaces (registration/application/service.go's
-// ensureGrant). Returns the assignment's id either way (M11.2: the audit log needs a real target_id
-// even on the idempotent-conflict path, so that path looks the existing row's id up rather than
-// returning empty).
-func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) (string, error) {
+// InsertRoleAssignment grants personID roleID on targetUnitID at scope ("unit" or "subtree"),
+// graphID required (and only meaningful) when scope is "subtree" — empty/"" for "unit"
+// (M12.2: real subtree-grant provisioning, resolving U14; every caller before M12.2 only ever needed
+// "unit", so this used to hardcode it). Idempotent: a repeat grant identical to an existing active
+// one (the unique index on subject/role/unit/scope/graph WHERE revoked_at IS NULL) is treated as
+// success, not an error — matching go-oikumenea's own IsAssignmentConflict-as-success behaviour this
+// replaces (registration/application/service.go's ensureGrant). Returns the assignment's id either
+// way (M11.2: the audit log needs a real target_id even on the idempotent-conflict path, so that path
+// looks the existing row's id up rather than returning empty).
+func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string) (string, error) {
 	var grantedByArg any
 	if grantedBy != "" {
 		grantedByArg = grantedBy
 	}
+	graphIDArg := nullableText(graphID)
 	var id string
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, granted_by)
-		VALUES ($1, $2, $3, 'unit', $4)
-		RETURNING id`, personID, roleID, targetUnitID, grantedByArg).Scan(&id)
+		INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id`, personID, roleID, targetUnitID, scope, graphIDArg, grantedByArg).Scan(&id)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "authz_role_assignments_active_idx" {
 			err := s.pool.QueryRow(ctx, `
 				SELECT id FROM openfaithmap.authz_role_assignments
-				WHERE subject_person_id = $1 AND role_id = $2 AND target_unit_id = $3 AND scope = 'unit' AND revoked_at IS NULL`,
-				personID, roleID, targetUnitID).Scan(&id)
+				WHERE subject_person_id = $1 AND role_id = $2 AND target_unit_id = $3 AND scope = $4
+				  AND graph_id IS NOT DISTINCT FROM $5 AND revoked_at IS NULL`,
+				personID, roleID, targetUnitID, scope, graphIDArg).Scan(&id)
 			return id, err
 		}
 		return "", err
@@ -329,7 +331,7 @@ func (s *Store) InsertRoleAssignment(ctx context.Context, personID, roleID, targ
 // constraint, so ON CONFLICT ON CONSTRAINT can't resolve it. DO UPDATE (not DO NOTHING) is required
 // so RETURNING id still fires on the conflict branch. Requires a pool-bound Store, same as
 // InsertPersonAccountInvite (internal/identity/adapters/store.go).
-func (s *Store) BulkInsertRoleAssignments(ctx context.Context, personIDs []string, roleID, targetUnitID, grantedBy string) ([]string, error) {
+func (s *Store) BulkInsertRoleAssignments(ctx context.Context, personIDs []string, roleID, targetUnitID, scope, graphID, grantedBy string) ([]string, error) {
 	pool, ok := s.pool.(*pgxpool.Pool)
 	if !ok {
 		return nil, errors.New("BulkInsertRoleAssignments requires a pool-bound Store")
@@ -338,6 +340,7 @@ func (s *Store) BulkInsertRoleAssignments(ctx context.Context, personIDs []strin
 	if grantedBy != "" {
 		grantedByArg = grantedBy
 	}
+	graphIDArg := nullableText(graphID)
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -348,11 +351,11 @@ func (s *Store) BulkInsertRoleAssignments(ctx context.Context, personIDs []strin
 	for _, personID := range personIDs {
 		var id string
 		err := tx.QueryRow(ctx, `
-			INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, granted_by)
-			VALUES ($1, $2, $3, 'unit', $4)
+			INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by)
+			VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (subject_person_id, role_id, target_unit_id, scope, graph_id) WHERE revoked_at IS NULL
 			DO UPDATE SET updated_at = now()
-			RETURNING id`, personID, roleID, targetUnitID, grantedByArg).Scan(&id)
+			RETURNING id`, personID, roleID, targetUnitID, scope, graphIDArg, grantedByArg).Scan(&id)
 		if err != nil {
 			return nil, err
 		}
@@ -491,4 +494,14 @@ func (s *Store) RepointInstanceAdmin(ctx context.Context, duplicateID, survivorI
 	}
 	revoked = revokedID != ""
 	return moved, revoked, nil
+}
+
+// nullableText converts an empty string (this package's own "no value" convention for an optional
+// text column) to nil, so InsertRoleAssignment/BulkInsertRoleAssignments write a real SQL NULL for
+// graph_id when scope is "unit" rather than an empty-string literal.
+func nullableText(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }

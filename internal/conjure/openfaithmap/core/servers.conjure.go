@@ -93,6 +93,10 @@ type CoreService interface {
 	SetUnitState(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
 	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
 	DeleteUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) error
+	// M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
+	MoveUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error)
+	// Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
+	GetUnitMoveStatus(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error)
 	ListCountries(ctx context.Context, authHeader bearertoken.Token) (CountryPage, error)
 	ListMembershipsByUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (MembershipPage, error)
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
@@ -172,6 +176,12 @@ func RegisterRoutesCoreService(router wrouter.Router, impl CoreService, routerPa
 	}
 	if err := resource.Delete("DeleteUnit", "/core/v1/units/{unitId}", httpserver.NewJSONHandler(handler.HandleDeleteUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteUnit route")
+	}
+	if err := resource.Post("MoveUnit", "/core/v1/unit-moves/{unitId}", httpserver.NewJSONHandler(handler.HandleMoveUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add moveUnit route")
+	}
+	if err := resource.Get("GetUnitMoveStatus", "/core/v1/unit-moves/{unitId}", httpserver.NewJSONHandler(handler.HandleGetUnitMoveStatus, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getUnitMoveStatus route")
 	}
 	if err := resource.Get("ListCountries", "/core/v1/countries", httpserver.NewJSONHandler(handler.HandleListCountries, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listCountries route")
@@ -599,6 +609,61 @@ func (c *coreServiceHandler) HandleDeleteUnit(rw http.ResponseWriter, req *http.
 	}
 	rw.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func (c *coreServiceHandler) HandleMoveUnit(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	var requestArg MoveUnitRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.MoveUnit(req.Context(), bearertoken.Token(authHeader), unitIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleGetUnitMoveStatus(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	var graphCodeArg *string
+	if graphCodeArgStr := req.URL.Query().Get("graphCode"); graphCodeArgStr != "" {
+		graphCodeArgInternal := graphCodeArgStr
+		graphCodeArg = &graphCodeArgInternal
+	}
+	respArg, err := c.impl.GetUnitMoveStatus(req.Context(), bearertoken.Token(authHeader), unitIdArg, graphCodeArg)
+	if err != nil {
+		return err
+	}
+	if respArg == nil {
+		rw.WriteHeader(http.StatusNoContent)
+		return nil
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
 }
 
 func (c *coreServiceHandler) HandleListCountries(rw http.ResponseWriter, req *http.Request) error {

@@ -2396,6 +2396,25 @@ registration-approval flow itself), a deliberate tightening, not an oversight.
 - Root-unit guard (`unitID` may never be `seed.RootUnitID`) is enforced independently of this
   check, not as a special case of it.
 
+> **Addendum (M12.2 build, 2026-08-24): U14 resolved — real `scope="subtree"` grant provisioning,
+> not a scope-workaround.** This decision's own dual-parent check is only meaningful for a non-root
+> move if a caller can actually be granted `unit.edges.manage` reach over an arbitrary jurisdiction
+> ancestor — U14 (`docs/milestones.md`) flagged that, before this build, `scope="subtree"` was fully
+> implemented in the PDP (`internal/authz/domain/pdp.go`'s `Decide` already cascaded it through the
+> closure table) but **unprovisionable through any surface**: `InsertRoleAssignment`/
+> `BulkInsertRoleAssignments` (`internal/authz/adapters/store.go`) hardcoded `scope='unit'`, and the
+> grant wire types carried no scope field at all. Two options were on the table: build real subtree
+> provisioning, or redesign this decision's check around `scope="unit"`-only reach (accepting that a
+> caller like `registration-operator`, whose only real grant targets root, could only ever move units
+> into/out of root). **Chose to build provisioning** — added `scope`/`graphId` to
+> `GrantUnitRoleRequest`/`BulkGrantUnitRoleRequest` (`api/core.conjure.yml`), threaded through to the
+> store's INSERT, with `internal/core`-level validation mirroring
+> `authz_role_assignments_graph_scope`'s own CHECK. No PDP or schema change was needed — only the
+> write path was ever missing. `internal/core.core_unit_move_integration_test.go`'s
+> `TestMoveUnitIntegration` is the direct proof: a `scope="subtree"` grant on a jurisdiction ancestor
+> reaches both a descendant unit's old and new parent, where a `scope="unit"` grant on only one side
+> does not.
+
 ### D-TopDownUnitAccessOnly — unit access grants stay strictly top-down, no self-service join
 
 **Decision.** M12 does not add a self-service "request to join this unit" flow. Every role grant

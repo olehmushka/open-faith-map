@@ -145,6 +145,27 @@ types:
         docs: M12.1 — setUnitState's request. state must be one of active/suspended/archived.
         fields:
           state: string
+      MoveUnitRequest:
+        docs: M12.2 — moveUnit's request. graphCode defaults to "canonical" when unset.
+        fields:
+          newParentUnitId: string
+          graphCode: optional<string>
+      UnitMoveJob:
+        docs: >
+          M12.2 — one move attempt's resumable state: PENDING -> NEW_EDGE_ADDED -> OLD_EDGE_REMOVED ->
+          VERIFIED, or FAILED at any step (error then set). At most one non-FAILED job exists per
+          (graphId, unitId) at a time.
+        fields:
+          id: string
+          graphId: string
+          unitId: string
+          oldParentUnitId: string
+          newParentUnitId: string
+          status: string
+          performedByPersonId: string
+          error: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
 
       Country:
         fields:
@@ -198,18 +219,26 @@ types:
         fields:
           assignments: list<RoleAssignment>
       GrantUnitRoleRequest:
+        docs: >
+          M12.2 — scope must be "unit" or "subtree"; graphId is required when scope is "subtree"
+          (the graph a subtree grant cascades over) and must be omitted for "unit".
         fields:
           personId: string
           roleId: string
           unitId: string
+          scope: string
+          graphId: optional<string>
       BulkGrantUnitRoleRequest:
         docs: >
-          M11.7 — the batch variant of GrantUnitRoleRequest: the same role and unit, granted to every
-          id in personIds at once, atomically.
+          M11.7 — the batch variant of GrantUnitRoleRequest: the same role, unit, and scope, granted
+          to every id in personIds at once, atomically. scope/graphId follow GrantUnitRoleRequest's
+          own rules (M12.2).
         fields:
           personIds: list<string>
           roleId: string
           unitId: string
+          scope: string
+          graphId: optional<string>
 
       MergePersonsRequest:
         docs: M11.8 — the path's personId is always the survivor; duplicatePersonId is merged into it.
@@ -469,6 +498,39 @@ types:
         namespace: Core
         code: INVALID_ARGUMENT
         safe-args: {}
+      InvalidGrantScope:
+        docs: M12.2 — grantUnitRole/bulkGrantUnitRole's request.scope is not one of "unit"/"subtree".
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      SubtreeGrantRequiresGraph:
+        docs: M12.2 — a scope="subtree" grant must set request.graphId.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      UnitGrantMustNotSpecifyGraph:
+        docs: M12.2 — a scope="unit" grant must leave request.graphId unset.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      UnitHasNoCurrentParent:
+        docs: M12.2 — moveUnit's unitId has no parent in the graph (e.g. it is that graph's root) — nothing to move.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      UnitMoveConflict:
+        docs: M12.2 — unitId already has a live move job targeting a different parent; resolve it (retry with the same newParentUnitId to resume, or wait for it to fail out) before starting a move elsewhere.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      EdgeCycle:
+        docs: M12.2 — moveUnit's newParentUnitId is unitId itself or already one of unitId's descendants in the graph.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args:
+          unitId: string
       AssignmentNotFound:
         namespace: Core
         code: NOT_FOUND
@@ -726,6 +788,34 @@ services:
           unitId:
             type: string
             param-type: path
+      moveUnit:
+        http: POST /unit-moves/{unitId}
+        docs: >
+          M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of
+          internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope:
+          the caller must hold unit.edges.manage on BOTH unitId's current parent and
+          request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never
+          zero) and resumable — a repeat call while a live job targets the same new parent resumes it;
+          targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling
+          top-level resource, not nested under /units/, for the same httprouter reason updateUnit/
+          setUnitState already are (see updateUnit's own docs).
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: MoveUnitRequest
+        returns: UnitMoveJob
+      getUnitMoveStatus:
+        http: GET /unit-moves/{unitId}
+        docs: Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          graphCode:
+            type: optional<string>
+            param-type: query
+        returns: optional<UnitMoveJob>
       listCountries:
         http: GET /countries
         returns: CountryPage

@@ -43,6 +43,18 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewUnitHasOrgProfile(c.UnitID)
 	case errors.Is(err, application.ErrRootUnitProtected):
 		return gencore.NewRootUnitProtected(c.UnitID)
+	case errors.Is(err, application.ErrInvalidGrantScope):
+		return gencore.NewInvalidGrantScope()
+	case errors.Is(err, application.ErrSubtreeGrantRequiresGraph):
+		return gencore.NewSubtreeGrantRequiresGraph()
+	case errors.Is(err, application.ErrUnitGrantMustNotSpecifyGraph):
+		return gencore.NewUnitGrantMustNotSpecifyGraph()
+	case errors.Is(err, directorydomain.ErrUnitHasNoCurrentParent):
+		return gencore.NewUnitHasNoCurrentParent(c.UnitID)
+	case errors.Is(err, directorydomain.ErrUnitMoveConflict):
+		return gencore.NewUnitMoveConflict(c.UnitID)
+	case errors.Is(err, directorydomain.ErrEdgeCycle):
+		return gencore.NewEdgeCycle(c.UnitID)
 	case errors.Is(err, religiondomain.ErrTaxonNotFound):
 		return gencore.NewTaxonNotFound(c.TaxonID)
 	case errors.Is(err, religiondomain.ErrProfileNotFound):

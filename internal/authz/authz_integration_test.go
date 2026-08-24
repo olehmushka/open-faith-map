@@ -95,7 +95,7 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	}
 
 	// --- GrantUnitRole (existing, M10.6) + ListRoleAssignmentsByUnit (new) + RevokeRoleAssignment (new).
-	if _, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, ""); err != nil {
+	if _, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, domain.ScopeUnit, "", ""); err != nil {
 		t.Fatalf("GrantUnitRole: %v", err)
 	}
 	assignments, err := svc.ListRoleAssignmentsByUnit(ctx, unit.ID)

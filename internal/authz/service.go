@@ -17,11 +17,13 @@ import (
 type GrantStore interface {
 	IsActiveInstanceAdmin(ctx context.Context, personID string) (bool, error)
 	ActiveGrantsForSubject(ctx context.Context, personID string) ([]domain.ActiveGrant, error)
-	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, grantedBy string) (string, error)
+	// InsertRoleAssignment's scope is "unit" or "subtree" (domain.Scope); graphID is required (and
+	// only meaningful) when scope is "subtree" (M12.2, resolving U14 — see GrantUnitRole's own doc).
+	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string) (string, error)
 	// BulkInsertRoleAssignments is M11.7's batch variant: the same grant, for many personIDs, one
-	// role, one unit, all inside a single transaction — no per-row idempotent-conflict error, see the
-	// adapter's own doc comment for why it can't just loop InsertRoleAssignment.
-	BulkInsertRoleAssignments(ctx context.Context, personIDs []string, roleID, targetUnitID, grantedBy string) ([]string, error)
+	// role, one unit, one scope, all inside a single transaction — no per-row idempotent-conflict
+	// error, see the adapter's own doc comment for why it can't just loop InsertRoleAssignment.
+	BulkInsertRoleAssignments(ctx context.Context, personIDs []string, roleID, targetUnitID, scope, graphID, grantedBy string) ([]string, error)
 
 	// The M10.7 super-admin surface: the role catalog, per-unit assignment listing/revocation, and
 	// the instance-admin plane's own list/grant/revoke — all new at M10.7 (InsertInstanceAdmin
@@ -96,25 +98,30 @@ func (s *Service) enforce(ctx context.Context, subjectPersonID string, action do
 	return nil
 }
 
-// GrantUnitRole grants personID roleID on unitID, scope "unit" — M10.6's registration cutover is
-// the first caller (approval-time congregation-admin grant). No epoch bump, no cache to invalidate
-// (D-InProcessAuthz's amendment: grants are read fresh per request), so a grant is visible to the
-// very next Require call with no extra step. Returns the assignment's id (M11.2: super-admin callers
-// use it as the audit log's target_id).
-func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, grantedByPersonID string) (string, error) {
-	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, grantedByPersonID)
+// GrantUnitRole grants personID roleID on unitID at scope (domain.ScopeUnit or domain.ScopeSubtree),
+// graphID required (and only meaningful) when scope is ScopeSubtree — M10.6's registration cutover
+// was the first caller (approval-time congregation-admin grant, always ScopeUnit); M12.2 adds real
+// scope=subtree provisioning, resolving U14 (docs/milestones.md): before this, every real/test grant
+// was hardcoded to scope='unit', so D-UnitMoveDualScope's dual-parent unit.edges.manage check could
+// never pass for a non-root move — subtree was fully implemented in the PDP but unprovisionable
+// through any surface. No epoch bump, no cache to invalidate (D-InProcessAuthz's amendment: grants
+// are read fresh per request), so a grant is visible to the very next Require call with no extra
+// step. Returns the assignment's id (M11.2: super-admin callers use it as the audit log's target_id).
+func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string, scope domain.Scope, graphID, grantedByPersonID string) (string, error) {
+	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, string(scope), graphID, grantedByPersonID)
 }
 
-// BulkGrantUnitRole grants roleID on unitID to every personID in one batch, atomically (M11.7).
-// Returns the resulting assignment ids in the same order as personIDs, so callers can pair each id
-// back to the person it belongs to (e.g. for per-row audit logging) with no extra lookup. No dedup
-// of personIDs: the store's upsert already absorbs a duplicate id harmlessly, and a same-order,
-// same-length 1:1 pairing with the input is simpler to reason about than reordering logic.
-func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID, grantedByPersonID string) ([]string, error) {
+// BulkGrantUnitRole grants roleID on unitID to every personID in one batch, atomically, at scope
+// (M11.7 + M12.2's scope param). Returns the resulting assignment ids in the same order as
+// personIDs, so callers can pair each id back to the person it belongs to (e.g. for per-row audit
+// logging) with no extra lookup. No dedup of personIDs: the store's upsert already absorbs a
+// duplicate id harmlessly, and a same-order, same-length 1:1 pairing with the input is simpler to
+// reason about than reordering logic.
+func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID string, scope domain.Scope, graphID, grantedByPersonID string) ([]string, error) {
 	if len(personIDs) == 0 {
 		return nil, domain.ErrEmptyPersonIDs
 	}
-	return s.store.BulkInsertRoleAssignments(ctx, personIDs, roleID, unitID, grantedByPersonID)
+	return s.store.BulkInsertRoleAssignments(ctx, personIDs, roleID, unitID, string(scope), graphID, grantedByPersonID)
 }
 
 // RequireInstanceAdmin is the shared, hard-to-misuse enforcer for the instance-admin plane

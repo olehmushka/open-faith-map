@@ -301,6 +301,52 @@ func (s *Service) DeleteUnit(ctx context.Context, unitID string) (directorydomai
 	return after, nil
 }
 
+// MoveUnit starts or resumes moving unitID onto newParentUnitID within graphCode (default
+// "canonical") — M12.2, generalized out of internal/registration's own former private reparent
+// state machine (internal/directory.Move/CurrentParent). D-UnitMoveDualScope: gated on
+// unit.edges.manage over BOTH unitID's current parent and newParentUnitID — a one-sided grant must
+// not be enough to pull a unit into or out of a part of the tree the caller has no authority over.
+// The root unit refuses every move outright, the same hard guard SetUnitState/DeleteUnit already
+// use. The returned job's Status may be FAILED (a normal, recorded outcome, not itself a Go error —
+// same shape internal/registration's former Reparent already had) as well as VERIFIED; either way
+// it is audit-logged, since the job record is itself the account of what happened.
+func (s *Service) MoveUnit(ctx context.Context, unitID, newParentUnitID, graphCode string) (directorydomain.MoveJob, error) {
+	if unitID == s.rootUnitID {
+		return directorydomain.MoveJob{}, ErrRootUnitProtected
+	}
+	oldParentUnitID, err := s.directory.CurrentParent(ctx, graphCode, unitID)
+	if err != nil {
+		return directorydomain.MoveJob{}, err
+	}
+	if err := s.authz.Require(ctx, authzdomain.PermUnitEdgesManage, oldParentUnitID); err != nil {
+		return directorydomain.MoveJob{}, err
+	}
+	if err := s.authz.Require(ctx, authzdomain.PermUnitEdgesManage, newParentUnitID); err != nil {
+		return directorydomain.MoveJob{}, err
+	}
+	subject, err := s.requireSubject(ctx)
+	if err != nil {
+		return directorydomain.MoveJob{}, err
+	}
+	job, err := s.directory.Move(ctx, graphCode, unitID, newParentUnitID, subject.PersonID)
+	if err != nil {
+		return directorydomain.MoveJob{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionMoveUnit, auditTargetUnit, unitID,
+		map[string]any{"parentUnitId": oldParentUnitID},
+		map[string]any{"parentUnitId": job.NewParentUnitID, "status": string(job.Status)}); err != nil {
+		return directorydomain.MoveJob{}, err
+	}
+	return job, nil
+}
+
+// GetUnitMoveStatus returns the most recent move job for (unitID, graphCode), or nil if none has
+// ever been started. Read-only, no gate beyond session — matches getReparentStatus's own posture and
+// unitAncestors/getUnit's (M12.2).
+func (s *Service) GetUnitMoveStatus(ctx context.Context, unitID, graphCode string) (*directorydomain.MoveJob, error) {
+	return s.directory.GetMoveStatus(ctx, graphCode, unitID)
+}
+
 // ---------------------------------------------------------------- refdata (read-only catalog, same
 // no-per-call-gate reasoning)
 
@@ -370,6 +416,8 @@ const (
 	auditActionUpdateUnit   = "UPDATE_UNIT"
 	auditActionSetUnitState = "SET_UNIT_STATE"
 	auditActionDeleteUnit   = "DELETE_UNIT"
+	// M12.2 — generic unit move/reparent.
+	auditActionMoveUnit = "MOVE_UNIT"
 
 	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
 	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
@@ -380,37 +428,82 @@ const (
 	auditTargetUnit           = "UNIT"
 )
 
-func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string) error {
+var (
+	// ErrInvalidGrantScope: GrantUnitRole/BulkGrantUnitRole's scope must be "unit" or "subtree"
+	// (M12.2).
+	ErrInvalidGrantScope = errors.New(`scope must be "unit" or "subtree"`)
+	// ErrSubtreeGrantRequiresGraph: a scope="subtree" grant must name the graph it cascades over
+	// (mirrors authz_role_assignments_graph_scope's own CHECK, migrations/0009_core_authz.sql).
+	ErrSubtreeGrantRequiresGraph = errors.New("a subtree-scoped grant requires a graphId")
+	// ErrUnitGrantMustNotSpecifyGraph: a scope="unit" grant carries no graph dimension — the same
+	// CHECK constraint that requires a subtree grant's graphId forbids a unit grant's.
+	ErrUnitGrantMustNotSpecifyGraph = errors.New("a unit-scoped grant must not specify a graphId")
+)
+
+// parseGrantScope validates scope/graphID against authz_role_assignments_graph_scope's own shape
+// before either ever reaches the store, so a bad request fails with a clear typed error instead of a
+// raw DB constraint violation.
+func parseGrantScope(scope, graphID string) (authzdomain.Scope, error) {
+	switch authzdomain.Scope(scope) {
+	case authzdomain.ScopeUnit:
+		if graphID != "" {
+			return "", ErrUnitGrantMustNotSpecifyGraph
+		}
+		return authzdomain.ScopeUnit, nil
+	case authzdomain.ScopeSubtree:
+		if graphID == "" {
+			return "", ErrSubtreeGrantRequiresGraph
+		}
+		return authzdomain.ScopeSubtree, nil
+	default:
+		return "", ErrInvalidGrantScope
+	}
+}
+
+// GrantUnitRole grants personID roleID on unitID at scope ("unit" or "subtree", graphID required and
+// only meaningful for "subtree") — M12.2 adds real scope/graphId provisioning (resolving U14): before
+// this every grant was hardcoded to scope="unit", so D-UnitMoveDualScope's dual-parent
+// unit.edges.manage check could never pass for a non-root move.
+func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, scope, graphID string) error {
 	subject, err := s.requireSubject(ctx)
 	if err != nil {
 		return err
 	}
-	assignmentID, err := s.authz.GrantUnitRole(ctx, personID, roleID, unitID, subject.PersonID)
+	authzScope, err := parseGrantScope(scope, graphID)
+	if err != nil {
+		return err
+	}
+	assignmentID, err := s.authz.GrantUnitRole(ctx, personID, roleID, unitID, authzScope, graphID, subject.PersonID)
 	if err != nil {
 		return err
 	}
 	return s.auditLog.Record(ctx, auditActionGrantUnitRole, auditTargetRoleAssignment, assignmentID,
-		nil, map[string]any{"personId": personID, "roleId": roleID, "unitId": unitID})
+		nil, map[string]any{"personId": personID, "roleId": roleID, "unitId": unitID, "scope": scope, "graphId": graphID})
 }
 
-// BulkGrantUnitRole grants roleID on unitID to every id in personIDs, atomically — M11.7. The store
-// call is the entire transaction: it either returns every resulting assignment id (all committed) or
-// a non-nil error with nothing committed, so the audit loop below only ever runs over already-durable
-// rows. Best-effort across the loop (not abort-on-first-failure) so one transient Record failure
-// doesn't blank out audit rows for the rest of an already-successful batch.
-func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID string) error {
+// BulkGrantUnitRole grants roleID on unitID to every id in personIDs, atomically, at scope — M11.7 +
+// M12.2's scope param. The store call is the entire transaction: it either returns every resulting
+// assignment id (all committed) or a non-nil error with nothing committed, so the audit loop below
+// only ever runs over already-durable rows. Best-effort across the loop (not abort-on-first-failure)
+// so one transient Record failure doesn't blank out audit rows for the rest of an already-successful
+// batch.
+func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID, scope, graphID string) error {
 	subject, err := s.requireSubject(ctx)
 	if err != nil {
 		return err
 	}
-	assignmentIDs, err := s.authz.BulkGrantUnitRole(ctx, personIDs, roleID, unitID, subject.PersonID)
+	authzScope, err := parseGrantScope(scope, graphID)
+	if err != nil {
+		return err
+	}
+	assignmentIDs, err := s.authz.BulkGrantUnitRole(ctx, personIDs, roleID, unitID, authzScope, graphID, subject.PersonID)
 	if err != nil {
 		return err
 	}
 	var errs []error
 	for i, assignmentID := range assignmentIDs {
 		if err := s.auditLog.Record(ctx, auditActionBulkGrantUnitRole, auditTargetRoleAssignment, assignmentID,
-			nil, map[string]any{"personId": personIDs[i], "roleId": roleID, "unitId": unitID}); err != nil {
+			nil, map[string]any{"personId": personIDs[i], "roleId": roleID, "unitId": unitID, "scope": scope, "graphId": graphID}); err != nil {
 			errs = append(errs, err)
 		}
 	}

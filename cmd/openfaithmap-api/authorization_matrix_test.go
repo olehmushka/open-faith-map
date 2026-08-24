@@ -722,5 +722,8 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 func insertRoleAssignment(ctx context.Context, pool *pgxpool.Pool, store *authzadapters.Store, personID, roleID, unitID string) (string, error) {
 	// InsertRoleAssignment now returns the row's id directly (M11.2 — the audit log needs a real
 	// target_id, including on the idempotent-conflict path), so no separate lookup query is needed.
-	return store.InsertRoleAssignment(ctx, personID, roleID, unitID, personID)
+	// Always scope="unit" here (M12.2 added scope/graphID params) — this matrix's own seed points are
+	// all exact-unit grants; TestAuthorizationMatrix's subtree case (M12.2) calls
+	// store.InsertRoleAssignment directly instead of through this helper.
+	return store.InsertRoleAssignment(ctx, personID, roleID, unitID, "unit", "", personID)
 }

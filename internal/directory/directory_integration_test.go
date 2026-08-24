@@ -314,6 +314,137 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 	}
 }
 
+// TestUnitMoveIntegration proves M12.2's Move/GetMoveStatus/CurrentParent against a real Postgres
+// instance — the add-before-remove step ordering, the terminal-status live-slot exclusion
+// (directory_unit_move_jobs_live_idx), and the cycle-rejection path are exactly the kind of thing a
+// mocked store can't prove.
+//
+//	DATABASE_URL="postgres://openfaithmap:dev@localhost:5432/postgres?sslmode=disable" \
+//	  go test ./internal/directory/... -run TestUnitMoveIntegration -v
+func TestUnitMoveIntegration(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set DATABASE_URL to run against a live Postgres instance")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	var unitIDs []string
+	graphID, graphCode := createTestGraph(t, ctx, pool)
+	t.Cleanup(func() {
+		bg := context.Background()
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_move_jobs WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete move jobs: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_closure WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete closure rows: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_edges WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete edges: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_closure_status WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete closure status: %v", err)
+		}
+		for _, id := range unitIDs {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_units WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete unit %s: %v", id, err)
+			}
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_graphs WHERE id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete graph: %v", err)
+		}
+	})
+
+	svc := application.NewService(pool)
+
+	parentA, err := svc.CreateUnit(ctx, domain.Unit{Name: "Parent A"})
+	if err != nil {
+		t.Fatalf("CreateUnit(parentA): %v", err)
+	}
+	unitIDs = append(unitIDs, parentA.ID)
+
+	parentB, err := svc.CreateUnit(ctx, domain.Unit{Name: "Parent B"})
+	if err != nil {
+		t.Fatalf("CreateUnit(parentB): %v", err)
+	}
+	unitIDs = append(unitIDs, parentB.ID)
+
+	child, err := svc.CreateUnitWithEdge(ctx, domain.Unit{Name: "Child"}, parentA.ID, graphCode)
+	if err != nil {
+		t.Fatalf("CreateUnitWithEdge(child under parentA): %v", err)
+	}
+	unitIDs = append(unitIDs, child.ID)
+
+	// --- CurrentParent, with no move job yet, reads the live parent straight off the graph.
+	if p, err := svc.CurrentParent(ctx, graphCode, child.ID); err != nil || p != parentA.ID {
+		t.Fatalf("CurrentParent(child) = (%q, %v), want (%q, nil)", p, err, parentA.ID)
+	}
+
+	// --- Move(child, parentA -> parentB) reaches VERIFIED, and child's only ancestor is now parentB
+	// (add-before-remove leaves no window with zero parents, but the end state has exactly one).
+	job, err := svc.Move(ctx, graphCode, child.ID, parentB.ID, "test-mover")
+	if err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if job.Status != domain.MoveVerified || job.OldParentUnitID != parentA.ID || job.NewParentUnitID != parentB.ID {
+		t.Fatalf("Move result = %+v, want Status=VERIFIED, OldParentUnitID=%s, NewParentUnitID=%s", job, parentA.ID, parentB.ID)
+	}
+	ancestors, err := svc.Ancestors(ctx, child.ID, graphCode)
+	if err != nil {
+		t.Fatalf("Ancestors(child) after Move: %v", err)
+	}
+	if len(ancestors) != 1 || ancestors[0].ID != parentB.ID {
+		t.Fatalf("Ancestors(child) after Move = %+v, want exactly [parentB]", ancestors)
+	}
+
+	// --- GetMoveStatus returns that same VERIFIED job.
+	status, err := svc.GetMoveStatus(ctx, graphCode, child.ID)
+	if err != nil {
+		t.Fatalf("GetMoveStatus: %v", err)
+	}
+	if status == nil || status.ID != job.ID || status.Status != domain.MoveVerified {
+		t.Fatalf("GetMoveStatus = %+v, want the same VERIFIED job (id %s)", status, job.ID)
+	}
+
+	// --- A second Move to a THIRD parent succeeds — the terminal VERIFIED row from the first move
+	// must not permanently occupy directory_unit_move_jobs_live_idx's one live slot (the bug this
+	// milestone's own generalization fixed: unlike the single-use congregation-reparent flow this
+	// replaces, a generic Move is expected to be callable on the same unit again after a prior move
+	// already completed).
+	secondJob, err := svc.Move(ctx, graphCode, child.ID, parentA.ID, "test-mover")
+	if err != nil {
+		t.Fatalf("second Move (parentB -> parentA): %v", err)
+	}
+	if secondJob.Status != domain.MoveVerified || secondJob.OldParentUnitID != parentB.ID || secondJob.NewParentUnitID != parentA.ID {
+		t.Fatalf("second Move result = %+v, want Status=VERIFIED, OldParentUnitID=%s, NewParentUnitID=%s", secondJob, parentB.ID, parentA.ID)
+	}
+	if secondJob.ID == job.ID {
+		t.Errorf("second Move reused the first job's id (%s) — want a new row, not a resume of a terminal one", job.ID)
+	}
+
+	// --- Move onto a unit's own descendant is rejected as a cycle, recorded as a FAILED job (not a Go
+	// error — matching the former Reparent's own shape: the job record is the account of what
+	// happened).
+	grandchild, err := svc.CreateUnitWithEdge(ctx, domain.Unit{Name: "Grandchild"}, child.ID, graphCode)
+	if err != nil {
+		t.Fatalf("CreateUnitWithEdge(grandchild): %v", err)
+	}
+	unitIDs = append(unitIDs, grandchild.ID)
+
+	cyclicJob, err := svc.Move(ctx, graphCode, child.ID, grandchild.ID, "test-mover")
+	if err != nil {
+		t.Fatalf("Move(child -> its own grandchild) returned a Go error %v, want a FAILED job instead", err)
+	}
+	if cyclicJob.Status != domain.MoveFailed || cyclicJob.Error == nil {
+		t.Fatalf("Move(child -> its own grandchild) = %+v, want Status=FAILED with a non-nil Error", cyclicJob)
+	}
+}
+
 // createTestGraph inserts a throwaway authority-bearing graph directly via SQL — Service exposes no
 // graph-management methods this milestone (nothing needs custom graph creation yet).
 func createTestGraph(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (id, code string) {

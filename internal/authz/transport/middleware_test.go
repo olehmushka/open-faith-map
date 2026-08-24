@@ -24,10 +24,10 @@ func (f fakeGrantStore) IsActiveInstanceAdmin(_ context.Context, personID string
 func (f fakeGrantStore) ActiveGrantsForSubject(context.Context, string) ([]domain.ActiveGrant, error) {
 	return nil, nil
 }
-func (f fakeGrantStore) InsertRoleAssignment(context.Context, string, string, string, string) (string, error) {
+func (f fakeGrantStore) InsertRoleAssignment(context.Context, string, string, string, string, string, string) (string, error) {
 	return "", nil
 }
-func (f fakeGrantStore) BulkInsertRoleAssignments(context.Context, []string, string, string, string) ([]string, error) {
+func (f fakeGrantStore) BulkInsertRoleAssignments(context.Context, []string, string, string, string, string, string) ([]string, error) {
 	return nil, nil
 }
 func (f fakeGrantStore) ListRoles(context.Context) ([]domain.Role, error) { return nil, nil }

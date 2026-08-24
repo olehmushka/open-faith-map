@@ -24,11 +24,11 @@ func (f fakeStore) ActiveGrantsForSubject(_ context.Context, personID string) ([
 	return f.grants[personID], nil
 }
 
-func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _ string) (string, error) {
+func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 
-func (f fakeStore) BulkInsertRoleAssignments(_ context.Context, _ []string, _, _, _ string) ([]string, error) {
+func (f fakeStore) BulkInsertRoleAssignments(_ context.Context, _ []string, _, _, _, _, _ string) ([]string, error) {
 	return nil, nil
 }
 

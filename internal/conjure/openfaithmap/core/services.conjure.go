@@ -85,6 +85,10 @@ type CoreServiceClient interface {
 	SetUnitState(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
 	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
 	DeleteUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) error
+	// M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
+	MoveUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error)
+	// Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
+	GetUnitMoveStatus(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error)
 	ListCountries(ctx context.Context, authHeader bearertoken.Token) (CountryPage, error)
 	ListMembershipsByUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (MembershipPage, error)
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
@@ -482,6 +486,43 @@ func (c *coreServiceClient) DeleteUnit(ctx context.Context, authHeader bearertok
 	return nil
 }
 
+func (c *coreServiceClient) MoveUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error) {
+	var returnVal *UnitMoveJob
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("MoveUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-moves/%s", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(UnitMoveJob), werror.WrapWithContextParams(ctx, err, "moveUnit failed")
+	}
+	if returnVal == nil {
+		return *new(UnitMoveJob), werror.ErrorWithContextParams(ctx, "moveUnit response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) GetUnitMoveStatus(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error) {
+	var returnVal *UnitMoveJob
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetUnitMoveStatus"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-moves/%s", url.PathEscape(fmt.Sprint(unitIdArg))))
+	queryParams := make(url.Values)
+	if graphCodeArg != nil {
+		queryParams.Set("graphCode", fmt.Sprint(*graphCodeArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "getUnitMoveStatus failed")
+	}
+	return returnVal, nil
+}
+
 func (c *coreServiceClient) ListCountries(ctx context.Context, authHeader bearertoken.Token) (CountryPage, error) {
 	var returnVal *CountryPage
 	var requestParams []httpclient.RequestParam
@@ -591,6 +632,10 @@ type CoreServiceClientWithAuth interface {
 	SetUnitState(ctx context.Context, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
 	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
 	DeleteUnit(ctx context.Context, unitIdArg string) error
+	// M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
+	MoveUnit(ctx context.Context, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error)
+	// Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
+	GetUnitMoveStatus(ctx context.Context, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error)
 	ListCountries(ctx context.Context) (CountryPage, error)
 	ListMembershipsByUnit(ctx context.Context, unitIdArg string) (MembershipPage, error)
 	GetPerson(ctx context.Context, personIdArg string) (Person, error)
@@ -693,6 +738,14 @@ func (c *coreServiceClientWithAuth) SetUnitState(ctx context.Context, unitIdArg 
 
 func (c *coreServiceClientWithAuth) DeleteUnit(ctx context.Context, unitIdArg string) error {
 	return c.client.DeleteUnit(ctx, c.authHeader, unitIdArg)
+}
+
+func (c *coreServiceClientWithAuth) MoveUnit(ctx context.Context, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error) {
+	return c.client.MoveUnit(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) GetUnitMoveStatus(ctx context.Context, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error) {
+	return c.client.GetUnitMoveStatus(ctx, c.authHeader, unitIdArg, graphCodeArg)
 }
 
 func (c *coreServiceClientWithAuth) ListCountries(ctx context.Context) (CountryPage, error) {
@@ -894,6 +947,22 @@ func (c *coreServiceClientWithTokenProvider) DeleteUnit(ctx context.Context, uni
 		return err
 	}
 	return c.client.DeleteUnit(ctx, bearertoken.Token(token), unitIdArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) MoveUnit(ctx context.Context, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitMoveJob), err
+	}
+	return c.client.MoveUnit(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) GetUnitMoveStatus(ctx context.Context, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.GetUnitMoveStatus(ctx, bearertoken.Token(token), unitIdArg, graphCodeArg)
 }
 
 func (c *coreServiceClientWithTokenProvider) ListCountries(ctx context.Context) (CountryPage, error) {

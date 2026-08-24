@@ -10,6 +10,8 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/directory/adapters"
@@ -267,6 +269,148 @@ func (s *Service) Descendants(ctx context.Context, unitID, graphCode string, lim
 		return nil, err
 	}
 	return store.ListDescendants(ctx, g.ID, unitID, limit)
+}
+
+// Move starts or resumes moving unitID onto newParentUnitID within graphCode (default "canonical") —
+// M12.2, generalized out of internal/registration's former private reparent state machine (the same
+// add-before-remove, resumable, closure-safe algorithm; see runMoveSteps). Re-entrant on
+// (graphCode, unitID): a repeat call while a live job targets the same newParentUnitID resumes it
+// from whichever step last durably landed; targeting a different parent while one is live is a
+// conflict the caller must resolve first.
+//
+// Add-before-remove by design (ported from D-JurisdictionUnits): unitID briefly has two parents
+// mid-move rather than momentarily zero, so a subtree-scoped grant never loses reach to it.
+func (s *Service) Move(ctx context.Context, graphCode, unitID, newParentUnitID, performedByPersonID string) (domain.MoveJob, error) {
+	graphCode = defaultGraph(graphCode)
+	store := adapters.NewStore(s.pool)
+	g, err := store.GetGraphByCode(ctx, graphCode)
+	if err != nil {
+		return domain.MoveJob{}, err
+	}
+
+	job, err := store.GetLiveMoveJob(ctx, g.ID, unitID)
+	if err != nil {
+		return domain.MoveJob{}, fmt.Errorf("getLiveMoveJob: %w", err)
+	}
+	if job == nil {
+		oldParentUnitID, err := s.currentParent(ctx, store, g.ID, unitID)
+		if err != nil {
+			return domain.MoveJob{}, fmt.Errorf("resolve current parent: %w", err)
+		}
+		created, err := store.CreateMoveJob(ctx, g.ID, unitID, oldParentUnitID, newParentUnitID, performedByPersonID)
+		if err != nil {
+			return domain.MoveJob{}, fmt.Errorf("createMoveJob: %w", err)
+		}
+		job = &created
+	} else if job.NewParentUnitID != newParentUnitID {
+		return domain.MoveJob{}, fmt.Errorf("%w: unit %s already targets %s, requested %s", domain.ErrUnitMoveConflict, unitID, job.NewParentUnitID, newParentUnitID)
+	}
+
+	return s.runMoveSteps(ctx, store, graphCode, *job)
+}
+
+// GetMoveStatus returns the most recent move job for (graphCode, unitID), or nil if none has ever
+// been started.
+func (s *Service) GetMoveStatus(ctx context.Context, graphCode, unitID string) (*domain.MoveJob, error) {
+	store := adapters.NewStore(s.pool)
+	g, err := store.GetGraphByCode(ctx, defaultGraph(graphCode))
+	if err != nil {
+		return nil, err
+	}
+	return store.GetLatestMoveJob(ctx, g.ID, unitID)
+}
+
+// CurrentParent resolves unitID's actual current parent in graphCode (default "canonical") — the
+// same resolution Move uses internally, exposed so a caller that must authorize a move BEFORE
+// calling it (internal/core's dual-parent unit.edges.manage check, D-UnitMoveDualScope) can learn the
+// old parent without duplicating Move's own job-history-aware logic.
+func (s *Service) CurrentParent(ctx context.Context, graphCode, unitID string) (string, error) {
+	graphCode = defaultGraph(graphCode)
+	store := adapters.NewStore(s.pool)
+	g, err := store.GetGraphByCode(ctx, graphCode)
+	if err != nil {
+		return "", err
+	}
+	return s.currentParent(ctx, store, g.ID, unitID)
+}
+
+// currentParent resolves unitID's actual current parent in graphID: the most recent VERIFIED move
+// job's target if one exists (this store IS the record of every successful move ever performed on
+// this unit in this graph), else the nearest ancestor read straight from the graph itself — the
+// first-ever-moved case, where there is no job history yet to trust instead.
+func (s *Service) currentParent(ctx context.Context, store *adapters.Store, graphID, unitID string) (string, error) {
+	latest, err := store.GetLatestMoveJob(ctx, graphID, unitID)
+	if err != nil {
+		return "", err
+	}
+	if latest != nil && latest.Status == domain.MoveVerified {
+		return latest.NewParentUnitID, nil
+	}
+	ancestors, err := store.ListAncestors(ctx, graphID, unitID)
+	if err != nil {
+		return "", err
+	}
+	if len(ancestors) == 0 {
+		return "", fmt.Errorf("%w: unit %s, graph %s", domain.ErrUnitHasNoCurrentParent, unitID, graphID)
+	}
+	return ancestors[0].ID, nil
+}
+
+// runMoveSteps drives job through whichever steps haven't durably landed yet. Each step persists its
+// own completion before the next runs, so a crash between any two steps resumes exactly here on the
+// next call rather than repeating or skipping work. Each step is its own transaction (via AddEdge/
+// RemoveEdge/Ancestors below) — not one transaction spanning the whole job — which is exactly why the
+// job needs this resumable state machine instead of relying on directory-level atomicity.
+func (s *Service) runMoveSteps(ctx context.Context, store *adapters.Store, graphCode string, job domain.MoveJob) (domain.MoveJob, error) {
+	if job.Status == domain.MovePending {
+		if _, err := s.AddEdge(ctx, job.UnitID, job.NewParentUnitID, graphCode); err != nil && !errors.Is(err, domain.ErrEdgeExists) {
+			return store.FailMoveJob(ctx, job.ID, fmt.Sprintf("addEdge(new parent): %v", err))
+		}
+		updated, err := store.AdvanceMoveJob(ctx, job.ID, domain.MoveNewEdgeAdded)
+		if err != nil {
+			return domain.MoveJob{}, err
+		}
+		job = updated
+	}
+
+	if job.Status == domain.MoveNewEdgeAdded {
+		// RemoveEdge on an already-absent edge is a documented no-op (idempotent by design), so a
+		// resumed retry re-calling this needs no special-case error handling.
+		if err := s.RemoveEdge(ctx, job.UnitID, job.OldParentUnitID, graphCode); err != nil {
+			return store.FailMoveJob(ctx, job.ID, fmt.Sprintf("removeEdge(old parent): %v", err))
+		}
+		updated, err := store.AdvanceMoveJob(ctx, job.ID, domain.MoveOldEdgeRemoved)
+		if err != nil {
+			return domain.MoveJob{}, err
+		}
+		job = updated
+	}
+
+	if job.Status == domain.MoveOldEdgeRemoved {
+		ancestors, err := s.Ancestors(ctx, job.UnitID, graphCode)
+		if err != nil {
+			return store.FailMoveJob(ctx, job.ID, fmt.Sprintf("ancestors (verify): %v", err))
+		}
+		if !ancestorsInclude(ancestors, job.NewParentUnitID) {
+			return store.FailMoveJob(ctx, job.ID, fmt.Sprintf("verify: %s not found in %s's ancestors after move", job.NewParentUnitID, job.UnitID))
+		}
+		updated, err := store.AdvanceMoveJob(ctx, job.ID, domain.MoveVerified)
+		if err != nil {
+			return domain.MoveJob{}, err
+		}
+		job = updated
+	}
+
+	return job, nil
+}
+
+func ancestorsInclude(refs []domain.UnitRef, unitID string) bool {
+	for _, u := range refs {
+		if u.ID == unitID {
+			return true
+		}
+	}
+	return false
 }
 
 // RebuildClosure recomputes graphCode's closure from scratch (or every graph, if graphCode is nil).

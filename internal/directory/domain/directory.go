@@ -26,6 +26,13 @@ var (
 	// ErrUnitHasChildren: DeleteUnit's orphan-protection — a unit with a live parent->child edge in
 	// any graph cannot be soft-deleted (M12.1).
 	ErrUnitHasChildren = errors.New("unit has child units")
+	// ErrUnitHasNoCurrentParent: Move/CurrentParent found no live parent edge for the unit in the
+	// graph (e.g. it is that graph's root) — there is nothing to move it from (M12.2).
+	ErrUnitHasNoCurrentParent = errors.New("unit has no current parent in this graph")
+	// ErrUnitMoveConflict: Move's unitID already has a live (non-FAILED) job targeting a different
+	// parent than the one just requested — the caller must resolve it (retry with the same
+	// newParentUnitID to resume, or wait for it to fail out) before starting a move elsewhere (M12.2).
+	ErrUnitMoveConflict = errors.New("unit already has a live move job targeting a different parent")
 )
 
 // State is a unit's lifecycle state.
@@ -76,6 +83,33 @@ type UnitRef struct {
 	Code  string
 	Name  string
 	Depth int
+}
+
+// MoveStatus is a MoveJob's resumable state machine step (M12.2, generalized from
+// internal/registration's former private ReparentStatus).
+type MoveStatus string
+
+const (
+	MovePending        MoveStatus = "PENDING"
+	MoveNewEdgeAdded   MoveStatus = "NEW_EDGE_ADDED"
+	MoveOldEdgeRemoved MoveStatus = "OLD_EDGE_REMOVED"
+	MoveVerified       MoveStatus = "VERIFIED"
+	MoveFailed         MoveStatus = "FAILED"
+)
+
+// MoveJob is directory_unit_move_jobs — one move attempt's durable, resumable state (M12.2). At most
+// one non-FAILED job exists per (GraphID, UnitID) at a time (the store's own unique index).
+type MoveJob struct {
+	ID                  string
+	GraphID             string
+	UnitID              string
+	OldParentUnitID     string
+	NewParentUnitID     string
+	Status              MoveStatus
+	PerformedByPersonID string
+	Error               *string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // ClosureReport is RebuildClosure/VerifyClosure's per-graph result.

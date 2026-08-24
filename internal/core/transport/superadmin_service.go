@@ -76,14 +76,14 @@ func (s *SuperAdminService) ListRoleAssignmentsByUnit(ctx context.Context, _ bea
 }
 
 func (s *SuperAdminService) GrantUnitRole(ctx context.Context, _ bearertoken.Token, requestArg gencore.GrantUnitRoleRequest) error {
-	if err := s.app.GrantUnitRole(ctx, requestArg.PersonId, requestArg.RoleId, requestArg.UnitId); err != nil {
+	if err := s.app.GrantUnitRole(ctx, requestArg.PersonId, requestArg.RoleId, requestArg.UnitId, requestArg.Scope, derefStr(requestArg.GraphId)); err != nil {
 		return mapErr(err, errCtx{PersonID: requestArg.PersonId, UnitID: requestArg.UnitId})
 	}
 	return nil
 }
 
 func (s *SuperAdminService) BulkGrantUnitRole(ctx context.Context, _ bearertoken.Token, requestArg gencore.BulkGrantUnitRoleRequest) error {
-	if err := s.app.BulkGrantUnitRole(ctx, requestArg.PersonIds, requestArg.RoleId, requestArg.UnitId); err != nil {
+	if err := s.app.BulkGrantUnitRole(ctx, requestArg.PersonIds, requestArg.RoleId, requestArg.UnitId, requestArg.Scope, derefStr(requestArg.GraphId)); err != nil {
 		return mapErr(err, errCtx{UnitID: requestArg.UnitId})
 	}
 	return nil
