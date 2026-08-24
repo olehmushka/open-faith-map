@@ -50,6 +50,10 @@ type Service struct {
 	// caller to reuse — mirroring internal/identity/bootstrap.Run's cross-module transaction shape,
 	// just triggered at runtime instead of at boot.
 	pool *pgxpool.Pool
+	// rootUnitID is internal/platform/seed.RootUnitID, threaded in the same way every other consumer
+	// module already receives it (M12.1) — used only to hard-guard the root unit against
+	// SetUnitState/DeleteUnit, never as a PDP input.
+	rootUnitID string
 }
 
 func NewService(
@@ -61,11 +65,12 @@ func NewService(
 	authzSvc *authz.Service,
 	auditLog *auditlogapplication.Service,
 	pool *pgxpool.Pool,
+	rootUnitID string,
 ) *Service {
 	return &Service{
 		directory: directory, religion: religion, membership: membership,
 		identity: identity, refdata: refdata, authz: authzSvc, auditLog: auditLog,
-		pool: pool,
+		pool: pool, rootUnitID: rootUnitID,
 	}
 }
 
@@ -170,6 +175,132 @@ func (s *Service) CreateChildOrg(ctx context.Context, parentUnitID, code, name s
 	return s.religion.CreateChildOrg(ctx, parentUnitID, code, name, orgKindID, primaryTaxonID)
 }
 
+// ---------------------------------------------------------------- unit lifecycle CRUD (M12.1) — the
+// four unit.lifecycle-gated writes internal/directory itself cannot expose (D-InProcessAuthz forbids
+// it importing internal/authz). unit.edges.manage, the sibling permission M12.0 also scoped down,
+// stays reserved for M12.2's generic move/reparent (D-EdgePerms) — nothing here touches an edge.
+
+var (
+	// ErrRootUnitProtected: SetUnitState/DeleteUnit refuse the root unit outright, regardless of the
+	// caller's grant — milestones.md's M12.1 row calls for a hard guard, not merely a stricter
+	// permission check.
+	ErrRootUnitProtected = errors.New("the root unit cannot be modified")
+	// ErrUnitHasActiveRoleAssignments: DeleteUnit's orphan-protection against a unit that still has a
+	// live (non-revoked) role assignment targeting it.
+	ErrUnitHasActiveRoleAssignments = errors.New("unit has active role assignments")
+	// ErrUnitHasOrgProfile: DeleteUnit's orphan-protection against a unit that still has a
+	// religion_org_profiles row (religiondomain.ErrProfileNotFound is the pass-through case).
+	ErrUnitHasOrgProfile = errors.New("unit has a religion org profile")
+)
+
+// CreateUnit creates unitID under parentUnitID (M12.1) — the general form createChildOrg's
+// religion-profile bundling isn't. Gated on parentUnitID, same "create under X" shape
+// CreateChildOrg already uses.
+func (s *Service) CreateUnit(ctx context.Context, parentUnitID, code, name string, level *int16) (directorydomain.Unit, error) {
+	if err := s.authz.Require(ctx, authzdomain.PermUnitLifecycle, parentUnitID); err != nil {
+		return directorydomain.Unit{}, err
+	}
+	created, err := s.directory.CreateUnitWithEdge(ctx,
+		directorydomain.Unit{Code: code, Name: name, Level: level}, parentUnitID, directorydomain.CanonicalGraphCode)
+	if err != nil {
+		return directorydomain.Unit{}, err
+	}
+	after := map[string]any{"code": created.Code, "name": created.Name, "level": created.Level, "parentUnitId": parentUnitID}
+	if err := s.auditLog.Record(ctx, auditActionCreateUnit, auditTargetUnit, created.ID, nil, after); err != nil {
+		return directorydomain.Unit{}, err
+	}
+	return created, nil
+}
+
+// UpdateUnit rewrites unitID's name/code/level (M12.1). No root-unit guard — milestones.md's M12.1
+// row only calls for one on state changes and delete, not a rename.
+func (s *Service) UpdateUnit(ctx context.Context, unitID, name string, code *string, level *int16) (directorydomain.Unit, error) {
+	if err := s.authz.Require(ctx, authzdomain.PermUnitLifecycle, unitID); err != nil {
+		return directorydomain.Unit{}, err
+	}
+	before, err := s.directory.GetUnit(ctx, unitID)
+	if err != nil {
+		return directorydomain.Unit{}, err
+	}
+	after, err := s.directory.UpdateUnit(ctx, unitID, name, code, level)
+	if err != nil {
+		return directorydomain.Unit{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionUpdateUnit, auditTargetUnit, unitID,
+		map[string]any{"name": before.Name, "code": before.Code, "level": before.Level},
+		map[string]any{"name": after.Name, "code": after.Code, "level": after.Level}); err != nil {
+		return directorydomain.Unit{}, err
+	}
+	return after, nil
+}
+
+// SetUnitState transitions unitID to state — archive/suspend/reactivate (M12.1). The root unit
+// refuses every state change outright (ErrRootUnitProtected).
+func (s *Service) SetUnitState(ctx context.Context, unitID string, state directorydomain.State) (directorydomain.Unit, error) {
+	if unitID == s.rootUnitID {
+		return directorydomain.Unit{}, ErrRootUnitProtected
+	}
+	if err := s.authz.Require(ctx, authzdomain.PermUnitLifecycle, unitID); err != nil {
+		return directorydomain.Unit{}, err
+	}
+	before, err := s.directory.GetUnit(ctx, unitID)
+	if err != nil {
+		return directorydomain.Unit{}, err
+	}
+	after, err := s.directory.SetUnitState(ctx, unitID, state)
+	if err != nil {
+		return directorydomain.Unit{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionSetUnitState, auditTargetUnit, unitID,
+		map[string]any{"state": string(before.State)}, map[string]any{"state": string(after.State)}); err != nil {
+		return directorydomain.Unit{}, err
+	}
+	return after, nil
+}
+
+// DeleteUnit soft-deletes unitID (M12.1), refusing the root unit outright and orphan-protecting
+// against child units, active role assignments, and an existing religion org profile — checked in
+// that order, cheapest/most-structural first, so a delete that was always going to fail doesn't pay
+// for the two cross-module lookups first.
+func (s *Service) DeleteUnit(ctx context.Context, unitID string) (directorydomain.Unit, error) {
+	if unitID == s.rootUnitID {
+		return directorydomain.Unit{}, ErrRootUnitProtected
+	}
+	if err := s.authz.Require(ctx, authzdomain.PermUnitLifecycle, unitID); err != nil {
+		return directorydomain.Unit{}, err
+	}
+	if hasChildren, err := s.directory.HasChildren(ctx, unitID); err != nil {
+		return directorydomain.Unit{}, err
+	} else if hasChildren {
+		return directorydomain.Unit{}, directorydomain.ErrUnitHasChildren
+	}
+	if _, err := s.religion.GetOrgProfile(ctx, unitID); err == nil {
+		return directorydomain.Unit{}, ErrUnitHasOrgProfile
+	} else if !errors.Is(err, religiondomain.ErrProfileNotFound) {
+		return directorydomain.Unit{}, err
+	}
+	assignments, err := s.authz.ListRoleAssignmentsByUnit(ctx, unitID)
+	if err != nil {
+		return directorydomain.Unit{}, err
+	}
+	if len(assignments) > 0 {
+		return directorydomain.Unit{}, ErrUnitHasActiveRoleAssignments
+	}
+	before, err := s.directory.GetUnit(ctx, unitID)
+	if err != nil {
+		return directorydomain.Unit{}, err
+	}
+	after, err := s.directory.DeleteUnit(ctx, unitID)
+	if err != nil {
+		return directorydomain.Unit{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionDeleteUnit, auditTargetUnit, unitID,
+		map[string]any{"name": before.Name, "code": before.Code, "state": string(before.State)}, nil); err != nil {
+		return directorydomain.Unit{}, err
+	}
+	return after, nil
+}
+
 // ---------------------------------------------------------------- refdata (read-only catalog, same
 // no-per-call-gate reasoning)
 
@@ -234,6 +365,11 @@ const (
 	// both to every caller.
 	auditActionRevokeApiKey      = "REVOKE_API_KEY"
 	auditActionRevokeApiKeyAdmin = "REVOKE_API_KEY_ADMIN"
+	// M12.1 — unit lifecycle CRUD; the first unit-targeted audit entries this codebase writes.
+	auditActionCreateUnit   = "CREATE_UNIT"
+	auditActionUpdateUnit   = "UPDATE_UNIT"
+	auditActionSetUnitState = "SET_UNIT_STATE"
+	auditActionDeleteUnit   = "DELETE_UNIT"
 
 	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
 	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
@@ -241,6 +377,7 @@ const (
 	auditTargetSession        = "SESSION"
 	auditTargetPerson         = "PERSON"
 	auditTargetApiKey         = "API_KEY"
+	auditTargetUnit           = "UNIT"
 )
 
 func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string) error {

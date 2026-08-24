@@ -62,7 +62,7 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
 	// directory/religion/membership/refdata are nil: none of the six methods under test touch them
 	// (they're core.application.Service's read-only surfaces, wired by other tests).
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool)
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")
 
 	var actorID, targetID, targetAccountID string
 	var unit directorydomain.Unit
@@ -317,7 +317,7 @@ func TestLastActiveIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, nil, pool)
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, nil, pool, "")
 
 	var noAccountID, withAccountID, accountID, sessionID string
 	t.Cleanup(func() {
@@ -460,7 +460,7 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 	dir := directoryapplication.NewService(pool)
 	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, nil, nil, authzSvc, auditLogSvc, pool)
+	coreApp := coreapplication.NewService(nil, nil, nil, nil, nil, authzSvc, auditLogSvc, pool, "")
 
 	var actorID string
 	var unit directorydomain.Unit
@@ -670,7 +670,7 @@ func TestMergePersonsIntegration(t *testing.T) {
 	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
 	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool)
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")
 
 	var actorID string
 	var unit directorydomain.Unit
@@ -1032,7 +1032,7 @@ func TestApiKeysAdminOversightIntegration(t *testing.T) {
 
 	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, auditLogSvc, pool)
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, auditLogSvc, pool, "")
 
 	var adminID, ownerID string
 	t.Cleanup(func() {

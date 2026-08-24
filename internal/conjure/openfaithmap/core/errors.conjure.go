@@ -1087,7 +1087,7 @@ func WrapWithForbidden(err error) *Forbidden {
 }
 
 // Forbidden is an error type.
-// The caller does not hold religionorg.manage on the parent unit (createChildOrg) or is not an active instance admin (every CoreSuperAdminService endpoint).
+// The caller does not hold religionorg.manage on the parent unit (createChildOrg), unit.lifecycle on the relevant unit (createUnit/updateUnit/setUnitState/deleteUnit), or is not an active instance admin (every CoreSuperAdminService endpoint).
 type Forbidden struct {
 	errorInstanceID uuid.UUID
 	forbidden
@@ -1500,6 +1500,154 @@ func (e *InvalidPageToken) UnmarshalJSON(data []byte) error {
 	}
 	e.errorInstanceID = serializableError.ErrorInstanceID
 	e.invalidPageToken = parameters
+	return nil
+}
+
+type invalidUnitState struct{}
+
+func (o invalidUnitState) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *invalidUnitState) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewInvalidUnitState returns new instance of InvalidUnitState error.
+func NewInvalidUnitState() *InvalidUnitState {
+	return &InvalidUnitState{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), invalidUnitState: invalidUnitState{}}
+}
+
+// WrapWithInvalidUnitState returns new instance of InvalidUnitState error wrapping an existing error.
+func WrapWithInvalidUnitState(err error) *InvalidUnitState {
+	return &InvalidUnitState{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, invalidUnitState: invalidUnitState{}}
+}
+
+// InvalidUnitState is an error type.
+// M12.1 — setUnitState's request.state is not one of active/suspended/archived.
+type InvalidUnitState struct {
+	errorInstanceID uuid.UUID
+	invalidUnitState
+	cause error
+	stack werror.StackTrace
+}
+
+// IsInvalidUnitState returns true if err is an instance of InvalidUnitState.
+func IsInvalidUnitState(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*InvalidUnitState)
+	return ok
+}
+
+func (e *InvalidUnitState) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Core:InvalidUnitState (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *InvalidUnitState) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *InvalidUnitState) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *InvalidUnitState) Message() string {
+	return "INVALID_ARGUMENT Core:InvalidUnitState"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *InvalidUnitState) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *InvalidUnitState) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *InvalidUnitState) Name() string {
+	return "Core:InvalidUnitState"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *InvalidUnitState) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *InvalidUnitState) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *InvalidUnitState) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InvalidUnitState) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *InvalidUnitState) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *InvalidUnitState) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e InvalidUnitState) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.invalidUnitState)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Core:InvalidUnitState", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *InvalidUnitState) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters invalidUnitState
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.invalidUnitState = parameters
 	return nil
 }
 
@@ -2245,6 +2393,156 @@ func (e *PersonNotFound) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type rootUnitProtected struct {
+	UnitId string `json:"unitId"`
+}
+
+func (o rootUnitProtected) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *rootUnitProtected) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewRootUnitProtected returns new instance of RootUnitProtected error.
+func NewRootUnitProtected(unitIdArg string) *RootUnitProtected {
+	return &RootUnitProtected{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), rootUnitProtected: rootUnitProtected{UnitId: unitIdArg}}
+}
+
+// WrapWithRootUnitProtected returns new instance of RootUnitProtected error wrapping an existing error.
+func WrapWithRootUnitProtected(err error, unitIdArg string) *RootUnitProtected {
+	return &RootUnitProtected{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, rootUnitProtected: rootUnitProtected{UnitId: unitIdArg}}
+}
+
+// RootUnitProtected is an error type.
+// M12.1 — setUnitState/deleteUnit refuse the root unit outright, regardless of the caller's grant.
+type RootUnitProtected struct {
+	errorInstanceID uuid.UUID
+	rootUnitProtected
+	cause error
+	stack werror.StackTrace
+}
+
+// IsRootUnitProtected returns true if err is an instance of RootUnitProtected.
+func IsRootUnitProtected(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*RootUnitProtected)
+	return ok
+}
+
+func (e *RootUnitProtected) Error() string {
+	return fmt.Sprintf("CONFLICT Core:RootUnitProtected (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *RootUnitProtected) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *RootUnitProtected) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *RootUnitProtected) Message() string {
+	return "CONFLICT Core:RootUnitProtected"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *RootUnitProtected) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *RootUnitProtected) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *RootUnitProtected) Name() string {
+	return "Core:RootUnitProtected"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *RootUnitProtected) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *RootUnitProtected) Parameters() map[string]interface{} {
+	return map[string]interface{}{"unitId": e.UnitId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *RootUnitProtected) safeParams() map[string]interface{} {
+	return map[string]interface{}{"unitId": e.UnitId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *RootUnitProtected) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *RootUnitProtected) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *RootUnitProtected) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e RootUnitProtected) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.rootUnitProtected)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Core:RootUnitProtected", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *RootUnitProtected) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters rootUnitProtected
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.rootUnitProtected = parameters
+	return nil
+}
+
 type sessionNotFound struct {
 	SessionId string `json:"sessionId"`
 }
@@ -2541,6 +2839,456 @@ func (e *TaxonNotFound) UnmarshalJSON(data []byte) error {
 	}
 	e.errorInstanceID = serializableError.ErrorInstanceID
 	e.taxonNotFound = parameters
+	return nil
+}
+
+type unitHasActiveRoleAssignments struct {
+	UnitId string `json:"unitId"`
+}
+
+func (o unitHasActiveRoleAssignments) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *unitHasActiveRoleAssignments) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewUnitHasActiveRoleAssignments returns new instance of UnitHasActiveRoleAssignments error.
+func NewUnitHasActiveRoleAssignments(unitIdArg string) *UnitHasActiveRoleAssignments {
+	return &UnitHasActiveRoleAssignments{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), unitHasActiveRoleAssignments: unitHasActiveRoleAssignments{UnitId: unitIdArg}}
+}
+
+// WrapWithUnitHasActiveRoleAssignments returns new instance of UnitHasActiveRoleAssignments error wrapping an existing error.
+func WrapWithUnitHasActiveRoleAssignments(err error, unitIdArg string) *UnitHasActiveRoleAssignments {
+	return &UnitHasActiveRoleAssignments{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, unitHasActiveRoleAssignments: unitHasActiveRoleAssignments{UnitId: unitIdArg}}
+}
+
+// UnitHasActiveRoleAssignments is an error type.
+// M12.1 — deleteUnit's unitId still has at least one active (non-revoked) role assignment.
+type UnitHasActiveRoleAssignments struct {
+	errorInstanceID uuid.UUID
+	unitHasActiveRoleAssignments
+	cause error
+	stack werror.StackTrace
+}
+
+// IsUnitHasActiveRoleAssignments returns true if err is an instance of UnitHasActiveRoleAssignments.
+func IsUnitHasActiveRoleAssignments(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*UnitHasActiveRoleAssignments)
+	return ok
+}
+
+func (e *UnitHasActiveRoleAssignments) Error() string {
+	return fmt.Sprintf("CONFLICT Core:UnitHasActiveRoleAssignments (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *UnitHasActiveRoleAssignments) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *UnitHasActiveRoleAssignments) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *UnitHasActiveRoleAssignments) Message() string {
+	return "CONFLICT Core:UnitHasActiveRoleAssignments"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *UnitHasActiveRoleAssignments) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *UnitHasActiveRoleAssignments) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *UnitHasActiveRoleAssignments) Name() string {
+	return "Core:UnitHasActiveRoleAssignments"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *UnitHasActiveRoleAssignments) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *UnitHasActiveRoleAssignments) Parameters() map[string]interface{} {
+	return map[string]interface{}{"unitId": e.UnitId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *UnitHasActiveRoleAssignments) safeParams() map[string]interface{} {
+	return map[string]interface{}{"unitId": e.UnitId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitHasActiveRoleAssignments) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *UnitHasActiveRoleAssignments) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitHasActiveRoleAssignments) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e UnitHasActiveRoleAssignments) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.unitHasActiveRoleAssignments)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Core:UnitHasActiveRoleAssignments", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *UnitHasActiveRoleAssignments) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters unitHasActiveRoleAssignments
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.unitHasActiveRoleAssignments = parameters
+	return nil
+}
+
+type unitHasChildren struct {
+	UnitId string `json:"unitId"`
+}
+
+func (o unitHasChildren) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *unitHasChildren) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewUnitHasChildren returns new instance of UnitHasChildren error.
+func NewUnitHasChildren(unitIdArg string) *UnitHasChildren {
+	return &UnitHasChildren{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), unitHasChildren: unitHasChildren{UnitId: unitIdArg}}
+}
+
+// WrapWithUnitHasChildren returns new instance of UnitHasChildren error wrapping an existing error.
+func WrapWithUnitHasChildren(err error, unitIdArg string) *UnitHasChildren {
+	return &UnitHasChildren{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, unitHasChildren: unitHasChildren{UnitId: unitIdArg}}
+}
+
+// UnitHasChildren is an error type.
+// M12.1 — deleteUnit's unitId still has at least one child unit.
+type UnitHasChildren struct {
+	errorInstanceID uuid.UUID
+	unitHasChildren
+	cause error
+	stack werror.StackTrace
+}
+
+// IsUnitHasChildren returns true if err is an instance of UnitHasChildren.
+func IsUnitHasChildren(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*UnitHasChildren)
+	return ok
+}
+
+func (e *UnitHasChildren) Error() string {
+	return fmt.Sprintf("CONFLICT Core:UnitHasChildren (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *UnitHasChildren) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *UnitHasChildren) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *UnitHasChildren) Message() string {
+	return "CONFLICT Core:UnitHasChildren"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *UnitHasChildren) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *UnitHasChildren) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *UnitHasChildren) Name() string {
+	return "Core:UnitHasChildren"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *UnitHasChildren) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *UnitHasChildren) Parameters() map[string]interface{} {
+	return map[string]interface{}{"unitId": e.UnitId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *UnitHasChildren) safeParams() map[string]interface{} {
+	return map[string]interface{}{"unitId": e.UnitId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitHasChildren) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *UnitHasChildren) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitHasChildren) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e UnitHasChildren) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.unitHasChildren)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Core:UnitHasChildren", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *UnitHasChildren) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters unitHasChildren
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.unitHasChildren = parameters
+	return nil
+}
+
+type unitHasOrgProfile struct {
+	UnitId string `json:"unitId"`
+}
+
+func (o unitHasOrgProfile) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *unitHasOrgProfile) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewUnitHasOrgProfile returns new instance of UnitHasOrgProfile error.
+func NewUnitHasOrgProfile(unitIdArg string) *UnitHasOrgProfile {
+	return &UnitHasOrgProfile{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), unitHasOrgProfile: unitHasOrgProfile{UnitId: unitIdArg}}
+}
+
+// WrapWithUnitHasOrgProfile returns new instance of UnitHasOrgProfile error wrapping an existing error.
+func WrapWithUnitHasOrgProfile(err error, unitIdArg string) *UnitHasOrgProfile {
+	return &UnitHasOrgProfile{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, unitHasOrgProfile: unitHasOrgProfile{UnitId: unitIdArg}}
+}
+
+// UnitHasOrgProfile is an error type.
+// M12.1 — deleteUnit's unitId still has a religion org profile.
+type UnitHasOrgProfile struct {
+	errorInstanceID uuid.UUID
+	unitHasOrgProfile
+	cause error
+	stack werror.StackTrace
+}
+
+// IsUnitHasOrgProfile returns true if err is an instance of UnitHasOrgProfile.
+func IsUnitHasOrgProfile(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*UnitHasOrgProfile)
+	return ok
+}
+
+func (e *UnitHasOrgProfile) Error() string {
+	return fmt.Sprintf("CONFLICT Core:UnitHasOrgProfile (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *UnitHasOrgProfile) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *UnitHasOrgProfile) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *UnitHasOrgProfile) Message() string {
+	return "CONFLICT Core:UnitHasOrgProfile"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *UnitHasOrgProfile) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *UnitHasOrgProfile) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *UnitHasOrgProfile) Name() string {
+	return "Core:UnitHasOrgProfile"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *UnitHasOrgProfile) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *UnitHasOrgProfile) Parameters() map[string]interface{} {
+	return map[string]interface{}{"unitId": e.UnitId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *UnitHasOrgProfile) safeParams() map[string]interface{} {
+	return map[string]interface{}{"unitId": e.UnitId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitHasOrgProfile) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *UnitHasOrgProfile) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitHasOrgProfile) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e UnitHasOrgProfile) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.unitHasOrgProfile)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Core:UnitHasOrgProfile", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *UnitHasOrgProfile) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters unitHasOrgProfile
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.unitHasOrgProfile = parameters
 	return nil
 }
 
@@ -2852,13 +3600,18 @@ func init() {
 	conjureerrors.RegisterErrorType("Core:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("Core:InstanceAdminGrantNotFound", reflect.TypeOf(InstanceAdminGrantNotFound{}))
 	conjureerrors.RegisterErrorType("Core:InvalidPageToken", reflect.TypeOf(InvalidPageToken{}))
+	conjureerrors.RegisterErrorType("Core:InvalidUnitState", reflect.TypeOf(InvalidUnitState{}))
 	conjureerrors.RegisterErrorType("Core:InviteAlreadyAccepted", reflect.TypeOf(InviteAlreadyAccepted{}))
 	conjureerrors.RegisterErrorType("Core:InviteExpired", reflect.TypeOf(InviteExpired{}))
 	conjureerrors.RegisterErrorType("Core:InviteNotFound", reflect.TypeOf(InviteNotFound{}))
 	conjureerrors.RegisterErrorType("Core:OrgProfileNotFound", reflect.TypeOf(OrgProfileNotFound{}))
 	conjureerrors.RegisterErrorType("Core:PersonNotFound", reflect.TypeOf(PersonNotFound{}))
+	conjureerrors.RegisterErrorType("Core:RootUnitProtected", reflect.TypeOf(RootUnitProtected{}))
 	conjureerrors.RegisterErrorType("Core:SessionNotFound", reflect.TypeOf(SessionNotFound{}))
 	conjureerrors.RegisterErrorType("Core:TaxonNotFound", reflect.TypeOf(TaxonNotFound{}))
+	conjureerrors.RegisterErrorType("Core:UnitHasActiveRoleAssignments", reflect.TypeOf(UnitHasActiveRoleAssignments{}))
+	conjureerrors.RegisterErrorType("Core:UnitHasChildren", reflect.TypeOf(UnitHasChildren{}))
+	conjureerrors.RegisterErrorType("Core:UnitHasOrgProfile", reflect.TypeOf(UnitHasOrgProfile{}))
 	conjureerrors.RegisterErrorType("Core:UnitNotFound", reflect.TypeOf(UnitNotFound{}))
 	conjureerrors.RegisterErrorType("Core:UnknownPermissionCode", reflect.TypeOf(UnknownPermissionCode{}))
 }

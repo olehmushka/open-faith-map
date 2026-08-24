@@ -214,6 +214,62 @@ func TestAuthorizationMatrix(t *testing.T) {
 		})
 	})
 
+	// ---- category: unit.lifecycle, target-scoped (M12.1) ----
+	t.Run("target_scoped_unit_lifecycle", func(t *testing.T) {
+		createBody := map[string]any{"parentUnitId": subj.unitA, "code": "", "name": "Matrix Test M12.1 Child"}
+
+		anonStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units", "", "", createBody)
+		assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
+
+		// congAdminOwn holds religionorg.manage on unitA (M11's own seed), not unit.lifecycle — a
+		// real proof the two permission codes are genuinely distinct gates, not one conflated check.
+		deniedStatus, deniedBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units", subj.congAdminOwn, subj.congAdminOwnSession, createBody)
+		assertStatus(t, "congAdminOwn (holds religionorg.manage, not unit.lifecycle)", deniedStatus, http.StatusForbidden)
+		assertErrorName(t, deniedBody, "Core:Forbidden")
+
+		createStatus, createRespBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units", subj.instanceAdmin, subj.instanceAdminSession, createBody)
+		if createStatus != http.StatusOK && createStatus != http.StatusCreated {
+			t.Fatalf("createUnit(instanceAdmin): status = %d, body: %s", createStatus, createRespBody)
+		}
+		var created struct {
+			Id string `json:"id"`
+		}
+		if err := json.Unmarshal(createRespBody, &created); err != nil || created.Id == "" {
+			t.Fatalf("parse createUnit response: %v (body: %s)", err, createRespBody)
+		}
+
+		updateStatus, updateBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/unit-lifecycle/"+created.Id, subj.instanceAdmin, subj.instanceAdminSession, map[string]any{"name": "Matrix Test M12.1 Child Renamed"})
+		assertStatus(t, "instanceAdmin updateUnit", updateStatus, http.StatusOK)
+		var updated struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(updateBody, &updated); err != nil || updated.Name != "Matrix Test M12.1 Child Renamed" {
+			t.Errorf("updateUnit response = %s, want name %q", updateBody, "Matrix Test M12.1 Child Renamed")
+		}
+
+		stateStatus, stateBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/unit-lifecycle/"+created.Id+"/state", subj.instanceAdmin, subj.instanceAdminSession, map[string]any{"state": "suspended"})
+		assertStatus(t, "instanceAdmin setUnitState", stateStatus, http.StatusOK)
+		var suspended struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(stateBody, &suspended); err != nil || suspended.State != "suspended" {
+			t.Errorf("setUnitState response = %s, want state %q", stateBody, "suspended")
+		}
+
+		// The root unit refuses every state change regardless of who's asking, instanceAdmin included.
+		rootStateStatus, rootStateBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/unit-lifecycle/"+seed.RootUnitID+"/state", subj.instanceAdmin, subj.instanceAdminSession, map[string]any{"state": "suspended"})
+		assertStatus(t, "instanceAdmin setUnitState(root)", rootStateStatus, http.StatusConflict)
+		assertErrorName(t, rootStateBody, "Core:RootUnitProtected")
+
+		deleteAnonStatus, _ := doReq(t, client, apiBase, http.MethodDelete, "/core/v1/units/"+created.Id, "", "", nil)
+		assertStatus(t, "anonymous deleteUnit", deleteAnonStatus, http.StatusUnauthorized)
+
+		deleteStatus, deleteBody := doReq(t, client, apiBase, http.MethodDelete, "/core/v1/units/"+created.Id, subj.instanceAdmin, subj.instanceAdminSession, nil)
+		if deleteStatus != http.StatusOK && deleteStatus != http.StatusNoContent {
+			t.Errorf("deleteUnit(instanceAdmin): status = %d, body: %s", deleteStatus, deleteBody)
+		}
+	})
+
 	// ---- category: moderation.standing on root (platform-moderator) ----
 	t.Run("root_scoped_moderation_standing", func(t *testing.T) {
 		t.Run("moderation_listReports", func(t *testing.T) {
@@ -557,6 +613,22 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 	unitIDs := []string{unitA.ID, unitB.ID}
 	t.Cleanup(func() {
 		bg := context.Background()
+		// M12.1's own new subtest is the first one in this file to make a real audit-logged write as
+		// instanceAdmin — identity_audit_log.actor_person_id is ON DELETE SET NULL
+		// (migrations/0016_core_audit.sql:27), and that SET NULL is itself an UPDATE the
+		// identity_audit_log_reject_mutation append-only trigger blocks unless disabled first, same
+		// dance core_self_service_integration_test.go's own cleanup already uses.
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log DISABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: disable reject_mutation: %v", err)
+		}
+		for _, id := range personIDs {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_audit_log WHERE actor_person_id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete audit rows for %s: %v", id, err)
+			}
+		}
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log ENABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: re-enable reject_mutation: %v", err)
+		}
 		for _, id := range instanceAdminIDs {
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_instance_admins WHERE id = $1`, id); err != nil {
 				t.Errorf("cleanup: delete instance admin %s: %v", id, err)

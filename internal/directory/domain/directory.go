@@ -23,6 +23,9 @@ var (
 	// ErrEdgeCycle so a caller doing resumable multi-step work (internal/registration's re-parenting
 	// state machine) can treat a repeat AddEdge as success rather than a real cycle rejection.
 	ErrEdgeExists = errors.New("edge already exists")
+	// ErrUnitHasChildren: DeleteUnit's orphan-protection — a unit with a live parent->child edge in
+	// any graph cannot be soft-deleted (M12.1).
+	ErrUnitHasChildren = errors.New("unit has child units")
 )
 
 // State is a unit's lifecycle state.

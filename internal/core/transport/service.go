@@ -212,6 +212,45 @@ func (s *Service) CreateChildOrg(ctx context.Context, _ bearertoken.Token, reque
 	return toAPIOrgProfile(p), nil
 }
 
+// M12.1 — unit lifecycle CRUD.
+
+func (s *Service) CreateUnit(ctx context.Context, _ bearertoken.Token, requestArg gencore.CreateUnitRequest) (gencore.Unit, error) {
+	unit, err := s.app.CreateUnit(ctx, requestArg.ParentUnitId, requestArg.Code, requestArg.Name, toInt16Ptr(requestArg.Level))
+	if err != nil {
+		return gencore.Unit{}, mapErr(err, errCtx{UnitID: requestArg.ParentUnitId})
+	}
+	return toAPIUnit(unit), nil
+}
+
+func (s *Service) UpdateUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string, requestArg gencore.UpdateUnitRequest) (gencore.Unit, error) {
+	unit, err := s.app.UpdateUnit(ctx, unitIdArg, requestArg.Name, requestArg.Code, toInt16Ptr(requestArg.Level))
+	if err != nil {
+		return gencore.Unit{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return toAPIUnit(unit), nil
+}
+
+func (s *Service) SetUnitState(ctx context.Context, _ bearertoken.Token, unitIdArg string, requestArg gencore.SetUnitStateRequest) (gencore.Unit, error) {
+	state := directorydomain.State(requestArg.State)
+	switch state {
+	case directorydomain.StateActive, directorydomain.StateSuspended, directorydomain.StateArchived:
+	default:
+		return gencore.Unit{}, gencore.NewInvalidUnitState()
+	}
+	unit, err := s.app.SetUnitState(ctx, unitIdArg, state)
+	if err != nil {
+		return gencore.Unit{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return toAPIUnit(unit), nil
+}
+
+func (s *Service) DeleteUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string) error {
+	if _, err := s.app.DeleteUnit(ctx, unitIdArg); err != nil {
+		return mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return nil
+}
+
 func (s *Service) ListCountries(ctx context.Context, _ bearertoken.Token) (gencore.CountryPage, error) {
 	countries, err := s.app.ListCountries(ctx)
 	if err != nil {
@@ -357,4 +396,12 @@ func derefInt(i *int) int {
 		return 0
 	}
 	return *i
+}
+
+func toInt16Ptr(i *int) *int16 {
+	if i == nil {
+		return nil
+	}
+	l := int16(*i)
+	return &l
 }

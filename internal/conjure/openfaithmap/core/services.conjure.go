@@ -77,6 +77,14 @@ type CoreServiceClient interface {
 	GetOrgProfile(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (OrgProfile, error)
 	// Gated — the caller must hold religionorg.manage over parentUnitId.
 	CreateChildOrg(ctx context.Context, authHeader bearertoken.Token, requestArg CreateChildOrgRequest) (OrgProfile, error)
+	// M12.1 — general unit creation under a parent. Gated — the caller must hold unit.lifecycle over request.parentUnitId.
+	CreateUnit(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitRequest) (Unit, error)
+	// M12.1 — rewrites name/code/level. Gated — the caller must hold unit.lifecycle over unitId. Deliberately not nested under /units/: httprouter (vendored v1.3.0) cannot register a wildcard child next to the existing static /units/children (createChildOrg) at the same POST tree depth — any route of the shape POST /units/{unitId}/* panics at startup regardless of what follows the wildcard, since a POST /units/children request would otherwise be genuinely ambiguous between the two routes. A sibling top-level resource, not a suffix, is the only fix; grantUnitRole/bulkGrantUnitRole already set this precedent (POST /role-assignments, not POST /units/{unitId}/role-assignments).
+	UpdateUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error)
+	// M12.1 — archive/suspend/reactivate. Gated — the caller must hold unit.lifecycle over unitId. The root unit refuses every state change. See updateUnit's docs for why this lives under /unit-lifecycle/ rather than /units/.
+	SetUnitState(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
+	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
+	DeleteUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) error
 	ListCountries(ctx context.Context, authHeader bearertoken.Token) (CountryPage, error)
 	ListMembershipsByUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (MembershipPage, error)
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
@@ -408,6 +416,72 @@ func (c *coreServiceClient) CreateChildOrg(ctx context.Context, authHeader beare
 	return *returnVal, nil
 }
 
+func (c *coreServiceClient) CreateUnit(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitRequest) (Unit, error) {
+	var returnVal *Unit
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreateUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/units"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Unit), werror.WrapWithContextParams(ctx, err, "createUnit failed")
+	}
+	if returnVal == nil {
+		return *new(Unit), werror.ErrorWithContextParams(ctx, "createUnit response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) UpdateUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error) {
+	var returnVal *Unit
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-lifecycle/%s", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Unit), werror.WrapWithContextParams(ctx, err, "updateUnit failed")
+	}
+	if returnVal == nil {
+		return *new(Unit), werror.ErrorWithContextParams(ctx, "updateUnit response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) SetUnitState(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error) {
+	var returnVal *Unit
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("SetUnitState"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-lifecycle/%s/state", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Unit), werror.WrapWithContextParams(ctx, err, "setUnitState failed")
+	}
+	if returnVal == nil {
+		return *new(Unit), werror.ErrorWithContextParams(ctx, "setUnitState response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) DeleteUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/units/%s", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteUnit failed")
+	}
+	return nil
+}
+
 func (c *coreServiceClient) ListCountries(ctx context.Context, authHeader bearertoken.Token) (CountryPage, error) {
 	var returnVal *CountryPage
 	var requestParams []httpclient.RequestParam
@@ -509,6 +583,14 @@ type CoreServiceClientWithAuth interface {
 	GetOrgProfile(ctx context.Context, unitIdArg string) (OrgProfile, error)
 	// Gated — the caller must hold religionorg.manage over parentUnitId.
 	CreateChildOrg(ctx context.Context, requestArg CreateChildOrgRequest) (OrgProfile, error)
+	// M12.1 — general unit creation under a parent. Gated — the caller must hold unit.lifecycle over request.parentUnitId.
+	CreateUnit(ctx context.Context, requestArg CreateUnitRequest) (Unit, error)
+	// M12.1 — rewrites name/code/level. Gated — the caller must hold unit.lifecycle over unitId. Deliberately not nested under /units/: httprouter (vendored v1.3.0) cannot register a wildcard child next to the existing static /units/children (createChildOrg) at the same POST tree depth — any route of the shape POST /units/{unitId}/* panics at startup regardless of what follows the wildcard, since a POST /units/children request would otherwise be genuinely ambiguous between the two routes. A sibling top-level resource, not a suffix, is the only fix; grantUnitRole/bulkGrantUnitRole already set this precedent (POST /role-assignments, not POST /units/{unitId}/role-assignments).
+	UpdateUnit(ctx context.Context, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error)
+	// M12.1 — archive/suspend/reactivate. Gated — the caller must hold unit.lifecycle over unitId. The root unit refuses every state change. See updateUnit's docs for why this lives under /unit-lifecycle/ rather than /units/.
+	SetUnitState(ctx context.Context, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
+	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
+	DeleteUnit(ctx context.Context, unitIdArg string) error
 	ListCountries(ctx context.Context) (CountryPage, error)
 	ListMembershipsByUnit(ctx context.Context, unitIdArg string) (MembershipPage, error)
 	GetPerson(ctx context.Context, personIdArg string) (Person, error)
@@ -595,6 +677,22 @@ func (c *coreServiceClientWithAuth) GetOrgProfile(ctx context.Context, unitIdArg
 
 func (c *coreServiceClientWithAuth) CreateChildOrg(ctx context.Context, requestArg CreateChildOrgRequest) (OrgProfile, error) {
 	return c.client.CreateChildOrg(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) CreateUnit(ctx context.Context, requestArg CreateUnitRequest) (Unit, error) {
+	return c.client.CreateUnit(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) UpdateUnit(ctx context.Context, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error) {
+	return c.client.UpdateUnit(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) SetUnitState(ctx context.Context, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error) {
+	return c.client.SetUnitState(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) DeleteUnit(ctx context.Context, unitIdArg string) error {
+	return c.client.DeleteUnit(ctx, c.authHeader, unitIdArg)
 }
 
 func (c *coreServiceClientWithAuth) ListCountries(ctx context.Context) (CountryPage, error) {
@@ -764,6 +862,38 @@ func (c *coreServiceClientWithTokenProvider) CreateChildOrg(ctx context.Context,
 		return *new(OrgProfile), err
 	}
 	return c.client.CreateChildOrg(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) CreateUnit(ctx context.Context, requestArg CreateUnitRequest) (Unit, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Unit), err
+	}
+	return c.client.CreateUnit(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) UpdateUnit(ctx context.Context, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Unit), err
+	}
+	return c.client.UpdateUnit(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) SetUnitState(ctx context.Context, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Unit), err
+	}
+	return c.client.SetUnitState(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) DeleteUnit(ctx context.Context, unitIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteUnit(ctx, bearertoken.Token(token), unitIdArg)
 }
 
 func (c *coreServiceClientWithTokenProvider) ListCountries(ctx context.Context) (CountryPage, error) {

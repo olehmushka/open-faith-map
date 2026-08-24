@@ -8,6 +8,7 @@ import (
 
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
 	gencore "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/core"
+	"github.com/olehmushka/open-faith-map/internal/core/application"
 	directorydomain "github.com/olehmushka/open-faith-map/internal/directory/domain"
 	identitydomain "github.com/olehmushka/open-faith-map/internal/identity/domain"
 	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
@@ -34,6 +35,14 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewAccountNotFound(c.PersonID)
 	case errors.Is(err, directorydomain.ErrUnitNotFound):
 		return gencore.NewUnitNotFound(c.UnitID)
+	case errors.Is(err, directorydomain.ErrUnitHasChildren):
+		return gencore.NewUnitHasChildren(c.UnitID)
+	case errors.Is(err, application.ErrUnitHasActiveRoleAssignments):
+		return gencore.NewUnitHasActiveRoleAssignments(c.UnitID)
+	case errors.Is(err, application.ErrUnitHasOrgProfile):
+		return gencore.NewUnitHasOrgProfile(c.UnitID)
+	case errors.Is(err, application.ErrRootUnitProtected):
+		return gencore.NewRootUnitProtected(c.UnitID)
 	case errors.Is(err, religiondomain.ErrTaxonNotFound):
 		return gencore.NewTaxonNotFound(c.TaxonID)
 	case errors.Is(err, religiondomain.ErrProfileNotFound):

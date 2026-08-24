@@ -128,6 +128,23 @@ types:
           name: string
           orgKindId: optional<string>
           primaryTaxonId: optional<string>
+      CreateUnitRequest:
+        docs: M12.1 — createUnit's request. General unit creation under a parent, without createChildOrg's religion-profile side effects.
+        fields:
+          parentUnitId: string
+          code: string
+          name: string
+          level: optional<integer>
+      UpdateUnitRequest:
+        docs: M12.1 — updateUnit's request.
+        fields:
+          name: string
+          code: optional<string>
+          level: optional<integer>
+      SetUnitStateRequest:
+        docs: M12.1 — setUnitState's request. state must be one of active/suspended/archived.
+        fields:
+          state: string
 
       Country:
         fields:
@@ -419,9 +436,38 @@ types:
         safe-args:
           parentUnitId: string
       Forbidden:
-        docs: The caller does not hold religionorg.manage on the parent unit (createChildOrg) or is not an active instance admin (every CoreSuperAdminService endpoint).
+        docs: The caller does not hold religionorg.manage on the parent unit (createChildOrg), unit.lifecycle on the relevant unit (createUnit/updateUnit/setUnitState/deleteUnit), or is not an active instance admin (every CoreSuperAdminService endpoint).
         namespace: Core
         code: PERMISSION_DENIED
+        safe-args: {}
+      UnitHasChildren:
+        docs: M12.1 — deleteUnit's unitId still has at least one child unit.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      UnitHasActiveRoleAssignments:
+        docs: M12.1 — deleteUnit's unitId still has at least one active (non-revoked) role assignment.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      UnitHasOrgProfile:
+        docs: M12.1 — deleteUnit's unitId still has a religion org profile.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      RootUnitProtected:
+        docs: M12.1 — setUnitState/deleteUnit refuse the root unit outright, regardless of the caller's grant.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      InvalidUnitState:
+        docs: M12.1 — setUnitState's request.state is not one of active/suspended/archived.
+        namespace: Core
+        code: INVALID_ARGUMENT
         safe-args: {}
       AssignmentNotFound:
         namespace: Core
@@ -635,6 +681,51 @@ services:
         args:
           request: CreateChildOrgRequest
         returns: OrgProfile
+      createUnit:
+        http: POST /units
+        docs: M12.1 — general unit creation under a parent. Gated — the caller must hold unit.lifecycle over request.parentUnitId.
+        args:
+          request: CreateUnitRequest
+        returns: Unit
+      updateUnit:
+        http: POST /unit-lifecycle/{unitId}
+        docs: >
+          M12.1 — rewrites name/code/level. Gated — the caller must hold unit.lifecycle over unitId.
+          Deliberately not nested under /units/: httprouter (vendored v1.3.0) cannot register a
+          wildcard child next to the existing static /units/children (createChildOrg) at the same POST
+          tree depth — any route of the shape POST /units/{unitId}/* panics at startup regardless of
+          what follows the wildcard, since a POST /units/children request would otherwise be
+          genuinely ambiguous between the two routes. A sibling top-level resource, not a suffix,
+          is the only fix; grantUnitRole/bulkGrantUnitRole already set this precedent (POST
+          /role-assignments, not POST /units/{unitId}/role-assignments).
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: UpdateUnitRequest
+        returns: Unit
+      setUnitState:
+        http: POST /unit-lifecycle/{unitId}/state
+        docs: >
+          M12.1 — archive/suspend/reactivate. Gated — the caller must hold unit.lifecycle over
+          unitId. The root unit refuses every state change. See updateUnit's docs for why this lives
+          under /unit-lifecycle/ rather than /units/.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: SetUnitStateRequest
+        returns: Unit
+      deleteUnit:
+        http: DELETE /units/{unitId}
+        docs: >
+          M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the
+          root unit outright, and is orphan-protected against child units, active role assignments,
+          and an existing religion org profile.
+        args:
+          unitId:
+            type: string
+            param-type: path
       listCountries:
         http: GET /countries
         returns: CountryPage

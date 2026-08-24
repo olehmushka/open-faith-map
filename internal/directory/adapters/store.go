@@ -90,6 +90,59 @@ func (s *Store) scanUnit(row pgx.Row) (domain.Unit, error) {
 	return u, nil
 }
 
+// UpdateUnit rewrites id's name/code/level (M12.1) — metadata/state are left to their own dedicated
+// callers (Store has no partial-field PATCH semantics; this always sets all three).
+func (s *Store) UpdateUnit(ctx context.Context, id, name string, code *string, level *int16) (domain.Unit, error) {
+	return s.scanUnit(s.q.QueryRow(ctx, `
+		UPDATE openfaithmap.directory_units
+		SET name = $2, code = $3, level = $4
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, code, name, level, state, metadata, created_at, updated_at`,
+		id, name, code, level))
+}
+
+// SetUnitState transitions id to state (M12.1) — active/suspended/archived, never called with a
+// deleted unit's id since the WHERE guard below matches every other mutating query in this file.
+func (s *Store) SetUnitState(ctx context.Context, id string, state domain.State) (domain.Unit, error) {
+	return s.scanUnit(s.q.QueryRow(ctx, `
+		UPDATE openfaithmap.directory_units
+		SET state = $2
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, code, name, level, state, metadata, created_at, updated_at`,
+		id, string(state)))
+}
+
+// HasChildren reports whether id has any live parent->child edge to a non-deleted unit, in any graph
+// (M12.1's orphan-protection for DeleteUnit). Graph-agnostic (any graph, not just canonical), and
+// joins directory_units on deleted_at IS NULL — same shape as ListAncestors/ListDescendants — so a
+// unit whose only child has itself already been soft-deleted is correctly treated as childless: the
+// dangling edge row is left in place (this codebase's soft-delete convention: reads filter, rows
+// stay) but no longer counts against a later delete.
+func (s *Store) HasChildren(ctx context.Context, id string) (bool, error) {
+	var exists bool
+	err := s.q.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM openfaithmap.directory_unit_edges e
+			JOIN openfaithmap.directory_units u ON u.id = e.child_id AND u.deleted_at IS NULL
+			WHERE e.parent_id = $1)`,
+		id).Scan(&exists)
+	return exists, err
+}
+
+// SoftDeleteUnit sets id's deleted_at (M12.1) — the caller (internal/directory/application.Service.
+// DeleteUnit) has already checked HasChildren; cross-module orphan checks (active role assignments,
+// an existing religion org profile) are internal/core's job (D-InProcessAuthz: this module cannot
+// import authz or religion). A second delete of an already-deleted id 0-rows and returns
+// ErrUnitNotFound via scanUnit, same as any other mutating query here.
+func (s *Store) SoftDeleteUnit(ctx context.Context, id string) (domain.Unit, error) {
+	return s.scanUnit(s.q.QueryRow(ctx, `
+		UPDATE openfaithmap.directory_units
+		SET deleted_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, code, name, level, state, metadata, created_at, updated_at`,
+		id))
+}
+
 // SearchUnits is M10.7's core.conjure.yml ListUnits — a plain ILIKE search over code/name, capped at
 // limit (default/max 50). Replaces the pre-cutover admin app's org-then-list-units dance
 // (lib/jurisdiction.ts): this port has no organizations/domains dimension to filter by (single-tenant

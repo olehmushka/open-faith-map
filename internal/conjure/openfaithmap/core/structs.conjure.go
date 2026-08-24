@@ -438,6 +438,30 @@ func (o *CreateChildOrgRequest) UnmarshalYAML(unmarshal func(interface{}) error)
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M12.1 — createUnit's request. General unit creation under a parent, without createChildOrg's religion-profile side effects.
+type CreateUnitRequest struct {
+	ParentUnitId string `json:"parentUnitId"`
+	Code         string `json:"code"`
+	Name         string `json:"name"`
+	Level        *int   `json:"level,omitempty"`
+}
+
+func (o CreateUnitRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateUnitRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type GetPersonsRequest struct {
 	PersonIds []string `json:"personIds"`
 }
@@ -1287,6 +1311,27 @@ func (o *SessionPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M12.1 — setUnitState's request. state must be one of active/suspended/archived.
+type SetUnitStateRequest struct {
+	State string `json:"state"`
+}
+
+func (o SetUnitStateRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SetUnitStateRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Taxon struct {
 	Id string `json:"id"`
 	// Unset for a root religion.
@@ -1502,6 +1547,29 @@ func (o UpdateMyProfileRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpdateMyProfileRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M12.1 — updateUnit's request.
+type UpdateUnitRequest struct {
+	Name  string  `json:"name"`
+	Code  *string `json:"code,omitempty"`
+	Level *int    `json:"level,omitempty"`
+}
+
+func (o UpdateUnitRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateUnitRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

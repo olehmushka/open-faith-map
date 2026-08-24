@@ -68,6 +68,71 @@ func (s *Service) CreateUnit(ctx context.Context, u domain.Unit) (domain.Unit, e
 	return out, err
 }
 
+// UpdateUnit rewrites id's name/code/level (M12.1). Cross-module authorization and the audit-log
+// before/after snapshot are internal/core's job (D-InProcessAuthz) — this method just writes.
+func (s *Service) UpdateUnit(ctx context.Context, id, name string, code *string, level *int16) (domain.Unit, error) {
+	var out domain.Unit
+	err := s.inTx(ctx, func(store *adapters.Store) error {
+		updated, err := store.UpdateUnit(ctx, id, name, code, level)
+		if err != nil {
+			return err
+		}
+		out = updated
+		return nil
+	})
+	return out, err
+}
+
+// SetUnitState transitions id to state (M12.1) — archive/suspend/reactivate. Root-unit protection
+// and the unit.lifecycle gate live in internal/core, one layer up.
+func (s *Service) SetUnitState(ctx context.Context, id string, state domain.State) (domain.Unit, error) {
+	var out domain.Unit
+	err := s.inTx(ctx, func(store *adapters.Store) error {
+		updated, err := store.SetUnitState(ctx, id, state)
+		if err != nil {
+			return err
+		}
+		out = updated
+		return nil
+	})
+	return out, err
+}
+
+// HasChildren reports whether id has any live child edge, in any graph (M12.1). Exposed at the
+// Service level, not just used internally by DeleteUnit, so internal/core.DeleteUnit can run this
+// cheap, purely-structural check before its own two cross-module orphan checks (active role
+// assignments, an existing religion org profile) — deterministic ordering, and avoids two extra
+// round-trips to another module's store when the delete was always going to fail on this one.
+func (s *Service) HasChildren(ctx context.Context, id string) (bool, error) {
+	return adapters.NewStore(s.pool).HasChildren(ctx, id)
+}
+
+// DeleteUnit soft-deletes id (M12.1), refusing if it has any live child edge (ErrUnitHasChildren).
+// The other two orphan checks milestones.md's M12.1 row calls for — active role assignments, an
+// existing religion org profile — are cross-module and enforced by internal/core before this is ever
+// called (D-InProcessAuthz: this module cannot import authz or religion). The HasChildren check
+// below runs again inside the same transaction as the delete itself — belt-and-suspenders against a
+// child being added between internal/core's own upfront HasChildren call and this method running.
+func (s *Service) DeleteUnit(ctx context.Context, id string) (domain.Unit, error) {
+	var out domain.Unit
+	err := s.inTx(ctx, func(store *adapters.Store) error {
+		hasChildren, err := store.HasChildren(ctx, id)
+		if err != nil {
+			return err
+		}
+		if hasChildren {
+			return domain.ErrUnitHasChildren
+		}
+		deleted, err := store.SoftDeleteUnit(ctx, id)
+		if err != nil {
+			return err
+		}
+		out = deleted
+		return nil
+	})
+	return out, err
+}
+
 // CreateUnitWithEdge atomically creates a unit under parentID and attaches the parent->child edge
 // in ONE transaction (ported from GH-36's own fix, upstream service.go:453-519). Mints the child's
 // id up front and seeds its closure BEFORE the unit's own INSERT — see the package doc and

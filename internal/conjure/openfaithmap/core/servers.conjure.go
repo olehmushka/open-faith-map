@@ -85,6 +85,14 @@ type CoreService interface {
 	GetOrgProfile(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (OrgProfile, error)
 	// Gated — the caller must hold religionorg.manage over parentUnitId.
 	CreateChildOrg(ctx context.Context, authHeader bearertoken.Token, requestArg CreateChildOrgRequest) (OrgProfile, error)
+	// M12.1 — general unit creation under a parent. Gated — the caller must hold unit.lifecycle over request.parentUnitId.
+	CreateUnit(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitRequest) (Unit, error)
+	// M12.1 — rewrites name/code/level. Gated — the caller must hold unit.lifecycle over unitId. Deliberately not nested under /units/: httprouter (vendored v1.3.0) cannot register a wildcard child next to the existing static /units/children (createChildOrg) at the same POST tree depth — any route of the shape POST /units/{unitId}/* panics at startup regardless of what follows the wildcard, since a POST /units/children request would otherwise be genuinely ambiguous between the two routes. A sibling top-level resource, not a suffix, is the only fix; grantUnitRole/bulkGrantUnitRole already set this precedent (POST /role-assignments, not POST /units/{unitId}/role-assignments).
+	UpdateUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error)
+	// M12.1 — archive/suspend/reactivate. Gated — the caller must hold unit.lifecycle over unitId. The root unit refuses every state change. See updateUnit's docs for why this lives under /unit-lifecycle/ rather than /units/.
+	SetUnitState(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
+	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
+	DeleteUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) error
 	ListCountries(ctx context.Context, authHeader bearertoken.Token) (CountryPage, error)
 	ListMembershipsByUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (MembershipPage, error)
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
@@ -152,6 +160,18 @@ func RegisterRoutesCoreService(router wrouter.Router, impl CoreService, routerPa
 	}
 	if err := resource.Post("CreateChildOrg", "/core/v1/units/children", httpserver.NewJSONHandler(handler.HandleCreateChildOrg, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createChildOrg route")
+	}
+	if err := resource.Post("CreateUnit", "/core/v1/units", httpserver.NewJSONHandler(handler.HandleCreateUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createUnit route")
+	}
+	if err := resource.Post("UpdateUnit", "/core/v1/unit-lifecycle/{unitId}", httpserver.NewJSONHandler(handler.HandleUpdateUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateUnit route")
+	}
+	if err := resource.Post("SetUnitState", "/core/v1/unit-lifecycle/{unitId}/state", httpserver.NewJSONHandler(handler.HandleSetUnitState, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add setUnitState route")
+	}
+	if err := resource.Delete("DeleteUnit", "/core/v1/units/{unitId}", httpserver.NewJSONHandler(handler.HandleDeleteUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteUnit route")
 	}
 	if err := resource.Get("ListCountries", "/core/v1/countries", httpserver.NewJSONHandler(handler.HandleListCountries, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listCountries route")
@@ -492,6 +512,93 @@ func (c *coreServiceHandler) HandleCreateChildOrg(rw http.ResponseWriter, req *h
 	}
 	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
 	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleCreateUnit(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg CreateUnitRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.CreateUnit(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleUpdateUnit(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	var requestArg UpdateUnitRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.UpdateUnit(req.Context(), bearertoken.Token(authHeader), unitIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleSetUnitState(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	var requestArg SetUnitStateRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.SetUnitState(req.Context(), bearertoken.Token(authHeader), unitIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleDeleteUnit(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	if err := c.impl.DeleteUnit(req.Context(), bearertoken.Token(authHeader), unitIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 func (c *coreServiceHandler) HandleListCountries(rw http.ResponseWriter, req *http.Request) error {

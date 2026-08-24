@@ -208,6 +208,112 @@ func TestDirectoryClosureIntegration(t *testing.T) {
 	}
 }
 
+// TestUnitLifecycleIntegration proves M12.1's new UpdateUnit/SetUnitState/DeleteUnit against a real
+// Postgres instance — HasChildren's orphan-protection and the soft-delete's interaction with
+// GetUnit's own deleted_at IS NULL filter are exactly the kind of thing a mocked store can't prove.
+//
+//	DATABASE_URL="postgres://openfaithmap:dev@localhost:5432/postgres?sslmode=disable" \
+//	  go test ./internal/directory/... -run TestUnitLifecycleIntegration -v
+func TestUnitLifecycleIntegration(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set DATABASE_URL to run against a live Postgres instance")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	var unitIDs []string
+	graphID, graphCode := createTestGraph(t, ctx, pool)
+	t.Cleanup(func() {
+		bg := context.Background()
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_closure WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete closure rows: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_edges WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete edges: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_closure_status WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete closure status: %v", err)
+		}
+		for _, id := range unitIDs {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_units WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete unit %s: %v", id, err)
+			}
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_graphs WHERE id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete graph: %v", err)
+		}
+	})
+
+	svc := application.NewService(pool)
+
+	parent, err := svc.CreateUnit(ctx, domain.Unit{Name: "Parent"})
+	if err != nil {
+		t.Fatalf("CreateUnit(parent): %v", err)
+	}
+	unitIDs = append(unitIDs, parent.ID)
+
+	// --- UpdateUnit rewrites name/code/level.
+	code := "parent-code"
+	level := int16(1)
+	updated, err := svc.UpdateUnit(ctx, parent.ID, "Parent Renamed", &code, &level)
+	if err != nil {
+		t.Fatalf("UpdateUnit: %v", err)
+	}
+	if updated.Name != "Parent Renamed" || updated.Code != "parent-code" || updated.Level == nil || *updated.Level != 1 {
+		t.Errorf("UpdateUnit result = %+v, want name/code/level rewritten", updated)
+	}
+
+	// --- SetUnitState transitions active -> suspended.
+	suspended, err := svc.SetUnitState(ctx, parent.ID, domain.StateSuspended)
+	if err != nil {
+		t.Fatalf("SetUnitState(suspended): %v", err)
+	}
+	if suspended.State != domain.StateSuspended {
+		t.Errorf("SetUnitState result state = %q, want %q", suspended.State, domain.StateSuspended)
+	}
+
+	// --- DeleteUnit refuses a unit with a live child edge.
+	child, err := svc.CreateUnitWithEdge(ctx, domain.Unit{Name: "Child"}, parent.ID, graphCode)
+	if err != nil {
+		t.Fatalf("CreateUnitWithEdge(child): %v", err)
+	}
+	unitIDs = append(unitIDs, child.ID)
+
+	if _, err := svc.DeleteUnit(ctx, parent.ID); err != domain.ErrUnitHasChildren {
+		t.Errorf("DeleteUnit(parent with a child) error = %v, want ErrUnitHasChildren", err)
+	}
+
+	// --- DeleteUnit on the childless leaf succeeds, and the deleted unit disappears from GetUnit
+	// (its deleted_at IS NULL filter) immediately — no separate "purge" step needed.
+	deleted, err := svc.DeleteUnit(ctx, child.ID)
+	if err != nil {
+		t.Fatalf("DeleteUnit(child): %v", err)
+	}
+	if deleted.ID != child.ID {
+		t.Errorf("DeleteUnit(child) returned unit %+v, want id %s", deleted, child.ID)
+	}
+	if _, err := svc.GetUnit(ctx, child.ID); err != domain.ErrUnitNotFound {
+		t.Errorf("GetUnit(deleted child) error = %v, want ErrUnitNotFound", err)
+	}
+
+	// --- Deleting an already-deleted unit is not idempotent: it 0-rows and reports ErrUnitNotFound,
+	// same as acting on any other nonexistent id.
+	if _, err := svc.DeleteUnit(ctx, child.ID); err != domain.ErrUnitNotFound {
+		t.Errorf("DeleteUnit(already-deleted child) error = %v, want ErrUnitNotFound", err)
+	}
+
+	// --- Now that its only child is gone, the parent itself can be deleted.
+	if _, err := svc.DeleteUnit(ctx, parent.ID); err != nil {
+		t.Errorf("DeleteUnit(parent, now childless): %v", err)
+	}
+}
+
 // createTestGraph inserts a throwaway authority-bearing graph directly via SQL — Service exposes no
 // graph-management methods this milestone (nothing needs custom graph creation yet).
 func createTestGraph(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (id, code string) {
