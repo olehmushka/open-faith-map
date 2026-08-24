@@ -2342,3 +2342,47 @@ Google already enforces this for any account/org that turns it on, with zero cod
   guarantee is parsing/requiring the OIDC token's `amr` claim (`internal/identity/middleware
   /validator.go`'s `project()` doesn't read it today) — recorded here so a future session doesn't
   have to rediscover this trade-off from scratch.
+
+### D-UnitMoveDualScope — moving a unit requires authority on both the source and destination parent
+
+**Decision.** M12.2's `moveUnit` requires the caller to hold `unit.edges.manage` on **both**
+`fromParentUnitId` and `toParentUnitId`, not just one side.
+
+**Why.** Research against mature enterprise org-hierarchy platforms (AWS Organizations, Entra
+Administrative Units) found subtree-scoped delegation is the norm, but none of them cleanly
+document a "one-sided move" authorization model. A single-sided check would let a grant reaching
+only the destination be used to pull a unit out of a part of the tree the caller has no authority
+over (or vice versa via the source side) — a lateral-movement gap the stricter, dual-sided check
+closes. This is stricter than the narrow reparent flow M12.2 generalizes
+(`internal/registration.Service.Reparent`, which only ever checked authority implicit in the
+registration-approval flow itself), a deliberate tightening, not an oversight.
+
+**Consequences.**
+- A caller with `unit.edges.manage` on a unit's current parent but not its intended new parent
+  cannot move it there unassisted — they need either a broader grant or a second admin with
+  authority on the destination to perform the move.
+- Root-unit guard (`unitID` may never be `seed.RootUnitID`) is enforced independently of this
+  check, not as a special case of it.
+
+### D-TopDownUnitAccessOnly — unit access grants stay strictly top-down, no self-service join
+
+**Decision.** M12 does not add a self-service "request to join this unit" flow. Every role grant
+on a unit happens via an existing top-down mechanism — admin invite, registration approval, or a
+direct role grant — never a person-initiated request an admin then approves.
+
+**Why.** The user's own security reasoning, given when this was scoped: a bottom-up join-request
+flow reopens a privilege-escalation surface (IDOR/parameter-tampering risk on the approval
+endpoint itself) and an approval-fatigue/spam risk (admins flooded with requests, increasing the
+odds of an accidental approval) that a top-down-only model avoids by construction. Comparable
+ChMS products researched (Planning Center's Church Center join flow, CCB's group finder) do offer
+self-service join, but this app's unit model centers on institutions (congregations,
+jurisdictions) being provisioned by an operator, not persons freely self-enrolling — the
+comparable pattern doesn't actually fit this app's trust model.
+
+**Consequences.**
+- Public read-only discoverability of units in directory listings is explicitly preserved and
+  stays decoupled from authorization — anyone, including an anonymous caller, can see a unit
+  exists; only an admin action can grant access to manage it. Any future work must not regress
+  this decoupling by conflating "visible" with "joinable."
+- If self-service join is wanted later, it needs its own decision block re-litigating this
+  trade-off, not a silent addition to M12's invite/grant endpoints.
