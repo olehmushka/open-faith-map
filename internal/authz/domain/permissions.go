@@ -36,6 +36,14 @@ const (
 	PermReligionRead      Permission = "religion.read"
 	PermLocationCreate    Permission = "location.create"
 	PermRoleRead          Permission = "role.read"
+	// PermModerationStanding is platform-moderator's own identity marker (M12.0), split out of
+	// unit.lifecycle: that code was reused for this purpose only because go-oikumenea's permission
+	// catalog was closed pre-port (D-PlatformModerator's M5 addendum) — a constraint that no longer
+	// applies now that this catalog is this repo's own Go code (D-InProcessAuthz). Splitting it frees
+	// unit.lifecycle for M12.1's real setUnitState/deleteUnit endpoints without instantly handing
+	// every platform-moderator archive/suspend/delete power over every unit under root as a side
+	// effect of two unrelated features sharing one code.
+	PermModerationStanding Permission = "moderation.standing"
 
 	// Instance-scope — satisfiable only on the instance-admin plane (PDP.Decide step 2), never via a
 	// role assignment. Minimal set: granting/revoking the plane itself, and managing the custom-role
@@ -64,6 +72,7 @@ var catalog = map[Permission]struct{}{
 	PermPositionCreate: {}, PermPositionUpdate: {}, PermPositionRead: {},
 	PermUnitRead: {}, PermUnitLifecycle: {}, PermUnitEdgesManage: {},
 	PermReligionRead: {}, PermLocationCreate: {}, PermRoleRead: {},
+	PermModerationStanding: {},
 	PermInstanceAdminManage: {}, PermRoleCreate: {}, PermRoleUpdate: {}, PermRoleDelete: {},
 }
 

@@ -11,14 +11,14 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/moderation/domain"
 )
 
-// moderatePermission is platform-moderator's underlying internal/authz permission (D-PlatformModerator
-// — the ADR deliberately leaves the actual permission choice to M5's own scoping). unit.lifecycle is
-// not already held by registration-operator or congregation-admin (migrations/0022_core_seed.sql), so
-// the two roles stay distinguishable at the PDP — unlike reusing religionorg.manage again, which every
-// other module's operator/manage gate already relies on for its own distinct purpose. It's also the
-// closest existing semantic fit: moderation's own suspend/archive action kinds parallel a unit's
-// lifecycle state.
-const moderatePermission = authzdomain.PermUnitLifecycle
+// moderatePermission is platform-moderator's underlying internal/authz permission. D-PlatformModerator's
+// M5 addendum originally reused unit.lifecycle here, since go-oikumenea's permission catalog was closed
+// pre-port and couldn't mint a new moderation.* code. M12.0 splits this out into its own dedicated
+// PermModerationStanding: that constraint is gone now that the catalog is this repo's own Go code
+// (D-InProcessAuthz), and reusing unit.lifecycle would have meant every platform-moderator silently
+// gained M12.1's real setUnitState/deleteUnit power over every unit under root, as a side effect of two
+// unrelated features sharing one permission code — not an intended widening of moderator authority.
+const moderatePermission = authzdomain.PermModerationStanding
 
 // requireModerate asks internal/authz's PDP whether the request's subject (from ctx) holds
 // moderatePermission on Config.RootUnitID specifically — the same target-scoped pattern

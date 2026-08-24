@@ -971,6 +971,38 @@ invariant). Two roles keep that separable.
 
 ---
 
+> **Amended (M12.0, 2026-08-24): the audit before wiring `unit.lifecycle`/`unit.edges.manage` to a
+> live endpoint found this decision's own text no longer matches the code, on two points.**
+>
+> 1. **The M10.9 verification criterion above was never actually met.** Every real and
+>    test-covered grant of `registration-operator`/`platform-moderator` — the only production write
+>    path is the generic super-admin role-grants console
+>    (`internal/core/application/service.go`'s `GrantUnitRole`/`BulkGrantUnitRole`) — creates a
+>    `scope='unit'` assignment, never `subtree`: `internal/authz/adapters/store.go`'s
+>    `InsertRoleAssignment`/`BulkInsertRoleAssignments` hardcode `'unit'` in the INSERT itself, and
+>    the wire types (`GrantUnitRoleRequest`/`BulkGrantUnitRoleRequest`) carry no scope field for a
+>    caller to ask for `subtree` even if the code allowed it. `subtree` scope is fully implemented in
+>    the PDP/schema (`internal/authz/domain/pdp.go`'s `Decide`) but **unprovisionable through any
+>    surface that exists today.** This is left as a real, open item for **M12.2** to resolve —
+>    D-UnitMoveDualScope's dual-parent `unit.edges.manage` check needs real reach to non-root parent
+>    units to mean anything, and today nothing can grant that reach.
+> 2. **`unit.lifecycle` was not actually inert.** It is `Require`'d today, on every
+>    moderation/vouching call, as platform-moderator's own identity marker — exactly this decision's
+>    own mechanism, just not yet backing a literal unit-lifecycle mutation. Left unsplit, M12.1's real
+>    `setUnitState`/`deleteUnit` endpoints would have silently handed every platform-moderator
+>    archive/suspend/delete power over every unit it can reach, as a side effect of two unrelated
+>    features sharing one permission code — not a deliberate widening of moderator authority. Split
+>    into a dedicated `PermModerationStanding` (`moderation.standing`,
+>    `migrations/0021_core_moderation_standing_permission.sql`); `internal/moderation` and
+>    `internal/vouching`'s `authorize.go` now check it instead. `unit.lifecycle` itself is untouched
+>    and free for M12.1 to wire to its own real endpoints as originally designed.
+>
+> `registration-operator`'s `unit.edges.manage` is deliberately left as-is by this same session — see
+> item 1 above; its scope is decided together with M12.2, when
+> `internal/registration.Service.Reparent` is actually refactored to call the new generic `Move`.
+
+---
+
 ### D-Hardening — In-process rate limiting on anonymous writes, reused witchcraft observability
 
 **Decision.** Two mechanisms, both entirely OpenFaithMap-side:

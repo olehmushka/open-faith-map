@@ -6,7 +6,7 @@
 // representative, real, HTTP-level sample of every guarded endpoint across all 7 Conjure contracts
 // — not the full ~70-endpoint x 6-subject cartesian product (many writes need complex pre-existing
 // fixtures this test doesn't build), but every one of the four gate shapes
-// (anonymous / authenticated-only / target-scoped religionorg.manage / root-scoped unit.lifecycle /
+// (anonymous / authenticated-only / target-scoped religionorg.manage / root-scoped moderation.standing /
 // instance-admin plane) proven for real, per contract, with both a real denial and — wherever a
 // fixture is cheap to build — a real success.
 //
@@ -214,8 +214,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 		})
 	})
 
-	// ---- category: unit.lifecycle on root (platform-moderator) ----
-	t.Run("root_scoped_unit_lifecycle", func(t *testing.T) {
+	// ---- category: moderation.standing on root (platform-moderator) ----
+	t.Run("root_scoped_moderation_standing", func(t *testing.T) {
 		t.Run("moderation_listReports", func(t *testing.T) {
 			anonStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/moderation/v1/reports", "", "", nil)
 			assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
