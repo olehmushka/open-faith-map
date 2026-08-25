@@ -30,13 +30,13 @@ type Config struct {
 }
 
 type Service struct {
-	store    *adapters.Store
+	store    *adapters.Repository
 	religion *religionapplication.Service
 	authzSvc *authz.Service
 	cfg      Config
 }
 
-func NewService(store *adapters.Store, religionSvc *religionapplication.Service, authzSvc *authz.Service, cfg Config) *Service {
+func NewService(store *adapters.Repository, religionSvc *religionapplication.Service, authzSvc *authz.Service, cfg Config) *Service {
 	return &Service{store: store, religion: religionSvc, authzSvc: authzSvc, cfg: cfg}
 }
 

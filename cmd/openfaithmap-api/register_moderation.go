@@ -23,7 +23,7 @@ import (
 // consumer module) instead of the go-oikumenea SDK config; RootUnitID is deps.CoreRootUnitID, the
 // fixed structural RID from internal/platform/seed.
 func registerModeration(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
-	moderationStore := moderationadapters.NewStore(deps.Pool)
+	moderationStore := moderationadapters.NewRepository(deps.Pool)
 	moderationAppSvc := moderationapplication.NewService(moderationStore, deps.ReligionSvc, deps.AuthzSvc, moderationapplication.Config{
 		RootUnitID: deps.CoreRootUnitID,
 	})
