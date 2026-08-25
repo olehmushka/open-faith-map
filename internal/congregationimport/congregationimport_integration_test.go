@@ -92,7 +92,7 @@ func TestCongregationImportIntegration(t *testing.T) {
 	religionSvc := religionapplication.NewService(pool, directorySvc)
 	locationSvc := locationapplication.NewService(pool)
 	refdataSvc := refdataapplication.NewService(pool)
-	store := congregationimportadapters.NewStore(pool)
+	store := congregationimportadapters.NewRepository(pool)
 
 	christianTaxonHint := "M10.6 Fake Christian Church"
 	rocTaxonHint := "M10.6 Fake Russian Orthodox Church Hall"

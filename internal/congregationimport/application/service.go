@@ -48,7 +48,7 @@ type Config struct {
 }
 
 type Service struct {
-	store    *adapters.Store
+	store    *adapters.Repository
 	religion *religionapplication.Service
 	location *locationapplication.Service
 	refdata  *refdataapplication.Service
@@ -69,7 +69,7 @@ type Service struct {
 }
 
 func NewService(
-	store *adapters.Store,
+	store *adapters.Repository,
 	religionSvc *religionapplication.Service,
 	locationSvc *locationapplication.Service,
 	refdataSvc *refdataapplication.Service,
