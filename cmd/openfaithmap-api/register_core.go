@@ -51,7 +51,7 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	// dependency on any other module — so it's built here alongside the rest of core's deps rather
 	// than in a dedicated registerAuditLog, matching how locationSvc/refdataSvc are also assembled
 	// inline for a single consumer.
-	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(deps.Pool))
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(deps.Pool))
 
 	deps.DirectorySvc = directorySvc
 	deps.AuthzSvc = authzSvc
