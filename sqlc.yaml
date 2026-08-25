@@ -1,0 +1,180 @@
+# sqlc configuration (docs/architecture/decisions.md's D-Stack: DB access = pgx + sqlc, the
+# convention several store.go headers already flagged this repo as deviating from).
+# Queries are authored as *.sql per module and compiled into typed Go in that module's adapters/.
+# The schema is the repo-root Atlas migrations dir (single source of truth) — sqlc reads the same
+# DDL Atlas applies. Generated code is never hand-edited.
+#
+# Every entry below points `schema:` at the FULL migrations dir, not a per-module slice — a
+# conscious tradeoff, not an oversight (mirrors go-oikumenea's own sqlc.yaml, which its own
+# docs/architecture/review-2026-07.md finding R-08 flags as generating the whole schema's types
+# into every module's package). Several modules run legitimate cross-module JOINs today (authz
+# joins directory_graphs and identity_persons; directory's ClosurePort assumes the full schema is
+# visible) that a real per-module schema slice would either break or require duplicating table DDL
+# against this repo's expand-only migration convention. Mitigation instead of elimination: each
+# generated <module>sql package stays private to that module's own adapters/repository.go — never
+# import it from application/service.go, domain/, or another module.
+version: "2"
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: internal/refdata/adapters/queries
+    gen:
+      go:
+        package: refdatasql
+        out: internal/refdata/adapters/refdatasql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: &overrides
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
+          - db_type: "jsonb"
+            go_type: "encoding/json.RawMessage"
+  - engine: postgresql
+    schema: migrations
+    queries: internal/location/adapters/queries
+    gen:
+      go:
+        package: locationsql
+        out: internal/location/adapters/locationsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/discovery/adapters/queries
+    gen:
+      go:
+        package: discoverysql
+        out: internal/discovery/adapters/discoverysql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/auditlog/adapters/queries
+    gen:
+      go:
+        package: auditlogsql
+        out: internal/auditlog/adapters/auditlogsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/vouching/adapters/queries
+    gen:
+      go:
+        package: vouchingsql
+        out: internal/vouching/adapters/vouchingsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/registration/adapters/queries
+    gen:
+      go:
+        package: registrationsql
+        out: internal/registration/adapters/registrationsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/membership/adapters/queries
+    gen:
+      go:
+        package: membershipsql
+        out: internal/membership/adapters/membershipsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/moderation/adapters/queries
+    gen:
+      go:
+        package: moderationsql
+        out: internal/moderation/adapters/moderationsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/content/adapters/queries
+    gen:
+      go:
+        package: contentsql
+        out: internal/content/adapters/contentsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/religion/adapters/queries
+    gen:
+      go:
+        package: religionsql
+        out: internal/religion/adapters/religionsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/authz/adapters/queries
+    gen:
+      go:
+        package: authzsql
+        out: internal/authz/adapters/authzsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/identity/adapters/queries
+    gen:
+      go:
+        package: identitysql
+        out: internal/identity/adapters/identitysql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/directory/adapters/queries
+    gen:
+      go:
+        package: directorysql
+        out: internal/directory/adapters/directorysql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/congregationimport/adapters/queries
+    gen:
+      go:
+        package: congregationimportsql
+        out: internal/congregationimport/adapters/congregationimportsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides: *overrides

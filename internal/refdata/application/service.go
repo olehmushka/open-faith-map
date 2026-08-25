@@ -21,5 +21,5 @@ func NewService(pool *pgxpool.Pool) *Service {
 }
 
 func (s *Service) ListCountries(ctx context.Context) ([]domain.Country, error) {
-	return adapters.NewStore(s.pool).ListCountries(ctx)
+	return adapters.NewRepository(s.pool).ListCountries(ctx)
 }
