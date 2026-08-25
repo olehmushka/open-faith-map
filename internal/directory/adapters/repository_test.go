@@ -11,11 +11,11 @@ import (
 )
 
 func TestNullableText(t *testing.T) {
-	if got := nullableText(""); got != nil {
-		t.Errorf("nullableText(\"\") = %v, want nil", got)
+	if got := nullableText(""); got.Valid {
+		t.Errorf("nullableText(\"\") = %+v, want Valid=false", got)
 	}
-	if got := nullableText("root"); got != "root" {
-		t.Errorf("nullableText(%q) = %v, want %q", "root", got, "root")
+	if got := nullableText("root"); !got.Valid || got.String != "root" {
+		t.Errorf("nullableText(%q) = %+v, want Valid=true String=%q", "root", got, "root")
 	}
 }
 

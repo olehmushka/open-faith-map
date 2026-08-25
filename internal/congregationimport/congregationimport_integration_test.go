@@ -85,7 +85,7 @@ func TestCongregationImportIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	directorySvc := directoryapplication.NewService(pool)
-	closurePort := directoryadapters.NewStore(pool)
+	closurePort := directoryadapters.NewRepository(pool)
 	pdp := authzdomain.NewPDP(closurePort)
 	authzStore := authzadapters.NewRepository(pool)
 	authzSvc := authz.NewService(pdp, authzStore, pool)

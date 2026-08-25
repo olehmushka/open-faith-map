@@ -36,7 +36,7 @@ import (
 // either module.
 func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	directorySvc := directoryapplication.NewService(deps.Pool)
-	closurePort := directoryadapters.NewStore(deps.Pool)
+	closurePort := directoryadapters.NewRepository(deps.Pool)
 
 	pdp := authzdomain.NewPDP(closurePort)
 	authzStore := authzadapters.NewRepository(deps.Pool)

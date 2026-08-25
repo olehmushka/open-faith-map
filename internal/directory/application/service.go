@@ -33,13 +33,13 @@ func defaultGraph(code string) string {
 	return code
 }
 
-func (s *Service) inTx(ctx context.Context, fn func(store *adapters.Store) error) error {
+func (s *Service) inTx(ctx context.Context, fn func(store *adapters.Repository) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := fn(adapters.NewStore(tx)); err != nil {
+	if err := fn(adapters.NewRepository(tx)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -47,19 +47,19 @@ func (s *Service) inTx(ctx context.Context, fn func(store *adapters.Store) error
 
 // GetUnit reads a single unit outside any transaction (read-only, pool-bound).
 func (s *Service) GetUnit(ctx context.Context, id string) (domain.Unit, error) {
-	return adapters.NewStore(s.pool).GetUnit(ctx, id)
+	return adapters.NewRepository(s.pool).GetUnit(ctx, id)
 }
 
 // ListUnits searches units by code/name — M10.7's core.conjure.yml ListUnits, read-only, pool-bound.
 func (s *Service) ListUnits(ctx context.Context, query string, limit int) ([]domain.Unit, error) {
-	return adapters.NewStore(s.pool).SearchUnits(ctx, query, limit)
+	return adapters.NewRepository(s.pool).SearchUnits(ctx, query, limit)
 }
 
 // CreateUnit creates a root unit — no parent, no closure work. Use CreateUnitWithEdge when the
 // caller already has a parent at creation time.
 func (s *Service) CreateUnit(ctx context.Context, u domain.Unit) (domain.Unit, error) {
 	var out domain.Unit
-	err := s.inTx(ctx, func(store *adapters.Store) error {
+	err := s.inTx(ctx, func(store *adapters.Repository) error {
 		created, err := store.InsertUnit(ctx, u)
 		if err != nil {
 			return err
@@ -74,7 +74,7 @@ func (s *Service) CreateUnit(ctx context.Context, u domain.Unit) (domain.Unit, e
 // before/after snapshot are internal/core's job (D-InProcessAuthz) — this method just writes.
 func (s *Service) UpdateUnit(ctx context.Context, id, name string, code *string, level *int16) (domain.Unit, error) {
 	var out domain.Unit
-	err := s.inTx(ctx, func(store *adapters.Store) error {
+	err := s.inTx(ctx, func(store *adapters.Repository) error {
 		updated, err := store.UpdateUnit(ctx, id, name, code, level)
 		if err != nil {
 			return err
@@ -89,7 +89,7 @@ func (s *Service) UpdateUnit(ctx context.Context, id, name string, code *string,
 // and the unit.lifecycle gate live in internal/core, one layer up.
 func (s *Service) SetUnitState(ctx context.Context, id string, state domain.State) (domain.Unit, error) {
 	var out domain.Unit
-	err := s.inTx(ctx, func(store *adapters.Store) error {
+	err := s.inTx(ctx, func(store *adapters.Repository) error {
 		updated, err := store.SetUnitState(ctx, id, state)
 		if err != nil {
 			return err
@@ -106,7 +106,7 @@ func (s *Service) SetUnitState(ctx context.Context, id string, state domain.Stat
 // assignments, an existing religion org profile) — deterministic ordering, and avoids two extra
 // round-trips to another module's store when the delete was always going to fail on this one.
 func (s *Service) HasChildren(ctx context.Context, id string) (bool, error) {
-	return adapters.NewStore(s.pool).HasChildren(ctx, id)
+	return adapters.NewRepository(s.pool).HasChildren(ctx, id)
 }
 
 // DeleteUnit soft-deletes id (M12.1), refusing if it has any live child edge (ErrUnitHasChildren).
@@ -117,7 +117,7 @@ func (s *Service) HasChildren(ctx context.Context, id string) (bool, error) {
 // child being added between internal/core's own upfront HasChildren call and this method running.
 func (s *Service) DeleteUnit(ctx context.Context, id string) (domain.Unit, error) {
 	var out domain.Unit
-	err := s.inTx(ctx, func(store *adapters.Store) error {
+	err := s.inTx(ctx, func(store *adapters.Repository) error {
 		hasChildren, err := store.HasChildren(ctx, id)
 		if err != nil {
 			return err
@@ -143,7 +143,7 @@ func (s *Service) DeleteUnit(ctx context.Context, id string) (domain.Unit, error
 func (s *Service) CreateUnitWithEdge(ctx context.Context, u domain.Unit, parentID, graphCode string) (domain.Unit, error) {
 	graphCode = defaultGraph(graphCode)
 	var out domain.Unit
-	err := s.inTx(ctx, func(store *adapters.Store) error {
+	err := s.inTx(ctx, func(store *adapters.Repository) error {
 		if _, err := store.GetUnit(ctx, parentID); err != nil {
 			return err
 		}
@@ -186,7 +186,7 @@ func (s *Service) AddEdge(ctx context.Context, childID, parentID, graphCode stri
 		return domain.Edge{}, domain.ErrEdgeCycle
 	}
 	var out domain.Edge
-	err := s.inTx(ctx, func(store *adapters.Store) error {
+	err := s.inTx(ctx, func(store *adapters.Repository) error {
 		if _, err := store.GetUnit(ctx, childID); err != nil {
 			return err
 		}
@@ -228,7 +228,7 @@ func (s *Service) AddEdge(ctx context.Context, childID, parentID, graphCode stri
 // adapters.Store.ShrinkClosureForEdge's own doc comment.
 func (s *Service) RemoveEdge(ctx context.Context, childID, parentID, graphCode string) error {
 	graphCode = defaultGraph(graphCode)
-	return s.inTx(ctx, func(store *adapters.Store) error {
+	return s.inTx(ctx, func(store *adapters.Repository) error {
 		g, err := store.GetGraphByCode(ctx, graphCode)
 		if err != nil {
 			return err
@@ -249,7 +249,7 @@ func (s *Service) RemoveEdge(ctx context.Context, childID, parentID, graphCode s
 
 // Ancestors returns unitID's ancestors in graphCode (default "canonical"), nearest first.
 func (s *Service) Ancestors(ctx context.Context, unitID, graphCode string) ([]domain.UnitRef, error) {
-	store := adapters.NewStore(s.pool)
+	store := adapters.NewRepository(s.pool)
 	g, err := store.GetGraphByCode(ctx, defaultGraph(graphCode))
 	if err != nil {
 		return nil, err
@@ -263,7 +263,7 @@ func (s *Service) Descendants(ctx context.Context, unitID, graphCode string, lim
 	if limit <= 0 {
 		limit = 100
 	}
-	store := adapters.NewStore(s.pool)
+	store := adapters.NewRepository(s.pool)
 	g, err := store.GetGraphByCode(ctx, defaultGraph(graphCode))
 	if err != nil {
 		return nil, err
@@ -282,7 +282,7 @@ func (s *Service) Descendants(ctx context.Context, unitID, graphCode string, lim
 // mid-move rather than momentarily zero, so a subtree-scoped grant never loses reach to it.
 func (s *Service) Move(ctx context.Context, graphCode, unitID, newParentUnitID, performedByPersonID string) (domain.MoveJob, error) {
 	graphCode = defaultGraph(graphCode)
-	store := adapters.NewStore(s.pool)
+	store := adapters.NewRepository(s.pool)
 	g, err := store.GetGraphByCode(ctx, graphCode)
 	if err != nil {
 		return domain.MoveJob{}, err
@@ -312,7 +312,7 @@ func (s *Service) Move(ctx context.Context, graphCode, unitID, newParentUnitID, 
 // GetMoveStatus returns the most recent move job for (graphCode, unitID), or nil if none has ever
 // been started.
 func (s *Service) GetMoveStatus(ctx context.Context, graphCode, unitID string) (*domain.MoveJob, error) {
-	store := adapters.NewStore(s.pool)
+	store := adapters.NewRepository(s.pool)
 	g, err := store.GetGraphByCode(ctx, defaultGraph(graphCode))
 	if err != nil {
 		return nil, err
@@ -326,7 +326,7 @@ func (s *Service) GetMoveStatus(ctx context.Context, graphCode, unitID string) (
 // old parent without duplicating Move's own job-history-aware logic.
 func (s *Service) CurrentParent(ctx context.Context, graphCode, unitID string) (string, error) {
 	graphCode = defaultGraph(graphCode)
-	store := adapters.NewStore(s.pool)
+	store := adapters.NewRepository(s.pool)
 	g, err := store.GetGraphByCode(ctx, graphCode)
 	if err != nil {
 		return "", err
@@ -338,7 +338,7 @@ func (s *Service) CurrentParent(ctx context.Context, graphCode, unitID string) (
 // job's target if one exists (this store IS the record of every successful move ever performed on
 // this unit in this graph), else the nearest ancestor read straight from the graph itself — the
 // first-ever-moved case, where there is no job history yet to trust instead.
-func (s *Service) currentParent(ctx context.Context, store *adapters.Store, graphID, unitID string) (string, error) {
+func (s *Service) currentParent(ctx context.Context, store *adapters.Repository, graphID, unitID string) (string, error) {
 	latest, err := store.GetLatestMoveJob(ctx, graphID, unitID)
 	if err != nil {
 		return "", err
@@ -361,7 +361,7 @@ func (s *Service) currentParent(ctx context.Context, store *adapters.Store, grap
 // next call rather than repeating or skipping work. Each step is its own transaction (via AddEdge/
 // RemoveEdge/Ancestors below) — not one transaction spanning the whole job — which is exactly why the
 // job needs this resumable state machine instead of relying on directory-level atomicity.
-func (s *Service) runMoveSteps(ctx context.Context, store *adapters.Store, graphCode string, job domain.MoveJob) (domain.MoveJob, error) {
+func (s *Service) runMoveSteps(ctx context.Context, store *adapters.Repository, graphCode string, job domain.MoveJob) (domain.MoveJob, error) {
 	if job.Status == domain.MovePending {
 		if _, err := s.AddEdge(ctx, job.UnitID, job.NewParentUnitID, graphCode); err != nil && !errors.Is(err, domain.ErrEdgeExists) {
 			return store.FailMoveJob(ctx, job.ID, fmt.Sprintf("addEdge(new parent): %v", err))
@@ -424,7 +424,7 @@ func (s *Service) RebuildClosure(ctx context.Context, graphCode *string) ([]doma
 	}
 	reports := make([]domain.ClosureReport, 0, len(graphs))
 	for _, g := range graphs {
-		if err := s.inTx(ctx, func(store *adapters.Store) error {
+		if err := s.inTx(ctx, func(store *adapters.Repository) error {
 			if err := store.LockGraphForClosure(ctx, g.ID); err != nil {
 				return err
 			}
@@ -453,7 +453,7 @@ func (s *Service) VerifyClosure(ctx context.Context, graphCode *string) ([]domai
 		return nil, err
 	}
 	var reports []domain.ClosureReport
-	err = s.inTx(ctx, func(store *adapters.Store) error {
+	err = s.inTx(ctx, func(store *adapters.Repository) error {
 		for _, g := range graphs {
 			missing, extra, sample, err := store.VerifyClosureForGraph(ctx, g.ID)
 			if err != nil {
@@ -473,7 +473,7 @@ func (s *Service) VerifyClosure(ctx context.Context, graphCode *string) ([]domai
 }
 
 func (s *Service) resolveGraphs(ctx context.Context, graphCode *string) ([]domain.Graph, error) {
-	store := adapters.NewStore(s.pool)
+	store := adapters.NewRepository(s.pool)
 	if graphCode != nil {
 		g, err := store.GetGraphByCode(ctx, *graphCode)
 		if err != nil {
