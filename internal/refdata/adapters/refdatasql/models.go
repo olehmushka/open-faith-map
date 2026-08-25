@@ -6,6 +6,7 @@ package refdatasql
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -14,11 +15,11 @@ type OpenfaithmapAuthzInstanceAdmin struct {
 	ID        string
 	PersonID  string
 	GrantedBy pgtype.Text
-	GrantedAt pgtype.Timestamptz
+	GrantedAt time.Time
 	RevokedAt pgtype.Timestamptz
 	RevokedBy pgtype.Text
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type OpenfaithmapAuthzRole struct {
@@ -27,8 +28,8 @@ type OpenfaithmapAuthzRole struct {
 	Name        string
 	Description pgtype.Text
 	IsBase      bool
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	DeletedAt   pgtype.Timestamptz
 }
 
@@ -40,12 +41,12 @@ type OpenfaithmapAuthzRoleAssignment struct {
 	Scope           string
 	GraphID         pgtype.Text
 	GrantedBy       pgtype.Text
-	GrantedAt       pgtype.Timestamptz
+	GrantedAt       time.Time
 	RevokedAt       pgtype.Timestamptz
 	RevokedBy       pgtype.Text
 	ExpiresAt       pgtype.Timestamptz
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type OpenfaithmapAuthzRolePermission struct {
@@ -80,8 +81,8 @@ type OpenfaithmapCongregationimportCandidate struct {
 	ReviewedByPersonRid            pgtype.Text
 	ReviewedAt                     pgtype.Timestamptz
 	CreatedUnitID                  pgtype.Text
-	CreatedAt                      pgtype.Timestamptz
-	UpdatedAt                      pgtype.Timestamptz
+	CreatedAt                      time.Time
+	UpdatedAt                      time.Time
 }
 
 type OpenfaithmapCongregationimportCongregationStatus struct {
@@ -89,11 +90,11 @@ type OpenfaithmapCongregationimportCongregationStatus struct {
 	SourceCode          string
 	ImportCandidateID   pgtype.Text
 	VerifiedByPersonRid string
-	VerifiedAt          pgtype.Timestamptz
+	VerifiedAt          time.Time
 	ClaimedByPersonRid  pgtype.Text
 	ClaimedAt           pgtype.Timestamptz
-	CreatedAt           pgtype.Timestamptz
-	UpdatedAt           pgtype.Timestamptz
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type OpenfaithmapCongregationimportConnectorCitation struct {
@@ -106,8 +107,8 @@ type OpenfaithmapCongregationimportConnectorCitation struct {
 	UserAgent                string
 	RateLimitNotes           pgtype.Text
 	CitationNotes            string
-	CreatedAt                pgtype.Timestamptz
-	UpdatedAt                pgtype.Timestamptz
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
 }
 
 type OpenfaithmapCongregationimportJurisdictionAlias struct {
@@ -116,8 +117,8 @@ type OpenfaithmapCongregationimportJurisdictionAlias struct {
 	AliasText          string
 	JurisdictionUnitID string
 	CreatedByPersonRid string
-	CreatedAt          pgtype.Timestamptz
-	UpdatedAt          pgtype.Timestamptz
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type OpenfaithmapCongregationimportJurisdictionUnit struct {
@@ -130,8 +131,8 @@ type OpenfaithmapCongregationimportJurisdictionUnit struct {
 	Status           string
 	CreatedUnitID    pgtype.Text
 	FailureReason    pgtype.Text
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type OpenfaithmapCongregationimportRun struct {
@@ -147,7 +148,7 @@ type OpenfaithmapCongregationimportRun struct {
 	CandidatesAutoRejected int32
 	Parameters             []byte
 	Error                  pgtype.Text
-	StartedAt              pgtype.Timestamptz
+	StartedAt              time.Time
 	FinishedAt             pgtype.Timestamptz
 }
 
@@ -157,8 +158,8 @@ type OpenfaithmapCongregationimportTaxonAlias struct {
 	AliasText          string
 	TaxonID            string
 	CreatedByPersonRid string
-	CreatedAt          pgtype.Timestamptz
-	UpdatedAt          pgtype.Timestamptz
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type OpenfaithmapContentBlock struct {
@@ -167,8 +168,8 @@ type OpenfaithmapContentBlock struct {
 	BlockTypeID string
 	Position    int32
 	Data        json.RawMessage
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	DeletedAt   pgtype.Timestamptz
 }
 
@@ -179,8 +180,8 @@ type OpenfaithmapContentBlockType struct {
 	JsonSchema json.RawMessage
 	Status     string
 	SortOrder  int32
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 	DeletedAt  pgtype.Timestamptz
 }
 
@@ -197,8 +198,8 @@ type OpenfaithmapContentDocument struct {
 	EventStartsAt        pgtype.Timestamptz
 	EventEndsAt          pgtype.Timestamptz
 	EventRecurrenceRrule pgtype.Text
-	CreatedAt            pgtype.Timestamptz
-	UpdatedAt            pgtype.Timestamptz
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 	DeletedAt            pgtype.Timestamptz
 }
 
@@ -207,19 +208,19 @@ type OpenfaithmapContentSite struct {
 	CongregationUnitRid string
 	Slug                string
 	Theme               json.RawMessage
-	CreatedAt           pgtype.Timestamptz
-	UpdatedAt           pgtype.Timestamptz
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 	DeletedAt           pgtype.Timestamptz
 }
 
 type OpenfaithmapDirectoryClosureStatus struct {
 	GraphID       string
-	LastCheckedAt pgtype.Timestamptz
+	LastCheckedAt time.Time
 	MissingCount  int32
 	ExtraCount    int32
 	InDrift       bool
 	Sample        []byte
-	UpdatedAt     pgtype.Timestamptz
+	UpdatedAt     time.Time
 }
 
 type OpenfaithmapDirectoryGraph struct {
@@ -228,8 +229,8 @@ type OpenfaithmapDirectoryGraph struct {
 	Name               string
 	IsDefault          bool
 	IsAuthorityBearing bool
-	CreatedAt          pgtype.Timestamptz
-	UpdatedAt          pgtype.Timestamptz
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 	DeletedAt          pgtype.Timestamptz
 }
 
@@ -240,8 +241,8 @@ type OpenfaithmapDirectoryUnit struct {
 	Level     pgtype.Int2
 	State     string
 	Metadata  json.RawMessage
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	DeletedAt pgtype.Timestamptz
 }
 
@@ -257,9 +258,9 @@ type OpenfaithmapDirectoryUnitEdge struct {
 	GraphID   string
 	ParentID  string
 	ChildID   string
-	ValidFrom pgtype.Timestamptz
+	ValidFrom time.Time
 	ValidTo   pgtype.Timestamptz
-	CreatedAt pgtype.Timestamptz
+	CreatedAt time.Time
 	CreatedBy pgtype.Text
 }
 
@@ -272,8 +273,8 @@ type OpenfaithmapDirectoryUnitMoveJob struct {
 	Status              string
 	PerformedByPersonID string
 	Error               pgtype.Text
-	CreatedAt           pgtype.Timestamptz
-	UpdatedAt           pgtype.Timestamptz
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type OpenfaithmapDiscoverySiteCache struct {
@@ -286,7 +287,7 @@ type OpenfaithmapDiscoverySiteCache struct {
 	TraditionTaxonID    pgtype.Text
 	ServiceLanguages    []string
 	ServiceDays         []int16
-	RefreshedAt         pgtype.Timestamptz
+	RefreshedAt         time.Time
 }
 
 type OpenfaithmapIdentityAccount struct {
@@ -296,8 +297,8 @@ type OpenfaithmapIdentityAccount struct {
 	Status        string
 	PasswordHash  pgtype.Text
 	MfaEnrolledAt pgtype.Timestamptz
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 	DeletedAt     pgtype.Timestamptz
 }
 
@@ -307,7 +308,7 @@ type OpenfaithmapIdentityApiKey struct {
 	Label           string
 	TokenHash       string
 	PermissionCodes []string
-	CreatedAt       pgtype.Timestamptz
+	CreatedAt       time.Time
 	LastUsedAt      pgtype.Timestamptz
 	RevokedAt       pgtype.Timestamptz
 	RevokedBy       pgtype.Text
@@ -321,7 +322,7 @@ type OpenfaithmapIdentityAuditLog struct {
 	TargetID      string
 	Before        []byte
 	After         []byte
-	CreatedAt     pgtype.Timestamptz
+	CreatedAt     time.Time
 }
 
 type OpenfaithmapIdentityExternalIdentity struct {
@@ -329,7 +330,7 @@ type OpenfaithmapIdentityExternalIdentity struct {
 	AccountID string
 	Issuer    string
 	Subject   string
-	CreatedAt pgtype.Timestamptz
+	CreatedAt time.Time
 }
 
 type OpenfaithmapIdentityInvite struct {
@@ -340,8 +341,8 @@ type OpenfaithmapIdentityInvite struct {
 	TokenHash  string
 	Status     string
 	InvitedBy  string
-	ExpiresAt  pgtype.Timestamptz
-	CreatedAt  pgtype.Timestamptz
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
 	AcceptedAt pgtype.Timestamptz
 }
 
@@ -359,8 +360,8 @@ type OpenfaithmapIdentityPerson struct {
 	Credentials   pgtype.Text
 	Preferred     pgtype.Text
 	Status        string
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 	DeletedAt     pgtype.Timestamptz
 	SearchText    pgtype.Text
 }
@@ -370,8 +371,8 @@ type OpenfaithmapIdentitySession struct {
 	AccountID   string
 	Issuer      string
 	DeviceLabel pgtype.Text
-	CreatedAt   pgtype.Timestamptz
-	LastSeenAt  pgtype.Timestamptz
+	CreatedAt   time.Time
+	LastSeenAt  time.Time
 	RevokedAt   pgtype.Timestamptz
 }
 
@@ -384,8 +385,8 @@ type OpenfaithmapJurisdictionReparentingJob struct {
 	Status                string
 	PerformedByPersonID   string
 	Error                 pgtype.Text
-	CreatedAt             pgtype.Timestamptz
-	UpdatedAt             pgtype.Timestamptz
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type OpenfaithmapLocationLocation struct {
@@ -402,8 +403,8 @@ type OpenfaithmapLocationLocation struct {
 	PostalCode       pgtype.Text
 	RawAddress       pgtype.Text
 	TypeID           pgtype.Text
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 	DeletedAt        pgtype.Timestamptz
 }
 
@@ -412,8 +413,8 @@ type OpenfaithmapLocationLocationType struct {
 	Code      string
 	Name      string
 	Status    string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	DeletedAt pgtype.Timestamptz
 }
 
@@ -423,10 +424,10 @@ type OpenfaithmapMembershipMembership struct {
 	UnitID        string
 	PositionID    pgtype.Text
 	Status        string
-	EffectiveFrom pgtype.Timestamptz
+	EffectiveFrom time.Time
 	EffectiveTo   pgtype.Timestamptz
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 	DeletedAt     pgtype.Timestamptz
 }
 
@@ -437,8 +438,8 @@ type OpenfaithmapMembershipPosition struct {
 	Title     string
 	Status    string
 	SortOrder pgtype.Int4
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	DeletedAt pgtype.Timestamptz
 }
 
@@ -451,7 +452,7 @@ type OpenfaithmapModerationAction struct {
 	ActorPersonID    string
 	Reason           string
 	ReversesActionID pgtype.Text
-	CreatedAt        pgtype.Timestamptz
+	CreatedAt        time.Time
 }
 
 type OpenfaithmapModerationAppeal struct {
@@ -461,8 +462,8 @@ type OpenfaithmapModerationAppeal struct {
 	Statement                 string
 	AssignedModeratorPersonID pgtype.Text
 	Status                    string
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 }
 
 type OpenfaithmapModerationReport struct {
@@ -474,8 +475,8 @@ type OpenfaithmapModerationReport struct {
 	ReporterPersonID pgtype.Text
 	QueueScope       string
 	Status           string
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 	DeletedAt        pgtype.Timestamptz
 }
 
@@ -484,8 +485,8 @@ type OpenfaithmapRefdataCountry struct {
 	Code      string
 	Name      string
 	SortOrder pgtype.Int4
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type OpenfaithmapRefdataCountryName struct {
@@ -513,8 +514,8 @@ type OpenfaithmapRegistrationRequest struct {
 	DecidedAt           pgtype.Timestamptz
 	CreatedUnitID       pgtype.Text
 	JurisdictionUnitID  pgtype.Text
-	CreatedAt           pgtype.Timestamptz
-	UpdatedAt           pgtype.Timestamptz
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type OpenfaithmapReligionAlias struct {
@@ -523,8 +524,8 @@ type OpenfaithmapReligionAlias struct {
 	AliasText string
 	AliasType string
 	Locale    pgtype.Text
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	DeletedAt pgtype.Timestamptz
 }
 
@@ -535,8 +536,8 @@ type OpenfaithmapReligionClassification struct {
 	Description pgtype.Text
 	Status      string
 	SortOrder   pgtype.Int4
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	DeletedAt   pgtype.Timestamptz
 }
 
@@ -547,10 +548,10 @@ type OpenfaithmapReligionOrgClassification struct {
 	IsPrimary  bool
 	Source     pgtype.Text
 	Confidence pgtype.Text
-	ValidFrom  pgtype.Timestamptz
+	ValidFrom  time.Time
 	ValidTo    pgtype.Timestamptz
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 	DeletedAt  pgtype.Timestamptz
 }
 
@@ -562,8 +563,8 @@ type OpenfaithmapReligionOrgKind struct {
 	Ordinal    pgtype.Int4
 	Status     string
 	SortOrder  pgtype.Int4
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 	DeletedAt  pgtype.Timestamptz
 }
 
@@ -574,8 +575,8 @@ type OpenfaithmapReligionOrgPolicy struct {
 	Reason            pgtype.Text
 	DecidedByPersonID pgtype.Text
 	DecidedAt         pgtype.Timestamptz
-	CreatedAt         pgtype.Timestamptz
-	UpdatedAt         pgtype.Timestamptz
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 	DeletedAt         pgtype.Timestamptz
 }
 
@@ -583,8 +584,8 @@ type OpenfaithmapReligionOrgProfile struct {
 	UnitID    string
 	OrgKindID pgtype.Text
 	ShortCode pgtype.Text
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	DeletedAt pgtype.Timestamptz
 }
 
@@ -595,8 +596,8 @@ type OpenfaithmapReligionPolicyKind struct {
 	Description pgtype.Text
 	Status      string
 	SortOrder   pgtype.Int4
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	DeletedAt   pgtype.Timestamptz
 }
 
@@ -613,8 +614,8 @@ type OpenfaithmapReligionServiceSchedule struct {
 	Mode          string
 	MeetingUrl    pgtype.Text
 	Description   pgtype.Text
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 	DeletedAt     pgtype.Timestamptz
 }
 
@@ -625,8 +626,8 @@ type OpenfaithmapReligionServiceType struct {
 	Name             string
 	Status           string
 	SortOrder        pgtype.Int4
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 	DeletedAt        pgtype.Timestamptz
 }
 
@@ -638,10 +639,10 @@ type OpenfaithmapReligionSite struct {
 	Visibility      string
 	PublicPrecision string
 	IsPrimary       bool
-	ValidFrom       pgtype.Timestamptz
+	ValidFrom       time.Time
 	ValidTo         pgtype.Timestamptz
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 	DeletedAt       pgtype.Timestamptz
 }
 
@@ -652,8 +653,8 @@ type OpenfaithmapReligionSiteType struct {
 	Name             string
 	Status           string
 	SortOrder        pgtype.Int4
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 	DeletedAt        pgtype.Timestamptz
 }
 
@@ -670,8 +671,8 @@ type OpenfaithmapReligionTaxa struct {
 	SortOrder     pgtype.Int4
 	Source        pgtype.Text
 	SourceVersion pgtype.Text
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 	DeletedAt     pgtype.Timestamptz
 }
 
@@ -684,7 +685,7 @@ type OpenfaithmapReligionTaxaClosure struct {
 type OpenfaithmapReligionTaxonClassification struct {
 	TaxonID          string
 	ClassificationID string
-	CreatedAt        pgtype.Timestamptz
+	CreatedAt        time.Time
 }
 
 type OpenfaithmapReligionTaxonRank struct {
@@ -694,8 +695,8 @@ type OpenfaithmapReligionTaxonRank struct {
 	Ordinal   int32
 	Status    string
 	SortOrder pgtype.Int4
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	DeletedAt pgtype.Timestamptz
 }
 
@@ -705,7 +706,7 @@ type OpenfaithmapVouchingEdge struct {
 	ClaimantPersonRid   string
 	CongregationUnitRid string
 	Statement           pgtype.Text
-	CreatedAt           pgtype.Timestamptz
+	CreatedAt           time.Time
 }
 
 type OpenfaithmapVouchingGuarantorStatus struct {
@@ -714,5 +715,5 @@ type OpenfaithmapVouchingGuarantorStatus struct {
 	RevokedAt          pgtype.Timestamptz
 	RevokedReason      pgtype.Text
 	RevokedByPersonRid pgtype.Text
-	UpdatedAt          pgtype.Timestamptz
+	UpdatedAt          time.Time
 }

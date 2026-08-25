@@ -35,6 +35,13 @@ sql:
               type: "Text"
           - db_type: "jsonb"
             go_type: "encoding/json.RawMessage"
+          # Non-nullable timestamptz -> time.Time directly (matches every hand-written store's own
+          # scan target). Nullable timestamptz deliberately keeps sqlc's default pgtype.Timestamptz —
+          # overriding it to *time.Time here double-wraps into **time.Time (a known sqlc quirk: a
+          # pointer go_type on a nullable-column rule gets wrapped again). Repository mappers convert
+          # via db.NullableTime instead (internal/platform/db/dbtx.go).
+          - db_type: "timestamptz"
+            go_type: "time.Time"
   - engine: postgresql
     schema: migrations
     queries: internal/location/adapters/queries
