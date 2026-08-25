@@ -91,7 +91,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, seed AdminSeed) (Result, error
 		return Result{Skipped: true}, nil // idempotent: an instance admin already exists
 	}
 
-	identityStore := identityadapters.NewStore(tx)
+	identityStore := identityadapters.NewRepository(tx)
 
 	person, createdPerson, err := resolveOrCreatePerson(ctx, identityStore, seed)
 	if err != nil {
@@ -124,7 +124,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, seed AdminSeed) (Result, error
 
 // resolveOrCreatePerson reuses an existing person by code (link-to-existing) or creates one.
 // DisplayName falls back to the code/subject so the NOT NULL display_name is satisfied.
-func resolveOrCreatePerson(ctx context.Context, store *identityadapters.Store, seed AdminSeed) (domain.Person, bool, error) {
+func resolveOrCreatePerson(ctx context.Context, store *identityadapters.Repository, seed AdminSeed) (domain.Person, bool, error) {
 	if seed.PersonCode != "" {
 		p, err := store.GetActivePersonByCode(ctx, seed.PersonCode)
 		if err == nil {
@@ -142,7 +142,7 @@ func resolveOrCreatePerson(ctx context.Context, store *identityadapters.Store, s
 	return created, true, nil
 }
 
-func resolveOrCreateAccount(ctx context.Context, store *identityadapters.Store, personID, email string) (domain.Account, bool, error) {
+func resolveOrCreateAccount(ctx context.Context, store *identityadapters.Repository, personID, email string) (domain.Account, bool, error) {
 	account, err := store.GetActiveAccountByPerson(ctx, personID)
 	if err == nil {
 		return account, false, nil
@@ -161,7 +161,7 @@ func resolveOrCreateAccount(ctx context.Context, store *identityadapters.Store, 
 // re-run. Pre-checks existence rather than catching a unique-violation: a constraint error would
 // poison the surrounding transaction, so the follow-up query could not run. An identity that already
 // maps to THIS person is a no-op; one mapping elsewhere is refused.
-func linkIdentity(ctx context.Context, store *identityadapters.Store, accountID, personID string, seed AdminSeed) error {
+func linkIdentity(ctx context.Context, store *identityadapters.Repository, accountID, personID string, seed AdminSeed) error {
 	existing, err := store.ResolveBySubject(ctx, seed.Issuer, seed.Subject)
 	switch {
 	case err == nil:

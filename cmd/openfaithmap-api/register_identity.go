@@ -27,7 +27,7 @@ import (
 // the boot-time first-admin seed. Registers no HTTP routes — identity has no Conjure surface until
 // M10.7.
 func registerIdentity(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
-	identityStore := identityadapters.NewStore(deps.Pool)
+	identityStore := identityadapters.NewRepository(deps.Pool)
 	identitySvc := identityapplication.NewService(identityStore)
 	deps.IdentitySvc = identitySvc
 

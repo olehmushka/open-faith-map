@@ -57,7 +57,7 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
 	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	// directory/religion/membership/refdata are nil: none of the six methods under test touch them
@@ -316,7 +316,7 @@ func TestLastActiveIntegration(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
 	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, nil, pool, "")
 
 	var noAccountID, withAccountID, accountID, sessionID string
@@ -667,7 +667,7 @@ func TestMergePersonsIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
 	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")
@@ -1030,7 +1030,7 @@ func TestApiKeysAdminOversightIntegration(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, auditLogSvc, pool, "")
 

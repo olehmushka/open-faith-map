@@ -48,7 +48,7 @@ func TestSessionIntegration(t *testing.T) {
 		}
 	})
 
-	svc := application.NewService(adapters.NewStore(pool))
+	svc := application.NewService(adapters.NewRepository(pool))
 	const issuer = "urn:test:m11-3-issuer"
 
 	insertPersonWithAccount := func(name, email string) (personID, accountID string) {

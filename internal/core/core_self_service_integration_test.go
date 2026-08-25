@@ -47,7 +47,7 @@ func TestSelfServiceProfileIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
 	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")
@@ -209,7 +209,7 @@ func TestSelfServiceApiKeysIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
 	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")

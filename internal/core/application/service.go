@@ -578,7 +578,7 @@ func (s *Service) PreviewMergePersons(ctx context.Context, survivorID, duplicate
 		return MergePreview{}, err
 	}
 
-	identityStore := identityadapters.NewStore(s.pool)
+	identityStore := identityadapters.NewRepository(s.pool)
 	duplicateHasActiveAccount, accountConflict, err := identityStore.PreviewMergeIdentity(ctx, survivorID, duplicateID)
 	if err != nil {
 		return MergePreview{}, err
@@ -645,7 +645,7 @@ func (s *Service) MergePersons(ctx context.Context, survivorID, duplicateID stri
 		return MergeResult{}, err
 	}
 
-	identityStore := identityadapters.NewStore(tx)
+	identityStore := identityadapters.NewRepository(tx)
 	accountMoved, accountDisabled, err := identityStore.MergePersonIdentity(ctx, survivorID, duplicateID)
 	if err != nil {
 		return MergeResult{}, err
