@@ -1,10 +1,7 @@
--- 0012_core_location — M10.1 (D-CorePortScope). Ports the 2 kept location tables from
+-- 0013_core_location — M10.1 (D-CorePortScope). Ports the 2 kept location tables from
 -- ../go-oikumenea/migrations/0007_reference_verticals.sql:494-622 — the WOF gazetteer (geo_places)
 -- is dropped, nothing here queries it. PostGIS is already enabled on this instance (confirmed:
 -- postgis/postgis:16-3.4 image, `SELECT extname FROM pg_extension` includes postgis).
---
--- Closes the location_id FK religion_sites (0011_core_religion.sql) deferred, since
--- location_locations didn't exist yet when that file ran.
 
 CREATE TABLE openfaithmap.location_location_types (
   id         uuid PRIMARY KEY DEFAULT openfaithmap.new_id(5,1,2),  -- location / object / location_type
@@ -29,14 +26,14 @@ INSERT INTO openfaithmap.location_location_types (code, name) VALUES
   ('online',   'Online');
 
 -- location_locations: the shared place object. `geom` GEOGRAPHY(POINT,4326) is the authoritative
--- coordinate; `country_id` sits over refdata_countries (0014_core_refdata.sql, applied after this
--- file — FK added there, same deferred-FK pattern as religion_sites.location_id above).
+-- coordinate; `country_id` sits over refdata_countries (0012_core_refdata.sql, applied before this
+-- file).
 CREATE TABLE openfaithmap.location_locations (
   id                uuid PRIMARY KEY DEFAULT openfaithmap.new_id(5,1,1),  -- location / object / location
   geom              geography(Point, 4326) NOT NULL,
   mgrs              text,
   source_coordinate jsonb NOT NULL DEFAULT '{}',
-  country_id        uuid NOT NULL,  -- REFERENCES openfaithmap.refdata_countries(id); FK added in 0014_core_refdata.sql
+  country_id        uuid NOT NULL REFERENCES openfaithmap.refdata_countries(id) ON DELETE RESTRICT,
   admin_area_1      text,
   admin_area_2      text,
   locality          text,
@@ -56,9 +53,3 @@ CREATE TRIGGER location_locations_set_updated_at
   FOR EACH ROW EXECUTE FUNCTION openfaithmap.set_updated_at();
 CREATE INDEX location_locations_geom_gist ON openfaithmap.location_locations USING gist (geom);
 CREATE INDEX location_locations_country ON openfaithmap.location_locations (country_id) WHERE deleted_at IS NULL;
-
--- Now that location_locations exists, close the FK religion_sites.location_id deferred.
-ALTER TABLE openfaithmap.religion_sites
-  ADD CONSTRAINT religion_sites_location_fk
-    FOREIGN KEY (location_id) REFERENCES openfaithmap.location_locations(id) ON DELETE RESTRICT;
-CREATE INDEX religion_sites_location_idx ON openfaithmap.religion_sites (location_id) WHERE deleted_at IS NULL;

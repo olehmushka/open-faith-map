@@ -19,6 +19,8 @@
 CREATE SCHEMA IF NOT EXISTS openfaithmap;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS citext;   -- identity_accounts.email / identity_invites.email
+CREATE EXTENSION IF NOT EXISTS pg_trgm;  -- identity_persons trigram search index
 
 CREATE OR REPLACE FUNCTION openfaithmap.set_updated_at() RETURNS trigger
   LANGUAGE plpgsql AS $$

@@ -3,7 +3,7 @@
 
 // Package domain holds the refdata module's one type: the static country reference list. Per
 // D-StaticRefData, the actual data (refdata_countries/refdata_country_names) was already seeded
-// byte-for-byte from the live database at M10.1 (migrations/0021_core_refdata.sql) — this module is
+// byte-for-byte from the live database at M10.1 (migrations/0012_core_refdata.sql) — this module is
 // a read-only Go surface over it, replacing hermenea and go-oikumenea's geo.Country.
 package domain
 

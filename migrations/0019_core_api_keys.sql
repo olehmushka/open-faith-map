@@ -1,4 +1,4 @@
--- 0020_core_api_keys — M11.9 (docs/milestones.md), the last M11.x sub-milestone. Additive; no
+-- 0019_core_api_keys — M11.9 (docs/milestones.md), the last M11.x sub-milestone. Additive; no
 -- retrofitted table since none of this existed before.
 --
 -- identity_api_keys: a second credential for an existing person, not a new principal type —

@@ -203,7 +203,7 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 	// unit.lifecycle grant, via a real role assignment, is sufficient on its own — proves the
 	// permission code itself gates correctly, not merely "any instance admin can do this."
 	// registration-operator holds no unit.lifecycle after M12.0's split (migrations/
-	// 0021_core_moderation_standing_permission.sql); grant it back onto that role for this test's
+	// 0015_core_seed.sql); grant it back onto that role for this test's
 	// duration only, cleaned up above.
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO openfaithmap.authz_role_permissions (role_id, permission_code)

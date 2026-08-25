@@ -1,4 +1,4 @@
--- 0013_core_membership — M10.1 (D-CorePortScope). Ports the 2 kept membership tables from
+-- 0011_core_membership — M10.1 (D-CorePortScope). Ports the 2 kept membership tables from
 -- ../go-oikumenea/migrations/0003_person_membership.sql:300-393. Drops required_rank_id (all of
 -- internal/rank is dropped) and order_item_id (the order/наказ module is never ported).
 

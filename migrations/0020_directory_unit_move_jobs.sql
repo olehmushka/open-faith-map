@@ -1,4 +1,4 @@
--- 0022_directory_unit_move_jobs — M12.2. Generalizes jurisdiction_reparenting_jobs
+-- 0020_directory_unit_move_jobs — M12.2. Generalizes jurisdiction_reparenting_jobs
 -- (migrations/0001_registration.sql) into internal/directory's own generic Move/GetMoveStatus: the
 -- same add-before-remove, resumable state machine, no longer private to
 -- internal/registration.Service.Reparent (which becomes a caller of it instead of the sole owner).
@@ -12,6 +12,12 @@
 -- that owns both tables, does not). No registration_request_id column — this module cannot depend on
 -- internal/registration (D-InProcessAuthz); a caller that needs to correlate a move back to its own
 -- domain object does so on its own side, keyed by (graph_id, unit_id).
+--
+-- old_parent_unit_id/new_parent_unit_id each get their own single-column index below (2026-08-25
+-- squash pass, folded in from this migration's original follow-up patch): the two columns are
+-- queried/constrained independently, not together, so two single-column indexes rather than one
+-- composite — the only existing index covering them incidentally, (graph_id, unit_id), doesn't help a
+-- lookup or FK-cascade-check keyed on a parent column directly.
 
 CREATE TABLE openfaithmap.directory_unit_move_jobs (
   id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -44,6 +50,11 @@ CREATE UNIQUE INDEX directory_unit_move_jobs_live_idx
 
 CREATE INDEX directory_unit_move_jobs_unit_idx
   ON openfaithmap.directory_unit_move_jobs (graph_id, unit_id, created_at DESC);
+
+CREATE INDEX directory_unit_move_jobs_old_parent_idx
+  ON openfaithmap.directory_unit_move_jobs (old_parent_unit_id);
+CREATE INDEX directory_unit_move_jobs_new_parent_idx
+  ON openfaithmap.directory_unit_move_jobs (new_parent_unit_id);
 
 CREATE TRIGGER directory_unit_move_jobs_set_updated_at
   BEFORE UPDATE ON openfaithmap.directory_unit_move_jobs

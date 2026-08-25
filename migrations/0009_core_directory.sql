@@ -1,4 +1,4 @@
--- 0010_core_directory — M10.1 (D-CorePortScope, amendment). Ports the kept slice of
+-- 0009_core_directory — M10.1 (D-CorePortScope, amendment). Ports the kept slice of
 -- ../go-oikumenea/migrations/0002_tenant_rank.sql's tenant module: tenant_units/graphs/unit_edges/
 -- unit_closure/closure_status, renamed directory_*. Dropped per D-CorePortScope: tenant_domains,
 -- tenant_unit_kinds, tenant_organizations, tenant_org_lifecycle_events, tenant_unit_lifecycle_events,
@@ -9,8 +9,8 @@
 -- logic"): tenant_units.org_id/domain_id/kind_id (organizations are gone), .visibility + ShadowGate
 -- (OpenFaithMap has no shadow-unit concept — site-level privacy is religion_sites.public_precision).
 --
--- Retroactively adds the FKs 0009_core_authz.sql's authz_role_assignments left as bare uuid columns
--- (directory_units/directory_graphs didn't exist yet when that file ran).
+-- Applied before 0010_core_authz.sql, which references directory_units/directory_graphs directly in
+-- authz_role_assignments — no deferred FK needed.
 --
 -- The closure lock (D-CorePortScope's amendment): FOR NO KEY UPDATE on directory_graphs is a ROW
 -- lock, not advisory — taken by application code (M10.4/M10.6), not this migration. Binding
@@ -62,15 +62,9 @@ CREATE TRIGGER directory_graphs_set_updated_at
   BEFORE UPDATE ON openfaithmap.directory_graphs
   FOR EACH ROW EXECUTE FUNCTION openfaithmap.set_updated_at();
 
--- Now that both tables exist, close the FKs 0009_core_authz.sql's authz_role_assignments deferred.
-ALTER TABLE openfaithmap.authz_role_assignments
-  ADD CONSTRAINT authz_role_assignments_target_unit_fk
-    FOREIGN KEY (target_unit_id) REFERENCES openfaithmap.directory_units(id) ON DELETE RESTRICT,
-  ADD CONSTRAINT authz_role_assignments_graph_fk
-    FOREIGN KEY (graph_id) REFERENCES openfaithmap.directory_graphs(id) ON DELETE RESTRICT;
-
 -- directory_unit_edges: the reified parent->child edge, per graph. Cycle prevention is enforced in
 -- the application on insert (via the closure); the closure is recomputed in the same transaction.
+-- created_by references identity_persons (0008_core_identity.sql, applied before this file).
 CREATE TABLE openfaithmap.directory_unit_edges (
   id         uuid PRIMARY KEY DEFAULT openfaithmap.new_id(3,2,1),  -- directory / link / parent_of
   graph_id   uuid NOT NULL REFERENCES openfaithmap.directory_graphs(id) ON DELETE RESTRICT,

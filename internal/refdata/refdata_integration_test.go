@@ -4,7 +4,7 @@
 // Proves internal/refdata reads the exact M10.1-seeded country data against a real Postgres
 // instance — see internal/directory/directory_integration_test.go's own header comment for the
 // invocation. The live table actually holds 250 rows (Kosovo/XK included), not the 249
-// migrations/0021_core_refdata.sql's own header comment claims — found live by this test, not
+// migrations/0012_core_refdata.sql's own header comment claims — found live by this test, not
 // assumed; the module code is correct, the migration comment is off by one.
 package refdata_test
 

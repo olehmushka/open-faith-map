@@ -1,4 +1,4 @@
--- 0009_core_authz — M10.1 (D-InProcessAuthz, D-CorePortScope's amendment). Ports the authz portion
+-- 0010_core_authz — M10.1 (D-InProcessAuthz, D-CorePortScope's amendment). Ports the authz portion
 -- of ../go-oikumenea/migrations/0004_authz_identity.sql (the authz_* section). No Postgres RLS
 -- anywhere (D-InProcessAuthz) — the in-process PDP (M10.3) is the sole authority. No grant cache
 -- table either (the amendment drops it; grants are read per request), so authz_role_assignments and
@@ -6,6 +6,9 @@
 --
 -- authz_instance_admins is confirmed must-port (not upstream's original plan): PDP.Decide branches
 -- on it first — without it every instance-scope action is permanently denied to everyone.
+--
+-- Applied after 0009_core_directory.sql, so authz_role_assignments' target_unit_id/graph_id FKs are
+-- declared inline below, not deferred.
 
 CREATE TABLE openfaithmap.authz_roles (
   id          uuid PRIMARY KEY DEFAULT openfaithmap.new_id(2,1,1),  -- authz / object / role
@@ -41,9 +44,9 @@ CREATE TABLE openfaithmap.authz_role_assignments (
   id                uuid PRIMARY KEY DEFAULT openfaithmap.new_id(2,2,1),  -- authz / link / has_role
   subject_person_id uuid NOT NULL REFERENCES openfaithmap.identity_persons(id) ON DELETE RESTRICT,
   role_id           uuid NOT NULL REFERENCES openfaithmap.authz_roles(id) ON DELETE RESTRICT,
-  target_unit_id    uuid NOT NULL,  -- REFERENCES openfaithmap.directory_units(id); FK added in 0010_core_directory.sql
+  target_unit_id    uuid NOT NULL REFERENCES openfaithmap.directory_units(id) ON DELETE RESTRICT,
   scope             text NOT NULL CHECK (scope IN ('unit','subtree')),
-  graph_id          uuid,           -- REFERENCES openfaithmap.directory_graphs(id); FK added in 0010_core_directory.sql
+  graph_id          uuid REFERENCES openfaithmap.directory_graphs(id) ON DELETE RESTRICT,
   granted_by        uuid REFERENCES openfaithmap.identity_persons(id) ON DELETE SET NULL,  -- NULL for bootstrap
   granted_at        timestamptz NOT NULL DEFAULT now(),
   revoked_at        timestamptz,
@@ -56,9 +59,14 @@ CREATE TABLE openfaithmap.authz_role_assignments (
     CHECK (openfaithmap.rid_service(id)=2 AND openfaithmap.rid_kind(id)=2 AND openfaithmap.rid_type(id)=1),
   CONSTRAINT authz_role_assignments_graph_scope CHECK ((scope = 'subtree') = (graph_id IS NOT NULL))
 );
+-- NULLS NOT DISTINCT (Postgres 15+; this stack runs 16): graph_id is always NULL for scope='unit'
+-- (the CHECK above requires it), and without this clause Postgres treats NULL as distinct from NULL
+-- for uniqueness purposes — so this index would never actually cover scope='unit' grants, the vast
+-- majority of grants in this app. Making the two NULLs compare equal closes that gap; scope='subtree'
+-- rows (graph_id never NULL there) are unaffected.
 CREATE UNIQUE INDEX authz_role_assignments_active_idx
   ON openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id)
-  WHERE revoked_at IS NULL;
+  NULLS NOT DISTINCT WHERE revoked_at IS NULL;
 CREATE INDEX authz_role_assignments_subject_idx
   ON openfaithmap.authz_role_assignments (subject_person_id) WHERE revoked_at IS NULL;
 CREATE INDEX authz_role_assignments_target_idx

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package adapters is the refdata module's Postgres store: a single read over refdata_countries +
-// refdata_country_names (both seeded at M10.1, migrations/0021_core_refdata.sql). sqlc-generated
+// refdata_country_names (both seeded at M10.1, migrations/0012_core_refdata.sql). sqlc-generated
 // (docs/architecture/decisions.md's D-Stack) — queries live in queries/refdata.sql, generated code in
 // refdatasql/.
 package adapters

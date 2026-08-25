@@ -1,4 +1,4 @@
--- 0011_core_religion — M10.1 (D-CorePortScope's amendment: the explicit 15-name list). Ports the
+-- 0014_core_religion — M10.1 (D-CorePortScope's amendment: the explicit 15-name list). Ports the
 -- kept slice of ../go-oikumenea/migrations/0008_religion.sql. Confirmed this session: grepped this
 -- repo (not go-oikumenea) for any reference to religion_unit_classifications — zero matches — so it
 -- is dropped, along with the 4 clergy tables and 2 affiliation tables D-CorePortScope always named.
@@ -390,9 +390,8 @@ CREATE TRIGGER religion_org_policies_set_updated_at
 
 -- ===================================================================================================
 -- religion_sites / schedules / aliases — the discovery substrate. religion_sites references
--- location_locations (0012_core_location.sql, applied after this file — see its own header) and
--- religion_site_types (this file); the location FK is added there, not here, since location doesn't
--- exist yet at this point in the migration sequence.
+-- location_locations (0013_core_location.sql, applied before this file) and religion_site_types
+-- (this file).
 -- ===================================================================================================
 
 CREATE TABLE openfaithmap.religion_site_types (
@@ -460,12 +459,11 @@ FROM (VALUES
 ) AS v(tradition_code, code, name, so)
 JOIN openfaithmap.religion_taxa t ON t.code = v.tradition_code AND t.deleted_at IS NULL;
 
--- religion_sites: the reified Unit<->Location link. location_id's FK is added in
--- 0012_core_location.sql once location_locations exists.
+-- religion_sites: the reified Unit<->Location link.
 CREATE TABLE openfaithmap.religion_sites (
   id               uuid PRIMARY KEY DEFAULT openfaithmap.new_id(4,2,2),  -- religion / link / site_of
   org_unit_id      uuid NOT NULL REFERENCES openfaithmap.directory_units(id) ON DELETE RESTRICT,
-  location_id      uuid NOT NULL,  -- REFERENCES openfaithmap.location_locations(id); FK added in 0012_core_location.sql
+  location_id      uuid NOT NULL REFERENCES openfaithmap.location_locations(id) ON DELETE RESTRICT,
   site_type_id     uuid NOT NULL REFERENCES openfaithmap.religion_site_types(id) ON DELETE RESTRICT,
   visibility       text NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','unlisted','private')),
   public_precision text NOT NULL DEFAULT 'exact'
@@ -482,6 +480,7 @@ CREATE TABLE openfaithmap.religion_sites (
 CREATE UNIQUE INDEX religion_sites_one_primary
   ON openfaithmap.religion_sites (org_unit_id) WHERE is_primary AND deleted_at IS NULL;
 CREATE INDEX religion_sites_unit_idx ON openfaithmap.religion_sites (org_unit_id) WHERE deleted_at IS NULL;
+CREATE INDEX religion_sites_location_idx ON openfaithmap.religion_sites (location_id) WHERE deleted_at IS NULL;
 CREATE TRIGGER religion_sites_set_updated_at
   BEFORE UPDATE ON openfaithmap.religion_sites
   FOR EACH ROW EXECUTE FUNCTION openfaithmap.set_updated_at();
