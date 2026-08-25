@@ -42,7 +42,7 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	// ListRoleAssignmentsByUnit, RevokeRoleAssignment, the instance-admin plane) never calls
 	// PDP.Decide, so the closure port is never actually invoked.
 	pdp := domain.NewPDP(noopClosure{})
-	svc := authz.NewService(pdp, adapters.NewStore(pool))
+	svc := authz.NewService(pdp, adapters.NewRepository(pool), pool)
 
 	var personID string
 	var unit directorydomain.Unit

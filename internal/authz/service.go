@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/olehmushka/open-faith-map/internal/authz/adapters"
 	"github.com/olehmushka/open-faith-map/internal/authz/domain"
 )
 
@@ -20,10 +22,11 @@ type GrantStore interface {
 	// InsertRoleAssignment's scope is "unit" or "subtree" (domain.Scope); graphID is required (and
 	// only meaningful) when scope is "subtree" (M12.2, resolving U14 — see GrantUnitRole's own doc).
 	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string) (string, error)
-	// BulkInsertRoleAssignments is M11.7's batch variant: the same grant, for many personIDs, one
-	// role, one unit, one scope, all inside a single transaction — no per-row idempotent-conflict
-	// error, see the adapter's own doc comment for why it can't just loop InsertRoleAssignment.
-	BulkInsertRoleAssignments(ctx context.Context, personIDs []string, roleID, targetUnitID, scope, graphID, grantedBy string) ([]string, error)
+	// UpsertRoleAssignment is BulkGrantUnitRole's (M11.7) per-row statement, called in a loop inside
+	// Service.inTx — a real upsert, not InsertRoleAssignment's catch-then-select, since a caught
+	// 23505 inside an explicit multi-statement tx would abort the whole transaction. See the
+	// adapter's own doc comment.
+	UpsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string) (string, error)
 
 	// The M10.7 super-admin surface: the role catalog, per-unit assignment listing/revocation, and
 	// the instance-admin plane's own list/grant/revoke — all new at M10.7 (InsertInstanceAdmin
@@ -46,10 +49,26 @@ type GrantStore interface {
 type Service struct {
 	pdp   domain.PDP
 	store GrantStore
+	pool  *pgxpool.Pool
 }
 
-func NewService(pdp domain.PDP, store GrantStore) *Service {
-	return &Service{pdp: pdp, store: store}
+func NewService(pdp domain.PDP, store GrantStore, pool *pgxpool.Pool) *Service {
+	return &Service{pdp: pdp, store: store, pool: pool}
+}
+
+// inTx runs fn against a Repository bound to a fresh transaction — BulkGrantUnitRole's own need
+// (M11.7 + M12.2's scope param), the one write in this module that spans multiple statements.
+// Mirrors directory/application/service.go's own inTx helper.
+func (s *Service) inTx(ctx context.Context, fn func(store GrantStore) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := fn(adapters.NewRepository(tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Require answers "may the request's subject perform action on unitID", subject resolved from ctx —
@@ -121,7 +140,22 @@ func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, rol
 	if len(personIDs) == 0 {
 		return nil, domain.ErrEmptyPersonIDs
 	}
-	return s.store.BulkInsertRoleAssignments(ctx, personIDs, roleID, unitID, string(scope), graphID, grantedByPersonID)
+	var ids []string
+	err := s.inTx(ctx, func(store GrantStore) error {
+		ids = make([]string, 0, len(personIDs))
+		for _, personID := range personIDs {
+			id, err := store.UpsertRoleAssignment(ctx, personID, roleID, unitID, string(scope), graphID, grantedByPersonID)
+			if err != nil {
+				return err
+			}
+			ids = append(ids, id)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 // RequireInstanceAdmin is the shared, hard-to-misuse enforcer for the instance-admin plane

@@ -27,8 +27,8 @@ func (f fakeGrantStore) ActiveGrantsForSubject(context.Context, string) ([]domai
 func (f fakeGrantStore) InsertRoleAssignment(context.Context, string, string, string, string, string, string) (string, error) {
 	return "", nil
 }
-func (f fakeGrantStore) BulkInsertRoleAssignments(context.Context, []string, string, string, string, string, string) ([]string, error) {
-	return nil, nil
+func (f fakeGrantStore) UpsertRoleAssignment(context.Context, string, string, string, string, string, string) (string, error) {
+	return "", nil
 }
 func (f fakeGrantStore) ListRoles(context.Context) ([]domain.Role, error) { return nil, nil }
 func (f fakeGrantStore) ListRoleAssignmentsByUnit(context.Context, string) ([]domain.RoleAssignment, error) {
@@ -58,7 +58,7 @@ func (noopClosure) IsAncestorOrSelf(context.Context, string, string, string) (bo
 func (noopClosure) IsAuthorityBearing(context.Context, string) (bool, error) { return false, nil }
 
 func TestRequireInstanceAdminDeniesBeforeNext(t *testing.T) {
-	svc := authz.NewService(domain.NewPDP(noopClosure{}), fakeGrantStore{})
+	svc := authz.NewService(domain.NewPDP(noopClosure{}), fakeGrantStore{}, nil)
 	mw := RequireInstanceAdmin(svc)
 
 	ctx := authz.NewContext(context.Background(), authz.Subject{PersonID: "p1"}) // not an admin
@@ -79,7 +79,7 @@ func TestRequireInstanceAdminDeniesBeforeNext(t *testing.T) {
 }
 
 func TestRequireInstanceAdminAllowsRealInstanceAdmin(t *testing.T) {
-	svc := authz.NewService(domain.NewPDP(noopClosure{}), fakeGrantStore{admins: map[string]bool{"p1": true}})
+	svc := authz.NewService(domain.NewPDP(noopClosure{}), fakeGrantStore{admins: map[string]bool{"p1": true}}, nil)
 	mw := RequireInstanceAdmin(svc)
 
 	ctx := authz.NewContext(context.Background(), authz.Subject{PersonID: "p1"})
@@ -97,7 +97,7 @@ func TestRequireInstanceAdminAllowsRealInstanceAdmin(t *testing.T) {
 }
 
 func TestRequireInstanceAdminDeniesAnonymous(t *testing.T) {
-	svc := authz.NewService(domain.NewPDP(noopClosure{}), fakeGrantStore{})
+	svc := authz.NewService(domain.NewPDP(noopClosure{}), fakeGrantStore{}, nil)
 	mw := RequireInstanceAdmin(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/core/v1/super-admin/people", nil) // no subject in context

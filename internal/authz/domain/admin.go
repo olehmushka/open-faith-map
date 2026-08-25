@@ -15,6 +15,9 @@ import (
 var (
 	ErrAssignmentNotFound         = errors.New("authz: role assignment not found or already revoked")
 	ErrInstanceAdminGrantNotFound = errors.New("authz: instance-admin grant not found or already revoked")
+	// ErrRoleNotFound is GetRoleByCode's not-found sentinel — internal/platform/seed.Resolve's
+	// boot-time lookup of the three base roles by code.
+	ErrRoleNotFound = errors.New("authz: role not found")
 	// ErrEmptyPersonIDs is BulkGrantUnitRole's (M11.7) own validation failure — an empty batch has
 	// nothing to grant and nothing to audit-log, so it's rejected before any store call.
 	ErrEmptyPersonIDs = errors.New("authz: personIDs must not be empty")

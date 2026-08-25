@@ -39,8 +39,8 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	closurePort := directoryadapters.NewStore(deps.Pool)
 
 	pdp := authzdomain.NewPDP(closurePort)
-	authzStore := authzadapters.NewStore(deps.Pool)
-	authzSvc := authz.NewService(pdp, authzStore)
+	authzStore := authzadapters.NewRepository(deps.Pool)
+	authzSvc := authz.NewService(pdp, authzStore, deps.Pool)
 
 	religionSvc := religionapplication.NewService(deps.Pool, directorySvc)
 	locationSvc := locationapplication.NewService(deps.Pool)

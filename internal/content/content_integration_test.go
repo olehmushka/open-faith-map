@@ -49,8 +49,8 @@ func TestContentIntegration(t *testing.T) {
 	directorySvc := directoryapplication.NewService(pool)
 	closurePort := directoryadapters.NewStore(pool)
 	pdp := authzdomain.NewPDP(closurePort)
-	authzStore := authzadapters.NewStore(pool)
-	authzSvc := authz.NewService(pdp, authzStore)
+	authzStore := authzadapters.NewRepository(pool)
+	authzSvc := authz.NewService(pdp, authzStore, pool)
 	contentStore := contentadapters.NewRepository(pool)
 	contentSvc := application.NewService(contentStore, authzSvc)
 

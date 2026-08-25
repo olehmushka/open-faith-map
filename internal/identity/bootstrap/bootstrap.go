@@ -82,7 +82,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, seed AdminSeed) (Result, error
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	authzStore := authzadapters.NewStore(tx)
+	authzStore := authzadapters.NewRepository(tx)
 	hasAdmin, err := authzStore.HasActiveInstanceAdmin(ctx)
 	if err != nil {
 		return Result{}, err

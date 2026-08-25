@@ -539,7 +539,7 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 		t.Fatalf("create unitB: %v", err)
 	}
 
-	authzStore := authzadapters.NewStore(pool)
+	authzStore := authzadapters.NewRepository(pool)
 
 	type personSpec struct {
 		label       string
@@ -719,7 +719,7 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 	}
 }
 
-func insertRoleAssignment(ctx context.Context, pool *pgxpool.Pool, store *authzadapters.Store, personID, roleID, unitID string) (string, error) {
+func insertRoleAssignment(ctx context.Context, pool *pgxpool.Pool, store *authzadapters.Repository, personID, roleID, unitID string) (string, error) {
 	// InsertRoleAssignment now returns the row's id directly (M11.2 — the audit log needs a real
 	// target_id, including on the idempotent-conflict path), so no separate lookup query is needed.
 	// Always scope="unit" here (M12.2 added scope/graphID params) — this matrix's own seed points are

@@ -58,7 +58,7 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 
 	dir := directoryapplication.NewService(pool)
 	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
-	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	// directory/religion/membership/refdata are nil: none of the six methods under test touch them
 	// (they're core.application.Service's read-only surfaces, wired by other tests).
@@ -458,7 +458,7 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	coreApp := coreapplication.NewService(nil, nil, nil, nil, nil, authzSvc, auditLogSvc, pool, "")
 
@@ -668,7 +668,7 @@ func TestMergePersonsIntegration(t *testing.T) {
 
 	dir := directoryapplication.NewService(pool)
 	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
-	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")
 

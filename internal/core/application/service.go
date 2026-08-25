@@ -562,7 +562,7 @@ func (s *Service) PreviewMergePersons(ctx context.Context, survivorID, duplicate
 		return MergePreview{}, err
 	}
 
-	authzStore := authzadapters.NewStore(s.pool)
+	authzStore := authzadapters.NewRepository(s.pool)
 	roleAssignmentsToMove, roleAssignmentsToRevoke, err := authzStore.CountRepointableRoleAssignments(ctx, duplicateID, survivorID)
 	if err != nil {
 		return MergePreview{}, err
@@ -629,7 +629,7 @@ func (s *Service) MergePersons(ctx context.Context, survivorID, duplicateID stri
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	authzStore := authzadapters.NewStore(tx)
+	authzStore := authzadapters.NewRepository(tx)
 	roleAssignmentsMoved, roleAssignmentsRevoked, err := authzStore.RepointRoleAssignments(ctx, duplicateID, survivorID, subject.PersonID)
 	if err != nil {
 		return MergeResult{}, err
