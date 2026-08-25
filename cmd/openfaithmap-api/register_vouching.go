@@ -23,7 +23,7 @@ import (
 // fan-out is wired through moderationVouchReporter (deps.go), an in-process call into the
 // moderationAppSvc registerModeration already constructed.
 func registerVouching(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
-	vouchingStore := vouchingadapters.NewStore(deps.Pool)
+	vouchingStore := vouchingadapters.NewRepository(deps.Pool)
 	vouchingAppSvc := vouchingapplication.NewService(vouchingStore, &moderationVouchReporter{moderation: deps.ModerationAppSvc}, deps.AuthzSvc, vouchingapplication.Config{
 		RootUnitID: deps.CoreRootUnitID,
 	})

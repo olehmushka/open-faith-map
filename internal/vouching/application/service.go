@@ -49,13 +49,13 @@ type ModerationReporter interface {
 }
 
 type Service struct {
-	store      *adapters.Store
+	store      *adapters.Repository
 	moderation ModerationReporter
 	authzSvc   *authz.Service
 	cfg        Config
 }
 
-func NewService(store *adapters.Store, moderation ModerationReporter, authzSvc *authz.Service, cfg Config) *Service {
+func NewService(store *adapters.Repository, moderation ModerationReporter, authzSvc *authz.Service, cfg Config) *Service {
 	return &Service{store: store, moderation: moderation, authzSvc: authzSvc, cfg: cfg}
 }
 
