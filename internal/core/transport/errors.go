@@ -49,6 +49,8 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewSubtreeGrantRequiresGraph()
 	case errors.Is(err, application.ErrUnitGrantMustNotSpecifyGraph):
 		return gencore.NewUnitGrantMustNotSpecifyGraph()
+	case errors.Is(err, application.ErrExpiryInPast):
+		return gencore.NewExpiryInPast()
 	case errors.Is(err, directorydomain.ErrUnitHasNoCurrentParent):
 		return gencore.NewUnitHasNoCurrentParent(c.UnitID)
 	case errors.Is(err, directorydomain.ErrUnitMoveConflict):

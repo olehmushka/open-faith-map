@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/authz/adapters"
@@ -21,12 +22,14 @@ type GrantStore interface {
 	ActiveGrantsForSubject(ctx context.Context, personID string) ([]domain.ActiveGrant, error)
 	// InsertRoleAssignment's scope is "unit" or "subtree" (domain.Scope); graphID is required (and
 	// only meaningful) when scope is "subtree" (M12.2, resolving U14 — see GrantUnitRole's own doc).
-	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string) (string, error)
+	// expiresAt is nil for a non-expiring grant (M12.3) — the PDP already enforces it, this call is
+	// what finally lets a caller set it.
+	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string, expiresAt *time.Time) (string, error)
 	// UpsertRoleAssignment is BulkGrantUnitRole's (M11.7) per-row statement, called in a loop inside
 	// Service.inTx — a real upsert, not InsertRoleAssignment's catch-then-select, since a caught
 	// 23505 inside an explicit multi-statement tx would abort the whole transaction. See the
 	// adapter's own doc comment.
-	UpsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string) (string, error)
+	UpsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string, expiresAt *time.Time) (string, error)
 
 	// The M10.7 super-admin surface: the role catalog, per-unit assignment listing/revocation, and
 	// the instance-admin plane's own list/grant/revoke — all new at M10.7 (InsertInstanceAdmin
@@ -39,6 +42,9 @@ type GrantStore interface {
 	// assignments across every unit, personID always the resolved subject's — never a request param.
 	ListRoleAssignmentsByPerson(ctx context.Context, personID string) ([]domain.RoleAssignment, error)
 	RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) (domain.RevokedRoleAssignment, error)
+	// ClearRoleAssignmentExpiry clears an active assignment's expiresAt, leaving the grant itself
+	// untouched — M12.3.
+	ClearRoleAssignmentExpiry(ctx context.Context, assignmentID string) (domain.RevokedRoleAssignment, error)
 	ListInstanceAdmins(ctx context.Context) ([]domain.InstanceAdminGrant, error)
 	InsertInstanceAdmin(ctx context.Context, personID, grantedBy string) (string, error)
 	RevokeInstanceAdmin(ctx context.Context, personID, revokedBy string) (domain.RevokedInstanceAdminGrant, error)
@@ -126,17 +132,18 @@ func (s *Service) enforce(ctx context.Context, subjectPersonID string, action do
 // through any surface. No epoch bump, no cache to invalidate (D-InProcessAuthz's amendment: grants
 // are read fresh per request), so a grant is visible to the very next Require call with no extra
 // step. Returns the assignment's id (M11.2: super-admin callers use it as the audit log's target_id).
-func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string, scope domain.Scope, graphID, grantedByPersonID string) (string, error) {
-	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, string(scope), graphID, grantedByPersonID)
+// expiresAt is nil for a non-expiring grant (M12.3).
+func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string, scope domain.Scope, graphID, grantedByPersonID string, expiresAt *time.Time) (string, error) {
+	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, string(scope), graphID, grantedByPersonID, expiresAt)
 }
 
 // BulkGrantUnitRole grants roleID on unitID to every personID in one batch, atomically, at scope
-// (M11.7 + M12.2's scope param). Returns the resulting assignment ids in the same order as
-// personIDs, so callers can pair each id back to the person it belongs to (e.g. for per-row audit
-// logging) with no extra lookup. No dedup of personIDs: the store's upsert already absorbs a
-// duplicate id harmlessly, and a same-order, same-length 1:1 pairing with the input is simpler to
-// reason about than reordering logic.
-func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID string, scope domain.Scope, graphID, grantedByPersonID string) ([]string, error) {
+// (M11.7 + M12.2's scope param), all with the same expiresAt (M12.3, nil for non-expiring). Returns
+// the resulting assignment ids in the same order as personIDs, so callers can pair each id back to
+// the person it belongs to (e.g. for per-row audit logging) with no extra lookup. No dedup of
+// personIDs: the store's upsert already absorbs a duplicate id harmlessly, and a same-order,
+// same-length 1:1 pairing with the input is simpler to reason about than reordering logic.
+func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID string, scope domain.Scope, graphID, grantedByPersonID string, expiresAt *time.Time) ([]string, error) {
 	if len(personIDs) == 0 {
 		return nil, domain.ErrEmptyPersonIDs
 	}
@@ -144,7 +151,7 @@ func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, rol
 	err := s.inTx(ctx, func(store GrantStore) error {
 		ids = make([]string, 0, len(personIDs))
 		for _, personID := range personIDs {
-			id, err := store.UpsertRoleAssignment(ctx, personID, roleID, unitID, string(scope), graphID, grantedByPersonID)
+			id, err := store.UpsertRoleAssignment(ctx, personID, roleID, unitID, string(scope), graphID, grantedByPersonID, expiresAt)
 			if err != nil {
 				return err
 			}
@@ -214,6 +221,13 @@ func (s *Service) ListRoleAssignmentsByPerson(ctx context.Context, personID stri
 // identity (M11.2: the audit log's "before" snapshot).
 func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedByPersonID string) (domain.RevokedRoleAssignment, error) {
 	return s.store.RevokeRoleAssignment(ctx, assignmentID, revokedByPersonID)
+}
+
+// ClearRoleAssignmentExpiry clears assignmentID's expiresAt, leaving the grant itself untouched —
+// M12.3. Returns the assignment's identity (mirroring RevokeRoleAssignment's own "before" snapshot
+// shape) so the audit-log helper needs no second read.
+func (s *Service) ClearRoleAssignmentExpiry(ctx context.Context, assignmentID string) (domain.RevokedRoleAssignment, error) {
+	return s.store.ClearRoleAssignmentExpiry(ctx, assignmentID)
 }
 
 // ListInstanceAdmins returns every active instance-admin grant — M10.7's super-admin people screen.

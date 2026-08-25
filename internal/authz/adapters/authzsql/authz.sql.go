@@ -65,6 +65,37 @@ func (q *Queries) ActiveGrantsForSubject(ctx context.Context, subjectPersonID st
 	return items, nil
 }
 
+const clearRoleAssignmentExpiry = `-- name: ClearRoleAssignmentExpiry :one
+UPDATE openfaithmap.authz_role_assignments
+SET expires_at = NULL, updated_at = now()
+WHERE id = $1 AND revoked_at IS NULL
+RETURNING id, subject_person_id, role_id, target_unit_id, scope
+`
+
+type ClearRoleAssignmentExpiryRow struct {
+	ID              string
+	SubjectPersonID string
+	RoleID          string
+	TargetUnitID    string
+	Scope           string
+}
+
+// M12.3 — clears an active assignment's expires_at, leaving the grant itself untouched. RETURNING
+// shape matches RevokeRoleAssignment's own (id/subject/role/unit/scope) — identity for the audit
+// log, not the (now-cleared) expiry value itself.
+func (q *Queries) ClearRoleAssignmentExpiry(ctx context.Context, id string) (ClearRoleAssignmentExpiryRow, error) {
+	row := q.db.QueryRow(ctx, clearRoleAssignmentExpiry, id)
+	var i ClearRoleAssignmentExpiryRow
+	err := row.Scan(
+		&i.ID,
+		&i.SubjectPersonID,
+		&i.RoleID,
+		&i.TargetUnitID,
+		&i.Scope,
+	)
+	return i, err
+}
+
 const countRepointableRoleAssignments = `-- name: CountRepointableRoleAssignments :one
 SELECT
 	count(*) FILTER (WHERE NOT EXISTS (
@@ -185,8 +216,8 @@ func (q *Queries) InsertInstanceAdmin(ctx context.Context, arg InsertInstanceAdm
 }
 
 const insertRoleAssignment = `-- name: InsertRoleAssignment :one
-INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING id
 `
 
@@ -197,6 +228,7 @@ type InsertRoleAssignmentParams struct {
 	Scope           string
 	GraphID         pgtype.Text
 	GrantedBy       pgtype.Text
+	ExpiresAt       pgtype.Timestamptz
 }
 
 func (q *Queries) InsertRoleAssignment(ctx context.Context, arg InsertRoleAssignmentParams) (string, error) {
@@ -207,6 +239,7 @@ func (q *Queries) InsertRoleAssignment(ctx context.Context, arg InsertRoleAssign
 		arg.Scope,
 		arg.GraphID,
 		arg.GrantedBy,
+		arg.ExpiresAt,
 	)
 	var id string
 	err := row.Scan(&id)
@@ -268,7 +301,7 @@ func (q *Queries) ListInstanceAdmins(ctx context.Context) ([]ListInstanceAdminsR
 }
 
 const listRoleAssignmentsByPerson = `-- name: ListRoleAssignmentsByPerson :many
-SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code AS role_code, a.target_unit_id, a.scope, a.granted_at
+SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code AS role_code, a.target_unit_id, a.scope, a.granted_at, a.expires_at
 FROM openfaithmap.authz_role_assignments a
 JOIN openfaithmap.authz_roles r ON r.id = a.role_id
 JOIN openfaithmap.identity_persons p ON p.id = a.subject_person_id
@@ -285,6 +318,7 @@ type ListRoleAssignmentsByPersonRow struct {
 	TargetUnitID    string
 	Scope           string
 	GrantedAt       time.Time
+	ExpiresAt       pgtype.Timestamptz
 }
 
 func (q *Queries) ListRoleAssignmentsByPerson(ctx context.Context, subjectPersonID string) ([]ListRoleAssignmentsByPersonRow, error) {
@@ -305,6 +339,7 @@ func (q *Queries) ListRoleAssignmentsByPerson(ctx context.Context, subjectPerson
 			&i.TargetUnitID,
 			&i.Scope,
 			&i.GrantedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -317,7 +352,7 @@ func (q *Queries) ListRoleAssignmentsByPerson(ctx context.Context, subjectPerson
 }
 
 const listRoleAssignmentsByUnit = `-- name: ListRoleAssignmentsByUnit :many
-SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code AS role_code, a.target_unit_id, a.scope, a.granted_at
+SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code AS role_code, a.target_unit_id, a.scope, a.granted_at, a.expires_at
 FROM openfaithmap.authz_role_assignments a
 JOIN openfaithmap.authz_roles r ON r.id = a.role_id
 JOIN openfaithmap.identity_persons p ON p.id = a.subject_person_id
@@ -334,6 +369,7 @@ type ListRoleAssignmentsByUnitRow struct {
 	TargetUnitID    string
 	Scope           string
 	GrantedAt       time.Time
+	ExpiresAt       pgtype.Timestamptz
 }
 
 func (q *Queries) ListRoleAssignmentsByUnit(ctx context.Context, targetUnitID string) ([]ListRoleAssignmentsByUnitRow, error) {
@@ -354,6 +390,7 @@ func (q *Queries) ListRoleAssignmentsByUnit(ctx context.Context, targetUnitID st
 			&i.TargetUnitID,
 			&i.Scope,
 			&i.GrantedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -574,10 +611,10 @@ func (q *Queries) RevokeRoleAssignment(ctx context.Context, arg RevokeRoleAssign
 }
 
 const upsertRoleAssignment = `-- name: UpsertRoleAssignment :one
-INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (subject_person_id, role_id, target_unit_id, scope, graph_id) WHERE revoked_at IS NULL
-DO UPDATE SET updated_at = now()
+DO UPDATE SET updated_at = now(), expires_at = EXCLUDED.expires_at
 RETURNING id
 `
 
@@ -588,6 +625,7 @@ type UpsertRoleAssignmentParams struct {
 	Scope           string
 	GraphID         pgtype.Text
 	GrantedBy       pgtype.Text
+	ExpiresAt       pgtype.Timestamptz
 }
 
 // BulkInsertRoleAssignments' per-row statement, run in a loop inside the caller's own tx (see
@@ -602,6 +640,7 @@ func (q *Queries) UpsertRoleAssignment(ctx context.Context, arg UpsertRoleAssign
 		arg.Scope,
 		arg.GraphID,
 		arg.GrantedBy,
+		arg.ExpiresAt,
 	)
 	var id string
 	err := row.Scan(&id)

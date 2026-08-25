@@ -66,7 +66,7 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 
 	var actorID, targetID, targetAccountID string
 	var unit directorydomain.Unit
-	var assignmentID, instanceAdminGrantID, invitedPersonID string
+	var assignmentID, expiryAssignmentID, instanceAdminGrantID, invitedPersonID string
 	t.Cleanup(func() {
 		bg := context.Background()
 		// identity_audit_log is append-only (reject_mutation trigger) — disable it just for this
@@ -83,6 +83,11 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 		if assignmentID != "" {
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_role_assignments WHERE id = $1`, assignmentID); err != nil {
 				t.Errorf("cleanup: delete assignment: %v", err)
+			}
+		}
+		if expiryAssignmentID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_role_assignments WHERE id = $1`, expiryAssignmentID); err != nil {
+				t.Errorf("cleanup: delete expiry assignment: %v", err)
 			}
 		}
 		if instanceAdminGrantID != "" {
@@ -179,7 +184,7 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	}
 
 	// --- GrantUnitRole.
-	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID, "unit", ""); err != nil {
+	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID, "unit", "", nil); err != nil {
 		t.Fatalf("GrantUnitRole: %v", err)
 	}
 	assignments, err := authzSvc.ListRoleAssignmentsByUnit(ctx, unit.ID)
@@ -208,6 +213,44 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	}
 	assertJSONField(t, row.before, "personId", targetID)
 	assertJSONField(t, row.before, "roleId", roleID)
+
+	// --- M12.3: GrantUnitRole with a past expiresAt is rejected before any store call (no audit row).
+	pastExpiry := time.Now().Add(-time.Hour)
+	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID, "unit", "", &pastExpiry); !errorsIs(err, coreapplication.ErrExpiryInPast) {
+		t.Errorf("GrantUnitRole with a past expiresAt = %v, want ErrExpiryInPast", err)
+	}
+
+	// --- GrantUnitRole with a future expiresAt succeeds, and the audit row carries it.
+	futureExpiry := time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
+	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID, "unit", "", &futureExpiry); err != nil {
+		t.Fatalf("GrantUnitRole (with expiry): %v", err)
+	}
+	expiringAssignments, err := authzSvc.ListRoleAssignmentsByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit (with expiry): %v", err)
+	}
+	if len(expiringAssignments) != 1 || expiringAssignments[0].ExpiresAt == nil || !expiringAssignments[0].ExpiresAt.Equal(futureExpiry) {
+		t.Fatalf("ListRoleAssignmentsByUnit = %+v, want one assignment with ExpiresAt=%s", expiringAssignments, futureExpiry)
+	}
+	expiryAssignmentID = expiringAssignments[0].ID
+	row = mustAuditRow(ctx, t, pool, "GRANT_UNIT_ROLE", expiryAssignmentID)
+	assertJSONField(t, row.after, "personId", targetID)
+
+	// --- ClearRoleAssignmentExpiry clears it, and audit-logs the clear.
+	if err := coreApp.ClearRoleAssignmentExpiry(actorCtx, expiryAssignmentID); err != nil {
+		t.Fatalf("ClearRoleAssignmentExpiry: %v", err)
+	}
+	row = mustAuditRow(ctx, t, pool, "CLEAR_ROLE_ASSIGNMENT_EXPIRY", expiryAssignmentID)
+	if row.actorPersonID != actorID || row.targetKind != "ROLE_ASSIGNMENT" || row.after != nil {
+		t.Errorf("CLEAR_ROLE_ASSIGNMENT_EXPIRY audit row = %+v, want actor=%s target_kind=ROLE_ASSIGNMENT after=nil", row, actorID)
+	}
+	afterClear, err := authzSvc.ListRoleAssignmentsByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit (after clear): %v", err)
+	}
+	if len(afterClear) != 1 || afterClear[0].ExpiresAt != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit after clear = %+v, want ExpiresAt nil", afterClear)
+	}
 
 	// --- GrantInstanceAdmin.
 	grant, err := coreApp.GrantInstanceAdmin(actorCtx, targetID)
@@ -290,8 +333,8 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAuditLog: %v", err)
 	}
-	if len(entries) != 8 {
-		t.Errorf("ListAuditLog(actor=%s) returned %d entries, want 8 (one per mutation above)", actorID, len(entries))
+	if len(entries) != 10 {
+		t.Errorf("ListAuditLog(actor=%s) returned %d entries, want 10 (one per mutation above)", actorID, len(entries))
 	}
 }
 
@@ -554,7 +597,7 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 
 	// --- requireSubject gate: no subject in context must fail loud, nothing written.
 	p0 := insertPerson("M11.7 NoSubject")
-	if err := coreApp.BulkGrantUnitRole(ctx, []string{p0}, roleID, unit.ID, "unit", ""); !errorsIs(err, authzdomain.ErrPermissionDenied) {
+	if err := coreApp.BulkGrantUnitRole(ctx, []string{p0}, roleID, unit.ID, "unit", "", nil); !errorsIs(err, authzdomain.ErrPermissionDenied) {
 		t.Errorf("BulkGrantUnitRole with no subject = %v, want ErrPermissionDenied", err)
 	}
 	if n := countAssignments(); n != 0 {
@@ -563,7 +606,7 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 
 	// --- Happy path: 3 persons -> 3 new active assignments, 3 audit rows.
 	p1, p2, p3 := insertPerson("M11.7 Happy One"), insertPerson("M11.7 Happy Two"), insertPerson("M11.7 Happy Three")
-	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p1, p2, p3}, roleID, unit.ID, "unit", ""); err != nil {
+	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p1, p2, p3}, roleID, unit.ID, "unit", "", nil); err != nil {
 		t.Fatalf("BulkGrantUnitRole happy path: %v", err)
 	}
 	if n := countAssignments(); n != 3 {
@@ -593,7 +636,7 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 	p4, p5 := insertPerson("M11.7 Rollback Four"), insertPerson("M11.7 Rollback Five")
 	const nonexistentPersonID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	before := countAssignments()
-	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5, nonexistentPersonID}, roleID, unit.ID, "unit", ""); err == nil {
+	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5, nonexistentPersonID}, roleID, unit.ID, "unit", "", nil); err == nil {
 		t.Fatal("BulkGrantUnitRole with a nonexistent person id = nil error, want a real error (FK violation)")
 	}
 	if n := countAssignments(); n != before {
@@ -617,11 +660,11 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 	// --- In-batch idempotent-conflict proof: a pre-existing active grant inside a batch must not
 	// abort the transaction (the regression this milestone's ON CONFLICT DO UPDATE design exists to
 	// prevent — see internal/authz/adapters/store.go's BulkInsertRoleAssignments doc comment).
-	if err := coreApp.GrantUnitRole(actorCtx, p4, roleID, unit.ID, "unit", ""); err != nil {
+	if err := coreApp.GrantUnitRole(actorCtx, p4, roleID, unit.ID, "unit", "", nil); err != nil {
 		t.Fatalf("pre-grant for idempotent-conflict case: %v", err)
 	}
 	auditBefore := countAuditRows()
-	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5}, roleID, unit.ID, "unit", ""); err != nil {
+	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5}, roleID, unit.ID, "unit", "", nil); err != nil {
 		t.Fatalf("BulkGrantUnitRole with an in-batch pre-existing grant: %v", err)
 	}
 	for _, p := range []string{p4, p5} {
@@ -823,7 +866,7 @@ func TestMergePersonsIntegration(t *testing.T) {
 	// --- Happy path: duplicate has a role assignment, a plain membership, an instance-admin grant,
 	// and (Case A) an account+identity while the survivor has none of these. Everything should move.
 	sHappy, dHappy := insertPerson("M11.8 Happy Survivor"), insertPerson("M11.8 Happy Duplicate")
-	if _, err := authzSvc.GrantUnitRole(ctx, dHappy, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID); err != nil {
+	if _, err := authzSvc.GrantUnitRole(ctx, dHappy, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID, nil); err != nil {
 		t.Fatalf("pre-grant role for happy path: %v", err)
 	}
 	insertMembership(dHappy)
@@ -904,7 +947,7 @@ func TestMergePersonsIntegration(t *testing.T) {
 	// revoked/ended as redundant, not duplicated onto the survivor.
 	sColl, dColl := insertPerson("M11.8 Collision Survivor"), insertPerson("M11.8 Collision Duplicate")
 	for _, p := range []string{sColl, dColl} {
-		if _, err := authzSvc.GrantUnitRole(ctx, p, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID); err != nil {
+		if _, err := authzSvc.GrantUnitRole(ctx, p, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID, nil); err != nil {
 			t.Fatalf("pre-grant role for collision case (%s): %v", p, err)
 		}
 		insertMembership(p)

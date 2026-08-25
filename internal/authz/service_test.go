@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/olehmushka/open-faith-map/internal/authz/domain"
 )
@@ -24,11 +25,11 @@ func (f fakeStore) ActiveGrantsForSubject(_ context.Context, personID string) ([
 	return f.grants[personID], nil
 }
 
-func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _, _, _ string) (string, error) {
+func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _, _, _ string, _ *time.Time) (string, error) {
 	return "", nil
 }
 
-func (f fakeStore) UpsertRoleAssignment(_ context.Context, _, _, _, _, _, _ string) (string, error) {
+func (f fakeStore) UpsertRoleAssignment(_ context.Context, _, _, _, _, _, _ string, _ *time.Time) (string, error) {
 	return "", nil
 }
 
@@ -43,6 +44,10 @@ func (f fakeStore) ListRoleAssignmentsByPerson(context.Context, string) ([]domai
 }
 
 func (f fakeStore) RevokeRoleAssignment(context.Context, string, string) (domain.RevokedRoleAssignment, error) {
+	return domain.RevokedRoleAssignment{}, nil
+}
+
+func (f fakeStore) ClearRoleAssignmentExpiry(context.Context, string) (domain.RevokedRoleAssignment, error) {
 	return domain.RevokedRoleAssignment{}, nil
 }
 

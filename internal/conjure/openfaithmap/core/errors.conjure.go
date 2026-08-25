@@ -1208,6 +1208,154 @@ func (e *EmptyPersonIdsList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type expiryInPast struct{}
+
+func (o expiryInPast) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *expiryInPast) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewExpiryInPast returns new instance of ExpiryInPast error.
+func NewExpiryInPast() *ExpiryInPast {
+	return &ExpiryInPast{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), expiryInPast: expiryInPast{}}
+}
+
+// WrapWithExpiryInPast returns new instance of ExpiryInPast error wrapping an existing error.
+func WrapWithExpiryInPast(err error) *ExpiryInPast {
+	return &ExpiryInPast{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, expiryInPast: expiryInPast{}}
+}
+
+// ExpiryInPast is an error type.
+// M12.3 — grantUnitRole/bulkGrantUnitRole's request.expiresAt, when set, must be in the future.
+type ExpiryInPast struct {
+	errorInstanceID uuid.UUID
+	expiryInPast
+	cause error
+	stack werror.StackTrace
+}
+
+// IsExpiryInPast returns true if err is an instance of ExpiryInPast.
+func IsExpiryInPast(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*ExpiryInPast)
+	return ok
+}
+
+func (e *ExpiryInPast) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Core:ExpiryInPast (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *ExpiryInPast) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *ExpiryInPast) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *ExpiryInPast) Message() string {
+	return "INVALID_ARGUMENT Core:ExpiryInPast"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *ExpiryInPast) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *ExpiryInPast) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *ExpiryInPast) Name() string {
+	return "Core:ExpiryInPast"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *ExpiryInPast) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *ExpiryInPast) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *ExpiryInPast) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ExpiryInPast) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *ExpiryInPast) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ExpiryInPast) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e ExpiryInPast) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.expiryInPast)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Core:ExpiryInPast", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *ExpiryInPast) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters expiryInPast
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.expiryInPast = parameters
+	return nil
+}
+
 type forbidden struct{}
 
 func (o forbidden) MarshalYAML() (interface{}, error) {
@@ -4492,6 +4640,7 @@ func init() {
 	conjureerrors.RegisterErrorType("Core:ChildCreationExcluded", reflect.TypeOf(ChildCreationExcluded{}))
 	conjureerrors.RegisterErrorType("Core:EdgeCycle", reflect.TypeOf(EdgeCycle{}))
 	conjureerrors.RegisterErrorType("Core:EmptyPersonIdsList", reflect.TypeOf(EmptyPersonIdsList{}))
+	conjureerrors.RegisterErrorType("Core:ExpiryInPast", reflect.TypeOf(ExpiryInPast{}))
 	conjureerrors.RegisterErrorType("Core:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("Core:InstanceAdminGrantNotFound", reflect.TypeOf(InstanceAdminGrantNotFound{}))
 	conjureerrors.RegisterErrorType("Core:InvalidGrantScope", reflect.TypeOf(InvalidGrantScope{}))

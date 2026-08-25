@@ -215,30 +215,36 @@ types:
           targetUnitId: string
           scope: string
           grantedAt: datetime
+          expiresAt:
+            type: optional<datetime>
+            docs: M12.3 — set only when the grant was given an expiry; the PDP already enforces it, this just surfaces it.
       RoleAssignmentPage:
         fields:
           assignments: list<RoleAssignment>
       GrantUnitRoleRequest:
         docs: >
           M12.2 — scope must be "unit" or "subtree"; graphId is required when scope is "subtree"
-          (the graph a subtree grant cascades over) and must be omitted for "unit".
+          (the graph a subtree grant cascades over) and must be omitted for "unit". M12.3 —
+          expiresAt is optional and, when set, must be in the future.
         fields:
           personId: string
           roleId: string
           unitId: string
           scope: string
           graphId: optional<string>
+          expiresAt: optional<datetime>
       BulkGrantUnitRoleRequest:
         docs: >
           M11.7 — the batch variant of GrantUnitRoleRequest: the same role, unit, and scope, granted
           to every id in personIds at once, atomically. scope/graphId follow GrantUnitRoleRequest's
-          own rules (M12.2).
+          own rules (M12.2); expiresAt follows the same rule too (M12.3).
         fields:
           personIds: list<string>
           roleId: string
           unitId: string
           scope: string
           graphId: optional<string>
+          expiresAt: optional<datetime>
 
       MergePersonsRequest:
         docs: M11.8 — the path's personId is always the survivor; duplicatePersonId is merged into it.
@@ -505,6 +511,11 @@ types:
         safe-args: {}
       SubtreeGrantRequiresGraph:
         docs: M12.2 — a scope="subtree" grant must set request.graphId.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      ExpiryInPast:
+        docs: M12.3 — grantUnitRole/bulkGrantUnitRole's request.expiresAt, when set, must be in the future.
         namespace: Core
         code: INVALID_ARGUMENT
         safe-args: {}
@@ -911,6 +922,16 @@ services:
           request: BulkGrantUnitRoleRequest
       revokeRoleAssignment:
         http: DELETE /role-assignments/{assignmentId}
+        args:
+          assignmentId:
+            type: string
+            param-type: path
+      clearRoleAssignmentExpiry:
+        docs: >
+          M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched. A
+          deeper path segment under the same {assignmentId} node as revokeRoleAssignment's own
+          DELETE, not a new top-level resource — no wildcard-collision risk at this depth.
+        http: POST /role-assignments/{assignmentId}/clear-expiry
         args:
           assignmentId:
             type: string

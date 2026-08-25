@@ -1006,6 +1006,8 @@ type CoreSuperAdminServiceClient interface {
 	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
 	BulkGrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error
+	// M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched. A deeper path segment under the same {assignmentId} node as revokeRoleAssignment's own DELETE, not a new top-level resource — no wildcard-collision risk at this depth.
+	ClearRoleAssignmentExpiry(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context, authHeader bearertoken.Token) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
@@ -1134,6 +1136,18 @@ func (c *coreSuperAdminServiceClient) RevokeRoleAssignment(ctx context.Context, 
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "revokeRoleAssignment failed")
+	}
+	return nil
+}
+
+func (c *coreSuperAdminServiceClient) ClearRoleAssignmentExpiry(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ClearRoleAssignmentExpiry"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/role-assignments/%s/clear-expiry", url.PathEscape(fmt.Sprint(assignmentIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "clearRoleAssignmentExpiry failed")
 	}
 	return nil
 }
@@ -1397,6 +1411,8 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
 	BulkGrantUnitRole(ctx context.Context, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error
+	// M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched. A deeper path segment under the same {assignmentId} node as revokeRoleAssignment's own DELETE, not a new top-level resource — no wildcard-collision risk at this depth.
+	ClearRoleAssignmentExpiry(ctx context.Context, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, personIdArg string) error
@@ -1455,6 +1471,10 @@ func (c *coreSuperAdminServiceClientWithAuth) BulkGrantUnitRole(ctx context.Cont
 
 func (c *coreSuperAdminServiceClientWithAuth) RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error {
 	return c.client.RevokeRoleAssignment(ctx, c.authHeader, assignmentIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ClearRoleAssignmentExpiry(ctx context.Context, assignmentIdArg string) error {
+	return c.client.ClearRoleAssignmentExpiry(ctx, c.authHeader, assignmentIdArg)
 }
 
 func (c *coreSuperAdminServiceClientWithAuth) ListInstanceAdmins(ctx context.Context) (InstanceAdminPage, error) {
@@ -1568,6 +1588,14 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeRoleAssignment(ctx 
 		return err
 	}
 	return c.client.RevokeRoleAssignment(ctx, bearertoken.Token(token), assignmentIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ClearRoleAssignmentExpiry(ctx context.Context, assignmentIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.ClearRoleAssignmentExpiry(ctx, bearertoken.Token(token), assignmentIdArg)
 }
 
 func (c *coreSuperAdminServiceClientWithTokenProvider) ListInstanceAdmins(ctx context.Context) (InstanceAdminPage, error) {

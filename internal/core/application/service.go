@@ -418,6 +418,9 @@ const (
 	auditActionDeleteUnit   = "DELETE_UNIT"
 	// M12.2 — generic unit move/reparent.
 	auditActionMoveUnit = "MOVE_UNIT"
+	// M12.3 — role-assignment expiry clear (grant/bulk-grant reuse auditActionGrantUnitRole/
+	// auditActionBulkGrantUnitRole, now just carrying an expiresAt field in their audit payload).
+	auditActionClearRoleAssignmentExpiry = "CLEAR_ROLE_ASSIGNMENT_EXPIRY"
 
 	auditTargetRoleAssignment = "ROLE_ASSIGNMENT"
 	auditTargetInstanceAdmin  = "INSTANCE_ADMIN"
@@ -438,6 +441,9 @@ var (
 	// ErrUnitGrantMustNotSpecifyGraph: a scope="unit" grant carries no graph dimension — the same
 	// CHECK constraint that requires a subtree grant's graphId forbids a unit grant's.
 	ErrUnitGrantMustNotSpecifyGraph = errors.New("a unit-scoped grant must not specify a graphId")
+	// ErrExpiryInPast: GrantUnitRole/BulkGrantUnitRole's expiresAt, when set, must be in the future —
+	// a grant that expires before it takes effect is never meaningfully active (M12.3).
+	ErrExpiryInPast = errors.New("expiresAt must be in the future")
 )
 
 // parseGrantScope validates scope/graphID against authz_role_assignments_graph_scope's own shape
@@ -460,11 +466,24 @@ func parseGrantScope(scope, graphID string) (authzdomain.Scope, error) {
 	}
 }
 
+// parseGrantExpiry validates an optional grant expiry — nil is a non-expiring grant, anything in the
+// past is rejected before it ever reaches the store (M12.3).
+func parseGrantExpiry(expiresAt *time.Time) (*time.Time, error) {
+	if expiresAt == nil {
+		return nil, nil
+	}
+	if !expiresAt.After(time.Now()) {
+		return nil, ErrExpiryInPast
+	}
+	return expiresAt, nil
+}
+
 // GrantUnitRole grants personID roleID on unitID at scope ("unit" or "subtree", graphID required and
 // only meaningful for "subtree") — M12.2 adds real scope/graphId provisioning (resolving U14): before
 // this every grant was hardcoded to scope="unit", so D-UnitMoveDualScope's dual-parent
-// unit.edges.manage check could never pass for a non-root move.
-func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, scope, graphID string) error {
+// unit.edges.manage check could never pass for a non-root move. expiresAt is nil for a non-expiring
+// grant, otherwise must be in the future (M12.3).
+func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, scope, graphID string, expiresAt *time.Time) error {
 	subject, err := s.requireSubject(ctx)
 	if err != nil {
 		return err
@@ -473,21 +492,25 @@ func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, s
 	if err != nil {
 		return err
 	}
-	assignmentID, err := s.authz.GrantUnitRole(ctx, personID, roleID, unitID, authzScope, graphID, subject.PersonID)
+	expiresAt, err = parseGrantExpiry(expiresAt)
+	if err != nil {
+		return err
+	}
+	assignmentID, err := s.authz.GrantUnitRole(ctx, personID, roleID, unitID, authzScope, graphID, subject.PersonID, expiresAt)
 	if err != nil {
 		return err
 	}
 	return s.auditLog.Record(ctx, auditActionGrantUnitRole, auditTargetRoleAssignment, assignmentID,
-		nil, map[string]any{"personId": personID, "roleId": roleID, "unitId": unitID, "scope": scope, "graphId": graphID})
+		nil, map[string]any{"personId": personID, "roleId": roleID, "unitId": unitID, "scope": scope, "graphId": graphID, "expiresAt": expiresAt})
 }
 
 // BulkGrantUnitRole grants roleID on unitID to every id in personIDs, atomically, at scope — M11.7 +
-// M12.2's scope param. The store call is the entire transaction: it either returns every resulting
-// assignment id (all committed) or a non-nil error with nothing committed, so the audit loop below
-// only ever runs over already-durable rows. Best-effort across the loop (not abort-on-first-failure)
-// so one transient Record failure doesn't blank out audit rows for the rest of an already-successful
-// batch.
-func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID, scope, graphID string) error {
+// M12.2's scope param, all with the same expiresAt (M12.3, nil for non-expiring). The store call is
+// the entire transaction: it either returns every resulting assignment id (all committed) or a
+// non-nil error with nothing committed, so the audit loop below only ever runs over already-durable
+// rows. Best-effort across the loop (not abort-on-first-failure) so one transient Record failure
+// doesn't blank out audit rows for the rest of an already-successful batch.
+func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, roleID, unitID, scope, graphID string, expiresAt *time.Time) error {
 	subject, err := s.requireSubject(ctx)
 	if err != nil {
 		return err
@@ -496,14 +519,18 @@ func (s *Service) BulkGrantUnitRole(ctx context.Context, personIDs []string, rol
 	if err != nil {
 		return err
 	}
-	assignmentIDs, err := s.authz.BulkGrantUnitRole(ctx, personIDs, roleID, unitID, authzScope, graphID, subject.PersonID)
+	expiresAt, err = parseGrantExpiry(expiresAt)
+	if err != nil {
+		return err
+	}
+	assignmentIDs, err := s.authz.BulkGrantUnitRole(ctx, personIDs, roleID, unitID, authzScope, graphID, subject.PersonID, expiresAt)
 	if err != nil {
 		return err
 	}
 	var errs []error
 	for i, assignmentID := range assignmentIDs {
 		if err := s.auditLog.Record(ctx, auditActionBulkGrantUnitRole, auditTargetRoleAssignment, assignmentID,
-			nil, map[string]any{"personId": personIDs[i], "roleId": roleID, "unitId": unitID, "scope": scope, "graphId": graphID}); err != nil {
+			nil, map[string]any{"personId": personIDs[i], "roleId": roleID, "unitId": unitID, "scope": scope, "graphId": graphID, "expiresAt": expiresAt}); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -693,6 +720,20 @@ func (s *Service) RevokeRoleAssignment(ctx context.Context, assignmentID string)
 		return err
 	}
 	return s.auditLog.Record(ctx, auditActionRevokeRoleAssignment, auditTargetRoleAssignment, assignmentID,
+		map[string]any{"personId": before.PersonID, "roleId": before.RoleID, "unitId": before.TargetUnitID, "scope": string(before.Scope)}, nil)
+}
+
+// ClearRoleAssignmentExpiry clears assignmentID's expiresAt, leaving the grant itself active and
+// untouched — M12.3.
+func (s *Service) ClearRoleAssignmentExpiry(ctx context.Context, assignmentID string) error {
+	if _, err := s.requireSubject(ctx); err != nil {
+		return err
+	}
+	before, err := s.authz.ClearRoleAssignmentExpiry(ctx, assignmentID)
+	if err != nil {
+		return err
+	}
+	return s.auditLog.Record(ctx, auditActionClearRoleAssignmentExpiry, auditTargetRoleAssignment, assignmentID,
 		map[string]any{"personId": before.PersonID, "roleId": before.RoleID, "unitId": before.TargetUnitID, "scope": string(before.Scope)}, nil)
 }
 

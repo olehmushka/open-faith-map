@@ -386,6 +386,16 @@ func optionalDateTime(t *time.Time) *datetime.DateTime {
 	return &dt
 }
 
+// optionalTime is optionalDateTime's inverse — an optional<datetime> request field (M12.3's
+// GrantUnitRoleRequest.ExpiresAt) to the *time.Time application-layer calls take, nil-safe.
+func optionalTime(dt *datetime.DateTime) *time.Time {
+	if dt == nil {
+		return nil
+	}
+	t := time.Time(*dt)
+	return &t
+}
+
 // toAPISession converts one identity_sessions row (M11.3). currentSessionID is the caller's own
 // authz.Subject.SessionID — compared against sess.ID to compute IsCurrent server-side, rather than
 // asking the client to know which of its own sessions it's presently using.

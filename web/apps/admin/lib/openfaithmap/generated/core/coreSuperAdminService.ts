@@ -35,6 +35,11 @@ export interface ICoreSuperAdminService {
      */
     bulkGrantUnitRole(request: IBulkGrantUnitRoleRequest): Promise<void>;
     revokeRoleAssignment(assignmentId: string): Promise<void>;
+    /**
+     * M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched. A deeper path segment under the same {assignmentId} node as revokeRoleAssignment's own DELETE, not a new top-level resource — no wildcard-collision risk at this depth.
+     *
+     */
+    clearRoleAssignmentExpiry(assignmentId: string): Promise<void>;
     listInstanceAdmins(): Promise<IInstanceAdminPage>;
     grantInstanceAdmin(request: IGrantInstanceAdminRequest): Promise<IInstanceAdminGrant>;
     revokeInstanceAdmin(personId: string): Promise<void>;
@@ -174,6 +179,27 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
             "revokeRoleAssignment",
             "DELETE",
             "/core/v1/super-admin/role-assignments/{assignmentId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                assignmentId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched. A deeper path segment under the same {assignmentId} node as revokeRoleAssignment's own DELETE, not a new top-level resource — no wildcard-collision risk at this depth.
+     *
+     */
+    public clearRoleAssignmentExpiry(assignmentId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "CoreSuperAdminService",
+            "clearRoleAssignmentExpiry",
+            "POST",
+            "/core/v1/super-admin/role-assignments/{assignmentId}/clear-expiry",
             __undefined,
             __undefined,
             __undefined,

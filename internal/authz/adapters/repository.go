@@ -12,6 +12,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -93,6 +94,7 @@ func (r *Repository) ListRoleAssignmentsByUnit(ctx context.Context, unitID strin
 		out = append(out, domain.RoleAssignment{
 			ID: row.ID, PersonID: row.SubjectPersonID, PersonName: row.DisplayName, RoleID: row.RoleID,
 			RoleCode: row.RoleCode, TargetUnitID: row.TargetUnitID, Scope: domain.Scope(row.Scope), GrantedAt: row.GrantedAt,
+			ExpiresAt: db.NullableTime(row.ExpiresAt),
 		})
 	}
 	return out, nil
@@ -111,6 +113,7 @@ func (r *Repository) ListRoleAssignmentsByPerson(ctx context.Context, personID s
 		out = append(out, domain.RoleAssignment{
 			ID: row.ID, PersonID: row.SubjectPersonID, PersonName: row.DisplayName, RoleID: row.RoleID,
 			RoleCode: row.RoleCode, TargetUnitID: row.TargetUnitID, Scope: domain.Scope(row.Scope), GrantedAt: row.GrantedAt,
+			ExpiresAt: db.NullableTime(row.ExpiresAt),
 		})
 	}
 	return out, nil
@@ -120,6 +123,20 @@ func (r *Repository) ListRoleAssignmentsByPerson(ctx context.Context, personID s
 // currently active. Returns domain.ErrAssignmentNotFound if it was already revoked or never existed.
 func (r *Repository) RevokeRoleAssignment(ctx context.Context, assignmentID, revokedBy string) (domain.RevokedRoleAssignment, error) {
 	row, err := r.q.RevokeRoleAssignment(ctx, authzsql.RevokeRoleAssignmentParams{ID: assignmentID, RevokedBy: nullableText(revokedBy)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.RevokedRoleAssignment{}, domain.ErrAssignmentNotFound
+	}
+	if err != nil {
+		return domain.RevokedRoleAssignment{}, err
+	}
+	return domain.RevokedRoleAssignment{ID: row.ID, PersonID: row.SubjectPersonID, RoleID: row.RoleID, TargetUnitID: row.TargetUnitID, Scope: domain.Scope(row.Scope)}, nil
+}
+
+// ClearRoleAssignmentExpiry clears assignmentID's expires_at, leaving the grant itself untouched —
+// M12.3. Returns domain.ErrAssignmentNotFound if it was already revoked or never existed, mirroring
+// RevokeRoleAssignment's own not-found handling.
+func (r *Repository) ClearRoleAssignmentExpiry(ctx context.Context, assignmentID string) (domain.RevokedRoleAssignment, error) {
+	row, err := r.q.ClearRoleAssignmentExpiry(ctx, assignmentID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.RevokedRoleAssignment{}, domain.ErrAssignmentNotFound
 	}
@@ -200,11 +217,11 @@ func (r *Repository) ActiveGrantsForSubject(ctx context.Context, personID string
 // subject/role/unit/scope/graph WHERE revoked_at IS NULL) is treated as success, not an error.
 // Returns the assignment's id either way (the audit log needs a real target_id even on the
 // idempotent-conflict path, so that path looks the existing row's id up rather than returning empty).
-func (r *Repository) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string) (string, error) {
+func (r *Repository) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string, expiresAt *time.Time) (string, error) {
 	graphIDArg := nullableText(graphID)
 	id, err := r.q.InsertRoleAssignment(ctx, authzsql.InsertRoleAssignmentParams{
 		SubjectPersonID: personID, RoleID: roleID, TargetUnitID: targetUnitID, Scope: scope,
-		GraphID: graphIDArg, GrantedBy: nullableText(grantedBy),
+		GraphID: graphIDArg, GrantedBy: nullableText(grantedBy), ExpiresAt: db.NullableTimeArg(expiresAt),
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -222,10 +239,10 @@ func (r *Repository) InsertRoleAssignment(ctx context.Context, personID, roleID,
 // authz/application/service.go's inTx-wrapped loop) — a real upsert rather than
 // InsertRoleAssignment's catch-then-select, since a caught 23505 inside an explicit multi-statement
 // tx would abort the whole transaction.
-func (r *Repository) UpsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string) (string, error) {
+func (r *Repository) UpsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string, expiresAt *time.Time) (string, error) {
 	return r.q.UpsertRoleAssignment(ctx, authzsql.UpsertRoleAssignmentParams{
 		SubjectPersonID: personID, RoleID: roleID, TargetUnitID: targetUnitID, Scope: scope,
-		GraphID: nullableText(graphID), GrantedBy: nullableText(grantedBy),
+		GraphID: nullableText(graphID), GrantedBy: nullableText(grantedBy), ExpiresAt: db.NullableTimeArg(expiresAt),
 	})
 }
 

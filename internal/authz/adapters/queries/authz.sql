@@ -24,7 +24,7 @@ FROM openfaithmap.authz_roles
 WHERE code = sqlc.arg('code') AND deleted_at IS NULL;
 
 -- name: ListRoleAssignmentsByUnit :many
-SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code AS role_code, a.target_unit_id, a.scope, a.granted_at
+SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code AS role_code, a.target_unit_id, a.scope, a.granted_at, a.expires_at
 FROM openfaithmap.authz_role_assignments a
 JOIN openfaithmap.authz_roles r ON r.id = a.role_id
 JOIN openfaithmap.identity_persons p ON p.id = a.subject_person_id
@@ -32,7 +32,7 @@ WHERE a.target_unit_id = sqlc.arg('target_unit_id') AND a.revoked_at IS NULL
 ORDER BY a.granted_at DESC;
 
 -- name: ListRoleAssignmentsByPerson :many
-SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code AS role_code, a.target_unit_id, a.scope, a.granted_at
+SELECT a.id, a.subject_person_id, p.display_name, a.role_id, r.code AS role_code, a.target_unit_id, a.scope, a.granted_at, a.expires_at
 FROM openfaithmap.authz_role_assignments a
 JOIN openfaithmap.authz_roles r ON r.id = a.role_id
 JOIN openfaithmap.identity_persons p ON p.id = a.subject_person_id
@@ -42,6 +42,15 @@ ORDER BY a.granted_at DESC;
 -- name: RevokeRoleAssignment :one
 UPDATE openfaithmap.authz_role_assignments
 SET revoked_at = now(), revoked_by = sqlc.narg('revoked_by')
+WHERE id = sqlc.arg('id') AND revoked_at IS NULL
+RETURNING id, subject_person_id, role_id, target_unit_id, scope;
+
+-- name: ClearRoleAssignmentExpiry :one
+-- M12.3 — clears an active assignment's expires_at, leaving the grant itself untouched. RETURNING
+-- shape matches RevokeRoleAssignment's own (id/subject/role/unit/scope) — identity for the audit
+-- log, not the (now-cleared) expiry value itself.
+UPDATE openfaithmap.authz_role_assignments
+SET expires_at = NULL, updated_at = now()
 WHERE id = sqlc.arg('id') AND revoked_at IS NULL
 RETURNING id, subject_person_id, role_id, target_unit_id, scope;
 
@@ -71,8 +80,8 @@ WHERE a.subject_person_id = sqlc.arg('subject_person_id')
 ORDER BY a.id;
 
 -- name: InsertRoleAssignment :one
-INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by)
-VALUES (sqlc.arg('subject_person_id'), sqlc.arg('role_id'), sqlc.arg('target_unit_id'), sqlc.arg('scope'), sqlc.narg('graph_id'), sqlc.narg('granted_by'))
+INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by, expires_at)
+VALUES (sqlc.arg('subject_person_id'), sqlc.arg('role_id'), sqlc.arg('target_unit_id'), sqlc.arg('scope'), sqlc.narg('graph_id'), sqlc.narg('granted_by'), sqlc.narg('expires_at'))
 RETURNING id;
 
 -- name: GetActiveRoleAssignmentID :one
@@ -88,10 +97,10 @@ WHERE subject_person_id = sqlc.arg('subject_person_id') AND role_id = sqlc.arg('
 -- repository.go/service.go: a caught 23505 would abort the whole tx, so this uses a real upsert
 -- instead of InsertRoleAssignment's catch-then-select). ON CONFLICT target matches
 -- authz_role_assignments_active_idx's partial-index predicate exactly (migrations/0009_core_authz.sql).
-INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by)
-VALUES (sqlc.arg('subject_person_id'), sqlc.arg('role_id'), sqlc.arg('target_unit_id'), sqlc.arg('scope'), sqlc.narg('graph_id'), sqlc.narg('granted_by'))
+INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope, graph_id, granted_by, expires_at)
+VALUES (sqlc.arg('subject_person_id'), sqlc.arg('role_id'), sqlc.arg('target_unit_id'), sqlc.arg('scope'), sqlc.narg('graph_id'), sqlc.narg('granted_by'), sqlc.narg('expires_at'))
 ON CONFLICT (subject_person_id, role_id, target_unit_id, scope, graph_id) WHERE revoked_at IS NULL
-DO UPDATE SET updated_at = now()
+DO UPDATE SET updated_at = now(), expires_at = EXCLUDED.expires_at
 RETURNING id;
 
 -- name: CountRepointableRoleAssignments :one

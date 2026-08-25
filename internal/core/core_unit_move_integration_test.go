@@ -158,7 +158,7 @@ func TestMoveUnitIntegration(t *testing.T) {
 	// ---------------------------------------------------------------- unit.edges.manage on the OLD
 	// parent only (scope="unit") satisfies half of D-UnitMoveDualScope's check but not the new-parent
 	// half -> still denied. Proves the check is genuinely on BOTH sides, not just one.
-	if _, err := authzSvc.GrantUnitRole(ctx, personOneSidedID, seed.RegistrationOperatorRoleID, oldParent.ID, authzdomain.ScopeUnit, "", ""); err != nil {
+	if _, err := authzSvc.GrantUnitRole(ctx, personOneSidedID, seed.RegistrationOperatorRoleID, oldParent.ID, authzdomain.ScopeUnit, "", "", nil); err != nil {
 		t.Fatalf("GrantUnitRole(oneSided, unit scope on oldParent): %v", err)
 	}
 	oneSidedCtx := authz.NewContext(ctx, authz.Subject{PersonID: personOneSidedID})
@@ -176,7 +176,7 @@ func TestMoveUnitIntegration(t *testing.T) {
 	// this is the direct proof that U14's real subtree-grant-provisioning fix works: before M12.2,
 	// scope="subtree" was fully implemented in the PDP but unprovisionable through any surface, so
 	// this grant could not even be created, let alone reach a non-root target.
-	if _, err := authzSvc.GrantUnitRole(ctx, personSubtreeID, seed.RegistrationOperatorRoleID, jurisdiction.ID, authzdomain.ScopeSubtree, graphID, ""); err != nil {
+	if _, err := authzSvc.GrantUnitRole(ctx, personSubtreeID, seed.RegistrationOperatorRoleID, jurisdiction.ID, authzdomain.ScopeSubtree, graphID, "", nil); err != nil {
 		t.Fatalf("GrantUnitRole(subtree, subtree scope on jurisdiction): %v", err)
 	}
 	subtreeCtx := authz.NewContext(ctx, authz.Subject{PersonID: personSubtreeID})

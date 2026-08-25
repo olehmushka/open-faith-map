@@ -70,20 +70,21 @@ func (s *SuperAdminService) ListRoleAssignmentsByUnit(ctx context.Context, _ bea
 		out[i] = gencore.RoleAssignment{
 			Id: a.ID, PersonId: a.PersonID, PersonName: a.PersonName, RoleId: a.RoleID, RoleCode: a.RoleCode,
 			TargetUnitId: a.TargetUnitID, Scope: string(a.Scope), GrantedAt: datetime.DateTime(a.GrantedAt),
+			ExpiresAt: optionalDateTime(a.ExpiresAt),
 		}
 	}
 	return gencore.RoleAssignmentPage{Assignments: out}, nil
 }
 
 func (s *SuperAdminService) GrantUnitRole(ctx context.Context, _ bearertoken.Token, requestArg gencore.GrantUnitRoleRequest) error {
-	if err := s.app.GrantUnitRole(ctx, requestArg.PersonId, requestArg.RoleId, requestArg.UnitId, requestArg.Scope, derefStr(requestArg.GraphId)); err != nil {
+	if err := s.app.GrantUnitRole(ctx, requestArg.PersonId, requestArg.RoleId, requestArg.UnitId, requestArg.Scope, derefStr(requestArg.GraphId), optionalTime(requestArg.ExpiresAt)); err != nil {
 		return mapErr(err, errCtx{PersonID: requestArg.PersonId, UnitID: requestArg.UnitId})
 	}
 	return nil
 }
 
 func (s *SuperAdminService) BulkGrantUnitRole(ctx context.Context, _ bearertoken.Token, requestArg gencore.BulkGrantUnitRoleRequest) error {
-	if err := s.app.BulkGrantUnitRole(ctx, requestArg.PersonIds, requestArg.RoleId, requestArg.UnitId, requestArg.Scope, derefStr(requestArg.GraphId)); err != nil {
+	if err := s.app.BulkGrantUnitRole(ctx, requestArg.PersonIds, requestArg.RoleId, requestArg.UnitId, requestArg.Scope, derefStr(requestArg.GraphId), optionalTime(requestArg.ExpiresAt)); err != nil {
 		return mapErr(err, errCtx{UnitID: requestArg.UnitId})
 	}
 	return nil
@@ -91,6 +92,13 @@ func (s *SuperAdminService) BulkGrantUnitRole(ctx context.Context, _ bearertoken
 
 func (s *SuperAdminService) RevokeRoleAssignment(ctx context.Context, _ bearertoken.Token, assignmentIdArg string) error {
 	if err := s.app.RevokeRoleAssignment(ctx, assignmentIdArg); err != nil {
+		return mapErr(err, errCtx{AssignmentID: assignmentIdArg})
+	}
+	return nil
+}
+
+func (s *SuperAdminService) ClearRoleAssignmentExpiry(ctx context.Context, _ bearertoken.Token, assignmentIdArg string) error {
+	if err := s.app.ClearRoleAssignmentExpiry(ctx, assignmentIdArg); err != nil {
 		return mapErr(err, errCtx{AssignmentID: assignmentIdArg})
 	}
 	return nil

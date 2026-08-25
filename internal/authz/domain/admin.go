@@ -34,7 +34,8 @@ type Role struct {
 
 // RoleAssignment is one active row of authz_role_assignments, as read back for a unit's role-grants
 // screen (M10.7) — distinct from ActiveGrant (the PDP's per-decision input, which carries the role's
-// resolved permission set rather than display fields).
+// resolved permission set rather than display fields). ExpiresAt (M12.3) is nil for a non-expiring
+// grant; the PDP (ActiveGrantsForSubject) already enforces it, this just surfaces it for display.
 type RoleAssignment struct {
 	ID           string
 	PersonID     string
@@ -44,6 +45,7 @@ type RoleAssignment struct {
 	TargetUnitID string
 	Scope        Scope
 	GrantedAt    time.Time
+	ExpiresAt    *time.Time
 }
 
 // InstanceAdminGrant is one active row of authz_instance_admins, as read back for the super-admin

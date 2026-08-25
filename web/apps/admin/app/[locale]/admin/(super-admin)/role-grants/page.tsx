@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 
 import {
   bulkGrantUnitRole,
+  clearRoleAssignmentExpiry,
   grantInstanceAdmin,
   grantUnitRole,
   listInstanceAdmins,
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusBadge } from "@/components/status-badge";
 import { BulkGrantForm } from "./bulk-grant-form";
 
 // Super-admin role-grants console (M10.8): a unit picker over CoreSuperAdminService's
@@ -46,7 +48,8 @@ export default async function SuperAdminRoleGrantsPage({
     const targetUnitId = String(formData.get("unitId") ?? "");
     const personId = String(formData.get("personId") ?? "");
     const roleId = String(formData.get("roleId") ?? "");
-    await grantUnitRole(personId, roleId, targetUnitId);
+    const expiresAt = String(formData.get("expiresAt") ?? "") || undefined;
+    await grantUnitRole(personId, roleId, targetUnitId, expiresAt ? new Date(expiresAt).toISOString() : undefined);
     redirect({ href: `/admin/role-grants?unitId=${encodeURIComponent(targetUnitId)}`, locale });
   }
 
@@ -55,7 +58,8 @@ export default async function SuperAdminRoleGrantsPage({
     const targetUnitId = String(formData.get("unitId") ?? "");
     const roleId = String(formData.get("roleId") ?? "");
     const personIds = formData.getAll("personIds").map(String);
-    await bulkGrantUnitRole(personIds, roleId, targetUnitId);
+    const expiresAt = String(formData.get("expiresAt") ?? "") || undefined;
+    await bulkGrantUnitRole(personIds, roleId, targetUnitId, expiresAt ? new Date(expiresAt).toISOString() : undefined);
     redirect({ href: `/admin/role-grants?unitId=${encodeURIComponent(targetUnitId)}`, locale });
   }
 
@@ -64,6 +68,14 @@ export default async function SuperAdminRoleGrantsPage({
     const assignmentId = String(formData.get("assignmentId") ?? "");
     const targetUnitId = String(formData.get("unitId") ?? "");
     await revokeRoleAssignment(assignmentId);
+    redirect({ href: `/admin/role-grants?unitId=${encodeURIComponent(targetUnitId)}`, locale });
+  }
+
+  async function clearExpiry(formData: FormData) {
+    "use server";
+    const assignmentId = String(formData.get("assignmentId") ?? "");
+    const targetUnitId = String(formData.get("unitId") ?? "");
+    await clearRoleAssignmentExpiry(assignmentId);
     redirect({ href: `/admin/role-grants?unitId=${encodeURIComponent(targetUnitId)}`, locale });
   }
 
@@ -98,20 +110,38 @@ export default async function SuperAdminRoleGrantsPage({
 
           {assignments.length > 0 && (
             <ul className="flex flex-col divide-y rounded-md border">
-              {assignments.map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                  <span className="flex-1">
-                    {t("assignmentLine", { person: a.personName, role: a.roleCode, scope: a.scope })}
-                  </span>
-                  <form action={revokeAssignment}>
-                    <input type="hidden" name="assignmentId" value={a.id} />
-                    <input type="hidden" name="unitId" value={unitId} />
-                    <Button type="submit" variant="destructive" size="sm">
-                      {t("revoke")}
-                    </Button>
-                  </form>
-                </li>
-              ))}
+              {assignments.map((a) => {
+                const isExpired = a.expiresAt ? new Date(a.expiresAt) <= new Date() : false;
+                return (
+                  <li key={a.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                    <span className="flex flex-1 flex-wrap items-center gap-2">
+                      {t("assignmentLine", { person: a.personName, role: a.roleCode, scope: a.scope })}
+                      {isExpired && <StatusBadge status={t("expired")} tone="danger" />}
+                      {!isExpired && a.expiresAt && (
+                        <span className="text-muted-foreground">
+                          {t("expiresLabel", { date: new Date(a.expiresAt).toLocaleString(locale) })}
+                        </span>
+                      )}
+                    </span>
+                    {a.expiresAt && (
+                      <form action={clearExpiry}>
+                        <input type="hidden" name="assignmentId" value={a.id} />
+                        <input type="hidden" name="unitId" value={unitId} />
+                        <Button type="submit" variant="outline" size="sm">
+                          {t("clearExpiry")}
+                        </Button>
+                      </form>
+                    )}
+                    <form action={revokeAssignment}>
+                      <input type="hidden" name="assignmentId" value={a.id} />
+                      <input type="hidden" name="unitId" value={unitId} />
+                      <Button type="submit" variant="destructive" size="sm">
+                        {t("revoke")}
+                      </Button>
+                    </form>
+                  </li>
+                );
+              })}
             </ul>
           )}
 
@@ -132,6 +162,10 @@ export default async function SuperAdminRoleGrantsPage({
                     </option>
                   ))}
                 </select>
+              </Label>
+              <Label className="flex flex-col items-start gap-1">
+                {t("expiryLabel")}
+                <Input type="datetime-local" name="expiresAt" />
               </Label>
               <Button type="submit" className="self-start">
                 {t("grant")}

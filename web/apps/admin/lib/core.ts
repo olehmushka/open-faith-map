@@ -254,18 +254,40 @@ export async function listRoleAssignmentsByUnit(unitId: string): Promise<RoleAss
   return page.assignments;
 }
 
-export async function grantUnitRole(personId: string, roleId: string, unitId: string): Promise<void> {
-  return unwrap((await client()).coreSuperAdmin.grantUnitRole({ personId, roleId, unitId }));
+// expiresAt (M12.3) is an optional ISO-8601 datetime string — nil/omitted for a non-expiring grant.
+// scope is hardcoded "unit" (M12.2 added real scope="subtree" provisioning, but no UI in this app
+// collects it yet — this wrapper preserves the exact behavior every grant from this screen already
+// had before the generated SDK caught up to the contract).
+export async function grantUnitRole(
+  personId: string,
+  roleId: string,
+  unitId: string,
+  expiresAt?: string,
+): Promise<void> {
+  return unwrap((await client()).coreSuperAdmin.grantUnitRole({ personId, roleId, unitId, scope: "unit", expiresAt }));
 }
 
 export async function revokeRoleAssignment(assignmentId: string): Promise<void> {
   return unwrap((await client()).coreSuperAdmin.revokeRoleAssignment(assignmentId));
 }
 
+// M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched.
+export async function clearRoleAssignmentExpiry(assignmentId: string): Promise<void> {
+  return unwrap((await client()).coreSuperAdmin.clearRoleAssignmentExpiry(assignmentId));
+}
+
 // M11.7 — the batch variant of grantUnitRole: the same role and unit, granted to every id in
-// personIds at once, atomically.
-export async function bulkGrantUnitRole(personIds: string[], roleId: string, unitId: string): Promise<void> {
-  return unwrap((await client()).coreSuperAdmin.bulkGrantUnitRole({ personIds, roleId, unitId }));
+// personIds at once, atomically. expiresAt (M12.3) follows grantUnitRole's own rule; scope is
+// hardcoded "unit" for the same reason grantUnitRole's own wrapper is.
+export async function bulkGrantUnitRole(
+  personIds: string[],
+  roleId: string,
+  unitId: string,
+  expiresAt?: string,
+): Promise<void> {
+  return unwrap(
+    (await client()).coreSuperAdmin.bulkGrantUnitRole({ personIds, roleId, unitId, scope: "unit", expiresAt }),
+  );
 }
 
 export async function listInstanceAdmins(): Promise<InstanceAdminGrant[]> {

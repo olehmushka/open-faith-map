@@ -747,6 +747,8 @@ type CoreSuperAdminService interface {
 	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
 	BulkGrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error
+	// M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched. A deeper path segment under the same {assignmentId} node as revokeRoleAssignment's own DELETE, not a new top-level resource — no wildcard-collision risk at this depth.
+	ClearRoleAssignmentExpiry(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context, authHeader bearertoken.Token) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
@@ -798,6 +800,9 @@ func RegisterRoutesCoreSuperAdminService(router wrouter.Router, impl CoreSuperAd
 	}
 	if err := resource.Delete("RevokeRoleAssignment", "/core/v1/super-admin/role-assignments/{assignmentId}", httpserver.NewJSONHandler(handler.HandleRevokeRoleAssignment, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeRoleAssignment route")
+	}
+	if err := resource.Post("ClearRoleAssignmentExpiry", "/core/v1/super-admin/role-assignments/{assignmentId}/clear-expiry", httpserver.NewJSONHandler(handler.HandleClearRoleAssignmentExpiry, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add clearRoleAssignmentExpiry route")
 	}
 	if err := resource.Get("ListInstanceAdmins", "/core/v1/super-admin/instance-admins", httpserver.NewJSONHandler(handler.HandleListInstanceAdmins, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listInstanceAdmins route")
@@ -954,6 +959,26 @@ func (c *coreSuperAdminServiceHandler) HandleRevokeRoleAssignment(rw http.Respon
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"assignmentId\" not present")
 	}
 	if err := c.impl.RevokeRoleAssignment(req.Context(), bearertoken.Token(authHeader), assignmentIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (c *coreSuperAdminServiceHandler) HandleClearRoleAssignmentExpiry(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	assignmentIdArg, ok := pathParams["assignmentId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"assignmentId\" not present")
+	}
+	if err := c.impl.ClearRoleAssignmentExpiry(req.Context(), bearertoken.Token(authHeader), assignmentIdArg); err != nil {
 		return err
 	}
 	rw.WriteHeader(http.StatusNoContent)

@@ -194,13 +194,14 @@ func (o *AuditLogPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// M11.7 — the batch variant of GrantUnitRoleRequest: the same role, unit, and scope, granted to every id in personIds at once, atomically. scope/graphId follow GrantUnitRoleRequest's own rules (M12.2).
+// M11.7 — the batch variant of GrantUnitRoleRequest: the same role, unit, and scope, granted to every id in personIds at once, atomically. scope/graphId follow GrantUnitRoleRequest's own rules (M12.2); expiresAt follows the same rule too (M12.3).
 type BulkGrantUnitRoleRequest struct {
-	PersonIds []string `json:"personIds"`
-	RoleId    string   `json:"roleId"`
-	UnitId    string   `json:"unitId"`
-	Scope     string   `json:"scope"`
-	GraphId   *string  `json:"graphId,omitempty"`
+	PersonIds []string           `json:"personIds"`
+	RoleId    string             `json:"roleId"`
+	UnitId    string             `json:"unitId"`
+	Scope     string             `json:"scope"`
+	GraphId   *string            `json:"graphId,omitempty"`
+	ExpiresAt *datetime.DateTime `json:"expiresAt,omitempty"`
 }
 
 func (o BulkGrantUnitRoleRequest) MarshalJSON() ([]byte, error) {
@@ -525,13 +526,14 @@ func (o *GrantInstanceAdminRequest) UnmarshalYAML(unmarshal func(interface{}) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// M12.2 — scope must be "unit" or "subtree"; graphId is required when scope is "subtree" (the graph a subtree grant cascades over) and must be omitted for "unit".
+// M12.2 — scope must be "unit" or "subtree"; graphId is required when scope is "subtree" (the graph a subtree grant cascades over) and must be omitted for "unit". M12.3 — expiresAt is optional and, when set, must be in the future.
 type GrantUnitRoleRequest struct {
-	PersonId string  `json:"personId"`
-	RoleId   string  `json:"roleId"`
-	UnitId   string  `json:"unitId"`
-	Scope    string  `json:"scope"`
-	GraphId  *string `json:"graphId,omitempty"`
+	PersonId  string             `json:"personId"`
+	RoleId    string             `json:"roleId"`
+	UnitId    string             `json:"unitId"`
+	Scope     string             `json:"scope"`
+	GraphId   *string            `json:"graphId,omitempty"`
+	ExpiresAt *datetime.DateTime `json:"expiresAt,omitempty"`
 }
 
 func (o GrantUnitRoleRequest) MarshalYAML() (interface{}, error) {
@@ -1170,6 +1172,8 @@ type RoleAssignment struct {
 	TargetUnitId string            `json:"targetUnitId"`
 	Scope        string            `json:"scope"`
 	GrantedAt    datetime.DateTime `json:"grantedAt"`
+	// M12.3 — set only when the grant was given an expiry; the PDP already enforces it, this just surfaces it.
+	ExpiresAt *datetime.DateTime `json:"expiresAt,omitempty"`
 }
 
 func (o RoleAssignment) MarshalYAML() (interface{}, error) {

@@ -350,7 +350,7 @@ func (s *Service) ensureFilled(ctx context.Context, position membershipdomain.Po
 // ensureGrant grants CongregationAdminRoleID to personID on unitID, idempotent on a resumed retry
 // (internal/authz.Service.GrantUnitRole's own unique-index-conflict-as-success handling).
 func (s *Service) ensureGrant(ctx context.Context, personID, unitID, grantedByPersonID string) error {
-	if _, err := s.authzSvc.GrantUnitRole(ctx, personID, s.cfg.CongregationAdminRoleID, unitID, authzdomain.ScopeUnit, "", grantedByPersonID); err != nil {
+	if _, err := s.authzSvc.GrantUnitRole(ctx, personID, s.cfg.CongregationAdminRoleID, unitID, authzdomain.ScopeUnit, "", grantedByPersonID, nil); err != nil {
 		return fmt.Errorf("grantUnitRole: %w", err)
 	}
 	return nil

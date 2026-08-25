@@ -15,6 +15,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/authz"
@@ -95,7 +96,7 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	}
 
 	// --- GrantUnitRole (existing, M10.6) + ListRoleAssignmentsByUnit (new) + RevokeRoleAssignment (new).
-	if _, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, domain.ScopeUnit, "", ""); err != nil {
+	if _, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, domain.ScopeUnit, "", "", nil); err != nil {
 		t.Fatalf("GrantUnitRole: %v", err)
 	}
 	assignments, err := svc.ListRoleAssignmentsByUnit(ctx, unit.ID)
@@ -152,6 +153,60 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	}
 	if _, err := svc.RevokeInstanceAdmin(ctx, personID, ""); !errors.Is(err, domain.ErrInstanceAdminGrantNotFound) {
 		t.Errorf("RevokeInstanceAdmin (already revoked) error = %v, want ErrInstanceAdminGrantNotFound", err)
+	}
+
+	// --- M12.3: GrantUnitRole with an expiry, ListRoleAssignmentsBy* round-trips it,
+	// ClearRoleAssignmentExpiry clears it, and a real expired row is excluded from
+	// ActiveGrantsForSubject (the PDP's own enforcement path, unchanged by this milestone but
+	// re-checked here now that a real expiry can finally be written).
+	futureExpiry := time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
+	expiringAssignmentID, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, domain.ScopeUnit, "", "", &futureExpiry)
+	if err != nil {
+		t.Fatalf("GrantUnitRole (with expiry): %v", err)
+	}
+	assignmentIDs = append(assignmentIDs, expiringAssignmentID)
+
+	byUnit, err := svc.ListRoleAssignmentsByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit (with expiry): %v", err)
+	}
+	if len(byUnit) != 1 || byUnit[0].ExpiresAt == nil || !byUnit[0].ExpiresAt.Equal(futureExpiry) {
+		t.Fatalf("ListRoleAssignmentsByUnit = %+v, want one assignment with ExpiresAt=%s", byUnit, futureExpiry)
+	}
+	byPerson, err := svc.ListRoleAssignmentsByPerson(ctx, personID)
+	if err != nil {
+		t.Fatalf("ListRoleAssignmentsByPerson (with expiry): %v", err)
+	}
+	if len(byPerson) != 1 || byPerson[0].ExpiresAt == nil || !byPerson[0].ExpiresAt.Equal(futureExpiry) {
+		t.Fatalf("ListRoleAssignmentsByPerson = %+v, want one assignment with ExpiresAt=%s", byPerson, futureExpiry)
+	}
+
+	// A real expired row (set directly, bypassing the future-only validation GrantUnitRole's own
+	// caller — internal/core/application.Service — enforces) must be denied by the PDP, proving
+	// ActiveGrantsForSubject's existing expires_at filter still works now that a real expiry can
+	// finally be written and isn't just always NULL.
+	if err := svc.DecideFor(ctx, personID, domain.Permission("unit.read"), unit.ID); err != nil {
+		t.Fatalf("DecideFor (unit.read, before expiry) = %v, want nil (allowed)", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE openfaithmap.authz_role_assignments SET expires_at = now() - interval '1 hour' WHERE id = $1`, expiringAssignmentID); err != nil {
+		t.Fatalf("directly expire assignment: %v", err)
+	}
+	if err := svc.DecideFor(ctx, personID, domain.Permission("unit.read"), unit.ID); !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Errorf("DecideFor (unit.read, after expiry) = %v, want ErrPermissionDenied", err)
+	}
+
+	if _, err := svc.ClearRoleAssignmentExpiry(ctx, expiringAssignmentID); err != nil {
+		t.Fatalf("ClearRoleAssignmentExpiry: %v", err)
+	}
+	afterClear, err := svc.ListRoleAssignmentsByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit (after clear): %v", err)
+	}
+	if len(afterClear) != 1 || afterClear[0].ExpiresAt != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit after clear = %+v, want ExpiresAt nil", afterClear)
+	}
+	if _, err := svc.ClearRoleAssignmentExpiry(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, domain.ErrAssignmentNotFound) {
+		t.Errorf("ClearRoleAssignmentExpiry (unknown id) error = %v, want ErrAssignmentNotFound", err)
 	}
 }
 
