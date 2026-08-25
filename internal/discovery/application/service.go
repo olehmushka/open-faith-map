@@ -37,7 +37,7 @@ type ContentResolver interface {
 
 type Config struct {
 	// RootUnitID is the same shared root unit registration/content already use
-	// (internal/platform/seed.RootUnitID) — the target of the operator-scoped Require check.
+	// (internal/platform/seed.Resolve's RootUnitID) — the target of the operator-scoped Require check.
 	RootUnitID string
 }
 

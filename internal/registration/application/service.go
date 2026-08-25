@@ -48,11 +48,11 @@ const operatorPermission = authzdomain.PermReligionOrgManage
 
 type Config struct {
 	// RootUnitID is the single shared root unit every congregation is registered as a child of
-	// (internal/platform/seed.RootUnitID — a fixed structural RID since D-SeedBootstrap, not an env
+	// (internal/platform/seed.Resolve's RootUnitID — a fixed structural RID since D-SeedBootstrap, not an env
 	// var).
 	RootUnitID string
 	// CongregationAdminRoleID is the role granted to a submitter on their own new unit at approval
-	// time (internal/platform/seed.CongregationAdminRoleID).
+	// time (internal/platform/seed.Resolve's CongregationAdminRoleID).
 	CongregationAdminRoleID string
 }
 

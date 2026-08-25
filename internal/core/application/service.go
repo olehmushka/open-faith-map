@@ -50,7 +50,7 @@ type Service struct {
 	// caller to reuse — mirroring internal/identity/bootstrap.Run's cross-module transaction shape,
 	// just triggered at runtime instead of at boot.
 	pool *pgxpool.Pool
-	// rootUnitID is internal/platform/seed.RootUnitID, threaded in the same way every other consumer
+	// rootUnitID is internal/platform/seed.Resolve's RootUnitID, threaded in the same way every other consumer
 	// module already receives it (M12.1) — used only to hard-guard the root unit against
 	// SetUnitState/DeleteUnit, never as a PDP input.
 	rootUnitID string
