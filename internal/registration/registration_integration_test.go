@@ -58,7 +58,7 @@ func TestRegistrationIntegration(t *testing.T) {
 	religionSvc := religionapplication.NewService(pool, directorySvc)
 	locationSvc := locationapplication.NewService(pool)
 	membershipSvc := membershipapplication.NewService(pool)
-	regStore := regadapters.NewStore(pool)
+	regStore := regadapters.NewRepository(pool)
 	regSvc := application.NewService(regStore, religionSvc, locationSvc, membershipSvc, directorySvc, authzSvc, application.Config{
 		RootUnitID:              seed.RootUnitID,
 		CongregationAdminRoleID: seed.CongregationAdminRoleID,

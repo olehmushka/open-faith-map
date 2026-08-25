@@ -61,7 +61,7 @@ func TestVouchingIntegration(t *testing.T) {
 	pdp := authzdomain.NewPDP(closurePort)
 	authzStore := authzadapters.NewStore(pool)
 	authzSvc := authz.NewService(pdp, authzStore)
-	vouchingStore := vouchingadapters.NewStore(pool)
+	vouchingStore := vouchingadapters.NewRepository(pool)
 	reporter := &noopModerationReporter{}
 	vouchSvc := application.NewService(vouchingStore, reporter, authzSvc, application.Config{
 		RootUnitID: seed.RootUnitID,

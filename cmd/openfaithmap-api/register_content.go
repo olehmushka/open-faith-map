@@ -20,7 +20,7 @@ import (
 // M10.6: depends on deps.AuthzSvc (populated by registerCore, which runs before every consumer
 // module) instead of the go-oikumenea SDK config.
 func registerContent(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
-	contentStore := contentadapters.NewStore(deps.Pool)
+	contentStore := contentadapters.NewRepository(deps.Pool)
 	contentAppSvc := contentapplication.NewService(contentStore, deps.AuthzSvc)
 	contentTransportSvc := contenttransport.NewService(contentAppSvc)
 	contentPublicTransportSvc := contenttransport.NewPublicService(contentAppSvc)

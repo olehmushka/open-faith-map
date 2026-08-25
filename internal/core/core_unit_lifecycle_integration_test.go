@@ -49,7 +49,7 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 	dir := directoryapplication.NewService(pool)
 	religionSvc := religionapplication.NewService(pool, dir)
 	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
-	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	coreApp := coreapplication.NewService(dir, religionSvc, nil, nil, nil, authzSvc, auditLogSvc, pool, seed.RootUnitID)
 
 	var adminPersonID, grantedPersonID, ungrantedPersonID string

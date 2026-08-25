@@ -52,7 +52,7 @@ func TestModerationIntegration(t *testing.T) {
 	authzStore := authzadapters.NewStore(pool)
 	authzSvc := authz.NewService(pdp, authzStore)
 	religionSvc := religionapplication.NewService(pool, directorySvc)
-	modStore := moderationadapters.NewStore(pool)
+	modStore := moderationadapters.NewRepository(pool)
 	modSvc := application.NewService(modStore, religionSvc, authzSvc, application.Config{
 		RootUnitID: seed.RootUnitID,
 	})

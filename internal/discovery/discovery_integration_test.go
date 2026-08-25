@@ -57,7 +57,7 @@ func TestDiscoveryIntegration(t *testing.T) {
 	authzSvc := authz.NewService(pdp, authzStore)
 	religionSvc := religionapplication.NewService(pool, directorySvc)
 	locationSvc := locationapplication.NewService(pool)
-	discoveryStore := adapters.NewStore(pool)
+	discoveryStore := adapters.NewRepository(pool)
 	discoverySvc := application.NewService(discoveryStore, nil, religionSvc, authzSvc, application.Config{
 		RootUnitID: seed.RootUnitID,
 	})

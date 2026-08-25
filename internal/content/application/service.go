@@ -23,11 +23,11 @@ import (
 )
 
 type Service struct {
-	store    *adapters.Store
+	store    *adapters.Repository
 	authzSvc *authz.Service
 }
 
-func NewService(store *adapters.Store, authzSvc *authz.Service) *Service {
+func NewService(store *adapters.Repository, authzSvc *authz.Service) *Service {
 	return &Service{store: store, authzSvc: authzSvc}
 }
 
