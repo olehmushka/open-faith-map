@@ -572,7 +572,7 @@ func (s *Service) PreviewMergePersons(ctx context.Context, survivorID, duplicate
 		return MergePreview{}, err
 	}
 
-	membershipStore := membershipadapters.NewStore(s.pool)
+	membershipStore := membershipadapters.NewRepository(s.pool)
 	membershipsToMove, membershipsToEnd, err := membershipStore.CountRepointableMemberships(ctx, duplicateID, survivorID)
 	if err != nil {
 		return MergePreview{}, err
@@ -639,7 +639,7 @@ func (s *Service) MergePersons(ctx context.Context, survivorID, duplicateID stri
 		return MergeResult{}, err
 	}
 
-	membershipStore := membershipadapters.NewStore(tx)
+	membershipStore := membershipadapters.NewRepository(tx)
 	membershipsMoved, membershipsEnded, err := membershipStore.RepointMemberships(ctx, duplicateID, survivorID)
 	if err != nil {
 		return MergeResult{}, err
