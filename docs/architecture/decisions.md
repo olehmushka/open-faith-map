@@ -392,6 +392,29 @@ this — go-oikumenea's own `file:`/package shape is the fallback, not ruled out
 conventions follow go-oikumenea's `conventions.md` by reference (see
 [conventions.md](conventions.md)) rather than restating them.
 
+**sqlc adoption (closing the gap D-Stack always specified).** Every module's DB access was
+hand-written pgx until this pass — several store.go headers said so explicitly, flagging it as a
+deviation from this same D-Stack decision. All 14 modules now generate their queries via sqlc
+(`sqlc.yaml`, one entry per module, `internal/<module>/adapters/queries/*.sql` in,
+`internal/<module>/adapters/<module>sql` generated out), matching go-oikumenea's own setup. One
+tradeoff carried over deliberately, not by oversight: every module's sqlc entry points `schema:` at
+the *whole* migrations directory rather than a per-module slice — go-oikumenea's own
+`docs/architecture/review-2026-07.md` (R-08) flags this as leaking the full schema's generated types
+into every module's package. Kept here anyway because several modules run legitimate cross-module
+JOINs (authz joins `directory_graphs`/`identity_persons`; directory's closure queries assume the
+whole schema is visible) that a real per-module schema slice would break. Mitigation instead of
+elimination: each generated `<module>sql` package stays private to that module's own
+`adapters/repository.go` — never imported from `application/`, `domain/`, or another module.
+
+**Follow-ups surfaced by the sqlc pass, deliberately not fixed here:**
+- `migrations/0022_directory_unit_move_jobs.sql` mints its PK via bare `gen_random_uuid()` instead
+  of `openfaithmap.new_id(service,kind,type)` (the RID scheme every other table since
+  `migrations/0007_core_rid.sql` uses) — an inconsistency, not a bug; revisit if this table ever
+  needs the RID's decodable (service,kind,type) shape.
+- `created_at`/`updated_at` coverage is inconsistent on pure link/junction tables (e.g.
+  `authz_role_permissions` has neither) — every reified-entity table has both, junction tables are a
+  mixed bag. Low-risk to add later; not done here since it touches existing migrations' shape.
+
 ---
 
 ### D-AdminSurface — The admin/moderator console is a separate deployment from the public site
