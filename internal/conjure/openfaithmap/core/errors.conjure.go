@@ -1385,7 +1385,7 @@ func WrapWithForbidden(err error) *Forbidden {
 }
 
 // Forbidden is an error type.
-// The caller does not hold religionorg.manage on the parent unit (createChildOrg), unit.lifecycle on the relevant unit (createUnit/updateUnit/setUnitState/deleteUnit), or is not an active instance admin (every CoreSuperAdminService endpoint).
+// The caller does not hold religionorg.manage on the parent unit (createChildOrg), unit.lifecycle on the relevant unit (createUnit/updateUnit/setUnitState/deleteUnit/unitDeleteEligibility), or is not an active instance admin (every CoreSuperAdminService endpoint).
 type Forbidden struct {
 	errorInstanceID uuid.UUID
 	forbidden

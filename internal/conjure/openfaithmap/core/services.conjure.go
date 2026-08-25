@@ -85,6 +85,8 @@ type CoreServiceClient interface {
 	SetUnitState(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
 	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
 	DeleteUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) error
+	// M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting anything, so the admin UI can gray out/explain the delete action instead of only discovering it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same authority deleteUnit itself requires (this read is no more permissive than the write it previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own httprouter wildcard-collision class applies.
+	UnitDeleteEligibility(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitDeleteEligibility, error)
 	// M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
 	MoveUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error)
 	// Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
@@ -486,6 +488,23 @@ func (c *coreServiceClient) DeleteUnit(ctx context.Context, authHeader bearertok
 	return nil
 }
 
+func (c *coreServiceClient) UnitDeleteEligibility(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitDeleteEligibility, error) {
+	var returnVal *UnitDeleteEligibility
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UnitDeleteEligibility"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-lifecycle/%s/delete-eligibility", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(UnitDeleteEligibility), werror.WrapWithContextParams(ctx, err, "unitDeleteEligibility failed")
+	}
+	if returnVal == nil {
+		return *new(UnitDeleteEligibility), werror.ErrorWithContextParams(ctx, "unitDeleteEligibility response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 func (c *coreServiceClient) MoveUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error) {
 	var returnVal *UnitMoveJob
 	var requestParams []httpclient.RequestParam
@@ -632,6 +651,8 @@ type CoreServiceClientWithAuth interface {
 	SetUnitState(ctx context.Context, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
 	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
 	DeleteUnit(ctx context.Context, unitIdArg string) error
+	// M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting anything, so the admin UI can gray out/explain the delete action instead of only discovering it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same authority deleteUnit itself requires (this read is no more permissive than the write it previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own httprouter wildcard-collision class applies.
+	UnitDeleteEligibility(ctx context.Context, unitIdArg string) (UnitDeleteEligibility, error)
 	// M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
 	MoveUnit(ctx context.Context, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error)
 	// Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
@@ -738,6 +759,10 @@ func (c *coreServiceClientWithAuth) SetUnitState(ctx context.Context, unitIdArg 
 
 func (c *coreServiceClientWithAuth) DeleteUnit(ctx context.Context, unitIdArg string) error {
 	return c.client.DeleteUnit(ctx, c.authHeader, unitIdArg)
+}
+
+func (c *coreServiceClientWithAuth) UnitDeleteEligibility(ctx context.Context, unitIdArg string) (UnitDeleteEligibility, error) {
+	return c.client.UnitDeleteEligibility(ctx, c.authHeader, unitIdArg)
 }
 
 func (c *coreServiceClientWithAuth) MoveUnit(ctx context.Context, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error) {
@@ -947,6 +972,14 @@ func (c *coreServiceClientWithTokenProvider) DeleteUnit(ctx context.Context, uni
 		return err
 	}
 	return c.client.DeleteUnit(ctx, bearertoken.Token(token), unitIdArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) UnitDeleteEligibility(ctx context.Context, unitIdArg string) (UnitDeleteEligibility, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitDeleteEligibility), err
+	}
+	return c.client.UnitDeleteEligibility(ctx, bearertoken.Token(token), unitIdArg)
 }
 
 func (c *coreServiceClientWithTokenProvider) MoveUnit(ctx context.Context, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error) {

@@ -26,6 +26,7 @@ import type {
   ICountry,
   ICreateApiKeyResult,
   ICreateChildOrgRequest,
+  ICreateUnitRequest,
   IInstanceAdminGrant,
   IInviteInfo,
   IInviteResult,
@@ -40,7 +41,9 @@ import type {
   ISession,
   ITaxon,
   IUnit,
+  IUnitDeleteEligibility,
   IUnitRef,
+  IUpdateUnitRequest,
   IWhoami,
 } from "./openfaithmap/generated/core";
 
@@ -49,6 +52,9 @@ export type AccessExplanation = IAccessExplanation;
 export type AccessExplanationContribution = IAccessExplanationContribution;
 export type Unit = IUnit;
 export type UnitRef = IUnitRef;
+export type UnitDeleteEligibility = IUnitDeleteEligibility;
+export type CreateUnitInput = ICreateUnitRequest;
+export type UpdateUnitInput = IUpdateUnitRequest;
 export type Taxon = ITaxon;
 export type OrgKind = IOrgKind;
 export type OrgProfile = IOrgProfile;
@@ -158,6 +164,30 @@ export async function getOrgProfile(unitId: string): Promise<OrgProfile> {
 /** Gated server-side — the caller must hold religionorg.manage over parentUnitId. */
 export async function createChildOrg(input: CreateChildOrgInput): Promise<OrgProfile> {
   return unwrap((await client()).core.createChildOrg(input));
+}
+
+// M12.5 — unit lifecycle CRUD wrappers over M12.1's endpoints. Gated server-side — the caller must
+// hold unit.lifecycle over the relevant unit (parentUnitId for createUnit, unitId otherwise), same as
+// createChildOrg above.
+export async function createUnit(input: CreateUnitInput): Promise<Unit> {
+  return unwrap((await client()).core.createUnit(input));
+}
+
+export async function updateUnit(unitId: string, input: UpdateUnitInput): Promise<Unit> {
+  return unwrap((await client()).core.updateUnit(unitId, input));
+}
+
+export async function setUnitState(unitId: string, state: string): Promise<Unit> {
+  return unwrap((await client()).core.setUnitState(unitId, { state }));
+}
+
+export async function deleteUnit(unitId: string): Promise<void> {
+  return unwrap((await client()).core.deleteUnit(unitId));
+}
+
+/** Gated server-side — no more permissive than deleteUnit itself (M12.5). */
+export async function unitDeleteEligibility(unitId: string): Promise<UnitDeleteEligibility> {
+  return unwrap((await client()).core.unitDeleteEligibility(unitId));
 }
 
 export async function listCountries(): Promise<Country[]> {

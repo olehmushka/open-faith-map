@@ -20,6 +20,7 @@ import { ISetUnitStateRequest } from "./setUnitStateRequest";
 import { ITaxon } from "./taxon";
 import { ITaxonPage } from "./taxonPage";
 import { IUnit } from "./unit";
+import { IUnitDeleteEligibility } from "./unitDeleteEligibility";
 import { IUnitMoveJob } from "./unitMoveJob";
 import { IUnitPage } from "./unitPage";
 import { IUnitRefPage } from "./unitRefPage";
@@ -92,6 +93,11 @@ export interface ICoreService {
      *
      */
     deleteUnit(unitId: string): Promise<void>;
+    /**
+     * M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting anything, so the admin UI can gray out/explain the delete action instead of only discovering it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same authority deleteUnit itself requires (this read is no more permissive than the write it previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own httprouter wildcard-collision class applies.
+     *
+     */
+    unitDeleteEligibility(unitId: string): Promise<IUnitDeleteEligibility>;
     /**
      * M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
      *
@@ -487,6 +493,27 @@ export class CoreService implements ICoreService {
             "deleteUnit",
             "DELETE",
             "/core/v1/units/{unitId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting anything, so the admin UI can gray out/explain the delete action instead of only discovering it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same authority deleteUnit itself requires (this read is no more permissive than the write it previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own httprouter wildcard-collision class applies.
+     *
+     */
+    public unitDeleteEligibility(unitId: string): Promise<IUnitDeleteEligibility> {
+        return this.bridge.call<IUnitDeleteEligibility>(
+            "CoreService",
+            "unitDeleteEligibility",
+            "GET",
+            "/core/v1/unit-lifecycle/{unitId}/delete-eligibility",
             __undefined,
             __undefined,
             __undefined,

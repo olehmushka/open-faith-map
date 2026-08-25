@@ -453,7 +453,9 @@
     "searchHeading": "Search units",
     "searchPlaceholder": "Search by code or name…",
     "search": "Search",
-    "noResults": "No matches found."
+    "noResults": "No matches found.",
+    "bulkArchiveHeading": "Bulk archive",
+    "archiveSelected": "Archive {count} selected"
   },
   "SuperAdminUnitPage": {
     "detailsHeading": "Details",
@@ -461,7 +463,24 @@
     "stateLabel": "State",
     "orgProfileHeading": "Org short code",
     "ancestorsHeading": "Ancestors",
-    "noAncestors": "This is a root unit."
+    "noAncestors": "This is a root unit.",
+    "editHeading": "Edit details",
+    "nameLabel": "Name",
+    "levelLabel": "Level",
+    "saveChanges": "Save changes",
+    "addChildHeading": "Add child unit",
+    "addChild": "Add unit",
+    "stateHeading": "State",
+    "activate": "Activate",
+    "suspend": "Suspend",
+    "archive": "Archive",
+    "deleteHeading": "Delete",
+    "deleteUnit": "Delete unit",
+    "deleteBlockedChildren": "This unit still has child units — remove or move them first.",
+    "deleteBlockedOrgProfile": "This unit still has a religion org profile — remove it first.",
+    "deleteBlockedRoleAssignments": "This unit still has active role assignments — revoke them first.",
+    "deleteBlockedRoot": "The root unit cannot be deleted.",
+    "deleteBlockedGeneric": "This unit could not be deleted."
   },
   "SuperAdminTaxaPage": {
     "heading": "Taxa",

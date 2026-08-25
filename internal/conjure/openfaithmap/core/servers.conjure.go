@@ -93,6 +93,8 @@ type CoreService interface {
 	SetUnitState(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
 	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
 	DeleteUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) error
+	// M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting anything, so the admin UI can gray out/explain the delete action instead of only discovering it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same authority deleteUnit itself requires (this read is no more permissive than the write it previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own httprouter wildcard-collision class applies.
+	UnitDeleteEligibility(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitDeleteEligibility, error)
 	// M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
 	MoveUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error)
 	// Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
@@ -176,6 +178,9 @@ func RegisterRoutesCoreService(router wrouter.Router, impl CoreService, routerPa
 	}
 	if err := resource.Delete("DeleteUnit", "/core/v1/units/{unitId}", httpserver.NewJSONHandler(handler.HandleDeleteUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteUnit route")
+	}
+	if err := resource.Get("UnitDeleteEligibility", "/core/v1/unit-lifecycle/{unitId}/delete-eligibility", httpserver.NewJSONHandler(handler.HandleUnitDeleteEligibility, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add unitDeleteEligibility route")
 	}
 	if err := resource.Post("MoveUnit", "/core/v1/unit-moves/{unitId}", httpserver.NewJSONHandler(handler.HandleMoveUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add moveUnit route")
@@ -609,6 +614,27 @@ func (c *coreServiceHandler) HandleDeleteUnit(rw http.ResponseWriter, req *http.
 	}
 	rw.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func (c *coreServiceHandler) HandleUnitDeleteEligibility(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	respArg, err := c.impl.UnitDeleteEligibility(req.Context(), bearertoken.Token(authHeader), unitIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
 }
 
 func (c *coreServiceHandler) HandleMoveUnit(rw http.ResponseWriter, req *http.Request) error {

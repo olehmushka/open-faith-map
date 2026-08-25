@@ -1528,6 +1528,31 @@ func (o *Unit) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M12.5 — unitDeleteEligibility's response, a preview of deleteUnit's own orphan-protection outcome without deleting anything. canDelete is the AND of the four negations, computed server-side so the client never re-derives the rule.
+type UnitDeleteEligibility struct {
+	IsRoot                   bool `json:"isRoot"`
+	HasChildren              bool `json:"hasChildren"`
+	HasOrgProfile            bool `json:"hasOrgProfile"`
+	HasActiveRoleAssignments bool `json:"hasActiveRoleAssignments"`
+	CanDelete                bool `json:"canDelete"`
+}
+
+func (o UnitDeleteEligibility) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitDeleteEligibility) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // M12.2 — one move attempt's resumable state: PENDING -> NEW_EDGE_ADDED -> OLD_EDGE_REMOVED -> VERIFIED, or FAILED at any step (error then set). At most one non-FAILED job exists per (graphId, unitId) at a time.
 type UnitMoveJob struct {
 	Id                  string            `json:"id"`

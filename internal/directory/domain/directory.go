@@ -56,6 +56,17 @@ type Unit struct {
 	UpdatedAt time.Time
 }
 
+// DeleteEligibility is UnitDeleteEligibility's read-only preview of DeleteUnit's own orphan-protection
+// checks (M12.5) — CanDelete is the AND of the three negations plus !IsRoot, computed once
+// server-side so the client never has to re-derive the rule.
+type DeleteEligibility struct {
+	IsRoot                   bool
+	HasChildren              bool
+	HasOrgProfile            bool
+	HasActiveRoleAssignments bool
+	CanDelete                bool
+}
+
 // Graph is directory_graphs — a named hierarchy. "canonical" is the default + authority-bearing
 // graph the PDP cascades subtree grants over (D-InProcessAuthz).
 type Graph struct {

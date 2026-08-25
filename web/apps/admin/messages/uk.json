@@ -453,7 +453,9 @@
     "searchHeading": "Пошук юнітів",
     "searchPlaceholder": "Пошук за кодом або назвою…",
     "search": "Пошук",
-    "noResults": "Нічого не знайдено."
+    "noResults": "Нічого не знайдено.",
+    "bulkArchiveHeading": "Масове архівування",
+    "archiveSelected": "Архівувати {count} обраних"
   },
   "SuperAdminUnitPage": {
     "detailsHeading": "Деталі",
@@ -461,7 +463,24 @@
     "stateLabel": "Стан",
     "orgProfileHeading": "Короткий код організації",
     "ancestorsHeading": "Предки",
-    "noAncestors": "Це кореневий юніт."
+    "noAncestors": "Це кореневий юніт.",
+    "editHeading": "Редагувати деталі",
+    "nameLabel": "Назва",
+    "levelLabel": "Рівень",
+    "saveChanges": "Зберегти зміни",
+    "addChildHeading": "Додати дочірній юніт",
+    "addChild": "Додати юніт",
+    "stateHeading": "Стан",
+    "activate": "Активувати",
+    "suspend": "Призупинити",
+    "archive": "Архівувати",
+    "deleteHeading": "Видалити",
+    "deleteUnit": "Видалити юніт",
+    "deleteBlockedChildren": "Цей юніт ще має дочірні юніти — спочатку видаліть або перемістіть їх.",
+    "deleteBlockedOrgProfile": "Цей юніт ще має профіль релігійної організації — спочатку видаліть його.",
+    "deleteBlockedRoleAssignments": "Цей юніт ще має активні призначення ролей — спочатку відкличте їх.",
+    "deleteBlockedRoot": "Кореневий юніт не можна видалити.",
+    "deleteBlockedGeneric": "Не вдалося видалити цей юніт."
   },
   "SuperAdminTaxaPage": {
     "heading": "Таксономія",

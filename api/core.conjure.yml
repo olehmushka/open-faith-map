@@ -145,6 +145,17 @@ types:
         docs: M12.1 — setUnitState's request. state must be one of active/suspended/archived.
         fields:
           state: string
+      UnitDeleteEligibility:
+        docs: >
+          M12.5 — unitDeleteEligibility's response, a preview of deleteUnit's own orphan-protection
+          outcome without deleting anything. canDelete is the AND of the four negations, computed
+          server-side so the client never re-derives the rule.
+        fields:
+          isRoot: boolean
+          hasChildren: boolean
+          hasOrgProfile: boolean
+          hasActiveRoleAssignments: boolean
+          canDelete: boolean
       MoveUnitRequest:
         docs: M12.2 — moveUnit's request. graphCode defaults to "canonical" when unset.
         fields:
@@ -491,7 +502,7 @@ types:
         safe-args:
           parentUnitId: string
       Forbidden:
-        docs: The caller does not hold religionorg.manage on the parent unit (createChildOrg), unit.lifecycle on the relevant unit (createUnit/updateUnit/setUnitState/deleteUnit), or is not an active instance admin (every CoreSuperAdminService endpoint).
+        docs: The caller does not hold religionorg.manage on the parent unit (createChildOrg), unit.lifecycle on the relevant unit (createUnit/updateUnit/setUnitState/deleteUnit/unitDeleteEligibility), or is not an active instance admin (every CoreSuperAdminService endpoint).
         namespace: Core
         code: PERMISSION_DENIED
         safe-args: {}
@@ -819,6 +830,21 @@ services:
           unitId:
             type: string
             param-type: path
+      unitDeleteEligibility:
+        http: GET /unit-lifecycle/{unitId}/delete-eligibility
+        docs: >
+          M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting
+          anything, so the admin UI can gray out/explain the delete action instead of only discovering
+          it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same
+          authority deleteUnit itself requires (this read is no more permissive than the write it
+          previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different
+          HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own
+          httprouter wildcard-collision class applies.
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: UnitDeleteEligibility
       moveUnit:
         http: POST /unit-moves/{unitId}
         docs: >

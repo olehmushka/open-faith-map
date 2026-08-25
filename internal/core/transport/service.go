@@ -251,6 +251,17 @@ func (s *Service) DeleteUnit(ctx context.Context, _ bearertoken.Token, unitIdArg
 	return nil
 }
 
+func (s *Service) UnitDeleteEligibility(ctx context.Context, _ bearertoken.Token, unitIdArg string) (gencore.UnitDeleteEligibility, error) {
+	e, err := s.app.UnitDeleteEligibility(ctx, unitIdArg)
+	if err != nil {
+		return gencore.UnitDeleteEligibility{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return gencore.UnitDeleteEligibility{
+		IsRoot: e.IsRoot, HasChildren: e.HasChildren, HasOrgProfile: e.HasOrgProfile,
+		HasActiveRoleAssignments: e.HasActiveRoleAssignments, CanDelete: e.CanDelete,
+	}, nil
+}
+
 // M12.2 — generic unit move/reparent.
 
 func (s *Service) MoveUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string, requestArg gencore.MoveUnitRequest) (gencore.UnitMoveJob, error) {

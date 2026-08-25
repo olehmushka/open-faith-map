@@ -258,6 +258,53 @@ func (s *Service) SetUnitState(ctx context.Context, unitID string, state directo
 	return after, nil
 }
 
+// checkDeleteEligibility runs DeleteUnit's three orphan-protection checks (children, org profile,
+// active role assignments) without deleting anything — shared by DeleteUnit itself and the read-only
+// UnitDeleteEligibility (M12.5), so the two can never drift on what counts as blocking. Same
+// cheapest/most-structural-first order DeleteUnit always used.
+func (s *Service) checkDeleteEligibility(ctx context.Context, unitID string) (hasChildren, hasOrgProfile, hasActiveRoleAssignments bool, err error) {
+	hasChildren, err = s.directory.HasChildren(ctx, unitID)
+	if err != nil {
+		return false, false, false, err
+	}
+	if _, err := s.religion.GetOrgProfile(ctx, unitID); err == nil {
+		hasOrgProfile = true
+	} else if !errors.Is(err, religiondomain.ErrProfileNotFound) {
+		return false, false, false, err
+	}
+	assignments, err := s.authz.ListRoleAssignmentsByUnit(ctx, unitID)
+	if err != nil {
+		return false, false, false, err
+	}
+	hasActiveRoleAssignments = len(assignments) > 0
+	return hasChildren, hasOrgProfile, hasActiveRoleAssignments, nil
+}
+
+// UnitDeleteEligibility previews DeleteUnit's own orphan-protection outcome for unitID without
+// deleting anything (M12.5) — lets the admin UI gray out/explain the delete action instead of only
+// discovering it via a failed 409. Gated on unit.lifecycle over unitID, the same authority DeleteUnit
+// itself requires: HasActiveRoleAssignments isn't otherwise readable by anyone who doesn't already
+// hold that permission (role-assignment lists live under CoreSuperAdminService), so this read must not
+// be any more permissive than the write it previews. Pure read, no audit log — matches
+// GetUnitMoveStatus/ExplainAccess's own "route-group/explicit gate is enough" shape.
+func (s *Service) UnitDeleteEligibility(ctx context.Context, unitID string) (directorydomain.DeleteEligibility, error) {
+	if err := s.authz.Require(ctx, authzdomain.PermUnitLifecycle, unitID); err != nil {
+		return directorydomain.DeleteEligibility{}, err
+	}
+	isRoot := unitID == s.rootUnitID
+	hasChildren, hasOrgProfile, hasActiveRoleAssignments, err := s.checkDeleteEligibility(ctx, unitID)
+	if err != nil {
+		return directorydomain.DeleteEligibility{}, err
+	}
+	return directorydomain.DeleteEligibility{
+		IsRoot:                   isRoot,
+		HasChildren:              hasChildren,
+		HasOrgProfile:            hasOrgProfile,
+		HasActiveRoleAssignments: hasActiveRoleAssignments,
+		CanDelete:                !isRoot && !hasChildren && !hasOrgProfile && !hasActiveRoleAssignments,
+	}, nil
+}
+
 // DeleteUnit soft-deletes unitID (M12.1), refusing the root unit outright and orphan-protecting
 // against child units, active role assignments, and an existing religion org profile — checked in
 // that order, cheapest/most-structural first, so a delete that was always going to fail doesn't pay
@@ -269,21 +316,17 @@ func (s *Service) DeleteUnit(ctx context.Context, unitID string) (directorydomai
 	if err := s.authz.Require(ctx, authzdomain.PermUnitLifecycle, unitID); err != nil {
 		return directorydomain.Unit{}, err
 	}
-	if hasChildren, err := s.directory.HasChildren(ctx, unitID); err != nil {
-		return directorydomain.Unit{}, err
-	} else if hasChildren {
-		return directorydomain.Unit{}, directorydomain.ErrUnitHasChildren
-	}
-	if _, err := s.religion.GetOrgProfile(ctx, unitID); err == nil {
-		return directorydomain.Unit{}, ErrUnitHasOrgProfile
-	} else if !errors.Is(err, religiondomain.ErrProfileNotFound) {
-		return directorydomain.Unit{}, err
-	}
-	assignments, err := s.authz.ListRoleAssignmentsByUnit(ctx, unitID)
+	hasChildren, hasOrgProfile, hasActiveRoleAssignments, err := s.checkDeleteEligibility(ctx, unitID)
 	if err != nil {
 		return directorydomain.Unit{}, err
 	}
-	if len(assignments) > 0 {
+	if hasChildren {
+		return directorydomain.Unit{}, directorydomain.ErrUnitHasChildren
+	}
+	if hasOrgProfile {
+		return directorydomain.Unit{}, ErrUnitHasOrgProfile
+	}
+	if hasActiveRoleAssignments {
 		return directorydomain.Unit{}, ErrUnitHasActiveRoleAssignments
 	}
 	before, err := s.directory.GetUnit(ctx, unitID)

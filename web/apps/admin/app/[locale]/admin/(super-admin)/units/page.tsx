@@ -1,25 +1,37 @@
 import { getTranslations } from "next-intl/server";
-import { Building2 } from "lucide-react";
 
-import { listUnits } from "@/lib/core";
-import { Link } from "@/i18n/navigation";
+import { listUnits, setUnitState } from "@/lib/core";
+import { redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-// Super-admin units browser (M10.8), read-only — no unit-mutation endpoint exists in
-// api/core.conjure.yml, and none belongs here: the permission catalog has no unit-write code beyond
-// createChildOrg, already covered by lib/jurisdiction.ts's own flow. Same list-with-search shape as
-// admin/sites/page.tsx, over core.listUnits (free-text code/name search across the whole hierarchy,
-// not scoped to jurisdiction units the way searchJurisdictionUnits is).
+import { BulkArchiveForm } from "./bulk-archive-form";
+
+// Super-admin units browser (M10.8; full CRUD entry point since M12.5 — see units/[unitId]/page.tsx
+// for create/edit/state/delete). Same list-with-search shape as admin/sites/page.tsx, over
+// core.listUnits (free-text code/name search across the whole hierarchy, not scoped to jurisdiction
+// units the way searchJurisdictionUnits is). Bulk-archive stays deliberately cheap (a client-side
+// multi-select looping setUnitState per unit, no atomicity guarantee) rather than a real bulk backend
+// endpoint like M11.7's bulkGrantUnitRole — this milestone's own scope calls for "cheap" here.
 export default async function SuperAdminUnitsPage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ locale: string }>;
   searchParams: Promise<{ q?: string }>;
 }) {
+  const { locale } = await params;
   const t = await getTranslations("SuperAdminUnitsPage");
   const { q } = await searchParams;
   const results = q ? await listUnits(q, 50) : [];
+
+  async function bulkArchive(formData: FormData) {
+    "use server";
+    const unitIds = formData.getAll("unitIds").map(String);
+    await Promise.all(unitIds.map((id) => setUnitState(id, "archived")));
+    redirect({ href: `/admin/units?q=${encodeURIComponent(q ?? "")}`, locale });
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
@@ -37,22 +49,7 @@ export default async function SuperAdminUnitsPage({
 
           {q && results.length === 0 && <p className="text-sm text-muted-foreground">{t("noResults")}</p>}
 
-          {results.length > 0 && (
-            <ul className="flex flex-col divide-y rounded-md border">
-              {results.map((u) => (
-                <li key={u.id}>
-                  <Link
-                    href={`/admin/units/${u.id}`}
-                    className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
-                  >
-                    <Building2 className="size-4 text-muted-foreground" />
-                    <span className="flex-1">{u.name}</span>
-                    {u.code && <span className="text-xs text-muted-foreground">{u.code}</span>}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+          {results.length > 0 && <BulkArchiveForm units={results} action={bulkArchive} />}
         </CardContent>
       </Card>
     </div>

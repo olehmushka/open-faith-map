@@ -7,8 +7,11 @@
 // hard-guarded against SetUnitState/DeleteUnit regardless of grant, DeleteUnit's three
 // orphan-protection checks (children, active role assignments, an existing religion org profile)
 // each block correctly and clear once the blocking condition is gone, and every mutation writes
-// exactly one identity_audit_log row. See core_super_admin_integration_test.go's own header comment
-// for the invocation:
+// exactly one identity_audit_log row. Also covers M12.5's UnitDeleteEligibility: gated the same as
+// DeleteUnit itself, and its CanDelete/HasChildren/HasOrgProfile/HasActiveRoleAssignments/IsRoot
+// flags track the exact same fixture states DeleteUnit's own orphan-protection checks exercise, since
+// both share application.Service.checkDeleteEligibility. See core_super_admin_integration_test.go's
+// own header comment for the invocation:
 //
 //	DATABASE_URL="postgres://openfaithmap:dev@localhost:5432/postgres?sslmode=disable" \
 //	  go test ./internal/core/... -run TestUnitLifecycleIntegration -v
@@ -153,6 +156,15 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 		t.Errorf("CreateUnit(ungranted) = %v, want ErrPermissionDenied", err)
 	}
 
+	// ---------------------------------------------------------------- M12.5: UnitDeleteEligibility is
+	// gated the same way — no more permissive than the delete it previews.
+	if _, err := coreApp.UnitDeleteEligibility(ctx, seed.RootUnitID); !errorsIs(err, authzdomain.ErrPermissionDenied) {
+		t.Errorf("UnitDeleteEligibility with no subject = %v, want ErrPermissionDenied", err)
+	}
+	if _, err := coreApp.UnitDeleteEligibility(ungrantedCtx, seed.RootUnitID); !errorsIs(err, authzdomain.ErrPermissionDenied) {
+		t.Errorf("UnitDeleteEligibility(ungranted) = %v, want ErrPermissionDenied", err)
+	}
+
 	// ---------------------------------------------------------------- instance-admin path: create a
 	// parent unit under root, then exercise update/state/audit against it.
 	parent, err := coreApp.CreateUnit(adminCtx, seed.RootUnitID, "m121-parent", "M12.1 Parent", nil)
@@ -225,6 +237,14 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 	childID = child.ID
 	unitIDs = append(unitIDs, childID)
 
+	// ---------------------------------------------------------------- M12.5: UnitDeleteEligibility
+	// previews the children-block before DeleteUnit itself hits it.
+	if elig, err := coreApp.UnitDeleteEligibility(adminCtx, parentID); err != nil {
+		t.Fatalf("UnitDeleteEligibility(parent with a child): %v", err)
+	} else if elig.CanDelete || !elig.HasChildren || elig.IsRoot {
+		t.Errorf("UnitDeleteEligibility(parent with a child) = %+v, want HasChildren=true CanDelete=false", elig)
+	}
+
 	// ---------------------------------------------------------------- DeleteUnit orphan-protection:
 	// children.
 	if _, err := coreApp.DeleteUnit(adminCtx, parentID); !errorsIs(err, directorydomain.ErrUnitHasChildren) {
@@ -239,6 +259,14 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 		t.Errorf("DELETE_UNIT audit row.after = %s, want nil (a delete has no after state)", deleteRow.after)
 	}
 
+	// ---------------------------------------------------------------- M12.5: UnitDeleteEligibility
+	// previews the active-role-assignment block too.
+	if elig, err := coreApp.UnitDeleteEligibility(adminCtx, parentID); err != nil {
+		t.Fatalf("UnitDeleteEligibility(parent with an active role assignment): %v", err)
+	} else if elig.CanDelete || elig.HasChildren || !elig.HasActiveRoleAssignments {
+		t.Errorf("UnitDeleteEligibility(parent with an active role assignment) = %+v, want HasActiveRoleAssignments=true CanDelete=false", elig)
+	}
+
 	// ---------------------------------------------------------------- DeleteUnit orphan-protection:
 	// active role assignments — parent still has grantedAssignmentID targeting it.
 	if _, err := coreApp.DeleteUnit(adminCtx, parentID); !errorsIs(err, coreapplication.ErrUnitHasActiveRoleAssignments) {
@@ -246,6 +274,15 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 	}
 	if _, err := authzSvc.RevokeRoleAssignment(ctx, grantedAssignmentID, adminPersonID); err != nil {
 		t.Fatalf("RevokeRoleAssignment: %v", err)
+	}
+
+	// ---------------------------------------------------------------- M12.5: now clear of every
+	// orphan-protection reason, UnitDeleteEligibility reports CanDelete=true — the exact state
+	// DeleteUnit itself confirms a few lines below.
+	if elig, err := coreApp.UnitDeleteEligibility(adminCtx, parentID); err != nil {
+		t.Fatalf("UnitDeleteEligibility(parent, now clear): %v", err)
+	} else if !elig.CanDelete || elig.HasChildren || elig.HasOrgProfile || elig.HasActiveRoleAssignments || elig.IsRoot {
+		t.Errorf("UnitDeleteEligibility(parent, now clear) = %+v, want CanDelete=true and every flag false", elig)
 	}
 
 	// ---------------------------------------------------------------- DeleteUnit orphan-protection:
@@ -260,8 +297,21 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 	if _, err := religionSvc.SetOrgProfile(ctx, orphanTestUnitID, nil, nil); err != nil {
 		t.Fatalf("SetOrgProfile: %v", err)
 	}
+	if elig, err := coreApp.UnitDeleteEligibility(adminCtx, orphanTestUnitID); err != nil {
+		t.Fatalf("UnitDeleteEligibility(unit with an org profile): %v", err)
+	} else if elig.CanDelete || !elig.HasOrgProfile {
+		t.Errorf("UnitDeleteEligibility(unit with an org profile) = %+v, want HasOrgProfile=true CanDelete=false", elig)
+	}
 	if _, err := coreApp.DeleteUnit(adminCtx, orphanTestUnitID); !errorsIs(err, coreapplication.ErrUnitHasOrgProfile) {
 		t.Errorf("DeleteUnit(unit with an org profile) = %v, want ErrUnitHasOrgProfile", err)
+	}
+
+	// ---------------------------------------------------------------- M12.5: the root unit reads
+	// IsRoot=true/CanDelete=false regardless of it having no children/profile/assignments of its own.
+	if elig, err := coreApp.UnitDeleteEligibility(adminCtx, seed.RootUnitID); err != nil {
+		t.Fatalf("UnitDeleteEligibility(root): %v", err)
+	} else if !elig.IsRoot || elig.CanDelete {
+		t.Errorf("UnitDeleteEligibility(root) = %+v, want IsRoot=true CanDelete=false", elig)
 	}
 
 	// ---------------------------------------------------------------- now-childless, grant-free

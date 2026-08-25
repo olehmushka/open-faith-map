@@ -453,7 +453,9 @@
     "searchHeading": "Buscar unidades",
     "searchPlaceholder": "Buscar por código ou nome…",
     "search": "Buscar",
-    "noResults": "Nenhum resultado encontrado."
+    "noResults": "Nenhum resultado encontrado.",
+    "bulkArchiveHeading": "Arquivar em lote",
+    "archiveSelected": "Arquivar {count} selecionadas"
   },
   "SuperAdminUnitPage": {
     "detailsHeading": "Detalhes",
@@ -461,7 +463,24 @@
     "stateLabel": "Estado",
     "orgProfileHeading": "Código curto da organização",
     "ancestorsHeading": "Ancestrais",
-    "noAncestors": "Esta é uma unidade raiz."
+    "noAncestors": "Esta é uma unidade raiz.",
+    "editHeading": "Editar detalhes",
+    "nameLabel": "Nome",
+    "levelLabel": "Nível",
+    "saveChanges": "Salvar alterações",
+    "addChildHeading": "Adicionar unidade filha",
+    "addChild": "Adicionar unidade",
+    "stateHeading": "Estado",
+    "activate": "Ativar",
+    "suspend": "Suspender",
+    "archive": "Arquivar",
+    "deleteHeading": "Excluir",
+    "deleteUnit": "Excluir unidade",
+    "deleteBlockedChildren": "Esta unidade ainda tem unidades filhas — remova-as ou mova-as primeiro.",
+    "deleteBlockedOrgProfile": "Esta unidade ainda tem um perfil de organização religiosa — remova-o primeiro.",
+    "deleteBlockedRoleAssignments": "Esta unidade ainda tem atribuições de papel ativas — revogue-as primeiro.",
+    "deleteBlockedRoot": "A unidade raiz não pode ser excluída.",
+    "deleteBlockedGeneric": "Não foi possível excluir esta unidade."
   },
   "SuperAdminTaxaPage": {
     "heading": "Taxonomia",
