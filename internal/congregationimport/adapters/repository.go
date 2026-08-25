@@ -584,4 +584,3 @@ func (r *Repository) MarkJurisdictionUnitFailed(ctx context.Context, id, reason 
 	}
 	return toJurisdictionUnit(row), nil
 }
-

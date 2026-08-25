@@ -32,10 +32,6 @@ func NewRepository(conn db.DBTX) *Repository {
 	return &Repository{conn: conn, q: religionsql.New(conn)}
 }
 
-func nullableText(s string) pgtype.Text {
-	return pgtype.Text{String: s, Valid: s != ""}
-}
-
 func fromNullableText(t pgtype.Text) *string {
 	if !t.Valid {
 		return nil

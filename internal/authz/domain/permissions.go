@@ -3,7 +3,9 @@
 
 package domain
 
-import "slices"
+import (
+	"slices"
+)
 
 // Permission is a closed vocabulary of action codes (D-InProcessAuthz): a permission no code path
 // checks is dead weight, and a code path checking a permission nobody can grant is a silent hole.
@@ -72,7 +74,7 @@ var catalog = map[Permission]struct{}{
 	PermPositionCreate: {}, PermPositionUpdate: {}, PermPositionRead: {},
 	PermUnitRead: {}, PermUnitLifecycle: {}, PermUnitEdgesManage: {},
 	PermReligionRead: {}, PermLocationCreate: {}, PermRoleRead: {},
-	PermModerationStanding: {},
+	PermModerationStanding:  {},
 	PermInstanceAdminManage: {}, PermRoleCreate: {}, PermRoleUpdate: {}, PermRoleDelete: {},
 }
 

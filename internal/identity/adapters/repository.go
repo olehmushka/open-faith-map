@@ -45,7 +45,7 @@ func fromNullableText(t pgtype.Text) string {
 }
 
 // asString handles the "interface{}" columns sqlc couldn't statically type through a
-// COALESCE(email::text, '') expression over a citext column — the COALESCE guarantees a non-null
+// COALESCE(email::text, ”) expression over a citext column — the COALESCE guarantees a non-null
 // string at runtime regardless.
 func asString(v any) string {
 	s, _ := v.(string)
