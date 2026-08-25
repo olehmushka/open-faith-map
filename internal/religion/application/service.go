@@ -39,13 +39,13 @@ func NewService(pool *pgxpool.Pool, units UnitCreator) *Service {
 	return &Service{pool: pool, units: units}
 }
 
-func (s *Service) inTx(ctx context.Context, fn func(store *adapters.Store) error) error {
+func (s *Service) inTx(ctx context.Context, fn func(store *adapters.Repository) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := fn(adapters.NewStore(tx)); err != nil {
+	if err := fn(adapters.NewRepository(tx)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -53,17 +53,17 @@ func (s *Service) inTx(ctx context.Context, fn func(store *adapters.Store) error
 
 // GetTaxon reads a single taxon outside any transaction (read-only, pool-bound).
 func (s *Service) GetTaxon(ctx context.Context, id string) (religiondomain.Taxon, error) {
-	return adapters.NewStore(s.pool).GetTaxon(ctx, id)
+	return adapters.NewRepository(s.pool).GetTaxon(ctx, id)
 }
 
 // ListTaxa searches the seeded taxa catalog by code/name — M10.7's core.conjure.yml surface.
 func (s *Service) ListTaxa(ctx context.Context, query string, limit int) ([]religiondomain.Taxon, error) {
-	return adapters.NewStore(s.pool).ListTaxa(ctx, query, limit)
+	return adapters.NewRepository(s.pool).ListTaxa(ctx, query, limit)
 }
 
 // GetOrgProfile reads unitID's profile plus its classifications.
 func (s *Service) GetOrgProfile(ctx context.Context, unitID string) (religiondomain.OrgProfile, error) {
-	store := adapters.NewStore(s.pool)
+	store := adapters.NewRepository(s.pool)
 	p, err := store.GetOrgProfileRow(ctx, unitID)
 	if err != nil {
 		return religiondomain.OrgProfile{}, err
@@ -75,7 +75,7 @@ func (s *Service) GetOrgProfile(ctx context.Context, unitID string) (religiondom
 // SetOrgProfile upserts unitID's org-kind/short-code and returns the refreshed profile.
 func (s *Service) SetOrgProfile(ctx context.Context, unitID string, orgKindID, shortCode *string) (religiondomain.OrgProfile, error) {
 	var out religiondomain.OrgProfile
-	err := s.inTx(ctx, func(store *adapters.Store) error {
+	err := s.inTx(ctx, func(store *adapters.Repository) error {
 		p, err := store.UpsertOrgProfile(ctx, unitID, orgKindID, shortCode)
 		if err != nil {
 			return err
@@ -90,7 +90,7 @@ func (s *Service) SetOrgProfile(ctx context.Context, unitID string, orgKindID, s
 // AddOrgClassification tags unitID with taxonID, clearing any existing primary first if isPrimary.
 func (s *Service) AddOrgClassification(ctx context.Context, unitID, taxonID string, isPrimary bool) (religiondomain.OrgClassification, error) {
 	var out religiondomain.OrgClassification
-	err := s.inTx(ctx, func(store *adapters.Store) error {
+	err := s.inTx(ctx, func(store *adapters.Repository) error {
 		if isPrimary {
 			if err := store.ClearPrimaryClassification(ctx, unitID); err != nil {
 				return err
@@ -111,7 +111,7 @@ func (s *Service) AddOrgClassification(ctx context.Context, unitID, taxonID stri
 // writes that follow the atomic unit+edge creation still run in their own transactions, matching
 // upstream's own non-atomicity there (D-Hexagonal cross-module mutation).
 func (s *Service) CreateChildOrg(ctx context.Context, parentUnitID, code, name string, orgKindID, primaryTaxonID *string) (religiondomain.OrgProfile, error) {
-	excluded, err := adapters.NewStore(s.pool).HasActivePolicy(ctx, parentUnitID, religiondomain.PolicyExcludesChildCreation)
+	excluded, err := adapters.NewRepository(s.pool).HasActivePolicy(ctx, parentUnitID, religiondomain.PolicyExcludesChildCreation)
 	if err != nil {
 		return religiondomain.OrgProfile{}, err
 	}
@@ -140,14 +140,14 @@ func (s *Service) CreateChildOrg(ctx context.Context, parentUnitID, code, name s
 
 // ListSiteTypes returns the seeded religion_site_types catalog.
 func (s *Service) ListSiteTypes(ctx context.Context) ([]adapters.SiteType, error) {
-	return adapters.NewStore(s.pool).ListSiteTypes(ctx)
+	return adapters.NewRepository(s.pool).ListSiteTypes(ctx)
 }
 
 // ListOrgKinds returns the seeded religion_org_kinds catalog — added at M10.6 for
 // congregationimport's jurisdiction sync (resolveOrgKindIDs), which needs to resolve a stable code
 // like "diocese"/"jurisdiction" to its real RID before calling CreateChildOrg.
 func (s *Service) ListOrgKinds(ctx context.Context) ([]adapters.OrgKind, error) {
-	return adapters.NewStore(s.pool).ListOrgKinds(ctx)
+	return adapters.NewRepository(s.pool).ListOrgKinds(ctx)
 }
 
 // ListSitesByUnit returns unitID's sites with their EXACT coordinate — callers exposing this to an
@@ -155,12 +155,12 @@ func (s *Service) ListOrgKinds(ctx context.Context) ([]adapters.OrgKind, error) 
 // (registration/congregationimport's own-unit site management) is an authenticated owner, not the
 // public search arm SearchSites serves.
 func (s *Service) ListSitesByUnit(ctx context.Context, unitID string) ([]religiondomain.Site, error) {
-	return adapters.NewStore(s.pool).ListSitesByUnit(ctx, unitID)
+	return adapters.NewRepository(s.pool).ListSitesByUnit(ctx, unitID)
 }
 
 // CreateSite attaches a site to unitID at locationID.
 func (s *Service) CreateSite(ctx context.Context, in adapters.CreateSiteInput) (religiondomain.Site, error) {
-	return adapters.NewStore(s.pool).InsertSite(ctx, in)
+	return adapters.NewRepository(s.pool).InsertSite(ctx, in)
 }
 
 // SearchSites runs the public discovery search and coarsens each hit's coordinate per its own
@@ -169,7 +169,7 @@ func (s *Service) CreateSite(ctx context.Context, in adapters.CreateSiteInput) (
 // place; this coarsens the RETURNED coordinate on top of that, matching upstream's own behaviour for
 // the non-hidden precisions.
 func (s *Service) SearchSites(ctx context.Context, q religiondomain.DiscoveryQuery) ([]religiondomain.DiscoverySite, error) {
-	sites, err := adapters.NewStore(s.pool).SearchSites(ctx, q)
+	sites, err := adapters.NewRepository(s.pool).SearchSites(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -198,5 +198,5 @@ func (s *Service) SearchSites(ctx context.Context, q religiondomain.DiscoveryQue
 // exposes is exactly what the public search arm exists to withhold).
 func (s *Service) SearchSitesExact(ctx context.Context, q religiondomain.DiscoveryQuery) ([]religiondomain.Site, error) {
 	authz.MustBeSystemContext(ctx)
-	return adapters.NewStore(s.pool).SearchSites(ctx, q)
+	return adapters.NewRepository(s.pool).SearchSites(ctx, q)
 }
