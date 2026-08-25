@@ -1033,6 +1033,8 @@ type CoreSuperAdminServiceClient interface {
 	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
 	InvitePerson(ctx context.Context, authHeader bearertoken.Token, requestArg InvitePersonRequest) (InviteResult, error)
+	// M12.4 — decision-tracing debug tool for "why does this user have this access" (matching the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in the platforms researched): runs the same PDP.Decide the real enforcement path uses, with explain=true, against an ARBITRARY subjectPersonId (never the caller's own) — instance-admin-only via this whole route group's gate (RequireInstanceAdmin, attached once at registration), pure read, no audit log entry. A brand-new top-level static resource (no {} path segments) — every existing depth-1 segment under this base-path is already static, so a fresh zero-wildcard resource costs nothing and rules out the httprouter radix-tree collision class this file has hit repeatedly (M11.6/M12.1/M12.2) regardless of what gets added here later.
+	ExplainAccess(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error)
 }
 
 type coreSuperAdminServiceClient struct {
@@ -1402,6 +1404,28 @@ func (c *coreSuperAdminServiceClient) InvitePerson(ctx context.Context, authHead
 	return *returnVal, nil
 }
 
+func (c *coreSuperAdminServiceClient) ExplainAccess(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error) {
+	var returnVal *AccessExplanation
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ExplainAccess"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/access-decisions/explain"))
+	queryParams := make(url.Values)
+	queryParams.Set("subjectPersonId", fmt.Sprint(subjectPersonIdArg))
+	queryParams.Set("permissionCode", fmt.Sprint(permissionCodeArg))
+	queryParams.Set("unitId", fmt.Sprint(unitIdArg))
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(AccessExplanation), werror.WrapWithContextParams(ctx, err, "explainAccess failed")
+	}
+	if returnVal == nil {
+		return *new(AccessExplanation), werror.ErrorWithContextParams(ctx, "explainAccess response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // The super-admin surface replacing the deleted oikumenea-console (D-SuperAdminFold): people search, role catalog, per-unit role-assignment grant/list/revoke, and the instance-admin plane's own grant/list/revoke. Every endpoint in this service is gated as a whole route group by internal/authz/transport.RequireInstanceAdmin, attached once at registration (cmd/openfaithmap-api/register_core.go) — not per-handler, so no future endpoint added here can be added without inheriting the check.
 type CoreSuperAdminServiceClientWithAuth interface {
 	SearchPersons(ctx context.Context, queryArg *string, limitArg *int) (PersonPage, error)
@@ -1438,6 +1462,8 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
 	InvitePerson(ctx context.Context, requestArg InvitePersonRequest) (InviteResult, error)
+	// M12.4 — decision-tracing debug tool for "why does this user have this access" (matching the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in the platforms researched): runs the same PDP.Decide the real enforcement path uses, with explain=true, against an ARBITRARY subjectPersonId (never the caller's own) — instance-admin-only via this whole route group's gate (RequireInstanceAdmin, attached once at registration), pure read, no audit log entry. A brand-new top-level static resource (no {} path segments) — every existing depth-1 segment under this base-path is already static, so a fresh zero-wildcard resource costs nothing and rules out the httprouter radix-tree collision class this file has hit repeatedly (M11.6/M12.1/M12.2) regardless of what gets added here later.
+	ExplainAccess(ctx context.Context, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error)
 }
 
 func NewCoreSuperAdminServiceClientWithAuth(client CoreSuperAdminServiceClient, authHeader bearertoken.Token) CoreSuperAdminServiceClientWithAuth {
@@ -1531,6 +1557,10 @@ func (c *coreSuperAdminServiceClientWithAuth) ListAuditLog(ctx context.Context, 
 
 func (c *coreSuperAdminServiceClientWithAuth) InvitePerson(ctx context.Context, requestArg InvitePersonRequest) (InviteResult, error) {
 	return c.client.InvitePerson(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ExplainAccess(ctx context.Context, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error) {
+	return c.client.ExplainAccess(ctx, c.authHeader, subjectPersonIdArg, permissionCodeArg, unitIdArg)
 }
 
 func NewCoreSuperAdminServiceClientWithTokenProvider(client CoreSuperAdminServiceClient, tokenProvider httpclient.TokenProvider) CoreSuperAdminServiceClientWithAuth {
@@ -1708,4 +1738,12 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) InvitePerson(ctx context.
 		return *new(InviteResult), err
 	}
 	return c.client.InvitePerson(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ExplainAccess(ctx context.Context, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AccessExplanation), err
+	}
+	return c.client.ExplainAccess(ctx, bearertoken.Token(token), subjectPersonIdArg, permissionCodeArg, unitIdArg)
 }

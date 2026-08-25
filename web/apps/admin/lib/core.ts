@@ -17,6 +17,8 @@ import { auth } from "@/auth";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
 import type {
+  IAccessExplanation,
+  IAccessExplanationContribution,
   IAccountStatus,
   IApiKey,
   IAuditLogEntry,
@@ -43,6 +45,8 @@ import type {
 } from "./openfaithmap/generated/core";
 
 export type Whoami = IWhoami;
+export type AccessExplanation = IAccessExplanation;
+export type AccessExplanationContribution = IAccessExplanationContribution;
 export type Unit = IUnit;
 export type UnitRef = IUnitRef;
 export type Taxon = ITaxon;
@@ -252,6 +256,16 @@ export async function listRoles(): Promise<Role[]> {
 export async function listRoleAssignmentsByUnit(unitId: string): Promise<RoleAssignment[]> {
   const page = await unwrap((await client()).coreSuperAdmin.listRoleAssignmentsByUnit(unitId));
   return page.assignments;
+}
+
+// M12.4 — decision-tracing debug tool ("why does this user have this access"); pure read, no
+// audit log entry on the server side.
+export async function explainAccess(
+  subjectPersonId: string,
+  permissionCode: string,
+  unitId: string,
+): Promise<AccessExplanation> {
+  return unwrap((await client()).coreSuperAdmin.explainAccess(subjectPersonId, permissionCode, unitId));
 }
 
 // expiresAt (M12.3) is an optional ISO-8601 datetime string — nil/omitted for a non-expiring grant.

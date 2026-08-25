@@ -1,3 +1,4 @@
+import { IAccessExplanation } from "./accessExplanation";
 import { IAccountStatus } from "./accountStatus";
 import { IApiKeyPage } from "./apiKeyPage";
 import { IAuditLogPage } from "./auditLogPage";
@@ -83,6 +84,11 @@ export interface ICoreSuperAdminService {
      *
      */
     invitePerson(request: IInvitePersonRequest): Promise<IInviteResult>;
+    /**
+     * M12.4 — decision-tracing debug tool for "why does this user have this access" (matching the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in the platforms researched): runs the same PDP.Decide the real enforcement path uses, with explain=true, against an ARBITRARY subjectPersonId (never the caller's own) — instance-admin-only via this whole route group's gate (RequireInstanceAdmin, attached once at registration), pure read, no audit log entry. A brand-new top-level static resource (no {} path segments) — every existing depth-1 segment under this base-path is already static, so a fresh zero-wildcard resource costs nothing and rules out the httprouter radix-tree collision class this file has hit repeatedly (M11.6/M12.1/M12.2) regardless of what gets added here later.
+     *
+     */
+    explainAccess(subjectPersonId: string, permissionCode: string, unitId: string): Promise<IAccessExplanation>;
 }
 
 export class CoreSuperAdminService implements ICoreSuperAdminService {
@@ -474,6 +480,29 @@ export class CoreSuperAdminService implements ICoreSuperAdminService {
             request,
             __undefined,
             __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M12.4 — decision-tracing debug tool for "why does this user have this access" (matching the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in the platforms researched): runs the same PDP.Decide the real enforcement path uses, with explain=true, against an ARBITRARY subjectPersonId (never the caller's own) — instance-admin-only via this whole route group's gate (RequireInstanceAdmin, attached once at registration), pure read, no audit log entry. A brand-new top-level static resource (no {} path segments) — every existing depth-1 segment under this base-path is already static, so a fresh zero-wildcard resource costs nothing and rules out the httprouter radix-tree collision class this file has hit repeatedly (M11.6/M12.1/M12.2) regardless of what gets added here later.
+     *
+     */
+    public explainAccess(subjectPersonId: string, permissionCode: string, unitId: string): Promise<IAccessExplanation> {
+        return this.bridge.call<IAccessExplanation>(
+            "CoreSuperAdminService",
+            "explainAccess",
+            "GET",
+            "/core/v1/super-admin/access-decisions/explain",
+            __undefined,
+            __undefined,
+            {
+                "subjectPersonId": subjectPersonId,
+                "permissionCode": permissionCode,
+                "unitId": unitId,
+            },
             __undefined,
             __undefined,
             __undefined

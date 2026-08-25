@@ -333,6 +333,13 @@ func TestAuthorizationMatrix(t *testing.T) {
 			// fixture needed.
 			{"bulkGrantUnitRole", http.MethodPost, "/core/v1/super-admin/bulk-role-assignments", []int{http.StatusBadRequest},
 				map[string]any{"personIds": []string{}, "roleId": "00000000-0000-8000-8000-000000000000", "unitId": "00000000-0000-8000-8000-000000000000"}},
+			// M12.4 — same reasoning: explainAccess must be refused by the same route-group gate too.
+			// A brand-new top-level static resource with no {} path segments, so a query string can
+			// just be concatenated onto the path.
+			{"explainAccess", http.MethodGet,
+				"/core/v1/super-admin/access-decisions/explain?subjectPersonId=" + subj.instanceAdminPersonID +
+					"&permissionCode=unit.read&unitId=" + subj.unitA,
+				[]int{http.StatusOK}, nil},
 		}
 		for _, ep := range endpoints {
 			t.Run(ep.name, func(t *testing.T) {

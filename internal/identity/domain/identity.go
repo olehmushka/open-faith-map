@@ -23,7 +23,6 @@ var (
 	ErrInviteAlreadyAccepted = errors.New("invite has already been accepted")
 	ErrCannotMergeSelf       = errors.New("cannot merge a person with itself")
 	ErrAPIKeyNotFound        = errors.New("api key not found")
-	ErrUnknownPermissionCode = errors.New("permission code is not in the known catalog")
 )
 
 // Account status values — must match identity_accounts' CHECK constraint literals

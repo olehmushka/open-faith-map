@@ -112,6 +112,15 @@ func (s *Service) DecideFor(ctx context.Context, subjectPersonID string, action 
 	return s.enforce(ctx, subjectPersonID, action, unitID)
 }
 
+// ExplainDecision answers the same question as DecideFor, but with the PDP's full explain trace
+// populated (Allow, Via, DenyReason) instead of a bare error. Reserved for the super-admin "why
+// does this user have this access" debugging screen (M12.4); same caller-gating requirement as
+// DecideFor: callers must gate access to this method itself on the instance-admin plane before
+// calling it — it is not itself an authorization check.
+func (s *Service) ExplainDecision(ctx context.Context, subjectPersonID string, action domain.Permission, unitID string) (domain.Decision, error) {
+	return s.decide(ctx, subjectPersonID, action, unitID, true)
+}
+
 func (s *Service) enforce(ctx context.Context, subjectPersonID string, action domain.Permission, unitID string) error {
 	d, err := s.decide(ctx, subjectPersonID, action, unitID, false)
 	if err != nil {

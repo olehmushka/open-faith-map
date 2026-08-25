@@ -208,6 +208,34 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	if _, err := svc.ClearRoleAssignmentExpiry(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, domain.ErrAssignmentNotFound) {
 		t.Errorf("ClearRoleAssignmentExpiry (unknown id) error = %v, want ErrAssignmentNotFound", err)
 	}
+
+	// --- M12.4: ExplainDecision. TestPDPDecideExplain (domain package) already proves the PDP's
+	// own explain semantics exhaustively — this only needs to prove the Service-level plumbing:
+	// personID still holds the cleared-expiry unit.read grant on unit.ID from the block above.
+	allowed, err := svc.ExplainDecision(ctx, personID, domain.Permission("unit.read"), unit.ID)
+	if err != nil {
+		t.Fatalf("ExplainDecision (allow case): %v", err)
+	}
+	if !allowed.Allow {
+		t.Fatalf("ExplainDecision (allow case) = %+v, want Allow=true", allowed)
+	}
+	var foundContribution bool
+	for _, c := range allowed.Via {
+		if c.AssignmentID == expiringAssignmentID && c.RoleCode == "registration-operator" {
+			foundContribution = true
+		}
+	}
+	if !foundContribution {
+		t.Errorf("ExplainDecision (allow case) Via = %+v, want a contribution naming assignment %s / role registration-operator", allowed.Via, expiringAssignmentID)
+	}
+
+	denied, err := svc.ExplainDecision(ctx, personID, domain.Permission("unit.read"), "00000000-0000-8000-8000-000000000000")
+	if err != nil {
+		t.Fatalf("ExplainDecision (deny case): %v", err)
+	}
+	if denied.Allow || denied.DenyReason == "" {
+		t.Errorf("ExplainDecision (deny case) = %+v, want Allow=false with a non-empty DenyReason", denied)
+	}
 }
 
 type noopClosure struct{}

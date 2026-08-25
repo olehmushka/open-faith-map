@@ -389,6 +389,23 @@ func (s *Service) ListRoleAssignmentsByUnit(ctx context.Context, unitID string) 
 	return s.authz.ListRoleAssignmentsByUnit(ctx, unitID)
 }
 
+// ExplainAccess runs the PDP's decision-tracing engine (Decide with explain=true) for an arbitrary
+// subjectPersonId/permissionCode/unitId triple — the "why does this user have this access" debug
+// tool (M12.4), matching the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in
+// the platforms researched. Pure read: no requireSubject call and no audit log entry — this method
+// is reachable only through CoreSuperAdminService's whole-route-group RequireInstanceAdmin gate.
+// permissionCode is validated against authzdomain's closed catalog up front, the same
+// validation shape identity/application.Service.CreateApiKey's own permissionCodes check uses, so
+// an unknown code is a clear error rather than a silently-empty trace. Deliberately does not reject
+// instance-scope codes the way CreateApiKey does — "why does person X have instance.admin.manage"
+// is a legitimate query here.
+func (s *Service) ExplainAccess(ctx context.Context, subjectPersonID, permissionCode, unitID string) (authzdomain.Decision, error) {
+	if !authzdomain.IsKnownPermission(permissionCode) {
+		return authzdomain.Decision{}, authzdomain.ErrUnknownPermissionCode
+	}
+	return s.authz.ExplainDecision(ctx, subjectPersonID, authzdomain.Permission(permissionCode), unitID)
+}
+
 // Audit action names — M11.2. Free text, not a DB enum (docs/architecture/decisions.md), since
 // future milestones (M11.3 session revocation, M11.7 bulk role assignment, M11.8 person merge) each
 // add their own without touching this table's schema.

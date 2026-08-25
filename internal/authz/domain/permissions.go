@@ -4,6 +4,7 @@
 package domain
 
 import (
+	"errors"
 	"slices"
 )
 
@@ -83,6 +84,12 @@ func IsKnownPermission(code string) bool {
 	_, ok := catalog[Permission(code)]
 	return ok
 }
+
+// ErrUnknownPermissionCode is returned when a caller-supplied permission code isn't in the closed
+// catalog — shared across every module that validates a code against it (M11.9's CreateApiKey
+// allowlist, M12.4's ExplainAccess), so there's exactly one sentinel for this concept rather than a
+// per-module copy.
+var ErrUnknownPermissionCode = errors.New("permission code is not in the known catalog")
 
 // IsInstanceScope reports whether code is an instance-plane-only permission. The PDP satisfies these
 // only via the instance-admin plane (authz_instance_admins), never via a role assignment.

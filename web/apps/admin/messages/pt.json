@@ -337,7 +337,8 @@
     "roleGrants": "Concessão de papéis",
     "units": "Unidades",
     "taxa": "Taxonomia",
-    "auditLog": "Registro de auditoria"
+    "auditLog": "Registro de auditoria",
+    "explainAccess": "Explicar acesso"
   },
   "AdminSitesPage": {
     "heading": "Sites",
@@ -496,6 +497,23 @@
     "noEntries": "Nenhuma entrada do registro corresponde a estes filtros.",
     "loadMore": "Carregar mais",
     "loading": "Carregando…"
+  },
+  "SuperAdminExplainAccessPage": {
+    "heading": "Explicar acesso",
+    "formHeading": "Explicar uma decisão",
+    "subjectPersonIdLabel": "ID da pessoa sujeita",
+    "permissionCodeLabel": "Código de permissão",
+    "permissionCodePlaceholder": "ex. unit.read",
+    "unitIdLabel": "ID da unidade",
+    "submit": "Explicar",
+    "resultHeading": "Decisão",
+    "allow": "Permitir",
+    "deny": "Negar",
+    "noContributions": "Permitido, mas nenhuma concessão contribuinte foi registrada.",
+    "instanceAdminContribution": "Permitido através do plano de administrador de instância.",
+    "assignmentContribution": "Permitido pela função {role} na unidade {unit} (escopo: {scope}, grafo: {graph}).",
+    "noGraph": "nenhum",
+    "denyReasonLabel": "Negado: {reason}"
   },
   "AdminNotFoundPage": {
     "heading": "Página não encontrada",

@@ -1,3 +1,5 @@
+export * from "./accessExplanation";
+export * from "./accessExplanationContribution";
 export * from "./accountAlreadyExists";
 export * from "./accountNotFound";
 export * from "./accountStatus";

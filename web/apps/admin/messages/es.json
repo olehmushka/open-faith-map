@@ -337,7 +337,8 @@
     "roleGrants": "Concesión de roles",
     "units": "Unidades",
     "taxa": "Taxonomía",
-    "auditLog": "Registro de auditoría"
+    "auditLog": "Registro de auditoría",
+    "explainAccess": "Explicar acceso"
   },
   "AdminSitesPage": {
     "heading": "Sitios",
@@ -496,6 +497,23 @@
     "noEntries": "Ninguna entrada del registro coincide con estos filtros.",
     "loadMore": "Cargar más",
     "loading": "Cargando…"
+  },
+  "SuperAdminExplainAccessPage": {
+    "heading": "Explicar acceso",
+    "formHeading": "Explicar una decisión",
+    "subjectPersonIdLabel": "ID de la persona sujeta",
+    "permissionCodeLabel": "Código de permiso",
+    "permissionCodePlaceholder": "p. ej. unit.read",
+    "unitIdLabel": "ID de la unidad",
+    "submit": "Explicar",
+    "resultHeading": "Decisión",
+    "allow": "Permitir",
+    "deny": "Denegar",
+    "noContributions": "Permitido, pero no se registró ninguna concesión contribuyente.",
+    "instanceAdminContribution": "Permitido a través del plano de administrador de instancia.",
+    "assignmentContribution": "Permitido mediante el rol {role} en la unidad {unit} (alcance: {scope}, grafo: {graph}).",
+    "noGraph": "ninguno",
+    "denyReasonLabel": "Denegado: {reason}"
   },
   "AdminNotFoundPage": {
     "heading": "Página no encontrada",

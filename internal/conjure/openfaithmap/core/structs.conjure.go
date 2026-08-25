@@ -8,6 +8,76 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+// M12.4 — explainAccess's return value; mirrors internal/authz/domain.Decision exactly. via is empty when allow is false; denyReason is the empty string when allow is true.
+type AccessExplanation struct {
+	Allow      bool                            `json:"allow"`
+	Via        []AccessExplanationContribution `json:"via"`
+	DenyReason string                          `json:"denyReason"`
+}
+
+func (o AccessExplanation) MarshalJSON() ([]byte, error) {
+	if o.Via == nil {
+		o.Via = make([]AccessExplanationContribution, 0)
+	}
+	type _tmpAccessExplanation AccessExplanation
+	return safejson.Marshal(_tmpAccessExplanation(o))
+}
+
+func (o *AccessExplanation) UnmarshalJSON(data []byte) error {
+	type _tmpAccessExplanation AccessExplanation
+	var rawAccessExplanation _tmpAccessExplanation
+	if err := safejson.Unmarshal(data, &rawAccessExplanation); err != nil {
+		return err
+	}
+	if rawAccessExplanation.Via == nil {
+		rawAccessExplanation.Via = make([]AccessExplanationContribution, 0)
+	}
+	*o = AccessExplanation(rawAccessExplanation)
+	return nil
+}
+
+func (o AccessExplanation) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AccessExplanation) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M12.4 — one reason an ALLOW was reached; mirrors internal/authz/domain.Contribution exactly. For an instance-plane allow only instanceAdmin is true and every other field is the empty string.
+type AccessExplanationContribution struct {
+	InstanceAdmin bool   `json:"instanceAdmin"`
+	AssignmentId  string `json:"assignmentId"`
+	RoleCode      string `json:"roleCode"`
+	TargetUnitId  string `json:"targetUnitId"`
+	Scope         string `json:"scope"`
+	GraphCode     string `json:"graphCode"`
+}
+
+func (o AccessExplanationContribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AccessExplanationContribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // status is "active", "disabled", or "none" (the person has never had a login attached).
 type AccountStatus struct {
 	PersonId string `json:"personId"`

@@ -9,6 +9,7 @@ import {
   History,
   KeyRound,
   MapPinned,
+  Search,
   ShieldCheck,
   UserCog,
   UserPlus,
@@ -81,6 +82,7 @@ export const SUPER_ADMIN_NAV: NavItem[] = [
   { href: "/admin/units", icon: Building2, labelKey: "units" },
   { href: "/admin/taxa", icon: BookOpen, labelKey: "taxa" },
   { href: "/admin/audit-log", icon: History, labelKey: "auditLog" },
+  { href: "/admin/explain-access", icon: Search, labelKey: "explainAccess" },
 ];
 
 function NavItems({

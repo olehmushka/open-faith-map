@@ -221,6 +221,26 @@ types:
       RoleAssignmentPage:
         fields:
           assignments: list<RoleAssignment>
+      AccessExplanationContribution:
+        docs: >
+          M12.4 — one reason an ALLOW was reached; mirrors internal/authz/domain.Contribution
+          exactly. For an instance-plane allow only instanceAdmin is true and every other field is
+          the empty string.
+        fields:
+          instanceAdmin: boolean
+          assignmentId: string
+          roleCode: string
+          targetUnitId: string
+          scope: string
+          graphCode: string
+      AccessExplanation:
+        docs: >
+          M12.4 — explainAccess's return value; mirrors internal/authz/domain.Decision exactly. via
+          is empty when allow is false; denyReason is the empty string when allow is true.
+        fields:
+          allow: boolean
+          via: list<AccessExplanationContribution>
+          denyReason: string
       GrantUnitRoleRequest:
         docs: >
           M12.2 — scope must be "unit" or "subtree"; graphId is required when scope is "subtree"
@@ -1093,3 +1113,28 @@ services:
         args:
           request: InvitePersonRequest
         returns: InviteResult
+
+      explainAccess:
+        docs: >
+          M12.4 — decision-tracing debug tool for "why does this user have this access" (matching
+          the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in the platforms
+          researched): runs the same PDP.Decide the real enforcement path uses, with explain=true,
+          against an ARBITRARY subjectPersonId (never the caller's own) — instance-admin-only via
+          this whole route group's gate (RequireInstanceAdmin, attached once at registration), pure
+          read, no audit log entry. A brand-new top-level static resource (no {} path segments) —
+          every existing depth-1 segment under this base-path is already static, so a fresh
+          zero-wildcard resource costs nothing and rules out the httprouter radix-tree collision
+          class this file has hit repeatedly (M11.6/M12.1/M12.2) regardless of what gets added here
+          later.
+        http: GET /access-decisions/explain
+        args:
+          subjectPersonId:
+            type: string
+            param-type: query
+          permissionCode:
+            type: string
+            param-type: query
+          unitId:
+            type: string
+            param-type: query
+        returns: AccessExplanation

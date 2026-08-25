@@ -337,7 +337,8 @@
     "roleGrants": "Надання ролей",
     "units": "Юніти",
     "taxa": "Таксономія",
-    "auditLog": "Журнал аудиту"
+    "auditLog": "Журнал аудиту",
+    "explainAccess": "Пояснення доступу"
   },
   "AdminSitesPage": {
     "heading": "Сайти",
@@ -496,6 +497,23 @@
     "noEntries": "Жодного запису журналу не відповідає цим фільтрам.",
     "loadMore": "Завантажити ще",
     "loading": "Завантаження…"
+  },
+  "SuperAdminExplainAccessPage": {
+    "heading": "Пояснення доступу",
+    "formHeading": "Пояснити рішення",
+    "subjectPersonIdLabel": "ID особи-суб'єкта",
+    "permissionCodeLabel": "Код дозволу",
+    "permissionCodePlaceholder": "напр. unit.read",
+    "unitIdLabel": "ID підрозділу",
+    "submit": "Пояснити",
+    "resultHeading": "Рішення",
+    "allow": "Дозволено",
+    "deny": "Відмовлено",
+    "noContributions": "Дозволено, але жодного надання доступу не зафіксовано.",
+    "instanceAdminContribution": "Дозволено через рівень адміністратора екземпляра.",
+    "assignmentContribution": "Дозволено через роль {role} на підрозділі {unit} (область: {scope}, граф: {graph}).",
+    "noGraph": "немає",
+    "denyReasonLabel": "Відмовлено: {reason}"
   },
   "AdminNotFoundPage": {
     "heading": "Сторінку не знайдено",

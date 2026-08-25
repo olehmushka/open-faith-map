@@ -292,6 +292,21 @@ func (s *SuperAdminService) InvitePerson(ctx context.Context, _ bearertoken.Toke
 	}, nil
 }
 
+func (s *SuperAdminService) ExplainAccess(ctx context.Context, _ bearertoken.Token, subjectPersonIdArg, permissionCodeArg, unitIdArg string) (gencore.AccessExplanation, error) {
+	d, err := s.app.ExplainAccess(ctx, subjectPersonIdArg, permissionCodeArg, unitIdArg)
+	if err != nil {
+		return gencore.AccessExplanation{}, mapErr(err, errCtx{PersonID: subjectPersonIdArg, UnitID: unitIdArg})
+	}
+	via := make([]gencore.AccessExplanationContribution, len(d.Via))
+	for i, c := range d.Via {
+		via[i] = gencore.AccessExplanationContribution{
+			InstanceAdmin: c.InstanceAdmin, AssignmentId: c.AssignmentID, RoleCode: c.RoleCode,
+			TargetUnitId: c.TargetUnitID, Scope: string(c.Scope), GraphCode: c.GraphCode,
+		}
+	}
+	return gencore.AccessExplanation{Allow: d.Allow, Via: via, DenyReason: d.DenyReason}, nil
+}
+
 func auditLogPageSizeOrDefault(p *int) int {
 	if p == nil || *p <= 0 {
 		return defaultAuditLogPageSize

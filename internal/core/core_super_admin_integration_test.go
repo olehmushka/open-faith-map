@@ -685,6 +685,127 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 	}
 }
 
+// TestExplainAccessIntegration proves M12.4's ExplainAccess against a real Postgres instance: a
+// known permission with a real grant explains as an allow with a matching Via contribution, a
+// known permission with no matching grant explains as a deny with a non-empty DenyReason, an
+// unknown permission code is rejected before the PDP ever runs, and — the one behavior this
+// milestone's own docs call out — none of these calls write an identity_audit_log row (pure read,
+// no requireSubject/actor involved at all, unlike every mutating method above).
+func TestExplainAccessIntegration(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set DATABASE_URL to run against a live Postgres instance")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	dir := directoryapplication.NewService(pool)
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, nil, nil, authzSvc, auditLogSvc, pool, "")
+
+	var personID, assignmentID string
+	var unit directorydomain.Unit
+	t.Cleanup(func() {
+		bg := context.Background()
+		if assignmentID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_role_assignments WHERE id = $1`, assignmentID); err != nil {
+				t.Errorf("cleanup: delete assignment: %v", err)
+			}
+		}
+		if personID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_persons WHERE id = $1`, personID); err != nil {
+				t.Errorf("cleanup: delete person: %v", err)
+			}
+		}
+		if unit.ID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_units WHERE id = $1`, unit.ID); err != nil {
+				t.Errorf("cleanup: delete unit: %v", err)
+			}
+		}
+	})
+
+	unit, err = dir.CreateUnit(ctx, directorydomain.Unit{Name: "M12.4 explain access test unit"})
+	if err != nil {
+		t.Fatalf("CreateUnit: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_persons (display_name, given, surname)
+		VALUES ('M12.4 ExplainAccess Subject', 'M12.4', 'Subject') RETURNING id`).Scan(&personID); err != nil {
+		t.Fatalf("insert test person: %v", err)
+	}
+
+	roles, err := authzSvc.ListRoles(ctx)
+	if err != nil {
+		t.Fatalf("ListRoles: %v", err)
+	}
+	var roleID string
+	for _, r := range roles {
+		if r.Code == "registration-operator" {
+			roleID = r.ID
+		}
+	}
+	if roleID == "" {
+		t.Fatalf("ListRoles = %+v, want it to include the seeded registration-operator role", roles)
+	}
+
+	assignmentID, err = authzSvc.GrantUnitRole(ctx, personID, roleID, unit.ID, authzdomain.ScopeUnit, "", personID, nil)
+	if err != nil {
+		t.Fatalf("GrantUnitRole: %v", err)
+	}
+
+	auditRowCount := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM openfaithmap.identity_audit_log`).Scan(&n); err != nil {
+			t.Fatalf("count audit rows: %v", err)
+		}
+		return n
+	}
+	auditBefore := auditRowCount()
+
+	// --- Allow: personID really holds unit.read on unit.ID.
+	allowed, err := coreApp.ExplainAccess(ctx, personID, "unit.read", unit.ID)
+	if err != nil {
+		t.Fatalf("ExplainAccess (allow case): %v", err)
+	}
+	if !allowed.Allow {
+		t.Fatalf("ExplainAccess (allow case) = %+v, want Allow=true", allowed)
+	}
+	var foundContribution bool
+	for _, c := range allowed.Via {
+		if c.AssignmentID == assignmentID && c.RoleCode == "registration-operator" {
+			foundContribution = true
+		}
+	}
+	if !foundContribution {
+		t.Errorf("ExplainAccess (allow case) Via = %+v, want a contribution naming assignment %s / role registration-operator", allowed.Via, assignmentID)
+	}
+
+	// --- Deny: no grant reaches this unrelated unit.
+	denied, err := coreApp.ExplainAccess(ctx, personID, "unit.read", "00000000-0000-8000-8000-000000000000")
+	if err != nil {
+		t.Fatalf("ExplainAccess (deny case): %v", err)
+	}
+	if denied.Allow || denied.DenyReason == "" {
+		t.Errorf("ExplainAccess (deny case) = %+v, want Allow=false with a non-empty DenyReason", denied)
+	}
+
+	// --- Unknown permission code: rejected before the PDP ever runs.
+	if _, err := coreApp.ExplainAccess(ctx, personID, "not.a.real.permission", unit.ID); !errorsIs(err, authzdomain.ErrUnknownPermissionCode) {
+		t.Errorf("ExplainAccess (unknown code) error = %v, want ErrUnknownPermissionCode", err)
+	}
+
+	// --- Pure read: none of the three calls above wrote an audit row.
+	if n := auditRowCount(); n != auditBefore {
+		t.Errorf("identity_audit_log grew from %d to %d rows after three ExplainAccess calls, want no growth (pure read, no audit entry)", auditBefore, n)
+	}
+}
+
 // TestMergePersonsIntegration proves M11.8's MergePersons against a real Postgres instance: the
 // happy path (role assignment, plain membership, instance-admin grant, and — Case A — a lone
 // account all move onto the survivor), the three independent collision cases (a role assignment,

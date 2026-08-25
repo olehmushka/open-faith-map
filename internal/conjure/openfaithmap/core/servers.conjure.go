@@ -774,6 +774,8 @@ type CoreSuperAdminService interface {
 	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
 	InvitePerson(ctx context.Context, authHeader bearertoken.Token, requestArg InvitePersonRequest) (InviteResult, error)
+	// M12.4 — decision-tracing debug tool for "why does this user have this access" (matching the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in the platforms researched): runs the same PDP.Decide the real enforcement path uses, with explain=true, against an ARBITRARY subjectPersonId (never the caller's own) — instance-admin-only via this whole route group's gate (RequireInstanceAdmin, attached once at registration), pure read, no audit log entry. A brand-new top-level static resource (no {} path segments) — every existing depth-1 segment under this base-path is already static, so a fresh zero-wildcard resource costs nothing and rules out the httprouter radix-tree collision class this file has hit repeatedly (M11.6/M12.1/M12.2) regardless of what gets added here later.
+	ExplainAccess(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error)
 }
 
 // RegisterRoutesCoreSuperAdminService registers handlers for the CoreSuperAdminService endpoints with a witchcraft wrouter.
@@ -845,6 +847,9 @@ func RegisterRoutesCoreSuperAdminService(router wrouter.Router, impl CoreSuperAd
 	}
 	if err := resource.Post("InvitePerson", "/core/v1/super-admin/invites", httpserver.NewJSONHandler(handler.HandleInvitePerson, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add invitePerson route")
+	}
+	if err := resource.Get("ExplainAccess", "/core/v1/super-admin/access-decisions/explain", httpserver.NewJSONHandler(handler.HandleExplainAccess, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add explainAccess route")
 	}
 	return nil
 }
@@ -1305,6 +1310,22 @@ func (c *coreSuperAdminServiceHandler) HandleInvitePerson(rw http.ResponseWriter
 		return errors.WrapWithInvalidArgument(err)
 	}
 	respArg, err := c.impl.InvitePerson(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreSuperAdminServiceHandler) HandleExplainAccess(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	subjectPersonIdArg := req.URL.Query().Get("subjectPersonId")
+	permissionCodeArg := req.URL.Query().Get("permissionCode")
+	unitIdArg := req.URL.Query().Get("unitId")
+	respArg, err := c.impl.ExplainAccess(req.Context(), bearertoken.Token(authHeader), subjectPersonIdArg, permissionCodeArg, unitIdArg)
 	if err != nil {
 		return err
 	}

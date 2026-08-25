@@ -85,7 +85,7 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewCannotMergeSelf()
 	case errors.Is(err, identitydomain.ErrAPIKeyNotFound):
 		return gencore.NewApiKeyNotFound(c.ApiKeyID)
-	case errors.Is(err, identitydomain.ErrUnknownPermissionCode):
+	case errors.Is(err, authzdomain.ErrUnknownPermissionCode):
 		return gencore.NewUnknownPermissionCode()
 	case errors.Is(err, identitydomain.ErrAccountDisabled):
 		// No oracle leak to an anonymous invitee holding just a token guess (same reasoning

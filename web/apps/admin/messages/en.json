@@ -337,7 +337,8 @@
     "roleGrants": "Role Grants",
     "units": "Units",
     "taxa": "Taxa",
-    "auditLog": "Audit Log"
+    "auditLog": "Audit Log",
+    "explainAccess": "Explain Access"
   },
   "AdminSitesPage": {
     "heading": "Sites",
@@ -496,6 +497,23 @@
     "noEntries": "No audit log entries match these filters.",
     "loadMore": "Load more",
     "loading": "Loading…"
+  },
+  "SuperAdminExplainAccessPage": {
+    "heading": "Explain access",
+    "formHeading": "Explain a decision",
+    "subjectPersonIdLabel": "Subject person ID",
+    "permissionCodeLabel": "Permission code",
+    "permissionCodePlaceholder": "e.g. unit.read",
+    "unitIdLabel": "Unit ID",
+    "submit": "Explain",
+    "resultHeading": "Decision",
+    "allow": "Allow",
+    "deny": "Deny",
+    "noContributions": "Allowed, but no contributing grant was recorded.",
+    "instanceAdminContribution": "Allowed via the instance-admin plane.",
+    "assignmentContribution": "Allowed via role {role} on unit {unit} (scope: {scope}, graph: {graph}).",
+    "noGraph": "none",
+    "denyReasonLabel": "Denied: {reason}"
   },
   "AdminNotFoundPage": {
     "heading": "Page not found",
