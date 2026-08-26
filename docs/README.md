@@ -137,10 +137,15 @@ OpenFaithMap — content, discovery glue, moderation, vouching — are unchanged
 
 > **Before building anything, read
 > [milestones-2026-08-26-now.md's unresolved-unknowns index](milestones-2026-08-26-now.md#unresolved-unknowns--read-this-before-building-anything).**
-> It's **empty as of 2026-08-26** — every item carried into it (two resolved back in
-> 2026-08-09/2026-08-10 but never struck until this split, plus one deferred decision and two
-> contradictions/orphans resolved the same day) has since been closed. Nothing is parked silently;
-> if a design has a hole, it will be in that table. (The closed
+> Everything carried in from the archive is closed (two were resolved back in 2026-08-09/2026-08-10
+> but never struck until the file split, plus one deferred decision and two contradictions/orphans
+> resolved the same day). **Three new items opened on 2026-08-26 when M14 was scoped** and are open
+> now: `U14` (no apex domain or DNS-provider API token — wildcard TLS needs DNS-01, which blocks
+> M14.18 and narrows D-ProductionDeployment's deferred provider choice), `U15` (Google Drive
+> hotlink reliability at volume is unmeasured, a direct consequence of shipping no media storage),
+> and `U16` (a registration operator can edit any congregation's website — known since M3, but the
+> stakes change once a site is a real website on its own subdomain). Nothing is parked silently; if
+> a design has a hole, it will be in that table. (The closed
 > [milestones-2026-08-07-2026-08-26.md](milestones-2026-08-07-2026-08-26.md#unresolved-unknowns--read-this-before-building-anything)
 > keeps the full original table, including every item's resolution note.)
 
