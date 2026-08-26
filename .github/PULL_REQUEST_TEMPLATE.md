@@ -9,7 +9,7 @@
 ## Gate(s) advanced
 
 <!-- Per docs/development-process.md: decided / designed / backend / migrated / ui / verified -->
-- [ ] `docs/milestones.md`'s stage board updated in this PR (if a gate moved)
+- [ ] `docs/milestones-2026-08-26-now.md`'s stage board updated in this PR (if a gate moved)
 
 ## Checklist
 

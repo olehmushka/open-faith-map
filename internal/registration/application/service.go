@@ -289,10 +289,10 @@ func (s *Service) ensureSite(ctx context.Context, unitID string, req domain.Requ
 }
 
 // churchSiteTypeID finds the seeded "church" religion_site_types row (D-Scope: Christian only).
-// Falls back to the first available site type if the seed ever changes shape, so approval doesn't
-// hard-fail on a catalog rename — the same silent-fallback shape the pre-cutover code had (a real,
-// separately-tracked defect, U11 in docs/milestones.md's unresolved-unknowns table; not this
-// milestone's job to fix).
+// Fails loudly if the seed is ever missing or renamed — U11 (resolved 2026-08-26) rejected the
+// prior silent fallback to the first available site type: a mis-tagged congregation is worse than
+// one blocked approval, and a renamed catalog entry should surface immediately, not attach every
+// new congregation to an arbitrary type until someone notices.
 func (s *Service) churchSiteTypeID(ctx context.Context) (string, error) {
 	types, err := s.religion.ListSiteTypes(ctx)
 	if err != nil {
@@ -303,10 +303,7 @@ func (s *Service) churchSiteTypeID(ctx context.Context) (string, error) {
 			return t.ID, nil
 		}
 	}
-	if len(types) > 0 {
-		return types[0].ID, nil
-	}
-	return "", fmt.Errorf("no religion site types configured on this instance")
+	return "", fmt.Errorf("church site type not found (seeded religion_site_types row missing or renamed)")
 }
 
 const congregationAdminPositionCode = "admin"
@@ -396,7 +393,7 @@ func (s *Service) GetReparentStatus(ctx context.Context, id string) (*domain.Rep
 // (M4.1, D-JurisdictionUnits). M12.2: the actual add-before-remove, resumable, closure-safe move —
 // formerly a state machine private to this service, backed by its own jurisdiction_reparenting_jobs
 // table — is now internal/directory.Move, generalized so internal/registration is a caller rather
-// than the sole owner (docs/milestones.md's M12.2 row); this method is now just the
+// than the sole owner (docs/milestones-2026-08-07-2026-08-26.md's M12.2 row); this method is now just the
 // approval/operator-gate wrapper around it. jurisdiction_reparenting_jobs itself is left in place,
 // untouched, as a frozen historical log — this service no longer writes to it.
 func (s *Service) Reparent(ctx context.Context, performedByPersonID, id, newParentUnitID string) (domain.ReparentingJob, error) {

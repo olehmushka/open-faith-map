@@ -105,7 +105,7 @@ surfaced to the operator, never applied automatically.** `ApproveCandidateReques
 still requires the operator's own explicit choice, exactly as before this feature existed; a
 candidate with a matched suggestion the operator ignores provisions under the configured root unit,
 identically to a candidate with no suggestion at all. **Live-verified, not just reasoned about**
-(`docs/milestones.md`'s M8 detail): a real early-return bug meant jurisdiction matching never ran at
+(`docs/milestones-2026-08-07-2026-08-26.md`'s M8 detail): a real early-return bug meant jurisdiction matching never ran at
 all for a candidate whose *taxon* hint didn't resolve — exactly the candidates most likely to carry
 a useful jurisdiction hint (an unaliased denomination keyword next to a resolvable diocese name in
 the same legal-entity name) — found by seeding a real jurisdiction alias and observing the
@@ -168,7 +168,7 @@ automated one.
   lands in `NEEDS_GEOCODE`; an operator fills location in manually during review. **Verified
   encoding: windows-1251**, checked directly against the real downloaded export's XML prolog (the
   schema XSD's own "UTF-8" declares the XSD file, not the data file).
-  Live-tested end-to-end (`docs/milestones.md`'s M8 detail) against a real subset of the actual
+  Live-tested end-to-end (`docs/milestones-2026-08-07-2026-08-26.md`'s M8 detail) against a real subset of the actual
   downloaded export. `STAN` values distinguishing active/terminated are not filtered
   on in v1 — every `OPF`-matched record is staged regardless, `STAN`'s raw value visible to the
   operator in `raw_payload`. **`JurisdictionHint` reuses the same NAME string as `TaxonHint`, not a
@@ -195,7 +195,7 @@ automated one.
     previous `skip` — until the inflated value races past the file's true record count and
     `dec.Token()` hits a real `io.EOF` far too early, indistinguishable from a genuinely complete
     run (`SUCCEEDED`, not `FAILED`) unless independently cross-checked. **This is why M8's original
-    "full-scale" verification reported only 3,000 matched candidates** (see `docs/milestones.md`'s
+    "full-scale" verification reported only 3,000 matched candidates** (see `docs/milestones-2026-08-07-2026-08-26.md`'s
     corrected M8 entry) — the true figure, confirmed three independent ways (a plain
     `unzip | iconv | grep` count, and two separate live runs of the fixed HTTP-streaming path) is
     **30,721**. Fixed (`cursorOf(seen)`); regression-tested
@@ -548,7 +548,7 @@ testable" convention (`scripts/bootstrap-registration-org`'s `permissionsToAdd`)
 `application/taxonmatch_test.go`/`jurisdictionmatch_test.go` (substring matching, case-
 insensitivity, source-scoped-over-global override), `application/provision_test.go` (a table test
 over every `domain.Status` — a direct regression test for the real duplicate-provisioning bug,
-`docs/milestones.md`'s M8 detail), `application/dedup_test.go` (`haversineMeters` against known
+`docs/milestones-2026-08-07-2026-08-26.md`'s M8 detail), `application/dedup_test.go` (`haversineMeters` against known
 coordinate pairs), and `transport/cursor_test.go`/`service_test.go` (pageToken round-trip/tamper
 cases, `pageSizeOrDefault`'s clamp — copied directly from `moderation`'s own M7 test cases). No
 DB/go-oikumenea mocking framework — every test operates on plain data in, plain data out.

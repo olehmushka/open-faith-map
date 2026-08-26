@@ -1,0 +1,33 @@
+# Template for var/conf/install.yml — copy this file there before your first
+# `docker compose up --build` (install.yml is gitignored; only this example is tracked, since it now
+# carries the Postgres connection string and Google OAuth client id — U12, resolved 2026-08-26).
+#   cp var/conf/install.example.yml var/conf/install.yml
+#
+# database-url/google-oauth-client-id below are generic placeholders, not this repo's own working
+# local-dev values — fill in the real ones (docker-compose.yml's postgres/openfaithmap-init-role
+# services define the local Postgres role and password this stack expects; the Google OAuth client
+# id is whichever OAuth client you've registered, matching web/apps/admin's own AUTH_GOOGLE_ID).
+# ECV-encrypt database-url in any real deployment; it carries real credentials there.
+product-name: openfaithmap-api
+product-version: 0.0.0-dev
+use-console-log: true
+# GuardSymmetricIssuers' only input (M10.2, D-DirectTokenVerification's amendment): local | dev |
+# staging | prod. Any value other than local/dev refuses HS256 issuers at boot. Never derive
+# dev-ness from a secret's presence — set this explicitly per deployment.
+environment: local
+# Postgres connection string (U12, resolved 2026-08-26 — was a bare DATABASE_URL env var). A real
+# secret in any non-local deployment: ECV-encrypt this field rather than passing it as plaintext.
+database-url: "postgres://<user>:<password>@<host>:5432/<database>?sslmode=disable"
+# Sole accepted audience for the Google OIDC issuer (U12, resolved 2026-08-26 — was a bare
+# GOOGLE_OAUTH_CLIENT_ID env var). Not a secret — OAuth client IDs are public by design.
+google-oauth-client-id: "<your-oauth-client-id>.apps.googleusercontent.com"
+server:
+  address: "0.0.0.0"
+  # 3000/3001 — openfaithmap-api takes the 300x range that openfaithmap-web (3002) and
+  # openfaithmap-admin (3004) continue (3003 was oikumenea-console's, retired at M10.8's teardown).
+  # Originally chosen to avoid colliding with go-oikumenea's own 8443/8444 default and dev Keycloak
+  # on 8080 — neither service exists in this stack anymore (D-OwnCore, D-GoogleDirect), but the
+  # port numbers themselves are unchanged.
+  port: 3000
+  management-port: 3001
+  context-path: ""

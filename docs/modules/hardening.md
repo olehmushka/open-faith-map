@@ -45,7 +45,7 @@ This is the one correction M7's own prior "idea stage" framing needed: it assume
 scoped until real usage existed. That premise held for the numeric tuning above, but not for
 rate-limiting a known anonymous-write surface or fixing an already-diagnosed pagination defect —
 both are ordinary engineering hardening, found by direct code inspection, not by user behavior. See
-[milestones.md](../milestones.md)'s M7 section for the corrected framing.
+[milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s M7 section for the corrected framing.
 
 ## Entities & aggregates
 
@@ -93,7 +93,7 @@ error, not the generic `Moderation:InvalidArgument` this doc originally assumed 
 against the actual contract while implementing: `api/moderation.conjure.yml`'s `errors:` block has
 only specific named `INVALID_ARGUMENT`-coded errors (`ActionNotReversible`, `AppealActorConflict`,
 `TaxonNotFound`, `DoctrinalReasonNotAllowed`), no generic catch-all — `InvalidPageToken` matches
-that convention (see milestones.md's M7 "As implemented" note).
+that convention (see milestones-2026-08-07-2026-08-26.md's M7 "As implemented" note).
 
 ## Dependencies
 

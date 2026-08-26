@@ -160,7 +160,7 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 	// authenticated request — except registerSession itself (sessionExemptRoutes), which is what
 	// CREATES the row a session id would otherwise need to already exist. No issuer-based carve-out:
 	// this applies to dev/local-issuer tokens the same as real Google ID tokens (confirmed decision,
-	// docs/milestones.md's M11.3 row) — cmd/openfaithmap-api/authorization_matrix_test.go and
+	// docs/milestones-2026-08-07-2026-08-26.md's M11.3 row) — cmd/openfaithmap-api/authorization_matrix_test.go and
 	// scripts/mint-local-token both insert a real identity_sessions row for every token they mint.
 	var sessionID string
 	if !isSessionExemptPath(r.Method, r.URL.Path) {

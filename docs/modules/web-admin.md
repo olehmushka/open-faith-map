@@ -72,7 +72,7 @@ single-app `openfaithmap-web` used to before the split.
   > `api/registration.conjure.yml` — not a separate package, see D-Stack in
   > `architecture/decisions.md`), the same shape `lib/oikumenea.ts` already used for go-oikumenea's
   > SDK. No hand-written HTTP client remains for either service. Full detail:
-  > [milestones.md](../milestones.md)'s M2.6.
+  > [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s M2.6.
 - **Called by:** nothing — it is one of two public ingress points (the other is
   [`openfaithmap-web`](web-facade.md#dependencies)). It publishes its own host port and, once built,
   is expected to sit at its own subdomain (e.g. `admin.openfaithmap.org`), separate from the public

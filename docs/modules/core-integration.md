@@ -114,7 +114,7 @@ grant today:
   (`internal/coreintegration`'s integration test).
 
 Two grants this doc previously listed turned out not to work against a real instance (found while
-proving M1, see [milestones.md](../milestones.md) M1.1):
+proving M1, see [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md) M1.1):
 
 - **`religion.read` is now usable by a service principal — fixed upstream (2026-08-09).** Every
   `religion` module read endpoint used to be `RequireAnywhere`-gated — a person-shaped PEP path

@@ -82,7 +82,7 @@ no host port published, reachable only over the compose-internal network.
 `oikumenea-console` (M1.2), and `hermenea` (M2.2). ~~What is *not* built is most of what
 `openfaithmap-api` is eventually for: it owns exactly one module today, `registration`. `content`,
 `discovery`, `moderation`, and `vouching` are designed only~~ — see the
-[stage board](../milestones.md#stage-board), which is authoritative for stage.
+[stage board](../milestones-2026-08-07-2026-08-26.md#stage-board), which is authoritative for stage.
 
 > **Corrected 2026-08-17.** The struck sentence was accurate around M2.2 and went stale as the build
 > ran ahead of this doc. `openfaithmap-api` owns **nine** modules: `registration` (M2), `content`
@@ -123,7 +123,7 @@ this path — `openfaithmap-web` has none to forward, which is exactly why this 
 > endpoint, released as `docker.io/olegamysk/oikumenea:0.0.2`) — but #33 deliberately did not ask
 > upstream to support genuine anonymous access, so this row is unchanged. Full measurement, both
 > before and after the fix, in [core-integration.md](../modules/core-integration.md)'s
-> authorization-touchpoints table and [milestones.md](../milestones.md)'s M2.5 detail. **M4's
+> authorization-touchpoints table and [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s M2.5 detail. **M4's
 > `designed` gate stays reopened** — the fix is not a small adjustment: `openfaithmap-web` must
 > never call go-oikumenea directly for discovery reads at all, only OpenFaithMap's own
 > `discovery_site_cache`, now concretely buildable since the service principal that populates it can
@@ -162,7 +162,7 @@ instance-wide authority.
 ## Deployment topology
 
 `open-faith-map/docker-compose.yml` (built at M1, extended at M1.2/M2/M2.1/M2.2 — see
-[milestones.md](../milestones.md)) extends go-oikumenea's own compose pattern rather than
+[milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)) extends go-oikumenea's own compose pattern rather than
 reinventing it. Two deviations from the original planned shape are now their own decisions:
 [D-SharedDatabase](decisions.md) (one Postgres instance, two schemas — not two instances) and
 [D-GoogleDirect](decisions.md) (Google is the sole IdP — no Keycloak service).

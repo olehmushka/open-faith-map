@@ -17,8 +17,8 @@ migrated → ui → verified. In short:
   `docs/architecture/decisions.md` **before** the code lands.
 - A new module needs its doc under `docs/modules/` written to the fixed template before its
   `backend` gate.
-- [`docs/milestones.md`](docs/milestones.md)'s stage board is updated in the **same** PR that
-  passes a gate — not as a follow-up.
+- [`docs/milestones-2026-08-26-now.md`](docs/milestones-2026-08-26-now.md)'s stage board is updated
+  in the **same** PR that passes a gate — not as a follow-up.
 
 If you're unsure whether something is decided or designed yet, check the stage board first.
 
@@ -76,7 +76,7 @@ the `D-<Name>` / module / stage-board row it advances gets linked explicitly (se
 3. Run `./godelw verify` before pushing — it runs format, lint, and test for the Go tree. Note it
    does **not** cover `web/`: run each app's own `npm run lint && npm run build` when you touch one.
    CI runs both. ⚠️ **CI's `web` job has been failing since the M2.1 split** — it still expects the
-   deleted `web/package.json`. Fixed by [M2.4](docs/milestones.md); until then, `main` being red is
+   deleted `web/package.json`. Fixed by [M2.4](docs/milestones-2026-08-07-2026-08-26.md); until then, `main` being red is
    known, and no milestone may advance to Verified while it is.
 4. Migrations are expand-only via Atlas, under `migrations/`, one repo-root directory — never a
    destructive change without a documented contract-phase migration. Re-hash with
@@ -109,7 +109,7 @@ Keep composing commits the way this repo already does: one commit per gate advan
 slice of one), bundling backend + migration + UI + docs for that slice rather than splitting them
 into separate commits. The body is where the real content lives — what was built, what was verified
 end-to-end (cite the actual command/test, not "should work"), and which `D-<Name>` / module doc /
-milestone row it touches. [`docs/milestones.md`](docs/milestones.md)'s stage board gets updated in
+milestone row it touches. [`docs/milestones-2026-08-26-now.md`](docs/milestones-2026-08-26-now.md)'s stage board gets updated in
 the *same* commit that passes a gate, never a follow-up — restating
 [`docs/development-process.md`](docs/development-process.md)'s rule here because it's a
 commit-composition rule as much as a process one.

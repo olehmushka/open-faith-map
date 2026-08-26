@@ -110,7 +110,7 @@ content change), gated by the same target-scoped `registration-operator` check
 > principal, no `coreintegration.NewServiceClient`, no network hop. The redesign's *shape*
 > (cache-first, lazy-refresh-on-miss, no scheduled job) is unchanged and still accurate; only the
 > mechanism behind "calls go-oikumenea" changed. Frozen above, not edited, per this repo's
-> append-only-correction convention (see `docs/milestones.md`'s own audit-pass note); read every
+> append-only-correction convention (see `docs/milestones-2026-08-07-2026-08-26.md`'s own audit-pass note); read every
 > "go-oikumenea" reference below this point as "`internal/religion`/`internal/location`" unless a
 > later note says otherwise.
 

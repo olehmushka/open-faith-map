@@ -148,4 +148,4 @@ the pattern, not a specific manifest.
   ports 9443/9444, that token is the only gate on `POST /hermenea/v1/sync/{source}` from the host.
   Fine for local dev; a real deployment has to remember to edit the compose file itself, which is
   exactly the kind of thing that gets forgotten. Moved to `.env` by
-  [milestones.md](../milestones.md)'s **M2.4**.
+  [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s **M2.4**.

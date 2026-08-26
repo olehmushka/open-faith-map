@@ -72,13 +72,11 @@ services:
       openfaithmap-init-role:
         condition: service_completed_successfully
     environment:
-      # M2.4, D-SharedDatabase: the least-privilege role above, not the postgres superuser.
-      DATABASE_URL: "postgres://openfaithmap:dev@postgres:5432/postgres?sslmode=disable"
-      # M10.2 (D-DirectTokenVerification): the audience GuardIssuerAudience requires be pinned on
-      # the Google OIDC issuer. Same client id openfaithmap-admin's own AUTH_GOOGLE_ID already uses
-      # below (one Google OAuth client, two relying parties) — a token minted for this client is
-      # what both the admin app's sign-in flow and this service's own validator must agree on.
-      GOOGLE_OAUTH_CLIENT_ID: "459963198200-qlhu1um4h9bik68608c73o671rcqv4je.apps.googleusercontent.com"
+      # DATABASE_URL/GOOGLE_OAUTH_CLIENT_ID used to live here as plain env vars (U12, resolved
+      # 2026-08-26) — both now come from var/conf/install.yml (config.Install.DatabaseURL/
+      # GoogleOAuthClientID), baked into the image (Dockerfile), matching Environment's own
+      # precedent (M10.2). Same Google OAuth client id openfaithmap-admin's own AUTH_GOOGLE_ID
+      # below uses — one client, two relying parties.
       # DEV_ISSUER_HMAC_KEY: intentionally unset here. GuardSymmetricIssuers only permits an HS256
       # issuer in local/dev, but the guard is not why this stays empty — ship it commented out,
       # never with a value (D-DirectTokenVerification's amendment), so a copied compose override

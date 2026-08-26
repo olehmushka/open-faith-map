@@ -24,7 +24,7 @@ of choices specific to OpenFaithMap.
   there is no codegen pipeline for `openfaithmap-api` yet, so `web/apps/admin/lib/registration.ts`
   is hand-written.~~ **Corrected 2026-08-18:** stale since M2.6 shipped the pipeline. Both exist —
   `scripts/gen-ts-client.sh` generates into `web/apps/{admin,web}/lib/openfaithmap/generated/`, and
-  `make sdk-verify` fails on drift. [milestones.md](../milestones.md)'s M2.6.)*
+  `make sdk-verify` fails on drift. [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s M2.6.)*
 - Atlas versioned migrations, one repo-root `migrations/` directory, expand/contract releases, a
   boot-time schema-version check. *(The boot-time check is not implemented —
   `cmd/openfaithmap-api` reads `DATABASE_URL` and opens a pool with no schema-version assertion.
@@ -95,10 +95,14 @@ of choices specific to OpenFaithMap.
   [D-PlatformModerator](decisions.md) and
   [core-integration.md](../modules/core-integration.md#authorization-touchpoints) for the pattern
   and the two worked examples.
-- **Cross-module foreign keys inside `openfaithmap-api` are undecided.**
-  `discovery_site_cache.content_site_id` is a real FK into `content_sites` — a schema-level
-  coupling between two modules, where the rules above only cover cross-*service* references and the
-  layering rules only cover Go-level calls. Settle before M3/M4 add more; see `DS-OFM-13`.
+- **Cross-module foreign keys inside `openfaithmap-api` are permitted** (`DS-OFM-13`/U7, resolved
+  2026-08-26). Every module shares one Postgres instance and one schema (`openfaithmap`, one
+  database since D-SharedDatabase/M10), so there is no cross-*service* boundary a schema-level FK
+  would violate — the rules above cover cross-*service* references and Go-level layering, neither of
+  which a foreign key crosses. `discovery_site_cache.content_site_id → content_sites` (M4,
+  `ON DELETE SET NULL`) was already built this way before the convention was written down; this
+  entry formalizes that precedent rather than introducing a new one. State the `ON DELETE` behavior
+  explicitly on every cross-module FK — that choice is the actual design decision each one makes.
 - **No RLS-based tenant isolation.** OpenFaithMap's own tables are scoped by a go-oikumenea unit
   RID column, but access control for that column is enforced at the application layer against
   go-oikumenea's PDP response (see [core-integration.md](../modules/core-integration.md)) — there

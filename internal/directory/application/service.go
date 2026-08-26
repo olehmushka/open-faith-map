@@ -110,7 +110,7 @@ func (s *Service) HasChildren(ctx context.Context, id string) (bool, error) {
 }
 
 // DeleteUnit soft-deletes id (M12.1), refusing if it has any live child edge (ErrUnitHasChildren).
-// The other two orphan checks milestones.md's M12.1 row calls for — active role assignments, an
+// The other two orphan checks milestones-2026-08-07-2026-08-26.md's M12.1 row calls for — active role assignments, an
 // existing religion org profile — are cross-module and enforced by internal/core before this is ever
 // called (D-InProcessAuthz: this module cannot import authz or religion). The HasChildren check
 // below runs again inside the same transaction as the delete itself — belt-and-suspenders against a

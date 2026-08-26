@@ -23,7 +23,7 @@
 //
 // M11.3, D-SessionTracking: every authenticated request now also needs a valid, unrevoked
 // X-Session-Id header, dev-issued tokens included (no issuer-based carve-out — confirmed decision,
-// docs/milestones.md's M11.3 row). Pass -database-url and -account-id to have this tool ALSO insert
+// docs/milestones-2026-08-07-2026-08-26.md's M11.3 row). Pass -database-url and -account-id to have this tool ALSO insert
 // the backing identity_sessions row and print the session id on a second stdout line — a deliberate,
 // opt-in expansion of this tool's previously side-effect-free contract, since without it the minted
 // token now 401s on every real endpoint:

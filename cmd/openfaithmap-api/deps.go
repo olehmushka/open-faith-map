@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // M10.5.5: the composition root's shared wiring state. Split out of what was one flat 473-line
-// initServer function (docs/milestones.md's own M10.5.5 row) so each module's registration is a
+// initServer function (docs/milestones-2026-08-07-2026-08-26.md's own M10.5.5 row) so each module's registration is a
 // small, independently readable register<Module>(ctx, info, deps) function — done before M10.6's
 // cutover, not after, so the composition root isn't being refactored at the same time it's the thing
 // most likely to be wrong.

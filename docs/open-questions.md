@@ -95,7 +95,7 @@ from the module doc it was raised in.
   ~~No action to take here until that milestone is scoped; recorded so this isn't silently reopened
   as if it were undecided.~~
   **Resolved (2026-08-14): that milestone now exists —
-  [M9](milestones.md#m9--production-deployment-single-cheap-vm) · D-ProductionDeployment
+  [M9](milestones-2026-08-07-2026-08-26.md#m9--production-deployment-single-cheap-vm) · D-ProductionDeployment
   (`architecture/decisions.md`).** Both items are scheduled there as M9's own build-phase work,
   still deliberately provider-agnostic (the concrete VM provider remains undecided). Still open in
   practice — nothing is provisioned yet — just no longer homeless.

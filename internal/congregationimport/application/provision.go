@@ -221,7 +221,10 @@ func ptrOrEmpty(s *string) string {
 // churchSiteTypeID and slugCode are deliberate, minimal duplicates of registration's own
 // identically-named unexported helpers — this repo's established convention (unexported symbols
 // aren't importable across packages, and every module already hand-duplicates small shared shapes
-// rather than promoting them to a common package).
+// rather than promoting them to a common package). Fails loudly if the seed is ever missing or
+// renamed, matching registration's own U11 fix (resolved 2026-08-26) — this copy had the identical
+// silent-fallback defect and was fixed alongside it, not called out separately in U11's original
+// text.
 func (s *Service) churchSiteTypeID(ctx context.Context) (string, error) {
 	types, err := s.religion.ListSiteTypes(ctx)
 	if err != nil {
@@ -232,10 +235,7 @@ func (s *Service) churchSiteTypeID(ctx context.Context) (string, error) {
 			return t.ID, nil
 		}
 	}
-	if len(types) > 0 {
-		return types[0].ID, nil
-	}
-	return "", fmt.Errorf("no religion site types configured on this instance")
+	return "", fmt.Errorf("church site type not found (seeded religion_site_types row missing or renamed)")
 }
 
 var slugNonAlnum = regexp.MustCompile(`[^a-z0-9]+`)

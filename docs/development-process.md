@@ -2,8 +2,10 @@
 
 OpenFaithMap adopts go-oikumenea's feature pipeline verbatim (same gate names, same discipline),
 scoped to this repo's own doc paths. Read this before starting, advancing, or reporting on any
-feature. The [stage board](milestones.md#stage-board) records where each milestone currently sits;
-this doc defines the gates it moves through.
+feature. The stage board records where each milestone currently sits — the
+[active one](milestones-2026-08-26-now.md#stage-board) for anything after 2026-08-26, the
+[closed record](milestones-2026-08-07-2026-08-26.md#stage-board) for M0–M13.6 — this doc defines
+the gates it moves through.
 
 ## The seven states, six gates
 
@@ -11,7 +13,7 @@ this doc defines the gates it moves through.
 |---|---|---|
 | idea | A `## TODO-N · Title [status: idea]` entry in a project `todo.md` (not yet created — added at the first idea past this initial doc set) | `todo.md` |
 | decided | A binding `D-<Name>` block in [`architecture/decisions.md`](architecture/decisions.md) | `architecture/decisions.md` |
-| designed | A module doc written to the fixed template (purpose → entities → data model → Conjure sketch → dependencies → authorization touchpoints → invariants → open seams) + an `M#` row added to [`milestones.md`](milestones.md) | `milestones.md`, `modules/`, `glossary.md` |
+| designed | A module doc written to the fixed template (purpose → entities → data model → Conjure sketch → dependencies → authorization touchpoints → invariants → open seams) + an `M#` row added to [`milestones-2026-08-26-now.md`](milestones-2026-08-26-now.md) | `milestones-2026-08-26-now.md`, `modules/`, `glossary.md` |
 | backend | A Go module in `openfaithmap-api` + an `api/<module>.conjure.yml` (generated, never hand-edited) | code |
 | migrated | One versioned Atlas migration under `migrations/`, expand-only, lint-gated | code |
 | ui | Page(s) under `web/apps/web/` (anonymous) or `web/apps/admin/` (verified) — D-AdminSurface — or `➖` for a backend-only milestone | code |
@@ -65,10 +67,11 @@ exercise those specifically: a second token that should be refused, a process ki
 
 ## Stage-board honesty
 
-The board is authoritative for **stage**; each milestone's own prose in
-[`milestones.md`](milestones.md) is authoritative for **detail**. Discrepancies resolve in the
-board's favor. Update the stage board in the same commit/PR that passes a gate — not as a
-follow-up.
+The board is authoritative for **stage**; each milestone's own prose — in
+[`milestones-2026-08-26-now.md`](milestones-2026-08-26-now.md) for anything after 2026-08-26, in
+[`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for M0–M13.6 — is
+authoritative for **detail**. Discrepancies resolve in the board's favor. Update the (active) stage
+board in the same commit/PR that passes a gate — not as a follow-up.
 
 This is not a hypothetical rule. M2.1 deleted `web/package.json`, leaving CI's `web` job pointing at
 a path that no longer existed — every run since had been failing. M2.2 was still marked `✅` Verified

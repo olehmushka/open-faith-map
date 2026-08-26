@@ -30,6 +30,10 @@ go.work.sum
 # local-dev-only compose overrides (e.g. DEV_ISSUER_HMAC_KEY) — never committed, D-DirectTokenVerification
 docker-compose.override.yml
 
+# real install config — carries database-url/google-oauth-client-id since U12 (2026-08-26); copy
+# var/conf/install.example.yml here to get started (see that file's own header)
+var/conf/install.yml
+
 # Editor/IDE
 # .idea/
 # .vscode/

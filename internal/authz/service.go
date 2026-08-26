@@ -135,7 +135,7 @@ func (s *Service) enforce(ctx context.Context, subjectPersonID string, action do
 // GrantUnitRole grants personID roleID on unitID at scope (domain.ScopeUnit or domain.ScopeSubtree),
 // graphID required (and only meaningful) when scope is ScopeSubtree — M10.6's registration cutover
 // was the first caller (approval-time congregation-admin grant, always ScopeUnit); M12.2 adds real
-// scope=subtree provisioning, resolving U14 (docs/milestones.md): before this, every real/test grant
+// scope=subtree provisioning, resolving U14 (docs/milestones-2026-08-07-2026-08-26.md): before this, every real/test grant
 // was hardcoded to scope='unit', so D-UnitMoveDualScope's dual-parent unit.edges.manage check could
 // never pass for a non-root move — subtree was fully implemented in the PDP but unprovisionable
 // through any surface. No epoch bump, no cache to invalidate (D-InProcessAuthz's amendment: grants
