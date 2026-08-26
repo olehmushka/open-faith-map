@@ -27,6 +27,9 @@ go.work.sum
 # env file
 .env
 
+# local-dev-only compose overrides (e.g. DEV_ISSUER_HMAC_KEY) — never committed, D-DirectTokenVerification
+docker-compose.override.yml
+
 # Editor/IDE
 # .idea/
 # .vscode/
