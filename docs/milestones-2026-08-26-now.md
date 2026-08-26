@@ -9,12 +9,14 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26) and nothing in it is built yet. It is the
-second half of the product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the
-per-congregation site builder), whose bones shipped at M3/M4 and were never built on. Nineteen
-sub-milestones, M14.0–M14.18. **M14.0 is the gate for the whole arc** — it writes the nine `D-`
-blocks and the module-doc rewrites that move every row below it from `⬜` to `✅` in the first two
-columns. Nothing else in the arc starts before M14.1, which fixes a live stored-XSS hole.
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 is done (2026-08-27)** and no other
+sub-milestone is built yet. It is the second half of the product: M4/M13 finished **discovery** (the
+map); M14 finishes **presence** (the per-congregation site builder), whose bones shipped at M3/M4
+and were never built on. Nineteen sub-milestones, M14.0–M14.18. **M14.0 was the gate for the whole
+arc** — it wrote the nine `D-` blocks and the module-doc rewrites, and ruled on **U16** (tightened)
+and the M14.10 nav assumption (replaced with a hand-built menu); see
+[architecture/decisions.md](architecture/decisions.md) and the Unresolved unknowns table below.
+Nothing else in the arc starts before M14.1, which fixes a live stored-XSS hole.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -28,7 +30,7 @@ items below are **new, opened by M14's scoping pass on 2026-08-26**, and are ope
 |---|---|---|---|
 | **U14** | **No apex domain is registered and no DNS-provider API token exists.** A wildcard certificate for `*.<apex>` can only be issued over the ACME **DNS-01** challenge — HTTP-01 cannot issue wildcards. D-ProductionDeployment deliberately left the VM/DNS provider undecided; `D-TenantSubdomains` now constrains that choice for the first time (the provider must expose a DNS API Caddy has a module for). | M14.18 only. Every other M14 milestone is verifiable locally against `*.localhost`, which browsers resolve to loopback with no DNS at all. | The owner, by registering a domain and picking a DNS provider. M14.18 carries `🔶` until then — the same honest gate M1.2/M2 already use for the Google OAuth redirect URI. |
 | **U15** | **Google Drive hotlink reliability at volume is unmeasured.** `D-ExternalMediaOnly` makes congregations host their own images on Drive/Dropbox/OneDrive. Direct-content URLs for these hosts are undocumented, have been changed by their vendors before, and are throttled under load — none of which we can measure before real congregations use it. | M14.3's normalizer, and every `image`/`gallery` block on every public site thereafter. A vendor-side change breaks images platform-wide at once. | Only real traffic. M14.3 mitigates rather than resolves: the original URL is preserved alongside the normalized one, so a normalizer fix is a re-derivation, not a data-loss event. Escalation path is the first-party `media` module (`DS-OFM-17`). |
-| **U16** | **A registration operator can edit any congregation's website.** Not new — [content.md](modules/content.md#authorization-touchpoints) has recorded it since M3, as a consequence of `content.manage` reusing `religionorg.manage`, which `registration-operator` holds as a subtree grant on the shared root. What is new is the **stakes**: after M14.9 a "site" is a real website on its own subdomain, not an unlinked blob of blocks. | Every `content.manage`-gated write in the arc — which is most of it. | Still needs a second real identity to test (M2.3's own known limitation). M14.0 must decide explicitly whether the arc tightens this or restates the acceptance; it must not walk past it silently. |
+| **U16** | ~~**A registration operator can edit any congregation's website.** Not new — [content.md](modules/content.md#authorization-touchpoints) has recorded it since M3, as a consequence of `content.manage` reusing `religionorg.manage`, which `registration-operator` holds as a subtree grant on the shared root. What is new is the **stakes**: after M14.9 a "site" is a real website on its own subdomain, not an unlinked blob of blocks.~~ **Ruled on (2026-08-27, M14.0): tightened, not restated.** [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist) decides `content.manage` becomes its own per-unit permission, granted to `congregation-admin` only; operators keep just the existing moderation path. Still 🔶 in practice — the decision is written, but the code isn't: implementation is scheduled to M14.9, which is when the stakes this row named actually go live. | Every `content.manage`-gated write in the arc — which is most of it. | **Decided by the owner (tighten), designed by M14.0.** Code lands at M14.9; a second real identity is still needed to test the new per-unit denial path once it exists (M2.3's own known limitation, unresolved by this ruling). |
 
 **Carried in from the archive, all resolved — empty as of 2026-08-26:**
 
@@ -58,8 +60,8 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 
 | # | Decided | Designed | Backend | Migrated | UI | Verified | Stage |
 |---|---|---|---|---|---|---|---|
-| M14 · The site-building arc | ⬜ | ⬜ | ➖ | ➖ | ➖ | ⬜ | **Scoped jointly with the owner (2026-08-26); the `Decided` gate itself is M14.0's work.** A codebase audit plus external research into WordPress and Drupal found the site builder has good bones (typed JSON-Schema-validated blocks, translation groups, draft/published states, an unused `theme` JSONB — M3/M4) and nothing built on them: admins author pages by typing **raw JSON into a textarea**, every published page is dumped onto **one route as a one-pager** keyed by a UUID, there is **no media path anywhere**, `content.catalog.manage` still has **no endpoint**, and `button.href`/`image.url`/`social_embed.url` render with **no scheme validation at all** — a live stored XSS. Twelve owner decisions fixed the shape: full-parity arc; **no media uploads** (external URLs only); **forward revisions**; **structured rich-text nodes, never HTML**; **subdomain per congregation**; **curated contrast-checked theme tokens**; platform subdomains only; all four optional surfaces in scope; one web app with Host middleware, extractable later; contact form to an **in-app inbox, no SMTP**; **publish-on-read** scheduling with no scheduler; wildcard TLS designed but gated. Nineteen sub-milestones below. |
-| M14.0 · Decisions + designs for the arc | ⬜ | ⬜ | ➖ | ➖ | ➖ | ⬜ | Writes the nine `D-` blocks (`D-TenantSubdomains`, `D-ExternalMediaOnly`, `D-RichTextNodes`, `D-ContentRevisions`, `D-CuratedTheme`, `D-SitePatterns`, `D-InAppInbox`, `D-PublishOnRead`, `D-PublicSiteCSP`), rewrites [content.md](modules/content.md) to the fixed template, updates [web-facade.md](modules/web-facade.md)/[web-admin.md](modules/web-admin.md)/[glossary.md](glossary.md), schedules `DS-OFM-7` to M14.14, opens `DS-OFM-17` (no first-party media storage), and rules explicitly on **U16**. Flips the first two columns for every row below. Docs-only — no code. |
+| M14 · The site-building arc | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Scoped jointly with the owner (2026-08-26); M14.0 (2026-08-27) writes the nine `D-` blocks and rules on both open questions below.** A codebase audit plus external research into WordPress and Drupal found the site builder has good bones (typed JSON-Schema-validated blocks, translation groups, draft/published states, an unused `theme` JSONB — M3/M4) and nothing built on them: admins author pages by typing **raw JSON into a textarea**, every published page is dumped onto **one route as a one-pager** keyed by a UUID, there is **no media path anywhere**, `content.catalog.manage` still has **no endpoint**, and `button.href`/`image.url`/`social_embed.url` render with **no scheme validation at all** — a live stored XSS. Twelve owner decisions fixed the shape: full-parity arc; **no media uploads** (external URLs only); **forward revisions**; **structured rich-text nodes, never HTML**; **subdomain per congregation**; **curated contrast-checked theme tokens**; platform subdomains only; all four optional surfaces in scope; one web app with Host middleware, extractable later; contact form to an **in-app inbox, no SMTP**; **publish-on-read** scheduling with no scheduler; wildcard TLS designed but gated. Nineteen sub-milestones below. |
+| M14.0 · Decisions + designs for the arc | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Done (2026-08-27).** Writes the nine `D-` blocks (`D-TenantSubdomains`, `D-ExternalMediaOnly`, `D-RichTextNodes`, `D-ContentRevisions`, `D-CuratedTheme`, `D-SitePatterns`, `D-InAppInbox`, `D-PublishOnRead`, `D-PublicSiteCSP`), rewrites [content.md](modules/content.md) to the fixed template, updates [web-facade.md](modules/web-facade.md)/[web-admin.md](modules/web-admin.md)/[glossary.md](glossary.md), schedules `DS-OFM-7` to M14.14, opens `DS-OFM-17` (no first-party media storage), and rules explicitly on **U16**. Flips the first two columns for every row below. Docs-only — no code. |
 | M14.1 · Content security baseline | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Fixes the live stored XSS; nothing else in the arc ships first.** URL **scheme** allowlist (`https`/`http`/`mailto`/`tel`) on every URL-bearing block field, enforced at write in `blockvalidation.go`, plus an embed **host** allowlist; defensive re-validation in the renderer because pre-M14.1 rows already exist. `sandbox` + `referrerpolicy` on every iframe. CSP and security headers in both `next.config.ts` files (currently three lines each, zero headers). New invariant: `dangerouslySetInnerHTML` appears in neither app, ever. |
 | M14.2 · Rich-text node model | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | A shared `richText` JSON-Schema definition — inline `text` runs carrying `bold`/`italic`/`link` marks, plus `list`/`listItem` — adopted by `paragraph`, `heading`, `quote`, `staff_card.bio` and a new `list` block. The renderer maps nodes to elements, so there is **no HTML parser and no sanitizer**: Drupal's filter-on-output problem is designed out rather than mitigated. Expand-only migration updating those block types' `json_schema`, plus a data migration lifting existing plain strings into single-run nodes. |
 | M14.3 · External media URLs, made survivable | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Normalizer for known share-link hosts (Google Drive, Dropbox, OneDrive) → direct-content URL, applied at write with the original preserved (**U15**). `alt` becomes schema-**required** on `image`/`gallery`. `loading="lazy"` + `referrerpolicy` on every rendered image. Editor-side "this URL loaded / did not load" probe **from the browser**, never a server-side fetch — that would be an SSRF surface. Records the future first-party `media` module as a designed seam so adding it later is additive. |
@@ -68,8 +70,8 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.6 · Forward revisions, history, autosave | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_document_revisions`; a document gains separate *published* and *draft* revision pointers, so **editing a live page never touches what visitors see** (Drupal's forward-revision model). Autosave writes into the draft on a debounce with a visible saved/unsaved indicator — never silently over live content. Publish promotes draft→published. History list with restore. `ContentPublicService` reads the published revision. |
 | M14.7 · Preview | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Renders the draft revision through the **real public renderer** — not a second, drifting preview renderer — reached on the tenant subdomain via a short-lived signed token. `X-Robots-Tag: noindex`, no caching. Device-width toggle. Carries the WordPress CVE lesson directly: untrusted congregation content must never render inside the admin origin, and here it is cross-origin by construction. Depends on M14.6 and M14.9. |
 | M14.8 · Editor polish | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Client-side undo/redo history stack. Real empty states ("Start from a template" → M14.13). Inline validation. A mobile-workable editor layout — the current one is a desktop form grid. |
-| M14.9 · Tenant subdomain routing (Phase 1) | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Next.js middleware resolves the `Host` header to a site slug and rewrites into an internal `/_sites/[slug]/…` tree; the apex host keeps serving discovery. **Direct `/_sites/*` access from the apex is blocked** (owner's guardrail). **Reserved-subdomain blocklist enforced server-side in the slug validator** — `content_sites.slug` becomes a hostname, so `admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/… must be unclaimable. 301s from `/congregations/[unitId]`. Rendering code structured as an extractable module for the owner's Phase 2 (`openfaithmap-sites`). |
-| M14.10 · Navigation + page routes | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `/[pageSlug]` and nested child routes on the tenant host, honoring the existing 3-level cap. Nav derived from the `parent_document_id` page tree with per-page hide, label override, sort order, and appended external links — **an assumption, not an owner decision** (the sub-question was superseded by the routing answer; M14.0 may change it to a fully hand-built menu). Breadcrumbs at depth ≥ 2. |
+| M14.9 · Tenant subdomain routing (Phase 1) | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Next.js middleware resolves the `Host` header to a site slug and rewrites into an internal `/_sites/[slug]/…` tree; the apex host keeps serving discovery. **Direct `/_sites/*` access from the apex is blocked** (owner's guardrail). **Reserved-subdomain blocklist enforced server-side in the slug validator** — `content_sites.slug` becomes a hostname, so `admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/… must be unclaimable. 301s from `/congregations/[unitId]`. Rendering code structured as an extractable module for the owner's Phase 2 (`openfaithmap-sites`). **Also implements M14.0's U16 ruling:** `content.manage` stops resolving through `religionorg.manage`'s subtree grant and becomes its own per-unit permission granted to `congregation-admin` (same shape as M13.2's `site.manage`); registration operators lose blanket edit access and keep only the existing moderation path. See [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist). |
+| M14.10 · Navigation + page routes | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `/[pageSlug]` and nested child routes on the tenant host, honoring the existing 3-level cap. **Nav is a hand-built menu (`content_site_nav_items`), not derived from the page tree** — M14.0 replaced the original page-tree-derivation assumption with an independently-curated menu (label, target document or external URL, sort order); `parent_document_id` still governs page nesting/breadcrumbs, just not the nav itself. Breadcrumbs at depth ≥ 2. |
 | M14.11 · Site chrome — header, footer, template parts | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Congregation name, logo URL, nav, and a footer whose contact details and service times are read **live from `religion_sites`/`religion_service_schedules`, never copied** — the existing content.md invariant, restated because a footer is exactly where someone would be tempted to denormalize. Social links. Site-level settings on `content_sites`, not content documents. |
 | M14.12 · Curated theme tokens | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Gives the entirely-unused `content_sites.theme` a real schema: accent color from a vetted palette, one of a few font pairings, a spacing scale, header layout, light/dark — WordPress's `theme.json` lesson, a fixed vocabulary rather than CSS. Emitted as CSS custom properties. **A WCAG contrast check rejects a failing combination at write time**, so no congregation can ship an unreadable site. Live theme preview in the admin. |
 | M14.13 · Starter patterns + block-type catalog admin | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_patterns` with WordPress's **unsynced** semantics: an inserted pattern detaches into ordinary blocks and is freely edited. Seeded church-specific starters — Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement. Finally builds the `content.catalog.manage` endpoints M3 left unbuilt (moderator-gated per D-PlatformModerator), so block types and patterns stop being migration-only. The single biggest onboarding lever in the arc. |
@@ -179,18 +181,19 @@ owner's Phase 2, triggered by budget and scale, not by this arc); email delivery
 full-text content search (`DS-OFM-5`, still unowned); and free-form layout building — both the
 Drupal consensus and D-ContentModel say structured components, and this arc must not drift there.
 
-**One assumption to confirm at M14.0.** Navigation is specified below as page-tree-derived with
-per-page overrides plus appended external links. That sub-question was superseded when the owner
-replaced the routing options with their own subdomain design, so it is an assumption, not a
-decision. M14.0 either confirms it or switches M14.10 to a fully hand-built menu.
+**Navigation assumption — resolved at M14.0 (2026-08-27): switched, not confirmed.** Navigation was
+originally specified as page-tree-derived with per-page overrides plus appended external links —
+a sub-question superseded when the owner replaced the routing options with their own subdomain
+design, leaving it an assumption rather than a decision. M14.0 switches M14.10 to a fully
+hand-built menu (`content_site_nav_items`) instead of confirming the page-tree assumption.
 
 Sub-milestone build narratives are written **at build time, not at scoping time** — the
 M10.x/M11.x/M12.x/M13.x precedent. What follows is each one's scope and its acceptance criteria.
 
 ### M14.0 · Decisions + designs for the arc
 
-**Not started.** Docs-only; no code, no migration. This is the `Decided`/`Designed` gate for
-every row above it, so nothing else in the arc starts until it lands.
+**Done (2026-08-27).** Docs-only; no code, no migration. This is the `Decided`/`Designed` gate for
+every row above it — the rest of the arc (M14.1–M14.18) can now start, each still its own row.
 
 Writes to [`architecture/decisions.md`](architecture/decisions.md), each to the standard
 decision/why/why-not/consequences shape:
@@ -225,11 +228,16 @@ gains the real editor and the Messages inbox; [glossary.md](glossary.md) gains *
 [`open-questions.md`](open-questions.md): mark `DS-OFM-7` scheduled to M14.14; open **`DS-OFM-17` —
 no first-party media storage**, recording the decision, the failure mode, and the escalation path.
 
-**Acceptance criteria.** Nine `D-` blocks exist. `content.md` describes the schema M14 will
-actually build, not M3's. **U16 is ruled on explicitly** — either the arc tightens the
-operator-can-edit-any-site seam, or the doc restates why it remains acceptable now that a site is a
-real public website; walking past it silently is not an acceptable outcome. The navigation
-assumption above is confirmed or replaced.
+**Acceptance criteria — met.** Nine `D-` blocks exist
+([D-TenantSubdomains](../architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist)
+through
+[D-PublicSiteCSP](../architecture/decisions.md#d-publicsitecsp--url-scheme-allowlist-embed-allowlist-and-security-headers)).
+`content.md` describes the schema M14 will actually build (new entities, tightened authorization,
+resolved open seams), not M3's. **U16 is ruled on explicitly: tightened**, not restated —
+`content.manage` stops being a byproduct of the operator's subtree grant, decided in
+D-TenantSubdomains, implementation scheduled to M14.9 (still 🔶 in the unknowns table above until
+that code ships). **The navigation assumption is replaced**, not confirmed — M14.10 now builds a
+hand-built menu (`content_site_nav_items`), not a page-tree-derived one.
 
 ### M14.1 · Content security baseline
 
@@ -417,10 +425,14 @@ the form. An old `/congregations/[unitId]` URL 301s to the tenant root.
 
 `/[pageSlug]` and nested child routes on the tenant host, honoring `content_documents`' existing
 3-level nesting cap — a structure that has been in the schema since M3 and has never had a URL.
-Navigation derived from the `parent_document_id` tree with per-page hide/show, label override, sort
-order, and appended external links.
 
-**This nav model is M14.0's assumption to confirm, not an owner decision** — see the arc section.
+**Nav model resolved at M14.0 (2026-08-27): a hand-built menu, not page-tree-derived.** The
+original page-tree-derivation sub-question was superseded when the owner replaced the routing
+options with their own subdomain design, leaving it an assumption rather than a decision — M14.0
+replaced it rather than confirming it. A new `content_site_nav_items` table
+([content.md](modules/content.md)) holds an independently-curated, ordered list per site: a label,
+a target (an internal document or an external URL), and a sort order. `parent_document_id` still
+governs page nesting and breadcrumbs; it no longer drives the nav menu itself.
 
 Breadcrumbs at depth ≥ 2.
 

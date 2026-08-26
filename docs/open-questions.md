@@ -54,6 +54,9 @@ from the module doc it was raised in.
 - **DS-OFM-7 — Locale-switching UX for the public site.** Content translation groups
   ([content.md](modules/content.md)) support multi-locale structurally; the visitor-facing locale
   picker/detection UX is undesigned. See [web-facade.md](modules/web-facade.md#open-seams).
+  **Scheduled (2026-08-27, M14.14):** a visitor-facing picker offering only locales with a
+  published variant, `hreflang` alternates, and an editor-side translation panel per document. See
+  [milestones-2026-08-26-now.md](milestones-2026-08-26-now.md#m1414--locale-switching--closes-ds-ofm-7).
 - **DS-OFM-8 — Taxon-level exclusion has no go-oikumenea-native home.** ~~Currently facade-side only
   (OpenFaithMap is the only consumer needing it). If a second consuming app ever needs the same
   "block this whole tradition" behavior, it becomes a real go-oikumenea feature request rather than
@@ -76,6 +79,16 @@ from the module doc it was raised in.
   `created_by`/`updated_by` columns. Promote this to a milestone if operator accountability over the
   new super-admin screens (D-SuperAdminFold) turns out to matter, and fold `DS-OFM-12`'s
   single-ledger intent into it when it does.
+- **DS-OFM-17 — No first-party media storage.** Opened 2026-08-27 (M14.0),
+  [D-ExternalMediaOnly](architecture/decisions.md#d-externalmediaonly--congregations-host-their-own-media-no-first-party-uploads):
+  congregations host images externally (Google Drive, Dropbox, OneDrive, or any direct URL) — no
+  upload endpoint, no object storage, no processing pipeline anywhere in the M14 arc. Failure mode:
+  a vendor can change or throttle a hotlinked URL with no warning (**U15**, unmeasured at real
+  volume); M14.3 mitigates by normalizing known share-link hosts and preserving the original URL
+  alongside the normalized one, so a normalizer fix is a re-derivation, not data loss. Escalation
+  path: a future first-party `media` module — nothing in M14's schema forecloses adding one later,
+  since the URL field it would populate already exists. See
+  [content.md](modules/content.md#open-seams).
 - **DS-OFM-16 — Background writes are unattributable.** D-DirectTokenVerification deletes the
   service-principal concept, so work with no human subject (discovery cache refresh,
   `POST /exclusion-check`, scheduled imports) runs under `authz.SystemContext()` and records no

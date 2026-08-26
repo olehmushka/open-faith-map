@@ -38,6 +38,15 @@ go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<N
 | [D-SeedBootstrap](#d-seedbootstrap--bootstrap-becomes-deterministic-seed-migrations) | The root unit, base roles, org kinds, site types and the exclusion backstop become seed migrations with fixed RIDs; three instance-specific env vars disappear |
 | [D-SuperAdminFold](#d-superadminfold--super-admin-folds-into-openfaithmap-admin-behind-a-role) | **Supersedes D-InstanceAdminConsole.** The third surface is deleted; super-admin screens move into `openfaithmap-admin` behind a role |
 | [D-StaticRefData](#d-staticrefdata--reference-data-is-a-static-seed-hermenea-is-removed) | **Supersedes D-BulkImport.** Countries and their locale names ship as seed migrations; the `hermenea` service, database and binary are deleted |
+| [D-TenantSubdomains](#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist) | Subdomain per congregation, `Host`-header routing, wildcard TLS over DNS-01, reserved-slug blocklist; also tightens `content.manage` so a registration operator no longer edits any congregation's site by default (U16) |
+| [D-ExternalMediaOnly](#d-externalmediaonly--congregations-host-their-own-media-no-first-party-uploads) | No uploads, no first-party storage — congregations host images externally; opens `DS-OFM-17` |
+| [D-RichTextNodes](#d-richtextnodes--structured-inline-nodes-never-html-strings) | Inline formatting is a structured node tree, never an HTML string — no parser, no sanitizer |
+| [D-ContentRevisions](#d-contentrevisions--forward-revisions-with-a-draft-and-a-published-pointer) | Forward revisions: editing a document never touches what's published until an explicit publish |
+| [D-CuratedTheme](#d-curatedtheme--a-fixed-token-vocabulary-contrast-checked-at-write-time) | Curated theme tokens for `content_sites.theme`, WCAG contrast gated at write time |
+| [D-SitePatterns](#d-sitepatterns--unsynced-starter-patterns-and-a-real-block-type-catalog) | Unsynced starter patterns; `content.catalog.manage` finally gets a real, moderator-gated endpoint |
+| [D-InAppInbox](#d-inappinbox--contact-submissions-stay-in-app-no-email-sent) | Contact-form submissions land in an in-app inbox; no email sent, following D-InviteLinkMVP |
+| [D-PublishOnRead](#d-publishonread--scheduled-publishing-decided-in-the-read-predicate-no-scheduler) | Scheduled publishing lives in the public read `WHERE` clause; no timer, no scheduler |
+| [D-PublicSiteCSP](#d-publicsitecsp--url-scheme-allowlist-embed-allowlist-and-security-headers) | URL-scheme + embed-host allowlists, real CSP/security headers on both Next.js apps, fixes a live stored-XSS hole |
 
 ---
 
@@ -2496,3 +2505,293 @@ unnamed pin on a city-wide map) without buying any real privacy back.
 - `SiteAttributes` (accessibility criteria, online-stream flag) similarly passes through
   `DiscoverySite` unfiltered by precision — neither is location-sensitive, so neither needed a
   place in this decision's table.
+
+### D-TenantSubdomains — subdomain per congregation, wildcard TLS, and a reserved-slug blocklist
+
+**Decision.** M14.9 serves each congregation's public site on its own subdomain (`<slug>.<apex>`),
+resolved via `Host`-header routing in `web/apps/web/middleware.ts` rather than a path segment.
+`content_sites.slug` becomes a hostname component, validated server-side (in `internal/content`,
+never client-side only) against a reserved blocklist — `admin`, `api`, `auth`, `login`, `www`,
+`app`, `mail`, `static`, `support`, `billing`, `help`, `status`, and more. Certificates are a
+single wildcard (`*.<apex>`) issued over ACME's DNS-01 challenge, the only challenge type that can
+issue a wildcard. Cookies are never issued with a wildcard `Domain` attribute (belt-and-braces —
+`openfaithmap-web` holds no session at all per D-AdminSurface). HSTS with `includeSubDomains`.
+Rendering code is structured as an extractable module — an internal `/_sites/[slug]/…` tree,
+unreachable directly from the apex host — so a later Phase 2 can split it into its own deployment
+(`openfaithmap-sites`) for process-level blast-radius isolation without revisiting this decision.
+
+**Why.** Real same-origin isolation between tenants is the point — path-based routing puts every
+congregation's rendered HTML on one origin, so a stored-XSS bug in one congregation's content (the
+hole [D-PublicSiteCSP](#d-publicsitecsp--url-scheme-allowlist-embed-allowlist-and-security-headers)
+fixes) would still be same-origin with every other congregation. Subdomain-per-tenant makes that
+cross-origin by construction — the same reasoning M14.7's preview design uses for the admin/public
+boundary. It is also the owner's own explicit choice among the three options offered.
+
+**Why not** custom domains via CNAME (a congregation bringing `stpauls.church`): rejected for this
+arc — platform subdomains only, named explicitly as the scoped-down option; CNAME support is real
+future work this arc does not need.
+
+**Why not** a single shared origin with client-side tenant resolution: rejected — it buys none of
+the same-origin isolation above, and still needs the reserved-slug problem solved, without solving
+the XSS blast-radius problem subdomains solve for free.
+
+**U16 ruling — the registration-operator content-edit seam is tightened, not restated.**
+[content.md](../modules/content.md)'s Authorization touchpoints section documents that
+`content.manage` resolving through go-oikumenea's `religionorg.manage` lets a registration
+operator edit *any* congregation's content, not only ones they approved — accepted at M3 as
+low-stakes ("an unlinked blob of blocks"). That framing no longer holds once a site is a real
+public website on its own subdomain. **`content.manage` stops being a byproduct of the operator's
+subtree grant** and becomes its own permission, checked per-unit and granted explicitly to
+`congregation-admin` on their own unit — the same shape M13.2 already used for `site.manage`
+(`PermSiteManage`) rather than reusing a broader existing grant. An operator's platform-wide
+subtree authority no longer implies content-write authority; operators keep only the existing
+moderation path (`moderation.act`, target-scoped, [D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit)-shaped)
+for hiding or unpublishing problematic content — an audited, narrower intervention than direct
+editing. **Implementation is scheduled to M14.9** (this decision's own milestone), not built by
+M14.0, which stays docs-only.
+
+**Consequences.**
+- Constrains [D-ProductionDeployment](#d-productiondeployment--single-cheap-vm-docker-compose-caddy-for-tls--provider-agnostic)'s
+  deferred VM/DNS-provider choice for the first time: the provider must expose a DNS API a Caddy
+  module supports (DNS-01 wildcard issuance) — recorded as **U14** in
+  [milestones-2026-08-26-now.md](../milestones-2026-08-26-now.md), blocking only M14.18; every
+  other M14 milestone verifies against `*.localhost` with no DNS at all.
+- `content.md`'s Authorization touchpoints and Open seams sections describe the tightened
+  `content.manage` grant as the target state, with the pre-M14.9 subtree-reuse behavior marked
+  resolved-by-schedule rather than deleted outright.
+- 301s from the old `/congregations/[unitId]` path preserve any indexed or shared URLs (M14.9).
+- Direct `/_sites/*` access from the apex host must 404 — the boundary that keeps Phase 1's
+  single-app shape from collapsing into one undifferentiated route tree.
+
+### D-ExternalMediaOnly — congregations host their own media, no first-party uploads
+
+**Decision.** Congregations host their own images via external URLs (Google Drive, Dropbox,
+OneDrive share links, or any direct URL) — OpenFaithMap builds no first-party upload, storage, or
+media-processing path anywhere in this arc. `image`/`gallery` blocks store a URL, not a file.
+
+**Why.** Uploads are the sharpest edge in CMS security — magic-byte checks, server-side
+re-encoding, EXIF stripping, SVG sanitization, a separate cookieless serving origin — real
+infrastructure cost and a real new attack surface, for a project the owner is not funding storage
+for. Not accepting uploads at all sidesteps that surface entirely rather than mitigating it.
+
+**Why not** build minimal first-party storage now (a single S3-compatible bucket, no processing):
+rejected — the owner's explicit call; the cost isn't primarily engineering effort, it's ongoing
+storage billing for a platform serving free, volunteer-run congregations.
+
+**Consequences.**
+- Real UX cost: a congregation must already have somewhere to host an image, and a share-link URL
+  is not directly embeddable (M14.3's normalizer exists because of this).
+- Broken-image failure mode: a vendor can change or throttle a hotlinked URL with no warning
+  (**U15**, unmeasured at real volume) — mitigated, not eliminated, by M14.3 preserving the
+  original URL alongside a normalized one.
+- First-party media becomes a scoped-but-unbuilt future module (`DS-OFM-17`, opened by M14.0):
+  what it would own (upload endpoint, storage, processing pipeline) and why nothing in M14's
+  schema forecloses adding it later — the URL field it would populate already exists.
+
+### D-RichTextNodes — structured inline nodes, never HTML strings
+
+**Decision.** Inline formatting (bold, italic, links) and simple lists are modeled as a shared
+`richText` JSON-Schema definition — an ordered array of typed nodes (`text` runs carrying marks,
+plus `list`/`listItem`) — never an HTML string, anywhere in the content pipeline. `paragraph`,
+`heading`, `quote`, `staff_card.bio`, and a new `list` block type all adopt it. The renderer maps
+node types directly to React elements.
+
+**Why.** This is the direct answer to Drupal's own filter-on-output model — text formats, an
+allowlist per role, "Full HTML" reserved for administrators — which still requires an HTML
+sanitizer to exist and stay correct forever, because the stored representation is HTML a sanitizer
+must re-validate on every render. A structured node tree makes the class of bug impossible rather
+than mitigated: **there is no HTML parser and no sanitizer anywhere in this pipeline**, because
+there is never an HTML string to parse.
+
+**Why not** store sanitized HTML (the Drupal/WordPress-KSES approach): rejected — designing the
+problem out beats mitigating it forever; a sanitizer is exactly the kind of security-critical code
+that rots quietly (a new allowed tag, a bypass found later) while a closed node schema cannot
+regress the same way.
+
+**Consequences.**
+- A `link` mark's `href` goes through
+  [D-PublicSiteCSP](#d-publicsitecsp--url-scheme-allowlist-embed-allowlist-and-security-headers)'s
+  URL-scheme allowlist like any other URL field — no separate validation path for rich-text links.
+- Expand-only migration: a `json_schema` update for the adopting block types, plus a data
+  migration lifting existing plain-string content into single-text-run nodes, in the same
+  migration (a schema that rejects rows already in the table isn't expand-only).
+- Extends
+  [D-ContentModel](#d-contentmodel--block-based-site-builder-owned-by-openfaithmap-not-go-oikumenea)'s
+  "blocks, never HTML blobs" premise down one level, into a block's own text fields.
+
+### D-ContentRevisions — forward revisions with a draft and a published pointer
+
+**Decision.** `content_documents` gains separate **published** and **draft** revision pointers,
+backed by a new `content_document_revisions` table (`document_id`, `revision_no`, a blocks
+snapshot, author, timestamp, optional label). Editing a document mutates its draft revision only;
+publishing promotes draft → published. `ContentPublicService` always reads the published revision.
+
+**Why.** Today's single-row `state` flip means editing a live page is editing what visitors see,
+mid-edit, with no undo — genuinely risky for a volunteer-run congregation's own homepage. Drupal's
+forward-revision model (the published revision keeps serving while a draft accumulates edits) is
+the direct fix, and autosave only becomes safe to build (M14.6) once there's a draft to autosave
+into that isn't the live page.
+
+**Why not** a simpler "unpublish while editing" toggle instead of real revisions: rejected — that
+just moves the risk (a page goes offline, rather than being wrong, while being edited) and loses
+history/restore entirely, which a congregation editing service times or a clergy listing will want.
+
+**Consequences.**
+- **Extends, not supersedes,**
+  [D-ContentModel](#d-contentmodel--block-based-site-builder-owned-by-openfaithmap-not-go-oikumenea)
+  — blocks, translation groups, and draft/published/unlisted stay exactly as decided; this adds a
+  revision dimension underneath the existing `state` column, it does not replace it.
+- The largest schema change in the M14 arc (M14.6); a history list with restore is a read over
+  this same table, not a new concept.
+- Preview (M14.7) renders a draft revision through the real public renderer on the tenant origin —
+  a draft is content, not a special code path.
+
+### D-CuratedTheme — a fixed token vocabulary, contrast-checked at write time
+
+**Decision.** `content_sites.theme` gets a real, fixed schema: an accent color chosen from a
+vetted palette, one of a small set of font pairings, a spacing scale, a header layout, and
+light/dark — never free-form CSS or an arbitrary hex value. A WCAG AA contrast check runs **at
+write time** and rejects a failing color/background combination outright.
+
+**Why.** WordPress's `theme.json`/Global Styles lesson: a curated token vocabulary lets a
+non-technical user restyle meaningfully without needing to understand CSS, and — critically —
+without being able to produce something broken or unreadable. A warning at write time would be
+ignored by exactly the volunteer-run congregations this platform serves; the platform already
+badges congregations on accessibility elsewhere in the product, so shipping one an unreadable site
+would directly contradict that.
+
+**Why not** free CSS custom-property overrides for congregations wanting more control: rejected
+for this arc — real customization demand is unmeasured, and a fixed vocabulary is what keeps the
+contrast gate meaningful; an escape hatch to raw CSS reopens the exact failure mode the gate exists
+to close.
+
+**Consequences.**
+- `content_sites.theme`'s never-read `JSONB` column (existing since `migrations/0002_content.sql`)
+  gets its first-ever reader and writer (M14.12).
+- Theme values are emitted as CSS custom properties consumed by the tenant layout — data, never a
+  per-tenant code fork, exactly as the column's original comment already said.
+- A typed error names the failing color pair, not a generic validation failure, so an editor can
+  see and fix specifically what's wrong.
+
+### D-SitePatterns — unsynced starter patterns and a real block-type catalog
+
+**Decision.** `content_patterns` ships pre-built, church-specific starting layouts (parish home
+page, service times, meet the clergy, getting here, feast-day announcement) with WordPress's
+**unsynced** semantics: inserting a pattern copies its blocks into the document and detaches
+immediately — no ongoing link, freely edited afterward. `content.catalog.manage` (block-type and
+pattern CRUD) finally gets a real endpoint, gated on platform-moderator authority — the same
+`platform-moderator` Role, target-scoped PDP check, no roster table
+([D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit))
+— rather than a new authority concept.
+
+**Why.** Editor-UX research is unambiguous that a blank canvas is where non-technical editors
+stall — patterns are the single biggest onboarding lever available in this arc, cheaper to build
+than any amount of inline guidance. Unsynced semantics (versus WordPress's separate *synced*
+pattern variant, which keeps a live link) is the simpler of the two and matches what a congregation
+actually wants: a starting point they own outright, not a template that can change under them
+later.
+
+**Why not** synced patterns (a live link back to the source, edits propagate): rejected — no
+congregation wants a platform-controlled update silently altering their published homepage, and it
+adds real complexity (propagation, conflict handling) for a benefit this product doesn't need.
+
+**Consequences.**
+- Finally builds what M3 deferred: `content.catalog.manage` had no endpoint at all before this —
+  the 13 MVP block types have been migration-seeded-only since M3 ([content.md](../modules/content.md)'s
+  own long-standing open seam).
+- A moderator can add a block type at runtime and it appears in M14.5's inserter with a working
+  form (M14.4) — no redeploy required.
+- Seeded patterns are ordinary rows in `content_patterns`, editable the same way as any
+  admin-managed catalog data going forward.
+
+### D-InAppInbox — contact submissions stay in-app, no email sent
+
+**Decision.** Contact-form submissions land in `content_form_submissions`, read through a Messages
+screen in `openfaithmap-admin` (`content.manage`-gated, same authority as the rest of a
+congregation's site). **No email is sent anywhere in this flow.**
+
+**Why.** Follows
+[D-InviteLinkMVP](#d-invitelinkmvp--invite-a-teammate-ships-as-a-shareable-link-not-an-emailed-invite)'s
+precedent directly and for the identical reason: no email-sending infrastructure exists anywhere
+in this repo (no SMTP/SES/SendGrid client), and building one is a real new subsystem this arc does
+not need to justify — an in-app inbox delivers the same product value (a congregation learns
+someone reached out) with zero new infrastructure.
+
+**Why not** build minimal transactional email now, given a contact form is exactly the kind of
+feature that "should" notify by email: rejected — the same infrastructure cost D-InviteLinkMVP
+already declined, and an in-app Messages screen is genuinely sufficient for a low-volume contact
+form; revisit only if real usage shows congregations aren't checking the inbox.
+
+**Consequences.**
+- A genuinely anonymous write endpoint on `ContentPublicService` — the third in the codebase after
+  moderation's two — reuses `internal/platform/ratelimit` (M7, D-Hardening) rather than standing
+  up a second limiter, inheriting its existing shared-bucket behavior.
+- Spam handling has no third-party dependency: a honeypot field, a minimum time-to-submit, and the
+  per-IP rate limit; a honeypot hit is silently discarded, never an error (an error teaches the
+  bot).
+- Submission text is untrusted and renders as plain text only, never as rich text or a block — it
+  never goes through D-RichTextNodes' pipeline at all.
+
+### D-PublishOnRead — scheduled publishing decided in the read predicate, no scheduler
+
+**Decision.** `content_documents` gains `publish_at` and a `SCHEDULED` state. The public read
+predicate becomes `state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())` —
+correctness lives entirely in the `WHERE` clause. No timer, no cron, no goroutine, no scheduler of
+any kind fires anything.
+
+**Why.** Directly follows
+[D-CongregationImport](#d-congregationimport--scraped-congregations-provision-as-real-admin-less-units-a-verifiedclaimed-overlay-tracks-their-status)'s
+original "manual operator-triggered runs only, no new scheduler" call, which D-ProductionDeployment
+later generalized for `ua-edr`'s own re-run trigger — and avoids `DS-OFM-16` (background writes are
+unattributable under `authz.SystemContext()`) entirely, since a predicate evaluated at read time is
+not a background write at all. It also behaves identically in local dev and on the M14.18-blocked
+production VM that doesn't exist yet, since nothing has to actually fire anywhere.
+
+**Why not** a systemd timer or in-process goroutine that flips `SCHEDULED → PUBLISHED` at the
+right moment (the more conventional CMS design): rejected — it's an unattributable background
+writer of exactly the shape `DS-OFM-16` already flags as a real problem the moment it writes
+something a human would be asked to justify, for a property (a stored column matching reality) the
+`WHERE`-clause approach gets for free with no writer at all.
+
+**Consequences.**
+- The one real cost: the stored `state` column lags reality for any document past its
+  `publish_at` — the admin UI must show **effective** state (computed the same way the predicate
+  is), never the raw column, or an editor would see "Scheduled" on a page visitors already see as
+  published.
+- Scheduled-but-not-yet-due documents are excluded from M14.17's sitemap the same way drafts are.
+- Sequenced after D-ContentRevisions (M14.6) — scheduling operates on the same
+  publish-promotion path revisions introduce, not a parallel one.
+
+### D-PublicSiteCSP — URL scheme allowlist, embed allowlist, and security headers
+
+**Decision.** Every URL-bearing block field (`button.href`, `image.url`, `social_embed.url`,
+`staff_card.photoUrl`, and any `link` mark under D-RichTextNodes) is validated against a **scheme
+allowlist** (`https`, `http`, `mailto`, `tel` — nothing else) at write time in
+`internal/content/application/blockvalidation.go`, plus an **embed host allowlist** for
+`youtube_embed`/`social_embed`. Both apps' `next.config.ts` (currently three lines, no headers at
+all) get a real CSP with explicit `frame-src`/`img-src` allowlists, plus
+`X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, and `X-Frame-Options: DENY` on
+admin. Every iframe gets `sandbox` (no `allow-same-origin`) and `referrerpolicy="no-referrer"`.
+**`dangerouslySetInnerHTML` appears in neither app, ever** — a new, permanent invariant, not a
+one-time fix.
+
+**Why.** This closes a **live stored-XSS hole in `main` today**: `web/apps/web/app/blocks.tsx`
+renders `data.href`/`data.url`/`data.photoUrl` with no scheme validation at any layer, so a
+congregation admin (or, before U16's tightening, a registration operator) saving `javascript:…`
+gets real script execution on the public site — the reason this milestone runs before any feature
+work in the arc rather than after it.
+
+**Why not** sanitize at render time only, skipping write-time validation: rejected — write-time
+validation gives the editor a typed error naming the offending field immediately, and render-time
+re-validation is kept anyway as deliberate belt-and-braces, because rows written before this
+milestone already exist in every deployed database and a future block type added through M14.13's
+catalog endpoints could reintroduce an unguarded field without either layer alone catching it.
+
+**Consequences.**
+- A pre-existing row carrying a disallowed scheme, inserted directly by SQL before this milestone,
+  renders with the link dropped at render time — not executed — even though it was never
+  re-validated at write.
+- A typed `Content:BlockUrlNotAllowed` error, not a generic validation failure, names the field
+  and reason.
+- D-RichTextNodes' `link` mark and D-ExternalMediaOnly's image URLs both go through this same
+  allowlist rather than each defining their own.

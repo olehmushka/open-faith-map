@@ -30,6 +30,21 @@ the one domain in OpenFaithMap with **no go-oikumenea equivalent** (D-ContentMod
   `contact_info`, `map_embed`, `divider`, `staff_card`, `quote`, `columns`.
 - **Translation group** — a UUID shared across every locale variant of one conceptual page/post/
   event. Each variant is its own row with its own `locale`, edited independently.
+- **Document revision** — a snapshot of one document's blocks (M14.6,
+  [D-ContentRevisions](../architecture/decisions.md#d-contentrevisions--forward-revisions-with-a-draft-and-a-published-pointer)).
+  A document has a **published** revision (what `ContentPublicService` reads) and a **draft**
+  revision (what the editor mutates) — editing never touches what's live until an explicit publish.
+- **Pattern** — a pre-built starting layout (M14.13,
+  [D-SitePatterns](../architecture/decisions.md#d-sitepatterns--unsynced-starter-patterns-and-a-real-block-type-catalog)).
+  Inserting one copies its blocks into the document and detaches immediately — unsynced, no
+  ongoing link back to the source pattern.
+- **Nav item** — an entry in a site's hand-built navigation menu (M14.10), independent of the
+  `parent_document_id` page tree: a label, a target (an internal document or an external URL), and
+  a sort order.
+- **Form submission** — an anonymous contact-form entry (M14.16,
+  [D-InAppInbox](../architecture/decisions.md#d-inappinbox--contact-submissions-stay-in-app-no-email-sent)),
+  read through `openfaithmap-admin`'s Messages screen. Untrusted, plain-text only, never rendered
+  as content.
 
 ## Data model
 
@@ -44,15 +59,50 @@ convention exactly — no case conversion anywhere across the transport/domain/a
 - `id` PK (`uuid`)
 - `congregation_unit_rid TEXT NOT NULL` — the go-oikumenea `Unit` RID this site belongs to
   (opaque foreign value, no local FK — see conventions.md)
-- `slug TEXT NOT NULL UNIQUE` — the site's public path/subdomain segment
-- `theme JSONB NOT NULL DEFAULT '{}'` — accent color, font pairing, header layout; data, never a
-  per-tenant code fork
+- `slug TEXT NOT NULL UNIQUE` — **as of M14.9, a hostname component** (`<slug>.<apex>`), not a
+  path segment — validated server-side against a reserved-subdomain blocklist (`admin`, `api`,
+  `auth`, `login`, `www`, `app`, `mail`, `static`, `support`, `billing`, `help`, `status`, …) per
+  [D-TenantSubdomains](../architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist)
+- `theme JSONB NOT NULL DEFAULT '{}'` — accent color (vetted palette), font pairing, spacing
+  scale, header layout, light/dark; a fixed, contrast-checked-at-write-time vocabulary as of
+  M14.12 ([D-CuratedTheme](../architecture/decisions.md#d-curatedtheme--a-fixed-token-vocabulary-contrast-checked-at-write-time)),
+  emitted as CSS custom properties — data, never a per-tenant code fork
 - `created_at`, `updated_at`, `deleted_at`
 
 **`content_block_types`** (catalog)
 - `id` PK · `code TEXT UNIQUE` · `name TEXT` (translatable, OpenFaithMap's own admin-UI label
-  store) · `json_schema JSONB NOT NULL` · `status TEXT CHECK (status IN ('ACTIVE','RETIRED'))` ·
-  `sort_order` · timestamps + soft-delete
+  store) · `json_schema JSONB NOT NULL` · `ui_schema JSONB` (M14.4 — widget hints, labels, help
+  text, field order, sitting beside `json_schema`; a block type's data shape and its editing
+  affordances are declared together, so the admin form is derived, never hand-written per type) ·
+  `status TEXT CHECK (status IN ('ACTIVE','RETIRED'))` · `sort_order` · timestamps + soft-delete
+
+**`content_document_revisions`** (M14.6, new)
+- `id` PK (`uuid`) · `document_id` FK → `content_documents` · `revision_no INT NOT NULL` · a
+  blocks snapshot (`data JSONB NOT NULL`) · `author_person_rid TEXT` · `created_at` ·
+  `label TEXT` (optional)
+- `content_documents` gains `published_revision_id`/`draft_revision_id` FKs into this table.
+  Editing mutates the draft revision only; `ContentPublicService` always reads the published one.
+
+**`content_patterns`** (M14.13, new)
+- `id` PK (`uuid`) · `name TEXT` · `description TEXT` · `blocks JSONB NOT NULL` (a blocks snapshot,
+  same shape as a document's block list) · `sort_order` · timestamps + soft-delete
+- Insert-time behavior is unsynced (D-SitePatterns): the blocks snapshot is copied into the target
+  document's draft revision and the pattern row is never referenced again by that document.
+
+**`content_site_nav_items`** (M14.10, new)
+- `id` PK (`uuid`) · `site_id` FK → `content_sites` · `label TEXT NOT NULL` ·
+  `target_document_id` FK → `content_documents` (nullable) · `target_url TEXT` (nullable — set
+  when the item points off-site instead) · `sort_order INT NOT NULL`
+- Independent of `content_documents.parent_document_id` — M14.0 replaces the original
+  page-tree-derived-nav assumption with a hand-built menu (see the M14.10 note in
+  [milestones-2026-08-26-now.md](../milestones-2026-08-26-now.md)); `parent_document_id` still
+  governs page nesting/breadcrumbs, just not the nav menu itself.
+
+**`content_form_submissions`** (M14.16, new, [D-InAppInbox](../architecture/decisions.md#d-inappinbox--contact-submissions-stay-in-app-no-email-sent))
+- `id` PK (`uuid`) · `site_id` FK → `content_sites` · `name TEXT` · `email TEXT` ·
+  `message TEXT NOT NULL` (plain text only, never rendered as a block) · `created_at`
+- Written via a genuinely anonymous `ContentPublicService` endpoint, rate-limited by
+  `internal/platform/ratelimit` (M7).
 
 **`content_documents`** (a Page, Post, or Event — one row per locale variant)
 - `id` PK (`uuid`)
@@ -116,9 +166,10 @@ split into two services instead, sharing one `types:` block in `api/content.conj
 | `GET /documents/{documentId}/blocks` | Read a document's blocks — `Content:DocumentNotFound` if it's `DRAFT`, never distinguishing "draft" from "doesn't exist" |
 | `GET /block-types` | Active block types only |
 
-`content.catalog.manage` (platform-wide block-type catalog writes) has **no endpoint in M3** — the
-catalog is migration-seeded only (13 MVP types); a write endpoint is real M4+ scope, not attempted
-here (see open seams).
+`content.catalog.manage` (platform-wide block-type catalog writes) has **no endpoint as of M13** —
+the catalog is migration-seeded only (13 MVP types). **Scheduled to M14.13**
+([D-SitePatterns](../architecture/decisions.md#d-sitepatterns--unsynced-starter-patterns-and-a-real-block-type-catalog)):
+block-type and pattern CRUD, gated on platform-moderator authority.
 
 Public reads never expose `draft` documents or blocks belonging to them. `content.manage` is
 **not a go-oikumenea permission code** — it is OpenFaithMap's name for a **target-scoped capability
@@ -166,19 +217,29 @@ to that answer. That distinction matters for the same reason it does in
 OpenFaithMap's own, the local check is the *entire* access-control decision, with no PDP behind it
 to catch a wrong answer. Get the target and the verb right.
 
-**`content.manage` = `religionorg.manage`, live-verified — with one real consequence of reusing it.**
-The target-scoped check (`internal/content/application/authorize.go`'s `requireManage`) calls
+**`content.manage` = `religionorg.manage` through M13 — tightened by M14.0/M14.9.** Through M13,
+the target-scoped check (`internal/content/application/authorize.go`'s `requireManage`) called
 go-oikumenea's `Authorize` with `Action: "religionorg.manage"` and `UnitId` set to the *specific
-site's* congregation unit — same call shape as `registration`'s `IsOperator`, proven live against a
-real stack: a `congregation-admin`-held grant on its own unit passes, and (as a byproduct of reusing
-the exact permission `registration-operator`'s subtree grant already carries on the shared root) a
-registration operator also passes `content.manage` for *any* unit within that subtree — i.e., every
-congregation, not just ones they submitted or approved. Not tested here (M2.3's own acceptance
-criteria already name this as the one thing not achievable headlessly: a true cross-tenant denial
-needs a second real identity, not just a second role on the same bootstrap-admin token), but it
-follows directly from the reuse decision and is worth naming: an operator can currently edit any
-congregation's website, not only manage its registration. Acceptable for M3 (operators are a small,
-trusted set — D-PlatformModerator), but revisit if that set ever grows past "small and trusted."
+site's* congregation unit — same call shape as `registration`'s `IsOperator`, live-verified: a
+`congregation-admin`-held grant on its own unit passes, and (as a byproduct of reusing the exact
+permission `registration-operator`'s subtree grant already carries on the shared root) a
+registration operator also passed `content.manage` for *any* unit within that subtree — every
+congregation, not just ones they submitted or approved. Accepted through M13 (operators are a
+small, trusted set — D-PlatformModerator — and a site was still "an unlinked blob of blocks").
+
+**Ruled on explicitly at M14.0 (U16): tightened, not restated, because M14.9 makes a site a real
+public website on its own subdomain.**
+[D-TenantSubdomains](../architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist)
+decides the target state: `content.manage` stops resolving through `religionorg.manage`'s subtree
+grant and becomes its own permission, checked per-unit and granted explicitly to
+`congregation-admin` on their own unit — the same shape M13.2 already used for `site.manage`
+(`PermSiteManage`) rather than reusing a broader existing grant. A registration operator's
+platform-wide subtree authority no longer implies content-write authority; operators keep only the
+existing moderation path (`moderation.act`, target-scoped, D-PlatformModerator-shaped) to hide or
+unpublish problematic content — an audited, narrower intervention than direct editing.
+**Implementation lands at M14.9**, not M14.0, which is docs-only. Until M14.9 ships, the
+subtree-reuse behavior described above remains the actual runtime behavior — this section
+describes the target state, not (yet) the live one.
 
 **Also live-verified, and worth recording as a go-oikumenea characteristic rather than an
 OpenFaithMap bug:** a `subtree`-scoped `Authorize` grant on a real unit returns `{"allow":true}` for
@@ -204,6 +265,15 @@ exist first.
   assignment (not a DB constraint — a shallow product rule, not a schema invariant).
 - **Congregation-unit authority is always re-checked live**, never cached across requests — see
   [core-integration.md](core-integration.md#invariants).
+- **Inline text is always a structured node tree, never an HTML string** (M14.2,
+  [D-RichTextNodes](../architecture/decisions.md#d-richtextnodes--structured-inline-nodes-never-html-strings)).
+  There is no HTML parser and no sanitizer anywhere in this module's pipeline, by construction.
+- **Every URL-bearing block field is scheme-allowlisted at write and re-validated at render** (M14.1,
+  [D-PublicSiteCSP](../architecture/decisions.md#d-publicsitecsp--url-scheme-allowlist-embed-allowlist-and-security-headers)).
+  `dangerouslySetInnerHTML` never appears in either Next.js app.
+- **Publishing a document never mutates what's already live** (M14.6,
+  [D-ContentRevisions](../architecture/decisions.md#d-contentrevisions--forward-revisions-with-a-draft-and-a-published-pointer)).
+  Edits land on the draft revision; `ContentPublicService` always reads the published one.
 
 ## Open seams
 
@@ -219,21 +289,31 @@ exist first.
   to a typed `Content:SlugTaken` error — race-safe, never check-then-insert). No silent suffixing,
   no per-country namespacing. The same pattern covers `content_documents.slug` collisions within one
   `(site_id, kind, locale)`.
-- **`content.catalog.manage` has no endpoint yet.** The block-type catalog is migration-seeded only
-  (13 MVP types, `migrations/0004_content.sql`); a real write endpoint (platform-moderator-gated)
-  is M4+ scope.
+- **`content.catalog.manage` has no endpoint yet — resolved by schedule (2026-08-27, M14.0):
+  M14.13 builds it.** The block-type catalog is migration-seeded only (13 MVP types,
+  `migrations/0004_content.sql`) until then; see
+  [D-SitePatterns](../architecture/decisions.md#d-sitepatterns--unsynced-starter-patterns-and-a-real-block-type-catalog).
 - **A cross-tenant `content.manage` denial is untested, and one real consequence of the
-  `religionorg.manage` reuse decision is unverified in practice** — see the authorization-touchpoints
-  section: a registration operator's subtree grant currently also satisfies `content.manage` for
-  every congregation, not just the ones tied to their own submissions. Needs a second real identity
-  to test properly (same limitation M2.3 already documented); revisit if the operator roster ever
-  grows.
+  `religionorg.manage` reuse decision is unverified in practice — resolved by schedule
+  (2026-08-27, M14.0): the reuse itself is removed at M14.9, not just tested.** See the
+  authorization-touchpoints section and
+  [D-TenantSubdomains](../architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist)'s
+  U16 ruling — `content.manage` becomes its own per-unit permission rather than a byproduct of the
+  operator's subtree grant, so the untested cross-tenant-denial question stops being the load-bearing
+  concern; the new permission's own denial path needs test coverage once M14.9 builds it.
 - **go-oikumenea's `Authorize` appears to fail open on a nonexistent target unit under a subtree
   grant** — live-verified (see authorization-touchpoints), not exploitable through this module
   today, but worth a note to whoever next builds a target-scoped check against an unverified id.
+- **A live stored-XSS hole exists in `main` today — scheduled to M14.1, first in the M14 arc.**
+  `web/apps/web/app/blocks.tsx` renders `button.href`/`image.url`/`social_embed.url`/
+  `staff_card.photoUrl` with no scheme validation at any layer. See
+  [D-PublicSiteCSP](../architecture/decisions.md#d-publicsitecsp--url-scheme-allowlist-embed-allowlist-and-security-headers).
 - **Full-text content search** (searching page/post bodies, not just location) has no owner yet —
   a candidate for a dedicated search index once content volume justifies one; not needed at MVP
-  scale.
+  scale. Tracked as `DS-OFM-5`.
 - **Media beyond images** (audio/video hosting, livestreaming) is a deliberate non-goal, inherited
   from the original FaithMap scope — see [D-Scope](../architecture/decisions.md). The
-  `youtube_embed`/`social_embed` block types cover the embed case.
+  `youtube_embed`/`social_embed` block types cover the embed case. **No first-party image storage
+  either, as of M14 —** congregations host images externally
+  ([D-ExternalMediaOnly](../architecture/decisions.md#d-externalmediaonly--congregations-host-their-own-media-no-first-party-uploads)).
+  A future `media` module is a designed-but-unbuilt seam, tracked as `DS-OFM-17`.
