@@ -13,7 +13,11 @@
     "resultsCount": "{count, plural, one {# result} other {# results}}",
     "viewCongregationPage": "View congregation page",
     "noPublishedPage": "No published page yet.",
-    "loadingMap": "Loading map…"
+    "loadingMap": "Loading map…",
+    "anyTradition": "Any tradition",
+    "anyLanguage": "Any language",
+    "searchThisArea": "Search this area",
+    "unnamedSite": "Unnamed site"
   },
   "CongregationPage": {
     "upcomingEvents": "Upcoming events",

@@ -7,9 +7,10 @@
 import { isConjureError } from "conjure-client";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
-import type { IDiscoverySite } from "./openfaithmap/generated/discovery";
+import type { IDiscoverySite, IFacetsResult } from "./openfaithmap/generated/discovery";
 
 export type DiscoverySite = IDiscoverySite;
+export type DiscoveryFacets = IFacetsResult;
 
 export class DiscoveryApiError extends Error {
   constructor(
@@ -68,4 +69,11 @@ export async function search(params: SearchParams): Promise<DiscoverySite[]> {
     ),
   );
   return result.sites;
+}
+
+// Distinct tradition/language values actually present among public sites (M13.1's facets
+// endpoint) — backs the filter-bar's Select pickers so they never offer a value that would zero
+// out every result. Fetched once per page load, not re-fetched per search.
+export async function facets(): Promise<DiscoveryFacets> {
+  return unwrap(client().discoveryPublic.facets());
 }

@@ -135,8 +135,8 @@ Verified (admin-UI browser click-through and a green CI run at the merge commit 
 | M13.0 · Backend: site enrichment (name, address, tags, attributes) | ✅ | ✅ | ✅ | ✅ | ➖ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** `internal/religion.DiscoverySite` gained `Name`, `Address` (precision-coarsened via new `CoarsenAddress`, D-DiscoveryAddressPrecision), `TraditionTaxonID/Code/Name`, `ServiceLanguages`/`ServiceDays`, and `Attributes` (new `religion_sites.attributes JSONB` column + GIN index, `SiteAttributes`'s accessibility-criteria/online-stream shape); `discovery.CacheRow` mirrors all of it, closing a real pre-existing bug where `refreshFromLive`/`RefreshRegion` left tradition/language/day nil even on a live (non-cached) fetch. New `DiscoveryPublicService.getSite(unitId)` (always live, never cache) for M13.4's detail page, gated into the identity middleware's anonymous-route allowlist via a new path-prefix bypass (`/discovery/v1/sites/`, since a path-parameterized route can't be the existing exact-match `anonymousRoutes` entries `/discovery/v1/search` uses). Found and fixed one real bug along the way: a malformed `unitId` hit `religion_sites.org_unit_id`'s `uuid` column directly and 500'd instead of 404ing — `GetSiteByUnit` now validates via `palantir/pkg/uuid.ParseUUID` first. Migration `0021_discovery_site_enrichment.sql`, expand-only, no backfill (cache is disposable per this module's own invariant). Proof: `go build`/`go vet`/`godelw verify`(fmt+lint+conjure-backcompat)/`go test ./...` clean; new integration coverage in `religion_integration_test.go` (name/address/tradition-tag/attributes round-trip through `SearchSites`, the new `UnitID` query filter) and `discovery_integration_test.go` (`CacheRow.Name` populated from a live search, `GetSiteByUnit` found/not-found/malformed-id paths) against real Postgres; new `TestCoarsenAddress` unit test; new `TestIsBypassPath` cases for the path-prefix bypass. `make sdk`/`sdk-verify` clean. Live-verified over the real `docker compose` network: `GET /discovery/v1/search` returns real `name`/`serviceLanguages`/`attributes` fields (confirmed both an unrefreshed pre-M13.0 cache row showing `name:""` and a freshly-searched row showing the real name, proving the enrichment path itself rather than a coincidence); `GET /discovery/v1/sites/{unitId}` returns `200` for a real site, a clean `404 SiteNotFound` for both a nonexistent-but-valid id and a malformed one (no more raw Postgres error), and correctly bypasses authentication (`401` before the fix, `404`/`200` after). |
 | M13.1 · Backend: filters (attributes containment, facets, tradition bug fix) | ✅ | ✅ | ✅ | ➖ | ➖ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** Fixed the pre-existing `tradition` filter bug: `SearchSites` now joins `religion_taxa` on `code` instead of binding the raw code string straight to the closure's `uuid` `ancestor_id` column, which previously matched nothing for any real code. Added `DiscoveryQuery.Accessibility`/`OnlineOnly`, translated to JSONB containment (`attributes @>`) against M13.0's GIN index — an unrecognized `accessibility` value throws a new `InvalidFilter` rather than silently matching zero sites. New `GET /discovery/v1/facets` endpoint (distinct tradition/language values actually present among public, non-hidden sites), always live, so the picker UI (M13.4) never offers a dead-end filter. No new migration (uses M13.0's existing `attributes`/GIN index). Cache-side filtering and bbox/pagination on `GET /search` stay explicitly out of scope. See M13.1's own build narrative below for proof details. |
 | M13.2 · Admin UI — edit site attributes | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** `internal/religion` gained its first transport layer (`api/religion.conjure.yml`, `internal/religion/transport`): `ReligionService.getSite(unitId)`/`updateSiteAttributes(unitId, request)`, gated by a newly-activated `site.manage` permission (seeded since before M13, never checked until now) rather than a reuse of `content.manage`. New "Accessibility & streaming" card on `web/apps/admin`'s existing site-editor page, new shadcn `Checkbox`/`Switch` components paired with hidden native inputs (the installed Radix version's stable controls don't participate in `FormData` on their own). No new migration — writes into M13.0's existing `attributes` column. See M13.2's own build narrative below for proof details, including why the real browser click-through wasn't driven (Google-OAuth-only, no headless auth path in this dev setup). |
-| M13.3 · Frontend: component architecture + split-pane layout | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Replaces the monolithic `discovery-map.tsx` with a real component tree (shell/map/list/filter-bar), introduces shadcn/Radix into `web/apps/web`, hover-sync between list card and map pin, a "search this area" button replacing auto-refetch on pan, geolocation-driven distance/initial-center with a fallback, filter state promoted into the URL query string. |
-| M13.4 · Frontend: result card, marker popup, clustering, filter UI | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Real result-card (name/distance/address/tags/badges/directions CTA) and marker popup replacing the current placeholder text; pin clustering; a "more filters" drawer for language/day/accessibility/online-only, tradition/language as real pickers backed by M13.1's facets endpoint. |
+| M13.3 · Frontend: component architecture + split-pane layout | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Replaced the monolithic `discovery-map.tsx` with a real component tree under `web/apps/web/app/discovery/` (shell/map-pane/list-pane/filter-bar/search-this-area-button); introduced shadcn/Radix into `web/apps/web` matching `web/apps/admin`'s setup (`components.json`, pinned dep versions, copied theme tokens). Filter state lives in the URL query string (`tradition`/`language`/`lat`/`lng`/`radiusM`), read/written via a shared `lib/discovery-url-state.ts` on both the server page and the client shell. Hover-sync between a list card and its map pin (shared `activeSiteId` state, div-icon color swap). A "search this area" button appears when the map's viewport (derived from `map.getBounds()`, center+radius via Leaflet's own `distanceTo`) diverges from the last-searched viewport — there was no pan-driven auto-refetch to replace (confirmed absent pre-M13.3); this is net-new, deliberately never automatic. Geolocation (`lib/geolocation.ts`'s `useGeolocation`) sets only the *initial* map center/zoom (recentering once via `map.setView` if it resolves after mount, never re-searching on its own) with a same-as-before Kyiv fallback on denial/timeout/no-API/SSR. At the user's direction, this milestone also pulled forward M13.4's tradition/language *pickers*: `filter-bar.tsx` now renders real shadcn `Select`s populated from a new `lib/discovery.ts` `facets()` wrapper (M13.1's `GET /discovery/v1/facets`), fetched once server-side alongside the initial search. See M13.3's own build narrative below for proof details, including a real rate-limiter false-positive hit during verification (existing `internal/platform/ratelimit`, ~5 req/min/IP, not a regression) and how it was worked around. |
+| M13.4 · Frontend: result card, marker popup, clustering, filter UI | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Real result-card (name/distance/address/tags/badges/directions CTA) and marker popup replacing the current placeholder text; pin clustering; a "more filters" drawer for language/day/accessibility/online-only. Tradition/language pickers backed by M13.1's facets endpoint were pulled forward into M13.3 already. |
 | M13.5 · Detail page enhancement | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Wires M13.0's `getSite(unitId)` into `congregations/[unitId]/page.tsx` alongside the existing content-blocks call — address, tradition, service language/day, accessibility/online-stream badges, a "Get Directions" CTA. Deliberately no star-rating/review UI. |
 | M13.6 · Mobile responsive pass | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** List-first default on mobile with an explicit List↔Map toggle, tap-a-pin → bottom-sheet card, filter bar collapsing into the "more filters" pattern earlier on narrow viewports. Last in sequence — needs M13.3/M13.4's real component shapes to exist first. |
 
@@ -3117,3 +3117,102 @@ only, no credentials/dev provider — there is no headless browser-auth path in 
 setup, so the UI's interactive round-trip rests on the `tsc`/`eslint`/`next build` checks plus the
 HTTP-level proof above, not a screenshot. Test data (a throwaway person/account/external-identity/
 role-assignment/session, and the site's own `attributes` value) was cleaned up after verification.
+
+### M13.3 · Frontend: component architecture + split-pane layout
+
+**Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Depends on
+M13.0/M13.1 only (both already built) — pure frontend, no backend/migration change. Replaces
+`web/apps/web/app/discovery-map.tsx` (a 101-line monolith: raw two-field text form, Leaflet map,
+no list pane, no URL state, no geolocation) with a real component tree under
+`web/apps/web/app/discovery/`:
+
+- `discovery-shell-loader.tsx` / `discovery-shell.tsx` — the `next/dynamic({ssr:false})` wrapper
+  (unchanged reason: Leaflet touches `window` at module-eval time) around the orchestrator, which
+  owns filter state (read from `useSearchParams()`, written via next-intl's locale-aware
+  `router.replace({pathname, query}, {scroll:false})`), `sites`, `activeSiteId` (hover-sync),
+  `pendingViewport`/`lastSearchedViewport` (drives the "search this area" button), and the
+  `useGeolocation()` result.
+- `filter-bar.tsx`, `map-pane.tsx`, `list-pane.tsx`, `search-this-area-button.tsx` — the four
+  pieces of the split-pane UI. `map-pane.tsx` carries the marker/popup/pin-icon code moved
+  essentially verbatim from the old monolith, plus a `useMapEvents({moveend})` viewport watcher
+  and a `useMap()`-based one-shot geolocation recenter.
+
+**shadcn/Radix**, introduced into `web/apps/web` to match `web/apps/admin`'s existing setup:
+`components.json` copied verbatim (style `radix-nova`, `baseColor neutral`, `cssVariables: true`,
+`iconLibrary: lucide`), pinned deps added to `package.json` (`radix-ui ^1.6.7`, `shadcn ^4.18.0`,
+`class-variance-authority ^0.7.1`, `clsx ^2.1.1`, `tailwind-merge ^3.6.0`, `lucide-react ^1.31.0`,
+`tw-animate-css ^1.4.0` — identical versions to admin), `lib/utils.ts`'s `cn()` helper copied
+verbatim, `app/globals.css` gained admin's full OKLCH theme-token block. Ran the real shadcn CLI
+(`npx shadcn@4.18.0 add button input card skeleton select`) against the new config rather than
+hand-copying admin's component files, per the user's explicit direction.
+
+**Filter state lives in the URL** (`lib/discovery-url-state.ts`'s `parseFilters`/
+`filtersToSearchParams`, shared between the server page's initial fetch and the client shell's
+re-searches — one `SearchParamsLike` interface satisfied by both `URLSearchParams`/
+`ReadonlyURLSearchParams` and a small adapter over Next's server-side `searchParams` record).
+
+**"Search this area"**, not auto-refetch on pan: exploration confirmed the pre-M13.3 map had *no*
+pan-driven refetch at all, so there was nothing to literally replace — this is net-new interaction,
+deliberately gated behind an explicit click, consistent with never firing a search the user didn't
+ask for. `ViewportWatcher` (a `useMapEvents({moveend})` child of `MapContainer`) reports
+`{lat, lng, radiusM}` up to the shell on every pan/zoom, computed via Leaflet's own
+`center.distanceTo(bounds.getNorthEast())` — no new backend bbox param needed, reuses the existing
+center+radius `search(lat,lng,radiusM,...)` shape M13.0/M13.1 already expose. The button shows
+whenever the pending viewport diverges from the last-searched one by more than
+`max(500m, 15% of last radius)`, hiding again once its own search commits.
+
+**Geolocation** (`lib/geolocation.ts`'s `useGeolocation`) is a one-shot
+`navigator.geolocation.getCurrentPosition`, SSR-safe, falling back to the same Kyiv
+`DEFAULT_CENTER` the old monolith hardcoded. It only ever sets the *initial* map center/zoom
+(`GeolocationRecenter`, a `useMap()` child, calls `map.setView` exactly once via a ref guard, only
+when geolocation actually resolves to a real fix and only if the URL didn't already carry an
+explicit `lat`/`lng` from a shared link) — it never triggers a search on its own, keeping "every
+fetch is either the initial SSR load or an explicit user action" true without exception.
+
+**Pulled forward from M13.4, at the user's explicit direction during planning**: `filter-bar.tsx`
+renders real shadcn `Select` pickers for tradition and language, populated from a new
+`lib/discovery.ts` `facets()` wrapper around M13.1's `GET /discovery/v1/facets`
+(`client().discoveryPublic.facets()`, same `unwrap()` error-handling pattern as the existing
+`search()`). Fetched once, server-side, in `app/[locale]/page.tsx` alongside the initial search —
+facets don't need to change per-search, so there's no client-side re-fetch or extra server action
+for them. Everything else scoped to M13.4 (full result-card, marker popup, clustering, the
+accessibility/online-only/day "more filters" drawer) stays there.
+
+**Proof.** `web/apps/web`: `npx tsc --noEmit`, `npm run lint`, and `npm run build` (Turbopack) all
+clean, including inside the real `node:22-alpine`-based Docker build (the host runs Node v25;
+regenerated `package-lock.json` inside a matching container first per the known host/container
+Node-version lockfile-mismatch gotcha before `docker compose build openfaithmap-web` — a bare host
+`npm install` would have produced a lockfile `npm ci` rejects at container-build time).
+
+**Live-verified in a real headless-Chromium browser** against the rebuilt `docker compose` stack
+(`playwright-core` driving the system's installed Google Chrome via `executablePath`, no
+`chromium-cli`/bundled browser download available in this environment): split-pane layout renders
+(list left, map right, 360px/`1fr` grid); the tradition `Select` opens and lists the real facets
+(`Adventism`/`Baptist` from the live seed data); submitting a tradition filter updates the URL to
+`?tradition=adventism` and the list/map both narrow to matching sites; panning the map surfaces
+the "Search this area" button, and clicking it updates the URL with real `lat`/`lng`/`radiusM` and
+hides the button again; reloading a URL that already carries `?tradition=adventism` (direct-link/
+SSR baseline) server-renders with the `Select` pre-set to "Adventism" and only that site listed;
+hovering each list card turns exactly its own marker the active color (`#ea580c`) and no other,
+confirmed index-correct across all cards in the result set, reverting when the mouse leaves.
+Screenshots and full driver output kept in the session scratchpad.
+
+**One real thing found during verification, not a code bug**: a burst of test requests (several
+page loads/searches within under a minute, including manual `curl` probes before the browser run)
+tripped `internal/platform/ratelimit`'s existing anonymous-endpoint limiter (~5 req/min per client
+IP, per-endpoint bucket, D-Hardening from M7) — the shared limiter bucket is keyed by
+`openfaithmap-web`'s own container IP, since every search (SSR or via `searchAction`) is a
+server-to-server call from that one container, not the end user's IP. A 429 mid-verification
+surfaced a real, pre-existing gap: neither the old nor the new frontend has any page-level error
+handling for a rate-limited/failed search, so it degraded to Next.js's generic client-side error
+boundary rather than a friendly message — not a regression from this milestone (the old monolith
+had the identical gap), not fixed here (out of scope), but worth a future hardening pass. Waiting
+~65s for the token bucket to refill and re-running with fewer, spaced-out requests confirmed every
+behavior above cleanly.
+
+**Real geolocation-granted recentering was not driven end-to-end**: the browser context ran with
+geolocation permission withheld, so every run exercised the Kyiv-fallback path (confirmed — the
+initial pin lands exactly at `[50.45, 30.52]`), not the `GeolocationRecenter`/`map.setView("granted")`
+path. That code path is exercised by `tsc`/`eslint`/`next build` and manual review, not a live
+browser fix, mirroring M13.2's disclosed-gap convention for what a headless verification pass
+can't reach.
