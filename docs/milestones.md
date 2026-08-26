@@ -131,6 +131,15 @@ Verified (admin-UI browser click-through and a green CI run at the merge commit 
 | M12.6 · Admin UI — move/reparent with parent picker | ✅ | ✅ | ➖ | ➖ | ✅ | ✅ | **Verified (2026-08-26): real logged-in browser click-through of the move form — see M12.2's own row for the real same-parent-orphaning bug this exact click-through found and this pass fixed before re-confirming a clean error (and a genuinely-different-parent move still succeeding); CI green on PR #28, merged to `main`.** Built (2026-08-26). Depends on M12.1 and M12.2 (both done) — no backend/migration work, purely wiring the admin UI to the already-live `moveUnit`/`getUnitMoveStatus` endpoints (the TypeScript SDK bindings were already generated at M12.2, so no `make sdk` re-run was needed). `lib/core.ts` gained `moveUnit`/`getUnitMoveStatus` wrappers plus a `UnitMoveJob` type re-export; `status-badge.tsx` gained `UnitMoveStatusBadge`/`UNIT_MOVE_TONE` following the plain-string `UnitStatusBadge` precedent, not `ReparentStatusBadge`'s typed-enum one, since `UnitMoveJob.status` is a wire string. `units/[unitId]/page.tsx` gained a Move card (hidden for the root unit, same `!isRoot` guard as the State/Delete cards) with a parent-picker `<Input>` pre-filled from `unitAncestors`'s own `.at(-1)` (the current parent) — deliberately a free-text field, not a `<select>` restricted to the ancestor list, since a generic move's real use case is relocating a unit to an unrelated branch, not just up its own ancestor chain — a move-status display reusing `registration/reparent`'s own "status badge + `job.error` in parens, `text-destructive`" pattern verbatim (confirmed live in `reparent-list.tsx`), and a typed-error banner (`Core:RootUnitProtected`/`UnitHasNoCurrentParent`/`UnitMoveConflict`/`Forbidden` → dedicated translation keys, mirroring the unit-delete flow's `deleteBlockedX` convention) for the synchronous 4xx cases `moveUnit` can throw. Since `Move` is synchronous (its HTTP response already carries the terminal `VERIFIED`/`FAILED` status), the action is a plain submit-then-redirect, no client-side polling — a cycle is not a thrown error at all but a `FAILED` job with a free-text `error`, surfaced the same way registration's own reparent UI already does. New translation keys added to `SuperAdminUnitPage` in all four locale files (`en`/`pt`/`es`/`uk`), with real (not placeholder) translations for `pt`/`es`/`uk` to match this section's own existing precedent from M12.5. Proof: `tsc --noEmit`/`eslint`/`next build` clean for `openfaithmap-admin`; the rebuilt `openfaithmap-admin` container boots clean and correctly `307`s an unauthenticated `/admin/units/{unitId}` request to `/login` — routing-level proof only, the same bar M12.1–M12.5 accepted, since this environment still has no dev-login bypass for a real browser click-through of the move form itself — left for the user's own browser pass against the now-running `localhost:3004`. |
 | M12.7 · Admin UI — hierarchy visualization | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | **Verified (2026-08-26): real logged-in browser click-through confirmed the tree expands/collapses correctly (see M12's own top-level row for the M11.3 session-id regression this pass fixed first); CI green on PR #28, merged to `main`.** Built (2026-08-26). Depends on M12.1 (done). No migration — one-hop children is a new query over the existing `directory_unit_edges` table, not a schema change. **Scope grew once with the user past the original design note**: rather than a per-unit-rooted tree (the simpler alternative, since no HTTP root-lookup existed), the user chose a real global root-down tree, with children still fetched lazily one hop at a time as each branch expands — so a single request stays cheap and bounded regardless of org size, addressing a DoS/performance concern raised directly. New `internal/directory.ListChildren`/`Children` (one-hop via the edge table — deliberately not `ListDescendants`'s closure-table subtree query), capped at default/max 50 like `SearchUnits`. New `internal/core.RootUnit` (a thin read over the already-boot-resolved `s.rootUnitID`, no new topology query) and `UnitChildren`, both in the existing ungated-read block alongside `GetUnit`/`ListUnits`/`UnitAncestors` — no `requireSubject` call, matching that family exactly. New `api/core.conjure.yml` endpoints: `unitChildren` (`GET /units/{unitId}/children`, a plain new sibling of `unitAncestors` — the GET tree already has multiple static suffixes coexisting with the `{unitId}` wildcard, unlike the POST tree's own collision class) and `rootUnit` (`GET /root-unit`, deliberately a top-level static resource with no `{}` segment — a `GET /units/root` would sit at the same tree depth as the `GET /units/{unitId}` wildcard, the same ambiguity that panicked httprouter at boot for the POST tree in M12.1 — following `updateUnit`/`moveUnit`/`explainAccess`'s own sibling-resource precedent). Both reuse the existing `Unit`/`UnitPage` wire types, no new type needed. Admin UI: new `/admin/units/tree` page (a real WAI-ARIA treeview — `role="tree"`/`"treeitem"`, roving tabindex, arrow-key navigation, Enter opens the unit's detail page — a first-of-its-kind interaction pattern in this codebase, hand-rolled rather than reaching for Radix's Collapsible/Accordion since neither carries real tree semantics), SSR'd with the root's first level so opening the page needs no client round trip, every deeper level loaded lazily via a `"use server"` action wrapping `unitChildren`; a "Browse hierarchy →" link on `units/page.tsx` (no sidebar nav change needed — the route already falls under the existing "Units" nav entry's prefix match). New `SuperAdminUnitTreePage` i18n namespace plus one `browseHierarchy` key on `SuperAdminUnitsPage`, real (not placeholder) translations in all four locales. Proof: `go build`/`go vet`/`godelw verify`(fmt+lint+test)/`go test ./...` clean; new `internal/directory` (`TestUnitChildrenCapIntegration`, plus `ListChildren` assertions folded into `TestDirectoryClosureIntegration`/`TestUnitLifecycleIntegration`) and `internal/core` (`TestUnitHierarchyIntegration`) integration tests against real Postgres cover one-hop-only (not full subtree), the 50-cap holding against 55 real children, soft-deleted-child exclusion, `RootUnit` resolving to the same id `ErrRootUnitProtected` already guards, and an unknown unit id returning an empty list rather than an error; `make sdk`/`sdk-verify` clean; `next build`+`tsc --noEmit`+`eslint` clean for `openfaithmap-admin` (and `tsc --noEmit` clean for `openfaithmap-web` after the shared SDK regen). The rebuilt `openfaithmap-api` container boots clean over the real compose network with no httprouter panic — the specific risk `rootUnit`'s top-level-resource placement was designed to avoid — and the new `GET /root-unit`/`GET /units/{unitId}/children` routes correctly `401` an anonymous caller, same as `unitAncestors`; the rebuilt `openfaithmap-admin` container correctly `307`s an unauthenticated `/admin/units/tree` request to `/login`, same as `/admin/units/{unitId}` — routing-level proof only, the same bar M12.1–M12.6 accepted, since this environment still has no dev-login bypass for a real browser click-through of the tree's expand/collapse/keyboard-nav interaction itself — left for the user's own browser pass against the now-running `localhost:3004`. |
 
+| M13 · Public discovery redesign | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Decided (2026-08-26).** A discovery pass (codebase audit of `web/apps/web`'s public map plus external research against comparable place-discovery UX — Airbnb, Zillow, Yelp, church-finder sites, NN/g guidance) found the current public discovery page is a single ~200-line component: a Leaflet map with a raw two-field text form (taxon *code*, ISO-639-3 *code* — no dropdown) whose marker popups show no congregation name or address at all. Root cause: `religion.DiscoverySite`, the domain type backing the public API, never carried a name or address field — even though both already exist in-process (`directory_units.name`, `location_locations`' structured address, both already joined into the same query for other purposes). Scoped jointly with the user across four rounds of questions into seven sub-milestones (M13.0–M13.6): component library — introduce shadcn/Radix into `web/apps/web` (matching `web/apps/admin`); distance — request browser geolocation with a fallback; new filters — a JSONB `attributes` column on `religion_sites` holding detailed (not single-flag) accessibility criteria plus an online-stream boolean; favoriting/save — explicitly out of scope for M13. See D-DiscoveryAddressPrecision (`architecture/decisions.md`) for the address/name precision-gating rule this milestone introduced. |
+| M13.0 · Backend: site enrichment (name, address, tags, attributes) | ✅ | ✅ | ✅ | ✅ | ➖ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** `internal/religion.DiscoverySite` gained `Name`, `Address` (precision-coarsened via new `CoarsenAddress`, D-DiscoveryAddressPrecision), `TraditionTaxonID/Code/Name`, `ServiceLanguages`/`ServiceDays`, and `Attributes` (new `religion_sites.attributes JSONB` column + GIN index, `SiteAttributes`'s accessibility-criteria/online-stream shape); `discovery.CacheRow` mirrors all of it, closing a real pre-existing bug where `refreshFromLive`/`RefreshRegion` left tradition/language/day nil even on a live (non-cached) fetch. New `DiscoveryPublicService.getSite(unitId)` (always live, never cache) for M13.4's detail page, gated into the identity middleware's anonymous-route allowlist via a new path-prefix bypass (`/discovery/v1/sites/`, since a path-parameterized route can't be the existing exact-match `anonymousRoutes` entries `/discovery/v1/search` uses). Found and fixed one real bug along the way: a malformed `unitId` hit `religion_sites.org_unit_id`'s `uuid` column directly and 500'd instead of 404ing — `GetSiteByUnit` now validates via `palantir/pkg/uuid.ParseUUID` first. Migration `0021_discovery_site_enrichment.sql`, expand-only, no backfill (cache is disposable per this module's own invariant). Proof: `go build`/`go vet`/`godelw verify`(fmt+lint+conjure-backcompat)/`go test ./...` clean; new integration coverage in `religion_integration_test.go` (name/address/tradition-tag/attributes round-trip through `SearchSites`, the new `UnitID` query filter) and `discovery_integration_test.go` (`CacheRow.Name` populated from a live search, `GetSiteByUnit` found/not-found/malformed-id paths) against real Postgres; new `TestCoarsenAddress` unit test; new `TestIsBypassPath` cases for the path-prefix bypass. `make sdk`/`sdk-verify` clean. Live-verified over the real `docker compose` network: `GET /discovery/v1/search` returns real `name`/`serviceLanguages`/`attributes` fields (confirmed both an unrefreshed pre-M13.0 cache row showing `name:""` and a freshly-searched row showing the real name, proving the enrichment path itself rather than a coincidence); `GET /discovery/v1/sites/{unitId}` returns `200` for a real site, a clean `404 SiteNotFound` for both a nonexistent-but-valid id and a malformed one (no more raw Postgres error), and correctly bypasses authentication (`401` before the fix, `404`/`200` after). |
+| M13.1 · Backend: filters (attributes containment, facets, tradition bug fix) | ✅ | ✅ | ⬜ | ⬜ | ➖ | ⬜ | **Scoped, not yet built.** Fix the pre-existing `tradition` filter bug (documented as a taxon *code* but bound straight into a `uuid` closure-table column with no code→id resolution — likely silently matches nothing today, zero test coverage before M13.0). Extend `DiscoveryQuery` with `Accessibility`/`OnlineOnly`, translated to JSONB containment (`attributes @>`) against M13.0's new GIN index. New facets endpoint (distinct tradition/language values actually present) so the picker UI (M13.4) never offers a dead-end filter. |
+| M13.2 · Admin UI — edit site attributes | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Without this, `religion_sites.attributes` has no write path and stays permanently empty. New `UpdateSiteAttributes` endpoint (same target-scoped `content.manage`/registration-operator pattern as M2.3/`content.md`) plus an admin form (checkboxes per accessibility criterion, an online-stream toggle) in `web/apps/admin`. |
+| M13.3 · Frontend: component architecture + split-pane layout | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Replaces the monolithic `discovery-map.tsx` with a real component tree (shell/map/list/filter-bar), introduces shadcn/Radix into `web/apps/web`, hover-sync between list card and map pin, a "search this area" button replacing auto-refetch on pan, geolocation-driven distance/initial-center with a fallback, filter state promoted into the URL query string. |
+| M13.4 · Frontend: result card, marker popup, clustering, filter UI | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Real result-card (name/distance/address/tags/badges/directions CTA) and marker popup replacing the current placeholder text; pin clustering; a "more filters" drawer for language/day/accessibility/online-only, tradition/language as real pickers backed by M13.1's facets endpoint. |
+| M13.5 · Detail page enhancement | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Wires M13.0's `getSite(unitId)` into `congregations/[unitId]/page.tsx` alongside the existing content-blocks call — address, tradition, service language/day, accessibility/online-stream badges, a "Get Directions" CTA. Deliberately no star-rating/review UI. |
+| M13.6 · Mobile responsive pass | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** List-first default on mobile with an explicit List↔Map toggle, tap-a-pin → bottom-sheet card, filter bar collapsing into the "more filters" pattern earlier on narrow viewports. Last in sequence — needs M13.3/M13.4's real component shapes to exist first. |
+
 ## Per-milestone detail
 
 ### M0 · Scope & core-dependency
@@ -2820,3 +2829,142 @@ actually built and live-verified.
 > `development-process.md`'s own rule that a happy-path proof — even an exhaustive, fully-automated,
 > fully-passing one — is not a Verified proof: every M12.x row's own test suite was green the whole
 > time both bugs were live; only a real logged-in browser click-through caught either of them.
+
+### M13 · Public discovery redesign
+
+**Depends on:** M10 (in-process `religion`/`location`/`directory`, no more go-oikumenea HTTP hop)
+and M4's `discovery` module (`discovery_site_cache`, `DiscoveryPublicService`). **Leaves
+deployable:** yes at every M13.x boundary — each sub-milestone is independently buildable/
+verifiable, same discipline M10.x/M12.x used. **Blocks:** every M13.x below.
+
+The user asked for a full redesign of the public discovery page — the anonymous map/search
+experience at `web/apps/web` — because its current display quality is poor, and asked specifically
+to research comparable services (church finders, general place-discovery UX) and bring in their
+best practices.
+
+**Discovery** (a codebase audit of `web/apps/web`'s current implementation, plus external research
+against comparable church-finder sites and mature place-discovery products — Airbnb, Zillow, Yelp,
+NN/g guidance) found:
+
+- **The current page is a single ~200-line component**, not a set of composable pieces:
+  `discovery-map.tsx` is a Leaflet map, a raw two-field text form (tradition taxon *code*, service
+  language ISO-639-3 *code* — no dropdown/autocomplete), a results-count string, and marker popups
+  that show only a "View congregation page" link or "No published page yet" — **no congregation
+  name or address renders anywhere.** There is no separate list view, no result card, no
+  pagination; the per-congregation detail page is reachable only by clicking a map popup.
+- **The gap was structural, not cosmetic.** `religiondomain.DiscoverySite` (the domain type backing
+  the public API) never carried a name or address field, even though both already exist
+  in-process: `directory_units.name` and `location_locations`' structured address columns were
+  already joined into `internal/religion/adapters/repository.go`'s `SearchSites` query for other
+  purposes, just never projected back out. This was a real, unnamed gap — `docs/modules/
+  discovery.md` never once mentioned "name" before this milestone.
+- **Two more real, previously-undocumented bugs surfaced by the same discovery pass**: `discovery.
+  CacheRow`'s tradition/language/day fields stayed nil/empty even on a *live* (non-cached) search
+  hit, not just a stale cache row, because `refreshFromLive`/`RefreshRegion` never populated them
+  on any code path; and the `tradition` query param is documented as a taxon *code* but the
+  adapter binds it straight into a `uuid` closure-table column with zero code→id resolution
+  anywhere in `transport → application → adapters` — likely silently matching nothing, with zero
+  test coverage before this milestone.
+- **UX research** (Airbnb/Zillow's split-pane map+list with hover-sync, Yelp's list-first mobile
+  default with a bottom-sheet card on pin-tap, NN/g's map-UX guidance, and a survey of dedicated
+  church-finder products) supplied the target patterns this milestone builds toward: a real result
+  card (name/distance/address/tags/quick-action), pin clustering, a primary/secondary filter split
+  (always-visible location/tradition/distance vs. a "more filters" drawer for language/day/
+  accessibility), a "search this area" button instead of auto-refetch on pan, and — a gap every
+  researched church finder shared — no accessibility filtering at all.
+
+**Scoped jointly with the user**, across four rounds of questions:
+
+- **Component library**: introduce shadcn/Radix into `web/apps/web` (M13.3), matching
+  `web/apps/admin`'s existing stack, rather than staying dependency-lean.
+- **Distance**: request browser geolocation for both the initial map center and per-result
+  distance, with a fallback (search-center distance, or omission) on denial/unsupported.
+- **New filters — the biggest scope decision**: not just better UI over the six params `GET
+  /search` already supports, but genuinely new backend schema — a single **JSONB `attributes`
+  column** on `religion_sites` (not individual boolean columns per criterion, since the exact
+  accessibility criteria list is expected to grow), holding **detailed, named** accessibility
+  criteria (step-free entrance, accessible restroom, hearing loop, sign-language interpretation,
+  accessible parking, wheelchair seating, braille/large-print) plus an `onlineStream` boolean — see
+  D-DiscoveryAddressPrecision's sibling reasoning in `architecture/decisions.md` for why these pass
+  through the public projection unfiltered by precision.
+- **Name-always-shown**: the congregation name renders regardless of `PublicPrecision` — a name
+  alone carries no finer location signal than the coordinate/site-type label `SearchSites` already
+  exposes at every tier. See D-DiscoveryAddressPrecision (`architecture/decisions.md`) for the full
+  address/name precision-gating table this milestone introduced.
+- **Explicitly out of scope**: favoriting/saving a congregation (no accounts on the public site, no
+  clear persistence model for an anonymous visitor — deferred to a future milestone if wanted);
+  draw-your-own-boundary search (low priority per the UX research); a full ISO-639-3 language
+  reference-data module (a small static code→label map scoped to this app's actual language set is
+  cheaper and sufficient); ratings/reviews on the detail page (sensitive for churches).
+
+Sub-milestones (M13.0–M13.6) and their status are tracked in the stage board above; each gets its
+own detailed entry below once built, matching the M10.x/M11.x/M12.x precedent of writing the build
+narrative at build time, not at scoping time.
+
+### M13.0 · Backend: site enrichment (name, address, tags, attributes)
+
+**Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** Depends on M10 only
+(the in-process `religion`/`location`/`directory` modules this milestone reads from — no new
+cross-module dependency).
+
+`internal/religion/domain/religion.go`'s `DiscoverySite` gained `Name`, `Address` (precision-
+coarsened via new `CoarsenAddress`, mirroring `Coarsen`'s own coordinate table — see
+D-DiscoveryAddressPrecision), `TraditionTaxonID/Code/Name` (the primary classification, resolved
+via a `LEFT JOIN LATERAL` in `SearchSites`' adapter SQL), `ServiceLanguages`/`ServiceDays`
+(aggregated per-site from `religion_service_schedules`), and `Attributes` (a new
+`SiteAttributes` struct — `AccessibilityAttributes`'s seven named booleans plus `OnlineStream`,
+JSON-tagged, backed by a new `religion_sites.attributes JSONB NOT NULL DEFAULT '{}'` column with a
+`GIN (attributes jsonb_path_ops)` index for M13.1's containment filtering). `domain.Site` itself
+also gained `Attributes` (populated on every site-returning query path — `ListSitesByUnit`/
+`GetSiteRow`/`InsertSite`, not just `SearchSites`) plus a set of search-only enrichment fields
+(`Name`/`AdminArea1`/`AdminArea2`/`Locality`/`Street`/`HouseNumber`/`PostalCode`/`TraditionTaxon*`/
+`ServiceLanguages`/`ServiceDays`) documented as populated only by `SearchSites`, left at zero value
+by every authenticated-owner path — the same "populated lazily, not by every path" convention
+`discovery.CacheRow`'s own doc comment already used.
+
+`discovery.CacheRow` mirrors all of it (`Name`, `Address`, `TraditionTaxonID/Code/Name`,
+`Attributes`), and `refreshFromLive`/`RefreshRegion` (`internal/discovery/application/service.go`)
+now populate every field from the single `SearchSites` hit via a new shared
+`cacheRowFromDiscoverySite` helper — closing the real pre-existing bug the discovery pass found
+(these fields stayed nil/empty even on a live, non-cached fetch). New migration
+`0021_discovery_site_enrichment.sql`: `religion_sites.attributes` plus its GIN index, and
+`discovery_site_cache`'s mirror columns (`name`, `address_line`, `tradition_taxon_code`,
+`tradition_taxon_name`, `attributes`) — expand-only, no backfill, since the cache is disposable per
+this module's own invariant ("a stale row is simply overwritten").
+
+**New endpoint**: `DiscoveryPublicService.getSite(unitId)` (`GET /discovery/v1/sites/{unitId}`) —
+always live, never the cache, for M13.4's server-rendered detail-page fetch (a direct link/refresh/
+crawler hit needs the current record, not whatever a radius search last happened to cache). New
+`religiondomain.DiscoveryQuery.UnitID` filter backs it, reusing `SearchSites`' exact same
+visibility/precision predicate (so a private/unlisted/hidden site is indistinguishable from "no
+site" to an anonymous caller, by design) with an `is_primary DESC` tiebreak when no spatial
+ordering applies. Required a new bypass-path rule in `internal/identity/middleware/
+authenticator.go`: `getSite`'s path carries a parameter (`/discovery/v1/sites/{unitId}`), so it
+can't be one of `anonymousRoutes`' existing exact-match entries the way `/discovery/v1/search` is —
+added a scoped `GET`-only prefix check (`/discovery/v1/sites/`) instead, distinct from the sibling
+`DiscoveryService.refresh`'s own header-authed path.
+
+**One real bug found and fixed along the way**: `religion_sites.org_unit_id` is a real `uuid`
+column, so a malformed `unitId` path parameter reached Postgres directly and came back as a raw
+`500` type-coercion error rather than the same clean `404` a syntactically valid but nonexistent id
+already got. `GetSiteByUnit` (`internal/discovery/application/service.go`) now validates via
+`palantir/pkg/uuid.ParseUUID` first, degrading to `found=false` (→ `SiteNotFound`, `404`) for
+anything malformed — found by testing the new endpoint against the real running stack, not by
+static analysis.
+
+**Proof**: `go build`/`go vet`/`godelw verify` (fmt, lint, conjure-backcompat)/`go test ./...`
+clean. New integration coverage: `religion_integration_test.go` gained assertions that `SearchSites`
+returns the real unit name, primary tradition tag, and `attributes` round-tripped through a real
+`UPDATE`, plus `DiscoveryQuery.UnitID` scoping to exactly one unit's sites; `discovery_integration_
+test.go` gained `CacheRow.Name` populated from a real live search and `GetSiteByUnit`'s found/
+not-found/malformed-id paths; new `TestCoarsenAddress` table test (`religion_test.go`) covering
+every precision tier; new `TestIsBypassPath` cases for the path-prefix bypass
+(`authenticator_test.go`). `make sdk`/`sdk-verify` clean for both TypeScript consumers.
+**Live-verified over the real `docker compose` network** (not just integration tests): rebuilt
+`openfaithmap-api` and queried `GET /discovery/v1/search` directly — confirmed a pre-M13.0,
+unrefreshed cache row still shows `name:""` (proving the enrichment is real, not a coincidence of
+always-fresh data) alongside a freshly-searched row showing the real congregation name, service
+language, and attributes; `GET /discovery/v1/sites/{unitId}` returns `200` with real data for a
+live site, a clean `404 Discovery:SiteNotFound` for both a well-formed-but-nonexistent id and a
+malformed one, and correctly requires no authentication (confirmed `401` before the middleware fix,
+`404`/`200` after).
