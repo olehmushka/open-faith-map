@@ -6,6 +6,7 @@ export * from "./blockType";
 export * from "./blockTypeNotFound";
 export * from "./blockTypePage";
 export * from "./blockTypeStatus";
+export * from "./blockUrlNotAllowed";
 export * from "./contentPublicService";
 export * from "./contentService";
 export * from "./createDocumentRequest";

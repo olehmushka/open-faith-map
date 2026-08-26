@@ -54,9 +54,16 @@ func TestContentIntegration(t *testing.T) {
 	contentStore := contentadapters.NewRepository(pool)
 	contentSvc := application.NewService(contentStore, authzSvc)
 
-	var personIDs, unitIDs, siteIDs, assignmentIDs []string
+	var personIDs, unitIDs, siteIDs, assignmentIDs, documentIDs []string
 	t.Cleanup(func() {
 		bg := context.Background()
+		for _, id := range documentIDs {
+			// ON DELETE CASCADE from content_blocks; content_documents.site_id has no cascade, so
+			// this must run before the content_sites delete below.
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.content_documents WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete document %s: %v", id, err)
+			}
+		}
 		for _, id := range siteIDs {
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.content_sites WHERE id = $1`, id); err != nil {
 				t.Errorf("cleanup: delete site %s: %v", id, err)
@@ -157,5 +164,41 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if publicSite.ID != site.ID {
 		t.Errorf("GetSite (public) = %+v, want id %s", publicSite, site.ID)
+	}
+
+	// --- M14.1: PutBlocks enforces D-PublicSiteCSP's URL scheme/embed-host allowlist at write
+	// time, with a typed BlockUrlNotAllowedError naming the offending field.
+	doc, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-1-blocks-test",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+	documentIDs = append(documentIDs, doc.ID)
+
+	_, err = contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "button", Position: 0, Data: json.RawMessage(`{"label":"x","href":"javascript:alert(1)"}`)},
+	})
+	var urlErr *contentdomain.BlockUrlNotAllowedError
+	if !errors.As(err, &urlErr) {
+		t.Errorf("PutBlocks(button, javascript: href) error = %v, want BlockUrlNotAllowedError", err)
+	} else if urlErr.Field != "href" {
+		t.Errorf("PutBlocks(button, javascript: href) error field = %q, want %q", urlErr.Field, "href")
+	}
+
+	if _, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "button", Position: 0, Data: json.RawMessage(`{"label":"x","href":"https://example.org"}`)},
+	}); err != nil {
+		t.Errorf("PutBlocks(button, https: href) error = %v, want nil", err)
+	}
+
+	_, err = contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "social_embed", Position: 0, Data: json.RawMessage(`{"platform":"facebook","url":"https://evil.example.com/post/1"}`)},
+	})
+	var socialErr *contentdomain.BlockUrlNotAllowedError
+	if !errors.As(err, &socialErr) {
+		t.Errorf("PutBlocks(social_embed, host mismatch) error = %v, want BlockUrlNotAllowedError", err)
+	} else if socialErr.Field != "url" {
+		t.Errorf("PutBlocks(social_embed, host mismatch) error field = %q, want %q", socialErr.Field, "url")
 	}
 }

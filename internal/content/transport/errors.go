@@ -29,6 +29,7 @@ func mapErr(err error, c errCtx) error {
 	var slugTaken *domain.SlugTakenError
 	var blockInvalid *domain.BlockDataInvalidError
 	var dupPosition *domain.DuplicateBlockPositionError
+	var urlNotAllowed *domain.BlockUrlNotAllowedError
 
 	switch {
 	case errors.As(err, &slugTaken):
@@ -37,6 +38,8 @@ func mapErr(err error, c errCtx) error {
 		return gencontent.NewBlockDataInvalid(blockInvalid.BlockTypeCode, blockInvalid.Position)
 	case errors.As(err, &dupPosition):
 		return gencontent.NewDuplicateBlockPosition(dupPosition.Position)
+	case errors.As(err, &urlNotAllowed):
+		return gencontent.NewBlockUrlNotAllowed(urlNotAllowed.BlockTypeCode, urlNotAllowed.Position, urlNotAllowed.Field)
 	case errors.Is(err, domain.ErrSiteNotFound):
 		return gencontent.NewSiteNotFound(c.SiteID)
 	case errors.Is(err, domain.ErrDocumentNotFound):

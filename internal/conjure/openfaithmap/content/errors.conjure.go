@@ -315,6 +315,158 @@ func (e *BlockTypeNotFound) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type blockUrlNotAllowed struct {
+	BlockTypeCode string `json:"blockTypeCode"`
+	Position      int    `json:"position"`
+	Field         string `json:"field"`
+}
+
+func (o blockUrlNotAllowed) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *blockUrlNotAllowed) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewBlockUrlNotAllowed returns new instance of BlockUrlNotAllowed error.
+func NewBlockUrlNotAllowed(blockTypeCodeArg string, positionArg int, fieldArg string) *BlockUrlNotAllowed {
+	return &BlockUrlNotAllowed{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), blockUrlNotAllowed: blockUrlNotAllowed{BlockTypeCode: blockTypeCodeArg, Position: positionArg, Field: fieldArg}}
+}
+
+// WrapWithBlockUrlNotAllowed returns new instance of BlockUrlNotAllowed error wrapping an existing error.
+func WrapWithBlockUrlNotAllowed(err error, blockTypeCodeArg string, positionArg int, fieldArg string) *BlockUrlNotAllowed {
+	return &BlockUrlNotAllowed{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, blockUrlNotAllowed: blockUrlNotAllowed{BlockTypeCode: blockTypeCodeArg, Position: positionArg, Field: fieldArg}}
+}
+
+// BlockUrlNotAllowed is an error type.
+// A URL-bearing block field failed D-PublicSiteCSP's scheme/host allowlist (schemes: https, http, mailto, tel; embed hosts checked separately for social_embed).
+type BlockUrlNotAllowed struct {
+	errorInstanceID uuid.UUID
+	blockUrlNotAllowed
+	cause error
+	stack werror.StackTrace
+}
+
+// IsBlockUrlNotAllowed returns true if err is an instance of BlockUrlNotAllowed.
+func IsBlockUrlNotAllowed(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*BlockUrlNotAllowed)
+	return ok
+}
+
+func (e *BlockUrlNotAllowed) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:BlockUrlNotAllowed (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *BlockUrlNotAllowed) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *BlockUrlNotAllowed) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *BlockUrlNotAllowed) Message() string {
+	return "INVALID_ARGUMENT Content:BlockUrlNotAllowed"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *BlockUrlNotAllowed) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *BlockUrlNotAllowed) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *BlockUrlNotAllowed) Name() string {
+	return "Content:BlockUrlNotAllowed"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *BlockUrlNotAllowed) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *BlockUrlNotAllowed) Parameters() map[string]interface{} {
+	return map[string]interface{}{"blockTypeCode": e.BlockTypeCode, "position": e.Position, "field": e.Field}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *BlockUrlNotAllowed) safeParams() map[string]interface{} {
+	return map[string]interface{}{"blockTypeCode": e.BlockTypeCode, "position": e.Position, "field": e.Field, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *BlockUrlNotAllowed) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *BlockUrlNotAllowed) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *BlockUrlNotAllowed) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e BlockUrlNotAllowed) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.blockUrlNotAllowed)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:BlockUrlNotAllowed", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *BlockUrlNotAllowed) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters blockUrlNotAllowed
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.blockUrlNotAllowed = parameters
+	return nil
+}
+
 type documentNotFound struct {
 	DocumentId string `json:"documentId"`
 }
@@ -1513,6 +1665,7 @@ func (e *SlugTaken) UnmarshalJSON(data []byte) error {
 func init() {
 	conjureerrors.RegisterErrorType("Content:BlockDataInvalid", reflect.TypeOf(BlockDataInvalid{}))
 	conjureerrors.RegisterErrorType("Content:BlockTypeNotFound", reflect.TypeOf(BlockTypeNotFound{}))
+	conjureerrors.RegisterErrorType("Content:BlockUrlNotAllowed", reflect.TypeOf(BlockUrlNotAllowed{}))
 	conjureerrors.RegisterErrorType("Content:DocumentNotFound", reflect.TypeOf(DocumentNotFound{}))
 	conjureerrors.RegisterErrorType("Content:DuplicateBlockPosition", reflect.TypeOf(DuplicateBlockPosition{}))
 	conjureerrors.RegisterErrorType("Content:EventMissingStart", reflect.TypeOf(EventMissingStart{}))

@@ -126,14 +126,15 @@ type BlockType struct {
 }
 
 var (
-	ErrSiteNotFound      = errors.New("content site not found")
-	ErrDocumentNotFound  = errors.New("content document not found")
-	ErrForbidden         = errors.New("caller does not hold religionorg.manage on this site's congregation unit")
-	ErrEventMissingStart = errors.New("kind=EVENT requires eventStartsAt to be set")
-	ErrParentTooDeep     = errors.New("parent document chain exceeds 3 levels")
-	ErrInvalidTransition = errors.New("invalid document state transition")
-	ErrBlockTypeNotFound = errors.New("block type not found or retired")
-	ErrBlockDataInvalid  = errors.New("block data failed json schema validation")
+	ErrSiteNotFound       = errors.New("content site not found")
+	ErrDocumentNotFound   = errors.New("content document not found")
+	ErrForbidden          = errors.New("caller does not hold religionorg.manage on this site's congregation unit")
+	ErrEventMissingStart  = errors.New("kind=EVENT requires eventStartsAt to be set")
+	ErrParentTooDeep      = errors.New("parent document chain exceeds 3 levels")
+	ErrInvalidTransition  = errors.New("invalid document state transition")
+	ErrBlockTypeNotFound  = errors.New("block type not found or retired")
+	ErrBlockDataInvalid   = errors.New("block data failed json schema validation")
+	ErrBlockUrlNotAllowed = errors.New("block field failed URL scheme/embed host allowlist")
 )
 
 // SlugTakenError carries U5's resolution: an admin-chosen slug, probed for uniqueness at write
@@ -170,3 +171,18 @@ type DuplicateBlockPositionError struct {
 func (e *DuplicateBlockPositionError) Error() string {
 	return fmt.Sprintf("duplicate block position %d", e.Position)
 }
+
+// BlockUrlNotAllowedError carries the field a URL-bearing block value failed D-PublicSiteCSP's
+// scheme/host allowlist at — never the offending value itself (same safe-arg discipline as
+// BlockDataInvalidError).
+type BlockUrlNotAllowedError struct {
+	BlockTypeCode string
+	Position      int
+	Field         string
+}
+
+func (e *BlockUrlNotAllowedError) Error() string {
+	return fmt.Sprintf("block at position %d (type %q): field %q not allowed by URL/embed allowlist", e.Position, e.BlockTypeCode, e.Field)
+}
+
+func (e *BlockUrlNotAllowedError) Unwrap() error { return ErrBlockUrlNotAllowed }

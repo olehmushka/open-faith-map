@@ -9,14 +9,15 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 is done (2026-08-27)** and no other
-sub-milestone is built yet. It is the second half of the product: M4/M13 finished **discovery** (the
-map); M14 finishes **presence** (the per-congregation site builder), whose bones shipped at M3/M4
-and were never built on. Nineteen sub-milestones, M14.0–M14.18. **M14.0 was the gate for the whole
-arc** — it wrote the nine `D-` blocks and the module-doc rewrites, and ruled on **U16** (tightened)
-and the M14.10 nav assumption (replaced with a hand-built menu); see
-[architecture/decisions.md](architecture/decisions.md) and the Unresolved unknowns table below.
-Nothing else in the arc starts before M14.1, which fixes a live stored-XSS hole.
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 (2026-08-27) and M14.1
+(2026-08-27) are done**, no other sub-milestone is built yet. It is the second half of the
+product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
+site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
+M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
+module-doc rewrites, and ruled on **U16** (tightened) and the M14.10 nav assumption (replaced with
+a hand-built menu); see [architecture/decisions.md](architecture/decisions.md) and the Unresolved
+unknowns table below. **M14.1 closed the live stored-XSS hole** that ran ahead of any other
+feature work in the arc — see its own row below. Next up: M14.2.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -62,7 +63,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 |---|---|---|---|---|---|---|---|
 | M14 · The site-building arc | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Scoped jointly with the owner (2026-08-26); M14.0 (2026-08-27) writes the nine `D-` blocks and rules on both open questions below.** A codebase audit plus external research into WordPress and Drupal found the site builder has good bones (typed JSON-Schema-validated blocks, translation groups, draft/published states, an unused `theme` JSONB — M3/M4) and nothing built on them: admins author pages by typing **raw JSON into a textarea**, every published page is dumped onto **one route as a one-pager** keyed by a UUID, there is **no media path anywhere**, `content.catalog.manage` still has **no endpoint**, and `button.href`/`image.url`/`social_embed.url` render with **no scheme validation at all** — a live stored XSS. Twelve owner decisions fixed the shape: full-parity arc; **no media uploads** (external URLs only); **forward revisions**; **structured rich-text nodes, never HTML**; **subdomain per congregation**; **curated contrast-checked theme tokens**; platform subdomains only; all four optional surfaces in scope; one web app with Host middleware, extractable later; contact form to an **in-app inbox, no SMTP**; **publish-on-read** scheduling with no scheduler; wildcard TLS designed but gated. Nineteen sub-milestones below. |
 | M14.0 · Decisions + designs for the arc | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Done (2026-08-27).** Writes the nine `D-` blocks (`D-TenantSubdomains`, `D-ExternalMediaOnly`, `D-RichTextNodes`, `D-ContentRevisions`, `D-CuratedTheme`, `D-SitePatterns`, `D-InAppInbox`, `D-PublishOnRead`, `D-PublicSiteCSP`), rewrites [content.md](modules/content.md) to the fixed template, updates [web-facade.md](modules/web-facade.md)/[web-admin.md](modules/web-admin.md)/[glossary.md](glossary.md), schedules `DS-OFM-7` to M14.14, opens `DS-OFM-17` (no first-party media storage), and rules explicitly on **U16**. Flips the first two columns for every row below. Docs-only — no code. |
-| M14.1 · Content security baseline | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | **Fixes the live stored XSS; nothing else in the arc ships first.** URL **scheme** allowlist (`https`/`http`/`mailto`/`tel`) on every URL-bearing block field, enforced at write in `blockvalidation.go`, plus an embed **host** allowlist; defensive re-validation in the renderer because pre-M14.1 rows already exist. `sandbox` + `referrerpolicy` on every iframe. CSP and security headers in both `next.config.ts` files (currently three lines each, zero headers). New invariant: `dangerouslySetInnerHTML` appears in neither app, ever. |
+| M14.1 · Content security baseline | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-27), fixes the live stored XSS; nothing else in the arc ships first.** URL **scheme** allowlist (`https`/`http`/`mailto`/`tel`) on every URL-bearing block field, enforced at write in `blockvalidation.go` (new typed `Content:BlockUrlNotAllowed` error), plus an embed **host** allowlist keyed by platform/block type (`social_embed`, YouTube-only for `youtube_embed` — no Vimeo block type exists yet). Defensive re-validation in the renderer (`web/apps/web/lib/block-security.ts`) because pre-M14.1 rows already existed unvalidated. `sandbox` + `referrerpolicy` on the `youtube_embed` iframe. CSP and security headers in both `next.config.ts` files (previously three lines each, zero headers) — verified present on a real response from both apps against the running stack. New invariant: `dangerouslySetInnerHTML` appears in neither app, ever — enforced by a new ESLint `no-restricted-syntax` rule, not just a point-in-time grep. Verified against a real pre-existing row inserted directly via SQL (bypassing the API): the malicious block renders dropped, not executed. `Verified` awaits CI green on `main`. |
 | M14.2 · Rich-text node model | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | A shared `richText` JSON-Schema definition — inline `text` runs carrying `bold`/`italic`/`link` marks, plus `list`/`listItem` — adopted by `paragraph`, `heading`, `quote`, `staff_card.bio` and a new `list` block. The renderer maps nodes to elements, so there is **no HTML parser and no sanitizer**: Drupal's filter-on-output problem is designed out rather than mitigated. Expand-only migration updating those block types' `json_schema`, plus a data migration lifting existing plain strings into single-run nodes. |
 | M14.3 · External media URLs, made survivable | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Normalizer for known share-link hosts (Google Drive, Dropbox, OneDrive) → direct-content URL, applied at write with the original preserved (**U15**). `alt` becomes schema-**required** on `image`/`gallery`. `loading="lazy"` + `referrerpolicy` on every rendered image. Editor-side "this URL loaded / did not load" probe **from the browser**, never a server-side fetch — that would be an SSRF surface. Records the future first-party `media` module as a designed seam so adding it later is additive. |
 | M14.4 · Schema-driven block forms | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | **The milestone that kills the JSON textarea.** New `content_block_types.ui_schema JSONB` (widget hints, labels, help text, field order) — WordPress's `block.json` lesson: a block's data schema and its editor controls are declared together, so the form is *derived*, never hand-written per type. Generic form renderer over `json_schema` + `ui_schema`. Typed Conjure validation errors land on the offending field instead of the current `?error=` query-string round trip. |
@@ -241,8 +242,14 @@ hand-built menu (`content_site_nav_items`), not a page-tree-derived one.
 
 ### M14.1 · Content security baseline
 
-**Not started.** Depends on M14.0 only. **This milestone fixes a hole that is live in `main`
-today** and therefore runs before any feature work in the arc.
+**Built (2026-08-27).** Depends on M14.0 only. **This milestone fixes a hole that was live in
+`main`** and therefore ran before any feature work in the arc.
+
+The milestone text named "a named YouTube/Vimeo set for `youtube_embed`", but no `vimeo_embed`
+block type exists in the seeded catalog (`youtube_embed.videoId` isn't a URL at all — the embed
+`src` is server-constructed). Built YouTube-only; the embed-host allowlist is keyed by block type
+on both sides (`blockvalidation.go`'s `socialEmbedHosts`-shaped map, `block-security.ts`'s
+`EMBED_IFRAME_HOSTS`) so a future `vimeo_embed` (M14.13) is an additive entry, not a rewrite.
 
 Write-time validation in `internal/content/application/blockvalidation.go` (which already walks
 each block's `json_schema`, so this extends an existing pass rather than adding a new one): a URL
@@ -261,11 +268,14 @@ Security headers, currently entirely absent, in both `next.config.ts` files: CSP
 `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, and
 `X-Frame-Options: DENY` on admin.
 
-**Acceptance criteria.** Saving a block with `href: "javascript:alert(1)"` is rejected with a typed
-error naming the field. A row carrying that value **inserted directly with SQL** — the pre-existing
-data case — renders with the link dropped, not executed. The CSP header is present on a real HTTP
-response from both apps, verified against the running stack rather than read from config. No
-`dangerouslySetInnerHTML` in either app.
+**Acceptance criteria — met.** Saving a block with `href: "javascript:alert(1)"` is rejected with a
+typed error naming the field (Go integration test, `internal/content/content_integration_test.go`,
+run against real Postgres). A row carrying that value **inserted directly with SQL** — the
+pre-existing data case — renders with the link dropped, not executed (verified against the running
+docker-compose stack: a site/document/block seeded by raw SQL, then fetched over HTTP). The CSP
+header is present on a real HTTP response from both apps, verified against the running stack rather
+than read from config. No `dangerouslySetInnerHTML` in either app — zero occurrences, plus a new
+ESLint `no-restricted-syntax` rule enforcing it going forward.
 
 ### M14.2 · Rich-text node model
 
