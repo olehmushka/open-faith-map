@@ -208,3 +208,10 @@ func (s *Service) SearchSitesExact(ctx context.Context, q religiondomain.Discove
 	authz.MustBeSystemContext(ctx)
 	return adapters.NewRepository(s.pool).SearchSites(ctx, q)
 }
+
+// SearchFacets returns every distinct tradition taxon / service-schedule language actually present
+// among public, non-hidden sites (M13.1) — backs the discovery picker UI so it never offers a
+// filter value that would zero out every result.
+func (s *Service) SearchFacets(ctx context.Context) (religiondomain.Facets, error) {
+	return adapters.NewRepository(s.pool).SearchFacets(ctx)
+}

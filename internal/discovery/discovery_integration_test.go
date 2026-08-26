@@ -175,6 +175,55 @@ func TestDiscoveryIntegration(t *testing.T) {
 		t.Fatalf("Search(lat/lng/radius) = %+v, want to include unit %s", results, unit.ID)
 	}
 
+	// --- M13.1: Accessibility/OnlineOnly force the live path (BypassesCache) and filter via JSONB
+	// containment against the real site's attributes.
+	if _, err := pool.Exec(ctx, `UPDATE openfaithmap.religion_sites SET attributes = '{"onlineStream": true, "accessibility": {"hearingLoop": true}}' WHERE id = $1`, site.ID); err != nil {
+		t.Fatalf("set site attributes: %v", err)
+	}
+	accessibility := "hearingLoop"
+	byAccessibility, err := discoverySvc.Search(context.Background(), discoverydomain.SearchQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Accessibility: &accessibility})
+	if err != nil {
+		t.Fatalf("Search(Accessibility=hearingLoop): %v", err)
+	}
+	var sawAccessibility bool
+	for _, r := range byAccessibility {
+		if r.CongregationUnitRID == unit.ID {
+			sawAccessibility = true
+		}
+	}
+	if !sawAccessibility {
+		t.Errorf("Search(Accessibility=hearingLoop) did not return unit %s", unit.ID)
+	}
+
+	onlineOnly := true
+	byOnlineOnly, err := discoverySvc.Search(context.Background(), discoverydomain.SearchQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, OnlineOnly: &onlineOnly})
+	if err != nil {
+		t.Fatalf("Search(OnlineOnly=true): %v", err)
+	}
+	var sawOnlineOnly bool
+	for _, r := range byOnlineOnly {
+		if r.CongregationUnitRID == unit.ID {
+			sawOnlineOnly = true
+		}
+	}
+	if !sawOnlineOnly {
+		t.Errorf("Search(OnlineOnly=true) did not return unit %s", unit.ID)
+	}
+
+	// --- M13.1: an unrecognized accessibility= value is a real client error (ErrInvalidFilter),
+	// not a silent zero-result match — the same "fail loudly" fix applied to the tradition bug.
+	bogus := "not-a-real-criterion"
+	if _, err := discoverySvc.Search(context.Background(), discoverydomain.SearchQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Accessibility: &bogus}); !errors.Is(err, discoverydomain.ErrInvalidFilter) {
+		t.Errorf("Search(Accessibility=not-a-real-criterion) error = %v, want ErrInvalidFilter", err)
+	}
+
+	// --- M13.1: Facets is always live and answers without error (religion_integration_test.go
+	// covers the actual distinct-value/hidden-site-exclusion logic against religion.SearchFacets
+	// directly; this only proves the discovery-module delegation wiring).
+	if _, err := discoverySvc.Facets(ctx); err != nil {
+		t.Fatalf("Facets: %v", err)
+	}
+
 	// --- M13.0: GetSiteByUnit answers the detail page's server-rendered fetch, always live, for
 	// exactly the unit asked about.
 	got, found, err := discoverySvc.GetSiteByUnit(ctx, unit.ID)

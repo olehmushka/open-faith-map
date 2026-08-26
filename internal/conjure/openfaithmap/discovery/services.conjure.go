@@ -15,7 +15,9 @@ import (
 
 // Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never widens what internal/religion.SearchSites would already return publicly (the position-oracle fix: hidden sites excluded, others coordinate-snapped). See docs/modules/discovery.md.
 type DiscoveryPublicServiceClient interface {
-	Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string) (SearchResult, error)
+	Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string, accessibilityArg *string, onlineOnlyArg *bool) (SearchResult, error)
+	// Distinct tradition/language values actually present among public, non-hidden sites (M13.1) — backs the picker UI (M13.4) so it never offers a filter value that would zero out every result. Always live, same as getSite — cheap, infrequent, and facets must reflect current data.
+	Facets(ctx context.Context) (FacetsResult, error)
 	// A single congregation's discoverable site, always live (never the disposable search cache) — the per-congregation detail page's server-rendered fetch (M13.0). Throws SiteNotFound if the unit has no public, non-hidden site.
 	GetSite(ctx context.Context, unitIdArg string) (DiscoverySite, error)
 }
@@ -28,7 +30,7 @@ func NewDiscoveryPublicServiceClient(client httpclient.Client) DiscoveryPublicSe
 	return &discoveryPublicServiceClient{client: client}
 }
 
-func (c *discoveryPublicServiceClient) Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string) (SearchResult, error) {
+func (c *discoveryPublicServiceClient) Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string, accessibilityArg *string, onlineOnlyArg *bool) (SearchResult, error) {
 	var returnVal *SearchResult
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("Search"))
@@ -55,6 +57,12 @@ func (c *discoveryPublicServiceClient) Search(ctx context.Context, latArg *float
 	if queryArg != nil {
 		queryParams.Set("query", fmt.Sprint(*queryArg))
 	}
+	if accessibilityArg != nil {
+		queryParams.Set("accessibility", fmt.Sprint(*accessibilityArg))
+	}
+	if onlineOnlyArg != nil {
+		queryParams.Set("onlineOnly", fmt.Sprint(*onlineOnlyArg))
+	}
 	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
@@ -63,6 +71,22 @@ func (c *discoveryPublicServiceClient) Search(ctx context.Context, latArg *float
 	}
 	if returnVal == nil {
 		return *new(SearchResult), werror.ErrorWithContextParams(ctx, "search response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *discoveryPublicServiceClient) Facets(ctx context.Context) (FacetsResult, error) {
+	var returnVal *FacetsResult
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("Facets"))
+	requestParams = append(requestParams, httpclient.WithPathf("/discovery/v1/facets"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(FacetsResult), werror.WrapWithContextParams(ctx, err, "facets failed")
+	}
+	if returnVal == nil {
+		return *new(FacetsResult), werror.ErrorWithContextParams(ctx, "facets response cannot be nil")
 	}
 	return *returnVal, nil
 }

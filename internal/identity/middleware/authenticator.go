@@ -260,6 +260,7 @@ type anonymousRoute struct {
 // affected modules where that was true.
 var anonymousRoutes = []anonymousRoute{
 	{http.MethodGet, "/discovery/v1/search"},
+	{http.MethodGet, "/discovery/v1/facets"},
 	{http.MethodPost, "/moderation/v1/reports"},
 	{http.MethodPost, "/moderation/v1/exclusion-check"},
 }

@@ -13,6 +13,8 @@ package application
 import (
 	"context"
 	"math"
+	"slices"
+	"strings"
 
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
@@ -96,12 +98,20 @@ func (s *Service) GetSiteByUnit(ctx context.Context, unitID string) (domain.Cach
 }
 
 func (s *Service) refreshFromLive(ctx context.Context, q domain.SearchQuery) ([]domain.CacheRow, error) {
+	accessibility, err := parseAccessibility(q.Accessibility)
+	if err != nil {
+		// A genuine client error (bad accessibility= value) — unlike SearchSites' own error path
+		// below, this must reach the caller as a real 400, not silently degrade to the cache.
+		return nil, err
+	}
 	sites, err := s.religion.SearchSites(ctx, religiondomain.DiscoveryQuery{
 		Lat: q.Lat, Lng: q.Lng, RadiusM: q.RadiusM,
-		Religion:  derefOrEmpty(q.Tradition),
-		Query:     derefOrEmpty(q.Query),
-		Language:  q.Language,
-		DayOfWeek: q.DayOfWeek,
+		Religion:      derefOrEmpty(q.Tradition),
+		Query:         derefOrEmpty(q.Query),
+		Language:      q.Language,
+		DayOfWeek:     q.DayOfWeek,
+		Accessibility: accessibility,
+		OnlineOnly:    q.OnlineOnly != nil && *q.OnlineOnly,
 	})
 	if err != nil {
 		// Never blocks the anonymous caller on an upstream hiccup (discovery.md's invariants) —
@@ -178,6 +188,13 @@ func (s *Service) RefreshRegion(ctx context.Context, region domain.RefreshRegion
 	return len(sites), nil
 }
 
+// Facets answers GET /facets (DiscoveryPublicService — no token) — always live, same as
+// GetSiteByUnit, since facets must reflect current data and cache-side filtering is out of scope
+// for M13.1 anyway.
+func (s *Service) Facets(ctx context.Context) (religiondomain.Facets, error) {
+	return s.religion.SearchFacets(ctx)
+}
+
 // requireOperator asks internal/authz's PDP whether the request's subject (from ctx) holds
 // operatorPermission on Config.RootUnitID specifically — the same target-scoped pattern
 // registration's IsOperator (M2.3) and content's requireManage already use, here targeting the
@@ -190,6 +207,24 @@ func (s *Service) requireOperator(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// parseAccessibility splits SearchQuery.Accessibility's comma-separated criterion keys and
+// validates each against religiondomain.AccessibilityCriteria — an unrecognized key is a real
+// client error (domain.ErrInvalidFilter), not a silent zero-result match. Returns nil, nil when raw
+// is nil (no filter requested).
+func parseAccessibility(raw *string) ([]string, error) {
+	if raw == nil || *raw == "" {
+		return nil, nil
+	}
+	keys := strings.Split(*raw, ",")
+	for i, key := range keys {
+		keys[i] = strings.TrimSpace(key)
+		if !slices.Contains(religiondomain.AccessibilityCriteria, keys[i]) {
+			return nil, domain.ErrInvalidFilter
+		}
+	}
+	return keys, nil
 }
 
 func derefOrEmpty(s *string) string {

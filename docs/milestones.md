@@ -133,7 +133,7 @@ Verified (admin-UI browser click-through and a green CI run at the merge commit 
 
 | M13 · Public discovery redesign | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Decided (2026-08-26).** A discovery pass (codebase audit of `web/apps/web`'s public map plus external research against comparable place-discovery UX — Airbnb, Zillow, Yelp, church-finder sites, NN/g guidance) found the current public discovery page is a single ~200-line component: a Leaflet map with a raw two-field text form (taxon *code*, ISO-639-3 *code* — no dropdown) whose marker popups show no congregation name or address at all. Root cause: `religion.DiscoverySite`, the domain type backing the public API, never carried a name or address field — even though both already exist in-process (`directory_units.name`, `location_locations`' structured address, both already joined into the same query for other purposes). Scoped jointly with the user across four rounds of questions into seven sub-milestones (M13.0–M13.6): component library — introduce shadcn/Radix into `web/apps/web` (matching `web/apps/admin`); distance — request browser geolocation with a fallback; new filters — a JSONB `attributes` column on `religion_sites` holding detailed (not single-flag) accessibility criteria plus an online-stream boolean; favoriting/save — explicitly out of scope for M13. See D-DiscoveryAddressPrecision (`architecture/decisions.md`) for the address/name precision-gating rule this milestone introduced. |
 | M13.0 · Backend: site enrichment (name, address, tags, attributes) | ✅ | ✅ | ✅ | ✅ | ➖ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** `internal/religion.DiscoverySite` gained `Name`, `Address` (precision-coarsened via new `CoarsenAddress`, D-DiscoveryAddressPrecision), `TraditionTaxonID/Code/Name`, `ServiceLanguages`/`ServiceDays`, and `Attributes` (new `religion_sites.attributes JSONB` column + GIN index, `SiteAttributes`'s accessibility-criteria/online-stream shape); `discovery.CacheRow` mirrors all of it, closing a real pre-existing bug where `refreshFromLive`/`RefreshRegion` left tradition/language/day nil even on a live (non-cached) fetch. New `DiscoveryPublicService.getSite(unitId)` (always live, never cache) for M13.4's detail page, gated into the identity middleware's anonymous-route allowlist via a new path-prefix bypass (`/discovery/v1/sites/`, since a path-parameterized route can't be the existing exact-match `anonymousRoutes` entries `/discovery/v1/search` uses). Found and fixed one real bug along the way: a malformed `unitId` hit `religion_sites.org_unit_id`'s `uuid` column directly and 500'd instead of 404ing — `GetSiteByUnit` now validates via `palantir/pkg/uuid.ParseUUID` first. Migration `0021_discovery_site_enrichment.sql`, expand-only, no backfill (cache is disposable per this module's own invariant). Proof: `go build`/`go vet`/`godelw verify`(fmt+lint+conjure-backcompat)/`go test ./...` clean; new integration coverage in `religion_integration_test.go` (name/address/tradition-tag/attributes round-trip through `SearchSites`, the new `UnitID` query filter) and `discovery_integration_test.go` (`CacheRow.Name` populated from a live search, `GetSiteByUnit` found/not-found/malformed-id paths) against real Postgres; new `TestCoarsenAddress` unit test; new `TestIsBypassPath` cases for the path-prefix bypass. `make sdk`/`sdk-verify` clean. Live-verified over the real `docker compose` network: `GET /discovery/v1/search` returns real `name`/`serviceLanguages`/`attributes` fields (confirmed both an unrefreshed pre-M13.0 cache row showing `name:""` and a freshly-searched row showing the real name, proving the enrichment path itself rather than a coincidence); `GET /discovery/v1/sites/{unitId}` returns `200` for a real site, a clean `404 SiteNotFound` for both a nonexistent-but-valid id and a malformed one (no more raw Postgres error), and correctly bypasses authentication (`401` before the fix, `404`/`200` after). |
-| M13.1 · Backend: filters (attributes containment, facets, tradition bug fix) | ✅ | ✅ | ⬜ | ⬜ | ➖ | ⬜ | **Scoped, not yet built.** Fix the pre-existing `tradition` filter bug (documented as a taxon *code* but bound straight into a `uuid` closure-table column with no code→id resolution — likely silently matches nothing today, zero test coverage before M13.0). Extend `DiscoveryQuery` with `Accessibility`/`OnlineOnly`, translated to JSONB containment (`attributes @>`) against M13.0's new GIN index. New facets endpoint (distinct tradition/language values actually present) so the picker UI (M13.4) never offers a dead-end filter. |
+| M13.1 · Backend: filters (attributes containment, facets, tradition bug fix) | ✅ | ✅ | ✅ | ➖ | ➖ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** Fixed the pre-existing `tradition` filter bug: `SearchSites` now joins `religion_taxa` on `code` instead of binding the raw code string straight to the closure's `uuid` `ancestor_id` column, which previously matched nothing for any real code. Added `DiscoveryQuery.Accessibility`/`OnlineOnly`, translated to JSONB containment (`attributes @>`) against M13.0's GIN index — an unrecognized `accessibility` value throws a new `InvalidFilter` rather than silently matching zero sites. New `GET /discovery/v1/facets` endpoint (distinct tradition/language values actually present among public, non-hidden sites), always live, so the picker UI (M13.4) never offers a dead-end filter. No new migration (uses M13.0's existing `attributes`/GIN index). Cache-side filtering and bbox/pagination on `GET /search` stay explicitly out of scope. See M13.1's own build narrative below for proof details. |
 | M13.2 · Admin UI — edit site attributes | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Without this, `religion_sites.attributes` has no write path and stays permanently empty. New `UpdateSiteAttributes` endpoint (same target-scoped `content.manage`/registration-operator pattern as M2.3/`content.md`) plus an admin form (checkboxes per accessibility criterion, an online-stream toggle) in `web/apps/admin`. |
 | M13.3 · Frontend: component architecture + split-pane layout | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Replaces the monolithic `discovery-map.tsx` with a real component tree (shell/map/list/filter-bar), introduces shadcn/Radix into `web/apps/web`, hover-sync between list card and map pin, a "search this area" button replacing auto-refetch on pan, geolocation-driven distance/initial-center with a fallback, filter state promoted into the URL query string. |
 | M13.4 · Frontend: result card, marker popup, clustering, filter UI | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Real result-card (name/distance/address/tags/badges/directions CTA) and marker popup replacing the current placeholder text; pin clustering; a "more filters" drawer for language/day/accessibility/online-only, tradition/language as real pickers backed by M13.1's facets endpoint. |
@@ -2968,3 +2968,73 @@ language, and attributes; `GET /discovery/v1/sites/{unitId}` returns `200` with 
 live site, a clean `404 Discovery:SiteNotFound` for both a well-formed-but-nonexistent id and a
 malformed one, and correctly requires no authentication (confirmed `401` before the middleware fix,
 `404`/`200` after).
+
+### M13.1 · Backend: filters (attributes containment, facets, tradition bug fix)
+
+**Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** Depends on M13.0 only
+(the `attributes` column/GIN index and enriched `DiscoverySite`/`CacheRow` this milestone filters
+and facets over).
+
+**The pre-existing `tradition` filter bug is fixed.** `GET /search?tradition=` is documented
+(`api/discovery.conjure.yml`) as a taxon *code*, but `SearchSites`
+(`internal/religion/adapters/repository.go`) bound the raw string straight to
+`religion_taxa_closure.ancestor_id`, a `uuid NOT NULL` column — no code→id resolution anywhere on
+the path, so any real code either errored or matched nothing, with zero test coverage before
+M13.0's own integration-test additions started exercising the search path. The fix stays inside
+`SearchSites`' existing hand-written SQL: an added `JOIN religion_taxa rt ON rt.id = tc.
+ancestor_id` matches on `rt.code` (unique among active rows, `religion_taxa_code_active`) instead
+of binding the code directly — a single, minimal, surgical change, not a new resolution round trip.
+Live-verified: `?tradition=adventism` now returns the real matching site (previously would have
+errored or matched nothing).
+
+**New `Accessibility`/`OnlineOnly` filters** on `DiscoveryQuery`, translated to JSONB containment
+(`s.attributes @> {...}::jsonb`) against M13.0's `religion_sites_attributes_gin` index — built via a
+new `attributesContainmentFilter` helper (`internal/religion/adapters/repository.go`) that folds
+requested accessibility criterion keys and `onlineOnly` into one containment document. The HTTP
+surface takes `accessibility` as a comma-separated list of `SiteAttributes.Accessibility` field
+names (no `list<T>`/repeated-param precedent existed anywhere in `api/*.conjure.yml`, so this
+avoids introducing a new query-param shape for one endpoint) and `onlineOnly` as a plain
+`optional<boolean>` (the first boolean query param in this codebase). An unrecognized
+`accessibility` key throws a new `Discovery:InvalidFilter` (`INVALID_ARGUMENT`) — a real client
+error rather than a silent zero-result match, deliberately consistent with why the `tradition` bug
+above was worth fixing loudly instead of leaving as a silent no-op.
+`religiondomain.AccessibilityCriteria` (the seven `AccessibilityAttributes` JSON tag names) is the
+single source of truth both the repository's containment-building and the discovery module's
+`accessibility=` validation read from.
+
+**New `GET /discovery/v1/facets` endpoint** (`DiscoveryPublicService`) — distinct tradition taxa
+and service-schedule languages actually present among public, non-hidden sites, so M13.4's picker
+UI never offers a filter value that would zero out every result. New `religion.Service.SearchFacets`
+→ `adapters.Repository.SearchFacets` (two hand-written `DISTINCT` queries, same visibility
+predicate `SearchSites` itself uses — `s.deleted_at IS NULL AND s.visibility = 'public' AND s.
+public_precision <> 'hidden'` — so a hidden/private site's tradition or language never leaks into
+the picker). Always live, never cached, matching M13.0's `getSite` precedent — cache-side filtering
+stays explicitly out of scope for this milestone (see below). Required a new `anonymousRoutes`
+exact-match entry (`GET /discovery/v1/facets`, `internal/identity/middleware/authenticator.go`),
+the same shape `/discovery/v1/search` already uses since `facets` carries no path parameter.
+
+**Explicitly out of scope, confirmed by `docs/modules/discovery.md`'s own pre-existing "Open seams"
+entry**: teaching the disposable `discovery_site_cache` to filter on tradition/language/dayOfWeek/
+accessibility/onlineOnly itself. Every filtered `Search` call — the four pre-existing params plus
+the two new ones — continues to bypass the cache and go live (`SearchQuery.BypassesCache`,
+`internal/discovery/domain/discovery.go`, extended to include `Accessibility`/`OnlineOnly`).
+Bounding-box search and server-side pagination on `GET /search` are also untouched.
+
+**Proof**: `go build`/`go vet`/`godelw verify` (fmt, lint, conjure-backcompat) clean; `go test
+./...` clean except one pre-existing, unrelated local-environment failure
+(`TestSelfServiceProfileIntegration` in `internal/core`, an `identity_audit_log` append-only-table
+permission gap in this local DB setup — no file this milestone touched is anywhere near
+`internal/core`). New integration coverage: `religion_integration_test.go` gained a real
+tradition-code search hit plus an unknown-code zero-result (not error) case, an `Accessibility`/
+`OnlineOnly` containment match/non-match, and a `SearchFacets` assertion proving a
+hidden-site-only tradition/language is excluded from the facet lists; `discovery_integration_test.go`
+gained `Accessibility`/`OnlineOnly` forcing the live path, an unrecognized `accessibility` value
+mapping to `ErrInvalidFilter`, and a `Facets` delegation check; `authenticator_test.go`'s
+`TestIsBypassPath` gained the new `/discovery/v1/facets` case. `make sdk`/`sdk-verify` clean for
+both TypeScript consumers (new `FacetsResult`/`TraditionFacet`/`InvalidFilter` generated types).
+**Live-verified over the real `docker compose` network**: rebuilt `openfaithmap-api` and, over the
+compose network (port 3000 isn't host-published — D-HeadlessTopology), confirmed `GET /discovery/
+v1/search?tradition=adventism` returns the real matching site, `?onlineOnly=true` returns an empty
+set (no seeded site has it set), `?accessibility=stepFreeEntrance` returns `200` with a real
+(empty) result set, `?accessibility=bogusValue` returns a clean `400` (`InvalidFilter`), and `GET
+/discovery/v1/facets` returns real distinct tradition data with no authentication required.

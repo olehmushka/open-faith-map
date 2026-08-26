@@ -16,5 +16,8 @@ func mapErr(err error) error {
 	if errors.Is(err, domain.ErrForbidden) {
 		return gendiscovery.NewForbidden()
 	}
+	if errors.Is(err, domain.ErrInvalidFilter) {
+		return gendiscovery.NewInvalidFilter()
+	}
 	return err
 }

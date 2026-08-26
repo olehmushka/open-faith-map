@@ -18,7 +18,9 @@ import (
 
 // Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never widens what internal/religion.SearchSites would already return publicly (the position-oracle fix: hidden sites excluded, others coordinate-snapped). See docs/modules/discovery.md.
 type DiscoveryPublicService interface {
-	Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string) (SearchResult, error)
+	Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string, accessibilityArg *string, onlineOnlyArg *bool) (SearchResult, error)
+	// Distinct tradition/language values actually present among public, non-hidden sites (M13.1) — backs the picker UI (M13.4) so it never offers a filter value that would zero out every result. Always live, same as getSite — cheap, infrequent, and facets must reflect current data.
+	Facets(ctx context.Context) (FacetsResult, error)
 	// A single congregation's discoverable site, always live (never the disposable search cache) — the per-congregation detail page's server-rendered fetch (M13.0). Throws SiteNotFound if the unit has no public, non-hidden site.
 	GetSite(ctx context.Context, unitIdArg string) (DiscoverySite, error)
 }
@@ -32,6 +34,9 @@ func RegisterRoutesDiscoveryPublicService(router wrouter.Router, impl DiscoveryP
 	resource := wresource.New("discoverypublicservice", router)
 	if err := resource.Get("Search", "/discovery/v1/search", httpserver.NewJSONHandler(handler.HandleSearch, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add search route")
+	}
+	if err := resource.Get("Facets", "/discovery/v1/facets", httpserver.NewJSONHandler(handler.HandleFacets, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add facets route")
 	}
 	if err := resource.Get("GetSite", "/discovery/v1/sites/{unitId}", httpserver.NewJSONHandler(handler.HandleGetSite, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getSite route")
@@ -91,7 +96,29 @@ func (d *discoveryPublicServiceHandler) HandleSearch(rw http.ResponseWriter, req
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
-	respArg, err := d.impl.Search(req.Context(), latArg, lngArg, radiusMArg, traditionArg, languageArg, dayOfWeekArg, queryArg)
+	var accessibilityArg *string
+	if accessibilityArgStr := req.URL.Query().Get("accessibility"); accessibilityArgStr != "" {
+		accessibilityArgInternal := accessibilityArgStr
+		accessibilityArg = &accessibilityArgInternal
+	}
+	var onlineOnlyArg *bool
+	if onlineOnlyArgStr := req.URL.Query().Get("onlineOnly"); onlineOnlyArgStr != "" {
+		onlineOnlyArgInternal, err := strconv.ParseBool(onlineOnlyArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"onlineOnly\" as boolean")
+		}
+		onlineOnlyArg = &onlineOnlyArgInternal
+	}
+	respArg, err := d.impl.Search(req.Context(), latArg, lngArg, radiusMArg, traditionArg, languageArg, dayOfWeekArg, queryArg, accessibilityArg, onlineOnlyArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (d *discoveryPublicServiceHandler) HandleFacets(rw http.ResponseWriter, req *http.Request) error {
+	respArg, err := d.impl.Facets(req.Context())
 	if err != nil {
 		return err
 	}

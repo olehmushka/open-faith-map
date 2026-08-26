@@ -319,6 +319,116 @@ func TestReligionIntegration(t *testing.T) {
 		}
 	}
 
+	// --- M13.1: the tradition filter now resolves `Religion` as a taxon CODE (joining through
+	// religion_taxa.code) instead of binding it straight to the closure's uuid ancestor_id column,
+	// which previously matched nothing for any real code.
+	byTradition, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Religion: "christianity", Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites(Religion=christianity): %v", err)
+	}
+	var sawByTradition bool
+	for _, h := range byTradition {
+		if h.ID == exactSite.ID {
+			sawByTradition = true
+		}
+	}
+	if !sawByTradition {
+		t.Errorf("SearchSites(Religion=christianity) did not return exactSite (classified christianity via excludedParent)")
+	}
+	byBogusTradition, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Religion: "not-a-real-code", Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites(Religion=not-a-real-code): %v", err)
+	}
+	if len(byBogusTradition) != 0 {
+		t.Errorf("SearchSites(Religion=not-a-real-code) = %+v, want no matches (not an error)", byBogusTradition)
+	}
+
+	// --- M13.1: Accessibility/OnlineOnly filter via JSONB containment against exactSite's
+	// attributes (set above: onlineStream=true, accessibility.stepFreeEntrance=true).
+	byAccessibility, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Accessibility: []string{"stepFreeEntrance"}, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites(Accessibility=stepFreeEntrance): %v", err)
+	}
+	var sawByAccessibility bool
+	for _, h := range byAccessibility {
+		if h.ID == exactSite.ID {
+			sawByAccessibility = true
+		}
+	}
+	if !sawByAccessibility {
+		t.Errorf("SearchSites(Accessibility=stepFreeEntrance) did not return exactSite")
+	}
+	byUnmetAccessibility, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Accessibility: []string{"hearingLoop"}, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites(Accessibility=hearingLoop): %v", err)
+	}
+	for _, h := range byUnmetAccessibility {
+		if h.ID == exactSite.ID {
+			t.Errorf("SearchSites(Accessibility=hearingLoop) unexpectedly returned exactSite (hearingLoop is unset)")
+		}
+	}
+	byOnlineOnly, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, OnlineOnly: true, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites(OnlineOnly=true): %v", err)
+	}
+	var sawOnlineOnly bool
+	for _, h := range byOnlineOnly {
+		if h.ID == exactSite.ID {
+			sawOnlineOnly = true
+		}
+	}
+	if !sawOnlineOnly {
+		t.Errorf("SearchSites(OnlineOnly=true) did not return exactSite")
+	}
+
+	// --- M13.1: SearchFacets returns distinct tradition/language values present only among public,
+	// non-hidden sites — a value seen only via a hidden site's unit/schedule must not leak in.
+	var catholicismID string
+	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.religion_taxa WHERE code = 'catholicism' AND deleted_at IS NULL`).Scan(&catholicismID); err != nil {
+		t.Fatalf("lookup catholicism taxon: %v", err)
+	}
+	if _, err := rel.AddOrgClassification(ctx, profile.UnitID, catholicismID, false); err != nil {
+		t.Fatalf("AddOrgClassification(profile.UnitID, catholicism): %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO openfaithmap.religion_service_schedules (site_id, service_type_id, day_of_week, start_time, timezone, language)
+		VALUES ($1, $2, 0, '10:00', 'Europe/Kyiv', 'fr')`, hiddenSite.ID, mainServiceTypeID); err != nil {
+		t.Fatalf("insert hidden-site schedule: %v", err)
+	}
+	facets, err := rel.SearchFacets(ctx)
+	if err != nil {
+		t.Fatalf("SearchFacets: %v", err)
+	}
+	var sawChristianityFacet, sawCatholicismFacet, sawUKFacet, sawFRFacet bool
+	for _, f := range facets.Traditions {
+		switch f.TaxonCode {
+		case "christianity":
+			sawChristianityFacet = true
+		case "catholicism":
+			sawCatholicismFacet = true
+		}
+	}
+	for _, l := range facets.Languages {
+		switch l {
+		case "uk":
+			sawUKFacet = true
+		case "fr":
+			sawFRFacet = true
+		}
+	}
+	if !sawChristianityFacet {
+		t.Errorf("SearchFacets().Traditions = %+v, want it to include christianity (via public exactSite)", facets.Traditions)
+	}
+	if sawCatholicismFacet {
+		t.Errorf("SearchFacets().Traditions = %+v, want it to exclude catholicism (only present via the hidden site's unit)", facets.Traditions)
+	}
+	if !sawUKFacet {
+		t.Errorf("SearchFacets().Languages = %v, want it to include uk (via public exactSite's schedule)", facets.Languages)
+	}
+	if sawFRFacet {
+		t.Errorf("SearchFacets().Languages = %v, want it to exclude fr (only scheduled on the hidden site)", facets.Languages)
+	}
+
 	// --- ListTaxa (M10.7): a code/name search finds the seeded "christianity" taxon.
 	taxa, err := rel.ListTaxa(ctx, "christianity", 10)
 	if err != nil {

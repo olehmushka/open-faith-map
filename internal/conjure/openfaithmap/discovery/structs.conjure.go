@@ -101,6 +101,56 @@ func (o *DiscoverySite) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+type FacetsResult struct {
+	// Distinct tradition taxa actually classified on at least one public, non-hidden site.
+	Traditions []TraditionFacet `json:"traditions"`
+	// Distinct service-schedule languages actually present on at least one public, non-hidden site.
+	Languages []string `json:"languages"`
+}
+
+func (o FacetsResult) MarshalJSON() ([]byte, error) {
+	if o.Traditions == nil {
+		o.Traditions = make([]TraditionFacet, 0)
+	}
+	if o.Languages == nil {
+		o.Languages = make([]string, 0)
+	}
+	type _tmpFacetsResult FacetsResult
+	return safejson.Marshal(_tmpFacetsResult(o))
+}
+
+func (o *FacetsResult) UnmarshalJSON(data []byte) error {
+	type _tmpFacetsResult FacetsResult
+	var rawFacetsResult _tmpFacetsResult
+	if err := safejson.Unmarshal(data, &rawFacetsResult); err != nil {
+		return err
+	}
+	if rawFacetsResult.Traditions == nil {
+		rawFacetsResult.Traditions = make([]TraditionFacet, 0)
+	}
+	if rawFacetsResult.Languages == nil {
+		rawFacetsResult.Languages = make([]string, 0)
+	}
+	*o = FacetsResult(rawFacetsResult)
+	return nil
+}
+
+func (o FacetsResult) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetsResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type RefreshRegionRequest struct {
 	MinLat float64 `json:"minLat"`
 	MinLng float64 `json:"minLng"`
@@ -199,6 +249,28 @@ func (o SiteAttributes) MarshalYAML() (interface{}, error) {
 }
 
 func (o *SiteAttributes) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type TraditionFacet struct {
+	TaxonId   string `json:"taxonId"`
+	TaxonCode string `json:"taxonCode"`
+	TaxonName string `json:"taxonName"`
+}
+
+func (o TraditionFacet) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *TraditionFacet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

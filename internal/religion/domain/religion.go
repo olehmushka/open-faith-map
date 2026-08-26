@@ -81,6 +81,15 @@ type SiteAttributes struct {
 	OnlineStream  bool                    `json:"onlineStream"`
 }
 
+// AccessibilityCriteria is AccessibilityAttributes' own field set, spelled as the JSON tag names —
+// the single source of truth for validating a caller-supplied criterion key (M13.1's
+// `accessibility=` search filter) against, so the known-criteria list is never duplicated between
+// the struct definition and its validator.
+var AccessibilityCriteria = []string{
+	"stepFreeEntrance", "accessibleRestroom", "hearingLoop", "signLanguageInterpretation",
+	"accessibleParking", "wheelchairSeating", "brailleOrLargePrint",
+}
+
 // Site is a religious body's physical/online presence (religion_sites), joined to its location's
 // EXACT coordinate — callers that expose this to an anonymous caller MUST run it through Coarsen
 // first (SearchSites already does; a direct GetSite/ListUnitSites caller must too).
@@ -143,18 +152,39 @@ type DiscoverySite struct {
 }
 
 // DiscoveryQuery is SearchSites' input: an optional spatial window (radius XOR bbox), an optional
-// taxon filter (via the taxonomy closure), an optional text query over unit code/name/alias, and an
+// taxon filter (via the taxonomy closure), an optional text query over unit code/name/alias, an
 // optional service-schedule filter (Language/DayOfWeek — matches a site with at least one
-// religion_service_schedules row satisfying each filter given, independently of one another).
+// religion_service_schedules row satisfying each filter given, independently of one another), and an
+// optional attributes filter (Accessibility/OnlineOnly — JSONB containment against
+// religion_sites.attributes, M13.1).
 type DiscoveryQuery struct {
 	Lat, Lng, RadiusM              *float64
 	MinLat, MinLng, MaxLat, MaxLng *float64
-	Religion                       string // taxon id; "" = no filter
+	Religion                       string // taxon code (religion_taxa.code); "" = no filter
 	Query                          string
-	Language                       *string // religion_service_schedules.language; nil = no filter
-	DayOfWeek                      *int    // religion_service_schedules.day_of_week (0=Sunday..6=Saturday); nil = no filter
-	UnitID                         *string // exact org_unit_id match — M13.0's single-site detail-page lookup; nil = no filter
+	Language                       *string  // religion_service_schedules.language; nil = no filter
+	DayOfWeek                      *int     // religion_service_schedules.day_of_week (0=Sunday..6=Saturday); nil = no filter
+	UnitID                         *string  // exact org_unit_id match — M13.0's single-site detail-page lookup; nil = no filter
+	Accessibility                  []string // AccessibilityCriteria keys required true; empty = no filter
+	OnlineOnly                     bool     // require attributes.onlineStream true
 	Limit                          int
+}
+
+// TraditionFacet is one distinct tradition taxon actually classified on a public, non-hidden site
+// (M13.1's facets endpoint) — the picker UI's source of truth for which tradition values are worth
+// offering at all.
+type TraditionFacet struct {
+	TaxonID   string
+	TaxonCode string
+	TaxonName string
+}
+
+// Facets is SearchFacets' result: every distinct tradition/language value currently present among
+// public, non-hidden sites — the same visibility predicate SearchSites itself uses, so a hidden or
+// private site's tradition/language never leaks into the picker.
+type Facets struct {
+	Traditions []TraditionFacet
+	Languages  []string
 }
 
 // PublicPrecision values (religion_sites CHECK, migrations/0018_core_religion.sql:534).

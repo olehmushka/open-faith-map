@@ -210,6 +210,33 @@ func attributesFromJSON(raw json.RawMessage) domain.SiteAttributes {
 	return a
 }
 
+// attributesContainmentFilter builds the JSONB document SearchSites containment-matches
+// religion_sites.attributes against (M13.1's Accessibility/OnlineOnly filter, GIN index
+// religion_sites_attributes_gin) — e.g. {"accessibility":{"stepFreeEntrance":true},
+// "onlineStream":true}. ok is false (no filter to apply) when neither accessibility nor onlineOnly
+// was requested.
+func attributesContainmentFilter(accessibility []string, onlineOnly bool) (doc string, ok bool) {
+	if len(accessibility) == 0 && !onlineOnly {
+		return "", false
+	}
+	filter := map[string]any{}
+	if len(accessibility) > 0 {
+		acc := make(map[string]bool, len(accessibility))
+		for _, key := range accessibility {
+			acc[key] = true
+		}
+		filter["accessibility"] = acc
+	}
+	if onlineOnly {
+		filter["onlineStream"] = true
+	}
+	b, err := json.Marshal(filter)
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
+}
+
 func toSite(id, orgUnitID, locationID, siteTypeID, siteTypeCode, siteTypeName, visibility, publicPrecision string, isPrimary bool, attributes json.RawMessage, latitude, longitude float64) domain.Site {
 	return domain.Site{
 		ID: id, OrgUnitID: orgUnitID, LocationID: locationID, SiteTypeID: siteTypeID, SiteTypeCode: siteTypeCode,
@@ -358,10 +385,15 @@ func (r *Repository) SearchSites(ctx context.Context, q domain.DiscoveryQuery) (
 	}
 
 	if q.Religion != "" {
+		// M13.1 fix: q.Religion is a taxon CODE (api/discovery.conjure.yml's own `tradition` docs),
+		// not an id — join through religion_taxa.code (unique among active rows,
+		// religion_taxa_code_active) instead of binding the raw string straight to
+		// religion_taxa_closure.ancestor_id, a uuid column, which previously matched nothing.
 		conds = append(conds, `s.org_unit_id IN (
 			SELECT oc.unit_id FROM openfaithmap.religion_org_classifications oc
 			JOIN openfaithmap.religion_taxa_closure tc ON tc.descendant_id = oc.taxon_id
-			WHERE tc.ancestor_id = `+add(q.Religion)+` AND oc.deleted_at IS NULL)`)
+			JOIN openfaithmap.religion_taxa rt ON rt.id = tc.ancestor_id
+			WHERE rt.code = `+add(q.Religion)+` AND rt.deleted_at IS NULL AND oc.deleted_at IS NULL)`)
 	}
 
 	if q.Query != "" {
@@ -379,6 +411,10 @@ func (r *Repository) SearchSites(ctx context.Context, q domain.DiscoveryQuery) (
 	if q.DayOfWeek != nil {
 		conds = append(conds, `EXISTS (SELECT 1 FROM openfaithmap.religion_service_schedules sch
 				WHERE sch.site_id = s.id AND sch.deleted_at IS NULL AND sch.day_of_week = `+add(*q.DayOfWeek)+`)`)
+	}
+
+	if filter, ok := attributesContainmentFilter(q.Accessibility, q.OnlineOnly); ok {
+		conds = append(conds, "s.attributes @> "+add(filter)+"::jsonb")
 	}
 
 	limit := q.Limit
@@ -403,4 +439,58 @@ func (r *Repository) SearchSites(ctx context.Context, q domain.DiscoveryQuery) (
 		out = append(out, site)
 	}
 	return out, rows.Err()
+}
+
+// searchableSitePredicate is SearchSites' own base WHERE conditions (deleted/public/non-hidden),
+// duplicated here rather than shared as a helper: SearchSites builds its conds slice dynamically
+// alongside optional filters, while SearchFacets' two queries are fixed-shape and each only need
+// this one clause once.
+const searchableSitePredicate = `s.deleted_at IS NULL AND s.visibility = 'public' AND s.public_precision <> 'hidden'`
+
+// SearchFacets returns every distinct tradition taxon / service-schedule language actually present
+// among public, non-hidden sites (M13.1) — the same visibility predicate SearchSites itself applies,
+// so a hidden or private site's tradition/language never leaks into the picker UI's options.
+func (r *Repository) SearchFacets(ctx context.Context) (domain.Facets, error) {
+	traditionRows, err := r.conn.Query(ctx, `
+		SELECT DISTINCT t.id, t.code, t.name
+		FROM openfaithmap.religion_sites s
+		JOIN openfaithmap.religion_org_classifications oc ON oc.unit_id = s.org_unit_id AND oc.deleted_at IS NULL
+		JOIN openfaithmap.religion_taxa t ON t.id = oc.taxon_id AND t.deleted_at IS NULL
+		WHERE `+searchableSitePredicate+`
+		ORDER BY t.name`)
+	if err != nil {
+		return domain.Facets{}, err
+	}
+	var out domain.Facets
+	for traditionRows.Next() {
+		var f domain.TraditionFacet
+		if err := traditionRows.Scan(&f.TaxonID, &f.TaxonCode, &f.TaxonName); err != nil {
+			traditionRows.Close()
+			return domain.Facets{}, err
+		}
+		out.Traditions = append(out.Traditions, f)
+	}
+	traditionRows.Close()
+	if err := traditionRows.Err(); err != nil {
+		return domain.Facets{}, err
+	}
+
+	languageRows, err := r.conn.Query(ctx, `
+		SELECT DISTINCT sch.language
+		FROM openfaithmap.religion_sites s
+		JOIN openfaithmap.religion_service_schedules sch ON sch.site_id = s.id AND sch.deleted_at IS NULL
+		WHERE `+searchableSitePredicate+`
+		ORDER BY sch.language`)
+	if err != nil {
+		return domain.Facets{}, err
+	}
+	defer languageRows.Close()
+	for languageRows.Next() {
+		var lang string
+		if err := languageRows.Scan(&lang); err != nil {
+			return domain.Facets{}, err
+		}
+		out.Languages = append(out.Languages, lang)
+	}
+	return out, languageRows.Err()
 }

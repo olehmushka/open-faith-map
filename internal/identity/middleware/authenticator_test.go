@@ -203,6 +203,8 @@ func TestIsBypassPath(t *testing.T) {
 		want         bool
 	}{
 		{http.MethodGet, "/discovery/v1/search", true},
+		{http.MethodGet, "/discovery/v1/facets", true},                // M13.1's facets endpoint
+		{http.MethodPost, "/discovery/v1/facets", false},              // GET-only, same reasoning as refresh below
 		{http.MethodPost, "/discovery/v1/refresh", false},             // shares a base path with search, but is header-authed
 		{http.MethodGet, "/discovery/v1/sites/abc-123", true},         // M13.0's GetSite — path-param prefix bypass
 		{http.MethodPost, "/discovery/v1/sites/abc-123", false},       // GET-only, same reasoning as refresh above

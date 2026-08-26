@@ -73,6 +73,19 @@ types:
       RefreshResult:
         fields:
           refreshedCount: integer
+      TraditionFacet:
+        fields:
+          taxonId: string
+          taxonCode: string
+          taxonName: string
+      FacetsResult:
+        fields:
+          traditions:
+            type: list<TraditionFacet>
+            docs: Distinct tradition taxa actually classified on at least one public, non-hidden site.
+          languages:
+            type: list<string>
+            docs: Distinct service-schedule languages actually present on at least one public, non-hidden site.
 
     errors:
       Forbidden:
@@ -87,6 +100,14 @@ types:
           anonymous caller.
         namespace: Discovery
         code: NOT_FOUND
+        safe-args: {}
+      InvalidFilter:
+        docs: >
+          An `accessibility` query value did not match one of SiteAttributes.Accessibility's known
+          criterion keys (M13.1) — returned instead of silently matching zero sites, the same
+          "fail loudly" fix this milestone applied to the pre-existing `tradition` bug.
+        namespace: Discovery
+        code: INVALID_ARGUMENT
         safe-args: {}
 
 services:
@@ -125,7 +146,26 @@ services:
             type: optional<string>
             param-type: query
             docs: Fuzzy match on the congregation's name.
+          accessibility:
+            type: optional<string>
+            param-type: query
+            docs: >
+              Comma-separated Accessibility criterion keys (e.g. `stepFreeEntrance,hearingLoop`) — a
+              site must have every requested criterion true (JSONB containment, M13.1). Throws
+              InvalidFilter if any key isn't one of SiteAttributes.Accessibility's own field names.
+          onlineOnly:
+            type: optional<boolean>
+            param-type: query
+            docs: When true, only sites with attributes.onlineStream true (M13.1).
         returns: SearchResult
+      facets:
+        http: GET /facets
+        returns: FacetsResult
+        docs: >
+          Distinct tradition/language values actually present among public, non-hidden sites (M13.1)
+          — backs the picker UI (M13.4) so it never offers a filter value that would zero out every
+          result. Always live, same as getSite — cheap, infrequent, and facets must reflect current
+          data.
       getSite:
         http: GET /sites/{unitId}
         args:

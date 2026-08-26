@@ -167,7 +167,8 @@ per-service choice, not a per-endpoint runtime one — see [content.md](content.
 
 | Service | Op | Intent | Auth |
 |---|---|---|---|
-| `DiscoveryPublicService` (`/discovery/v1`) | `GET /search?lat=&lng=&radiusM=&tradition=&language=&dayOfWeek=&query=` | Public map/list search. Reads `discovery_site_cache` first; on a miss, calls `internal/religion.SearchSites` live in-process, upserts the cache, returns the result in the same request. | none — no `bearertoken.Token` param at all |
+| `DiscoveryPublicService` (`/discovery/v1`) | `GET /search?lat=&lng=&radiusM=&tradition=&language=&dayOfWeek=&query=&accessibility=&onlineOnly=` (M13.1: `accessibility`/`onlineOnly` added) | Public map/list search. Reads `discovery_site_cache` first; on a miss, or when any filter param beyond bare lat/lng/radius is present, calls `internal/religion.SearchSites` live in-process, upserts the cache, returns the result in the same request. `tradition` is a taxon *code* (M13.1 fixed the join that previously bound it to a `uuid` column and matched nothing); `accessibility` is a comma-separated list of `SiteAttributes.Accessibility` field names, throwing `InvalidFilter` for an unrecognized one. | none — no `bearertoken.Token` param at all |
+| `DiscoveryPublicService` (`/discovery/v1`) | `GET /facets` (M13.1) | Distinct tradition/language values actually present among public, non-hidden sites — backs the picker UI so it never offers a filter value that would zero out every result. Always live, never cached. | none |
 | `DiscoveryPublicService` (`/discovery/v1`) | `GET /sites/{unitId}` (M13.0) | A single congregation's discoverable site, always live (never the cache) — the per-congregation detail page's server-rendered fetch. Throws `SiteNotFound` if the unit has no public, non-hidden site. | none |
 | `DiscoveryService` (`/discovery/v1`) | `POST /refresh` | Force a cache rebuild for a region (operator tool, not public) | header — target-scoped check, see below |
 
@@ -231,16 +232,22 @@ this cache, not re-applied here.
   online-stream flag) — closing a gap this doc never actually named (found by M13's discovery
   pass, not tracked here beforehand). See D-DiscoveryAddressPrecision
   (`architecture/decisions.md`) for the address/name precision-gating rule.
-- **Bounding-box search, `onlineOnly`, server-side pagination, accessibility filtering, and
-  facet/filter-value discovery** are all real gaps `GET /search` still doesn't cover — M13.0 added
-  the *data* (`attributes`) but not yet the *filter*; M13.1 is scoped to add
-  `DiscoveryQuery.Accessibility`/`OnlineOnly` (JSONB containment against the new GIN index), a
-  facets endpoint, and a real fix for the pre-existing `tradition` filter bug (the query param is
-  documented as a taxon *code* but the adapter binds it straight into a `uuid` column with no
-  code→id resolution — likely silently matches nothing today; zero test coverage of this filter
-  existed before M13.0's own SearchSites integration-test additions started exercising the search
-  path more thoroughly). Also still real: cache-side filtering by tradition/language/dayOfWeek —
-  `SearchQuery.BypassesCache` still routes all of these live even though `CacheRow` now reliably
-  carries the data, since no matching predicate exists yet in `filterByRadius`
-  (`internal/discovery/application/service.go`) and an older cached row from before M13.0 shipped
-  still has them empty until its next refresh.
+- **`onlineOnly`/accessibility filtering and facet/filter-value discovery — resolved (M13.1,
+  2026-08-26).** `DiscoveryQuery.Accessibility`/`OnlineOnly` translate to JSONB containment
+  (`s.attributes @>`) against `religion_sites_attributes_gin` (M13.0's index); `GET /facets`
+  returns the distinct tradition/language values actually present among public, non-hidden sites,
+  always live, so the picker UI (M13.4) never offers a value that would zero out every result. The
+  pre-existing `tradition` filter bug is fixed the same way: `SearchSites` now joins
+  `religion_taxa_closure` through `religion_taxa.code` instead of binding the raw code string
+  straight to `ancestor_id` (a `uuid` column), which previously matched nothing for any real code.
+  An unrecognized `accessibility=` value throws `InvalidFilter` (a real client error) rather than
+  silently matching zero sites — the same "fail loudly" fix applied to the `tradition` bug.
+- **Bounding-box search and server-side pagination on `GET /search`** remain real, still-open gaps
+  M13.1 did not touch (bbox already exists on `DiscoveryQuery` for `RefreshRegion`'s own use, but
+  isn't exposed as a public query param).
+- **Cache-side filtering by tradition/language/dayOfWeek/accessibility/onlineOnly** is still real,
+  and deliberately stayed out of scope for M13.1 too — `SearchQuery.BypassesCache` still routes
+  every one of these live even though `CacheRow` now reliably carries tradition/language/day data
+  (M13.0) and the attributes needed for accessibility/onlineOnly, since no matching predicate
+  exists yet in `filterByRadius` (`internal/discovery/application/service.go`) and an older cached
+  row from before M13.0 shipped still has tradition/language/day empty until its next refresh.

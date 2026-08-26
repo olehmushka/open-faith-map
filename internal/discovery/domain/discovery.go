@@ -42,18 +42,24 @@ type CacheRow struct {
 // empty until its next refresh — building real cache-side filtering for these is M13.1's job, not
 // this one's. Only a bare or lat/lng/radius-only query can ever be served from the cache today.
 type SearchQuery struct {
-	Lat       *float64
-	Lng       *float64
-	RadiusM   *float64
-	Tradition *string
-	Language  *string
-	DayOfWeek *int
-	Query     *string
+	Lat           *float64
+	Lng           *float64
+	RadiusM       *float64
+	Tradition     *string
+	Language      *string
+	DayOfWeek     *int
+	Query         *string
+	Accessibility *string // comma-separated AccessibilityCriteria keys (M13.1); nil = no filter
+	OnlineOnly    *bool   // M13.1; nil/false = no filter
 }
 
 // BypassesCache reports whether q must always be answered live (never from discovery_site_cache).
+// Accessibility/OnlineOnly (M13.1) join Tradition/Language/DayOfWeek/Query here for the same reason
+// those four already do: cache-side filtering for any of them remains a separate, still-open gap
+// (docs/modules/discovery.md's "Open seams") — building it is explicitly not part of M13.1.
 func (q SearchQuery) BypassesCache() bool {
-	return q.Tradition != nil || q.Language != nil || q.DayOfWeek != nil || q.Query != nil
+	return q.Tradition != nil || q.Language != nil || q.DayOfWeek != nil || q.Query != nil ||
+		q.Accessibility != nil || (q.OnlineOnly != nil && *q.OnlineOnly)
 }
 
 type RefreshRegion struct {
@@ -61,3 +67,8 @@ type RefreshRegion struct {
 }
 
 var ErrForbidden = errors.New("caller does not hold the operator's grant on the root unit")
+
+// ErrInvalidFilter is returned when a SearchQuery.Accessibility value isn't one of
+// religiondomain.AccessibilityCriteria's known keys (M13.1) — a real client error rather than a
+// silent zero-result match, the same "fail loudly" fix applied to the pre-existing tradition bug.
+var ErrInvalidFilter = errors.New("unrecognized accessibility criterion")

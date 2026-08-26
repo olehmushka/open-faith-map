@@ -27,20 +27,32 @@ func NewPublicService(appService *application.Service) *PublicService {
 
 var _ gendiscovery.DiscoveryPublicService = (*PublicService)(nil)
 
-func (s *PublicService) Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string) (gendiscovery.SearchResult, error) {
+func (s *PublicService) Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string, accessibilityArg *string, onlineOnlyArg *bool) (gendiscovery.SearchResult, error) {
 	rows, err := s.appService.Search(ctx, domain.SearchQuery{
-		Lat:       latArg,
-		Lng:       lngArg,
-		RadiusM:   radiusMArg,
-		Tradition: traditionArg,
-		Language:  languageArg,
-		DayOfWeek: dayOfWeekArg,
-		Query:     queryArg,
+		Lat:           latArg,
+		Lng:           lngArg,
+		RadiusM:       radiusMArg,
+		Tradition:     traditionArg,
+		Language:      languageArg,
+		DayOfWeek:     dayOfWeekArg,
+		Query:         queryArg,
+		Accessibility: accessibilityArg,
+		OnlineOnly:    onlineOnlyArg,
 	})
 	if err != nil {
-		return gendiscovery.SearchResult{}, err
+		return gendiscovery.SearchResult{}, mapErr(err)
 	}
 	return gendiscovery.SearchResult{Sites: toAPISites(rows)}, nil
+}
+
+// Facets answers GET /facets (M13.1) — backs the picker UI so it never offers a filter value that
+// would zero out every result.
+func (s *PublicService) Facets(ctx context.Context) (gendiscovery.FacetsResult, error) {
+	facets, err := s.appService.Facets(ctx)
+	if err != nil {
+		return gendiscovery.FacetsResult{}, mapErr(err)
+	}
+	return toAPIFacets(facets), nil
 }
 
 // GetSite answers the per-congregation detail page's server-rendered fetch — always live (see
@@ -63,6 +75,20 @@ func toAPISites(rows []domain.CacheRow) []gendiscovery.DiscoverySite {
 		out = append(out, toAPISite(r))
 	}
 	return out
+}
+
+func toAPIFacets(f religiondomain.Facets) gendiscovery.FacetsResult {
+	traditions := make([]gendiscovery.TraditionFacet, 0, len(f.Traditions))
+	for _, t := range f.Traditions {
+		traditions = append(traditions, gendiscovery.TraditionFacet{
+			TaxonId: t.TaxonID, TaxonCode: t.TaxonCode, TaxonName: t.TaxonName,
+		})
+	}
+	languages := f.Languages
+	if languages == nil {
+		languages = []string{}
+	}
+	return gendiscovery.FacetsResult{Traditions: traditions, Languages: languages}
 }
 
 func toAPIAttributes(a religiondomain.SiteAttributes) gendiscovery.SiteAttributes {
