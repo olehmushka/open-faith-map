@@ -6,6 +6,8 @@ import {
   deleteUnit,
   getOrgProfile,
   getUnit,
+  getUnitMoveStatus,
+  moveUnit,
   setUnitState,
   unitAncestors,
   unitDeleteEligibility,
@@ -16,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { UnitStatusBadge } from "@/components/status-badge";
+import { UnitMoveStatusBadge, UnitStatusBadge } from "@/components/status-badge";
 
 // Super-admin unit detail (M10.8, full CRUD since M12.5). getOrgProfile is .catch(() => null)'d —
 // not every unit is a religion org (jurisdiction units aren't), so no profile is a normal state,
@@ -29,17 +31,18 @@ export default async function SuperAdminUnitPage({
   searchParams,
 }: {
   params: Promise<{ locale: string; unitId: string }>;
-  searchParams: Promise<{ deleteError?: string }>;
+  searchParams: Promise<{ deleteError?: string; moveError?: string }>;
 }) {
   const { locale, unitId } = await params;
-  const { deleteError } = await searchParams;
+  const { deleteError, moveError } = await searchParams;
   const t = await getTranslations("SuperAdminUnitPage");
 
-  const [unit, ancestors, orgProfile, eligibility] = await Promise.all([
+  const [unit, ancestors, orgProfile, eligibility, moveJob] = await Promise.all([
     getUnit(unitId),
     unitAncestors(unitId),
     getOrgProfile(unitId).catch(() => null),
     unitDeleteEligibility(unitId).catch(() => null),
+    getUnitMoveStatus(unitId),
   ]);
   const isRoot = ancestors.length === 0;
   const parent = ancestors.at(-1);
@@ -91,6 +94,21 @@ export default async function SuperAdminUnitPage({
     redirect({ href: parent ? `/admin/units/${parent.id}` : "/admin/units", locale });
   }
 
+  async function moveUnitAction(formData: FormData) {
+    "use server";
+    const newParentUnitId = String(formData.get("newParentUnitId") ?? "").trim();
+    if (newParentUnitId === "") return;
+    try {
+      await moveUnit(unitId, newParentUnitId);
+    } catch (e) {
+      if (e instanceof CoreApiError) {
+        redirect({ href: `/admin/units/${unitId}?moveError=${encodeURIComponent(e.errorName)}`, locale });
+      }
+      throw e;
+    }
+    redirect({ href: `/admin/units/${unitId}`, locale });
+  }
+
   const deleteErrorKey =
     deleteError === "Core:UnitHasChildren"
       ? "deleteBlockedChildren"
@@ -102,6 +120,19 @@ export default async function SuperAdminUnitPage({
             ? "deleteBlockedRoot"
             : deleteError
               ? "deleteBlockedGeneric"
+              : null;
+
+  const moveErrorKey =
+    moveError === "Core:RootUnitProtected"
+      ? "moveBlockedRoot"
+      : moveError === "Core:UnitHasNoCurrentParent"
+        ? "moveBlockedNoParent"
+        : moveError === "Core:UnitMoveConflict"
+          ? "moveBlockedConflict"
+          : moveError === "Core:Forbidden"
+            ? "moveBlockedForbidden"
+            : moveError
+              ? "moveBlockedGeneric"
               : null;
 
   return (
@@ -149,6 +180,41 @@ export default async function SuperAdminUnitPage({
           )}
         </CardContent>
       </Card>
+
+      {!isRoot && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t("moveHeading")}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {moveErrorKey && (
+              <p className="rounded-md border border-destructive p-3 text-sm">{t(moveErrorKey)}</p>
+            )}
+            {moveJob && (
+              <div className="flex flex-col gap-1 text-sm">
+                <UnitMoveStatusBadge status={moveJob.status} />
+                <span className="text-xs text-muted-foreground">
+                  {t("lastMove", {
+                    oldParent: moveJob.oldParentUnitId,
+                    newParent: moveJob.newParentUnitId,
+                    status: moveJob.status,
+                  })}
+                  {moveJob.error && <span className="text-destructive"> ({moveJob.error})</span>}
+                </span>
+              </div>
+            )}
+            <form action={moveUnitAction} className="flex flex-col gap-4">
+              <Label className="flex flex-col items-start gap-1">
+                {t("newParentLabel")}
+                <Input name="newParentUnitId" defaultValue={parent?.id ?? ""} required />
+              </Label>
+              <Button type="submit" className="self-start">
+                {t("moveUnit")}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

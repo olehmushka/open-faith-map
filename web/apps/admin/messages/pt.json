@@ -480,7 +480,16 @@
     "deleteBlockedOrgProfile": "Esta unidade ainda tem um perfil de organização religiosa — remova-o primeiro.",
     "deleteBlockedRoleAssignments": "Esta unidade ainda tem atribuições de papel ativas — revogue-as primeiro.",
     "deleteBlockedRoot": "A unidade raiz não pode ser excluída.",
-    "deleteBlockedGeneric": "Não foi possível excluir esta unidade."
+    "deleteBlockedGeneric": "Não foi possível excluir esta unidade.",
+    "moveHeading": "Mover",
+    "newParentLabel": "Id da nova unidade pai",
+    "moveUnit": "Mover unidade",
+    "lastMove": "última movimentação: {oldParent} → {newParent} — {status}",
+    "moveBlockedRoot": "A unidade raiz não pode ser movida.",
+    "moveBlockedNoParent": "Esta unidade não tem um pai atual para movê-la — ela é uma raiz de grafo.",
+    "moveBlockedConflict": "Já existe uma movimentação em andamento para esta unidade em direção a outro pai. Repita com o mesmo pai para retomá-la.",
+    "moveBlockedForbidden": "Você não tem permissão para mover esta unidade — mover requer acesso de gerenciamento de vínculos tanto no pai atual quanto no novo pai.",
+    "moveBlockedGeneric": "Não foi possível mover esta unidade."
   },
   "SuperAdminTaxaPage": {
     "heading": "Taxonomia",

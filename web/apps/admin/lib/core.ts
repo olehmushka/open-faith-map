@@ -42,6 +42,7 @@ import type {
   ITaxon,
   IUnit,
   IUnitDeleteEligibility,
+  IUnitMoveJob,
   IUnitRef,
   IUpdateUnitRequest,
   IWhoami,
@@ -53,6 +54,7 @@ export type AccessExplanationContribution = IAccessExplanationContribution;
 export type Unit = IUnit;
 export type UnitRef = IUnitRef;
 export type UnitDeleteEligibility = IUnitDeleteEligibility;
+export type UnitMoveJob = IUnitMoveJob;
 export type CreateUnitInput = ICreateUnitRequest;
 export type UpdateUnitInput = IUpdateUnitRequest;
 export type Taxon = ITaxon;
@@ -188,6 +190,20 @@ export async function deleteUnit(unitId: string): Promise<void> {
 /** Gated server-side — no more permissive than deleteUnit itself (M12.5). */
 export async function unitDeleteEligibility(unitId: string): Promise<UnitDeleteEligibility> {
   return unwrap((await client()).core.unitDeleteEligibility(unitId));
+}
+
+/**
+ * M12.2/M12.6 — generic move/reparent. Gated server-side on D-UnitMoveDualScope: unit.edges.manage
+ * over BOTH the unit's current parent (server-resolved) and the requested new parent. graphCode is
+ * omitted — this app has no UI concept of non-"canonical" graphs, and the backend defaults it.
+ */
+export async function moveUnit(unitId: string, newParentUnitId: string): Promise<UnitMoveJob> {
+  return unwrap((await client()).core.moveUnit(unitId, { newParentUnitId }));
+}
+
+/** Returns null when the unit has never been moved (no job row yet) — not a thrown error. */
+export async function getUnitMoveStatus(unitId: string): Promise<UnitMoveJob | null> {
+  return unwrap((await client()).core.getUnitMoveStatus(unitId));
 }
 
 export async function listCountries(): Promise<Country[]> {

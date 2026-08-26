@@ -89,6 +89,16 @@ const UNIT_TONE: Record<string, StatusTone> = {
   archived: "neutral",
 };
 
+// UnitMoveJob.status (M12.2) is a plain wire string sharing ReparentStatus's vocabulary, not the
+// enum itself — same reasoning as UNIT_TONE above (M12.6).
+const UNIT_MOVE_TONE: Record<string, StatusTone> = {
+  PENDING: "warning",
+  NEW_EDGE_ADDED: "info",
+  OLD_EDGE_REMOVED: "info",
+  VERIFIED: "success",
+  FAILED: "danger",
+};
+
 export const CandidateStatusBadge = ({ status }: { status: CandidateStatus }) => (
   <StatusBadge status={status} tone={CANDIDATE_TONE[status]} />
 );
@@ -109,4 +119,7 @@ export const GuarantorStatusBadge = ({ status }: { status: GuarantorStatus }) =>
 );
 export const UnitStatusBadge = ({ status }: { status: string }) => (
   <StatusBadge status={status} tone={UNIT_TONE[status] ?? "neutral"} />
+);
+export const UnitMoveStatusBadge = ({ status }: { status: string }) => (
+  <StatusBadge status={status} tone={UNIT_MOVE_TONE[status] ?? "neutral"} />
 );

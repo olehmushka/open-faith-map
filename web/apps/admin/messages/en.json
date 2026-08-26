@@ -480,7 +480,16 @@
     "deleteBlockedOrgProfile": "This unit still has a religion org profile — remove it first.",
     "deleteBlockedRoleAssignments": "This unit still has active role assignments — revoke them first.",
     "deleteBlockedRoot": "The root unit cannot be deleted.",
-    "deleteBlockedGeneric": "This unit could not be deleted."
+    "deleteBlockedGeneric": "This unit could not be deleted.",
+    "moveHeading": "Move",
+    "newParentLabel": "New parent unit id",
+    "moveUnit": "Move unit",
+    "lastMove": "last move: {oldParent} → {newParent} — {status}",
+    "moveBlockedRoot": "The root unit cannot be moved.",
+    "moveBlockedNoParent": "This unit has no current parent to move it from — it is a graph root.",
+    "moveBlockedConflict": "A move for this unit is already in progress toward a different parent. Retry with that same parent to resume it.",
+    "moveBlockedForbidden": "You don't have permission to move this unit — moving requires edge-management access on both its current and new parent.",
+    "moveBlockedGeneric": "This unit could not be moved."
   },
   "SuperAdminTaxaPage": {
     "heading": "Taxa",
