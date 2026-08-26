@@ -288,6 +288,11 @@ type OpenfaithmapDiscoverySiteCache struct {
 	ServiceLanguages    []string
 	ServiceDays         []int16
 	RefreshedAt         time.Time
+	Name                string
+	AddressLine         pgtype.Text
+	TraditionTaxonCode  pgtype.Text
+	TraditionTaxonName  pgtype.Text
+	Attributes          json.RawMessage
 }
 
 type OpenfaithmapIdentityAccount struct {
@@ -644,6 +649,7 @@ type OpenfaithmapReligionSite struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	DeletedAt       pgtype.Timestamptz
+	Attributes      json.RawMessage
 }
 
 type OpenfaithmapReligionSiteType struct {

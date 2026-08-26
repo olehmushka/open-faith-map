@@ -8,12 +8,15 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olehmushka/open-faith-map/internal/discovery/adapters/discoverysql"
 	"github.com/olehmushka/open-faith-map/internal/discovery/domain"
 	"github.com/olehmushka/open-faith-map/internal/platform/db"
+	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
 )
 
 type Repository struct {
@@ -58,22 +61,61 @@ func floatFromNumeric(n pgtype.Numeric) *float64 {
 	return &f.Float64
 }
 
-func toCacheRow(row discoverysql.OpenfaithmapDiscoverySiteCache) domain.CacheRow {
-	days := make([]int, len(row.ServiceDays))
-	for i, d := range row.ServiceDays {
+// attributesFromJSON unmarshals a religion_sites/discovery_site_cache attributes column into its Go
+// shape; an empty/invalid document (including sqlc's zero-value json.RawMessage(nil), which occurs
+// on a scan where the column somehow came back empty) degrades to the zero-value SiteAttributes
+// (every criterion unset) rather than erroring — matches the column's own `NOT NULL DEFAULT '{}'`.
+func attributesFromJSON(raw json.RawMessage) religiondomain.SiteAttributes {
+	var a religiondomain.SiteAttributes
+	if len(raw) == 0 {
+		return a
+	}
+	_ = json.Unmarshal(raw, &a)
+	return a
+}
+
+func attributesToJSON(a religiondomain.SiteAttributes) json.RawMessage {
+	b, err := json.Marshal(a)
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return b
+}
+
+// cacheRowFromFields builds a domain.CacheRow from the column set every SELECT/RETURNING on
+// discovery_site_cache shares — sqlc generates a distinct row struct per query even when the
+// column list is identical, so this is the one place that shape gets translated.
+func cacheRowFromFields(
+	id, religionSiteRid, congregationUnitRid string,
+	contentSiteID pgtype.Text,
+	latitude, longitude pgtype.Numeric,
+	name string,
+	addressLine, traditionTaxonID, traditionTaxonCode, traditionTaxonName pgtype.Text,
+	serviceLanguages []string,
+	serviceDays []int16,
+	attributes json.RawMessage,
+	refreshedAt time.Time,
+) domain.CacheRow {
+	days := make([]int, len(serviceDays))
+	for i, d := range serviceDays {
 		days[i] = int(d)
 	}
 	return domain.CacheRow{
-		ID:                  row.ID,
-		ReligionSiteRID:     row.ReligionSiteRid,
-		CongregationUnitRID: row.CongregationUnitRid,
-		ContentSiteID:       fromNullableText(row.ContentSiteID),
-		Latitude:            floatFromNumeric(row.Latitude),
-		Longitude:           floatFromNumeric(row.Longitude),
-		TraditionTaxonID:    fromNullableText(row.TraditionTaxonID),
-		ServiceLanguages:    row.ServiceLanguages,
+		ID:                  id,
+		ReligionSiteRID:     religionSiteRid,
+		CongregationUnitRID: congregationUnitRid,
+		ContentSiteID:       fromNullableText(contentSiteID),
+		Latitude:            floatFromNumeric(latitude),
+		Longitude:           floatFromNumeric(longitude),
+		Name:                name,
+		Address:             fromNullableText(addressLine),
+		TraditionTaxonID:    fromNullableText(traditionTaxonID),
+		TraditionTaxonCode:  fromNullableText(traditionTaxonCode),
+		TraditionTaxonName:  fromNullableText(traditionTaxonName),
+		ServiceLanguages:    serviceLanguages,
 		ServiceDays:         days,
-		RefreshedAt:         row.RefreshedAt,
+		Attributes:          attributesFromJSON(attributes),
+		RefreshedAt:         refreshedAt,
 	}
 }
 
@@ -97,14 +139,22 @@ func (r *Repository) UpsertRow(ctx context.Context, row domain.CacheRow) (domain
 		ContentSiteID:       nullableText(row.ContentSiteID),
 		Latitude:            numericFromFloat(row.Latitude),
 		Longitude:           numericFromFloat(row.Longitude),
+		Name:                row.Name,
+		AddressLine:         nullableText(row.Address),
 		TraditionTaxonID:    nullableText(row.TraditionTaxonID),
+		TraditionTaxonCode:  nullableText(row.TraditionTaxonCode),
+		TraditionTaxonName:  nullableText(row.TraditionTaxonName),
 		ServiceLanguages:    languages,
 		ServiceDays:         days,
+		Attributes:          attributesToJSON(row.Attributes),
 	})
 	if err != nil {
 		return domain.CacheRow{}, err
 	}
-	return toCacheRow(result), nil
+	return cacheRowFromFields(result.ID, result.ReligionSiteRid, result.CongregationUnitRid, result.ContentSiteID,
+		result.Latitude, result.Longitude, result.Name, result.AddressLine, result.TraditionTaxonID,
+		result.TraditionTaxonCode, result.TraditionTaxonName, result.ServiceLanguages, result.ServiceDays,
+		result.Attributes, result.RefreshedAt), nil
 }
 
 // SearchAll returns every cached row — radius/tradition/language/dayOfWeek filtering happens in
@@ -117,7 +167,10 @@ func (r *Repository) SearchAll(ctx context.Context) ([]domain.CacheRow, error) {
 	}
 	out := make([]domain.CacheRow, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toCacheRow(row))
+		out = append(out, cacheRowFromFields(row.ID, row.ReligionSiteRid, row.CongregationUnitRid, row.ContentSiteID,
+			row.Latitude, row.Longitude, row.Name, row.AddressLine, row.TraditionTaxonID,
+			row.TraditionTaxonCode, row.TraditionTaxonName, row.ServiceLanguages, row.ServiceDays,
+			row.Attributes, row.RefreshedAt))
 	}
 	return out, nil
 }

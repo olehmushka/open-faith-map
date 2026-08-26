@@ -31,12 +31,13 @@ type UnitCreator interface {
 }
 
 type Service struct {
-	pool  *pgxpool.Pool
-	units UnitCreator
+	pool     *pgxpool.Pool
+	units    UnitCreator
+	authzSvc *authz.Service
 }
 
-func NewService(pool *pgxpool.Pool, units UnitCreator) *Service {
-	return &Service{pool: pool, units: units}
+func NewService(pool *pgxpool.Pool, units UnitCreator, authzSvc *authz.Service) *Service {
+	return &Service{pool: pool, units: units, authzSvc: authzSvc}
 }
 
 func (s *Service) inTx(ctx context.Context, fn func(store *adapters.Repository) error) error {
@@ -163,11 +164,54 @@ func (s *Service) CreateSite(ctx context.Context, in adapters.CreateSiteInput) (
 	return adapters.NewRepository(s.pool).InsertSite(ctx, in)
 }
 
-// SearchSites runs the public discovery search and coarsens each hit's coordinate per its own
-// publish precision (religiondomain.Coarsen) — the adapter-level snappedGeom fix keeps a `hidden`
-// site out of the result set (and every other site's predicate off the exact geometry) in the first
-// place; this coarsens the RETURNED coordinate on top of that, matching upstream's own behaviour for
-// the non-hidden precisions.
+// GetSiteByUnit answers ReligionService.getSite (M13.2) — the owner's own private view of their
+// unit's primary site, exact/uncoarsened (unlike discovery's public-precision-filtered
+// DiscoverySite). site.manage-gated, target-scoped to unitID. Resolves via ListSitesByUnit's own
+// is_primary DESC, id ordering — the same "prefer primary" convention SearchSites(UnitID) already
+// establishes — returning ErrSiteNotFound if the unit has no site at all (site creation stays
+// registration's/congregationimport's own job, never this method's).
+func (s *Service) GetSiteByUnit(ctx context.Context, unitID string) (religiondomain.Site, error) {
+	if err := s.requireManage(ctx, unitID); err != nil {
+		return religiondomain.Site{}, err
+	}
+	sites, err := s.ListSitesByUnit(ctx, unitID)
+	if err != nil {
+		return religiondomain.Site{}, err
+	}
+	if len(sites) == 0 {
+		return religiondomain.Site{}, religiondomain.ErrSiteNotFound
+	}
+	return sites[0], nil
+}
+
+// UpdateSiteAttributes overwrites unitID's primary site's attributes wholesale (M13.2) — the admin
+// form always submits the complete SiteAttributes shape, never a partial patch. site.manage-gated,
+// target-scoped to unitID; returns ErrSiteNotFound if the unit has no site yet.
+func (s *Service) UpdateSiteAttributes(ctx context.Context, unitID string, attrs religiondomain.SiteAttributes) (religiondomain.Site, error) {
+	if err := s.requireManage(ctx, unitID); err != nil {
+		return religiondomain.Site{}, err
+	}
+	sites, err := s.ListSitesByUnit(ctx, unitID)
+	if err != nil {
+		return religiondomain.Site{}, err
+	}
+	if len(sites) == 0 {
+		return religiondomain.Site{}, religiondomain.ErrSiteNotFound
+	}
+	site := sites[0]
+	if err := adapters.NewRepository(s.pool).UpdateSiteAttributesByID(ctx, site.ID, attrs); err != nil {
+		return religiondomain.Site{}, err
+	}
+	site.Attributes = attrs
+	return site, nil
+}
+
+// SearchSites runs the public discovery search and coarsens each hit's coordinate and address text
+// per its own publish precision (religiondomain.Coarsen/CoarsenAddress, D-DiscoveryAddressPrecision)
+// — the adapter-level snappedGeom fix keeps a `hidden` site out of the result set (and every other
+// site's predicate off the exact geometry) in the first place; this coarsens the RETURNED coordinate
+// and address on top of that. Name and Attributes pass through unfiltered — neither is gated by
+// precision (see DiscoverySite's own doc comment for why).
 func (s *Service) SearchSites(ctx context.Context, q religiondomain.DiscoveryQuery) ([]religiondomain.DiscoverySite, error) {
 	sites, err := adapters.NewRepository(s.pool).SearchSites(ctx, q)
 	if err != nil {
@@ -179,9 +223,16 @@ func (s *Service) SearchSites(ctx context.Context, q religiondomain.DiscoveryQue
 			ID: site.ID, OrgUnitID: site.OrgUnitID, SiteTypeID: site.SiteTypeID,
 			SiteTypeCode: site.SiteTypeCode, SiteTypeName: site.SiteTypeName,
 			PublicPrecision: site.PublicPrecision, IsPrimary: site.IsPrimary,
+			Name: site.Name, Attributes: site.Attributes,
+			TraditionTaxonID: site.TraditionTaxonID, TraditionTaxonCode: site.TraditionTaxonCode,
+			TraditionTaxonName: site.TraditionTaxonName,
+			ServiceLanguages:   site.ServiceLanguages, ServiceDays: site.ServiceDays,
 		}
 		if lat, lng, ok := religiondomain.Coarsen(site.Latitude, site.Longitude, site.PublicPrecision); ok {
 			hit.Latitude, hit.Longitude = &lat, &lng
+		}
+		if line, ok := religiondomain.CoarsenAddress(site.Locality, site.AdminArea1, site.AdminArea2, site.Street, site.HouseNumber, site.PostalCode, site.PublicPrecision); ok {
+			hit.Address = &line
 		}
 		out = append(out, hit)
 	}
@@ -199,4 +250,11 @@ func (s *Service) SearchSites(ctx context.Context, q religiondomain.DiscoveryQue
 func (s *Service) SearchSitesExact(ctx context.Context, q religiondomain.DiscoveryQuery) ([]religiondomain.Site, error) {
 	authz.MustBeSystemContext(ctx)
 	return adapters.NewRepository(s.pool).SearchSites(ctx, q)
+}
+
+// SearchFacets returns every distinct tradition taxon / service-schedule language actually present
+// among public, non-hidden sites (M13.1) — backs the discovery picker UI so it never offers a
+// filter value that would zero out every result.
+func (s *Service) SearchFacets(ctx context.Context) (religiondomain.Facets, error) {
+	return adapters.NewRepository(s.pool).SearchFacets(ctx)
 }

@@ -45,11 +45,11 @@ func TestMoveUnitIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	religionSvc := religionapplication.NewService(pool, dir)
 	// Unlike this package's other integration tests (noopClosure) — MoveUnit's whole point under test
 	// is the subtree-grant closure cascade, so this needs the real directory-backed ClosurePort, the
 	// same wiring cmd/openfaithmap-api/register_core.go uses in production.
 	authzSvc := authz.NewService(authzdomain.NewPDP(directoryadapters.NewRepository(pool)), authzadapters.NewRepository(pool), pool)
+	religionSvc := religionapplication.NewService(pool, dir, authzSvc)
 	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	coreApp := coreapplication.NewService(dir, religionSvc, nil, nil, nil, authzSvc, auditLogSvc, pool, seed.RootUnitID)
 

@@ -7,6 +7,7 @@ package religionsql
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -50,7 +51,7 @@ func (q *Queries) GetOrgProfileRow(ctx context.Context, unitID string) (GetOrgPr
 
 const getSiteRow = `-- name: GetSiteRow :one
 SELECT s.id, s.org_unit_id, s.location_id, s.site_type_id, st.code AS site_type_code, st.name AS site_type_name,
-	s.visibility, s.public_precision, s.is_primary,
+	s.visibility, s.public_precision, s.is_primary, s.attributes,
 	ST_Y(l.geom::geometry)::double precision AS latitude, ST_X(l.geom::geometry)::double precision AS longitude
 FROM openfaithmap.religion_sites s
 JOIN openfaithmap.religion_site_types st ON st.id = s.site_type_id
@@ -68,6 +69,7 @@ type GetSiteRowRow struct {
 	Visibility      string
 	PublicPrecision string
 	IsPrimary       bool
+	Attributes      json.RawMessage
 	Latitude        float64
 	Longitude       float64
 }
@@ -85,6 +87,7 @@ func (q *Queries) GetSiteRow(ctx context.Context, id string) (GetSiteRowRow, err
 		&i.Visibility,
 		&i.PublicPrecision,
 		&i.IsPrimary,
+		&i.Attributes,
 		&i.Latitude,
 		&i.Longitude,
 	)
@@ -294,7 +297,7 @@ func (q *Queries) ListSiteTypes(ctx context.Context) ([]ListSiteTypesRow, error)
 
 const listSitesByUnit = `-- name: ListSitesByUnit :many
 SELECT s.id, s.org_unit_id, s.location_id, s.site_type_id, st.code AS site_type_code, st.name AS site_type_name,
-	s.visibility, s.public_precision, s.is_primary,
+	s.visibility, s.public_precision, s.is_primary, s.attributes,
 	ST_Y(l.geom::geometry)::double precision AS latitude, ST_X(l.geom::geometry)::double precision AS longitude
 FROM openfaithmap.religion_sites s
 JOIN openfaithmap.religion_site_types st ON st.id = s.site_type_id
@@ -313,6 +316,7 @@ type ListSitesByUnitRow struct {
 	Visibility      string
 	PublicPrecision string
 	IsPrimary       bool
+	Attributes      json.RawMessage
 	Latitude        float64
 	Longitude       float64
 }
@@ -336,6 +340,7 @@ func (q *Queries) ListSitesByUnit(ctx context.Context, unitID string) ([]ListSit
 			&i.Visibility,
 			&i.PublicPrecision,
 			&i.IsPrimary,
+			&i.Attributes,
 			&i.Latitude,
 			&i.Longitude,
 		); err != nil {
@@ -400,6 +405,23 @@ func (q *Queries) ListTaxa(ctx context.Context, arg ListTaxaParams) ([]ListTaxaR
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateSiteAttributes = `-- name: UpdateSiteAttributes :exec
+UPDATE openfaithmap.religion_sites SET attributes = $1
+WHERE id = $2 AND deleted_at IS NULL
+`
+
+type UpdateSiteAttributesParams struct {
+	Attributes json.RawMessage
+	ID         string
+}
+
+// M13.2: the caller already holds the pre-fetched row (ListSitesByUnit resolved which site by
+// unit+is_primary), so this only needs to persist the new value, not RETURNING a full re-read.
+func (q *Queries) UpdateSiteAttributes(ctx context.Context, arg UpdateSiteAttributesParams) error {
+	_, err := q.db.Exec(ctx, updateSiteAttributes, arg.Attributes, arg.ID)
+	return err
 }
 
 const upsertOrgProfile = `-- name: UpsertOrgProfile :exec

@@ -5,7 +5,10 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import { Blocks } from "@/app/blocks";
+import { Badge } from "@/components/ui/badge";
+import { ACCESSIBILITY_KEYS, ACCESSIBILITY_MESSAGE_KEYS } from "@/lib/accessibility";
 import { getPublicBlocks, getSite, listPublicDocuments } from "@/lib/content";
+import { getSite as getDiscoverySite } from "@/lib/discovery";
 import { fileReport, type FileReportInput } from "@/lib/moderation";
 import { redirect } from "@/i18n/navigation";
 
@@ -16,6 +19,10 @@ const REPORT_REASON_CODES: FileReportInput["reasonCode"][] = [
   "DUPLICATE",
   "OTHER",
 ];
+
+// Sunday..Saturday, matching DiscoverySite.serviceDays' own 0-6 convention — same const-array
+// precedent as app/discovery/more-filters-sheet.tsx's own DAY_KEYS.
+const DAY_KEYS = ["day0", "day1", "day2", "day3", "day4", "day5", "day6"] as const;
 
 // Same force-dynamic reasoning as app/page.tsx — content changes independently of any build.
 export const dynamic = "force-dynamic";
@@ -36,6 +43,7 @@ export default async function CongregationPage({
   const { locale, unitId } = await params;
   const { reported } = await searchParams;
   const t = await getTranslations("CongregationPage");
+  const tm = await getTranslations("DiscoveryMap");
   const site = await getSite(unitId).catch(() => null);
   if (!site) notFound();
 
@@ -49,16 +57,61 @@ export default async function CongregationPage({
     redirect({ href: `/congregations/${unitId}?reported=1`, locale });
   }
 
-  const [pages, posts, events] = await Promise.all([
+  const [pages, posts, events, discoverySite] = await Promise.all([
     listPublicDocuments(site.id, "PAGE"),
     listPublicDocuments(site.id, "POST"),
     listPublicDocuments(site.id, "EVENT"),
+    getDiscoverySite(unitId).catch(() => null),
   ]);
 
   const pageBlocks = await Promise.all(pages.map((p) => getPublicBlocks(p.id)));
 
+  const hasCoords =
+    typeof discoverySite?.latitude === "number" && typeof discoverySite?.longitude === "number";
+
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-10 px-6 py-12">
+      {discoverySite ? (
+        <section className="flex flex-col gap-2 border-b pb-8">
+          {discoverySite.address ? (
+            <p className="text-sm text-muted-foreground">{discoverySite.address}</p>
+          ) : null}
+          <div className="flex flex-wrap gap-1">
+            {discoverySite.traditionTaxonName ? (
+              <Badge variant="secondary">{discoverySite.traditionTaxonName}</Badge>
+            ) : null}
+            {discoverySite.attributes.onlineStream ? (
+              <Badge variant="outline">{tm("onlineStream")}</Badge>
+            ) : null}
+            {ACCESSIBILITY_KEYS.filter((key) => discoverySite.attributes.accessibility[key]).map((key) => (
+              <Badge key={key} variant="outline">
+                {tm(ACCESSIBILITY_MESSAGE_KEYS[key])}
+              </Badge>
+            ))}
+          </div>
+          {discoverySite.serviceLanguages.length > 0 ? (
+            <p className="text-sm">
+              {t("serviceLanguages")}: {discoverySite.serviceLanguages.join(", ")}
+            </p>
+          ) : null}
+          {discoverySite.serviceDays.length > 0 ? (
+            <p className="text-sm">
+              {tm("dayLabel")}: {discoverySite.serviceDays.map((d) => tm(DAY_KEYS[d])).join(", ")}
+            </p>
+          ) : null}
+          {hasCoords ? (
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${discoverySite.latitude},${discoverySite.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+            >
+              {tm("getDirections")}
+            </a>
+          ) : null}
+        </section>
+      ) : null}
+
       {pages.map((page, i) => (
         <section key={page.id} className="flex flex-col gap-4">
           <Blocks blocks={pageBlocks[i]} />

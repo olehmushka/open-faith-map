@@ -4,6 +4,7 @@ import * as core from "./core";
 import * as discovery from "./discovery";
 import * as moderation from "./moderation";
 import * as registration from "./registration";
+import * as religion from "./religion";
 import * as vouching from "./vouching";
 
 export { congregationimport };
@@ -12,4 +13,5 @@ export { core };
 export { discovery };
 export { moderation };
 export { registration };
+export { religion };
 export { vouching };

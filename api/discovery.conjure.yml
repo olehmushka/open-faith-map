@@ -17,6 +17,19 @@ types:
   definitions:
     default-package: openfaithmap.discovery
     objects:
+      Accessibility:
+        fields:
+          stepFreeEntrance: boolean
+          accessibleRestroom: boolean
+          hearingLoop: boolean
+          signLanguageInterpretation: boolean
+          accessibleParking: boolean
+          wheelchairSeating: boolean
+          brailleOrLargePrint: boolean
+      SiteAttributes:
+        fields:
+          accessibility: Accessibility
+          onlineStream: boolean
       DiscoverySite:
         fields:
           id: string
@@ -31,11 +44,22 @@ types:
             type: optional<double>
             docs: Already public_precision-coarsened by internal/religion.Coarsen; null when precision is hidden.
           longitude: optional<double>
+          name:
+            type: string
+            docs: The congregation's display name (directory_units.name) — shown regardless of public_precision (D-DiscoveryAddressPrecision).
+          address:
+            type: optional<string>
+            docs: >
+              Precision-coarsened address text (D-DiscoveryAddressPrecision) — full street address at exact/street,
+              locality-only at neighborhood/city, absent at hidden.
           traditionTaxonId: optional<string>
+          traditionTaxonCode: optional<string>
+          traditionTaxonName: optional<string>
           serviceLanguages: list<string>
           serviceDays:
             type: list<integer>
             docs: 0=Sunday .. 6=Saturday, matching religion_service_schedules.day_of_week.
+          attributes: SiteAttributes
           refreshedAt: datetime
       SearchResult:
         fields:
@@ -49,12 +73,41 @@ types:
       RefreshResult:
         fields:
           refreshedCount: integer
+      TraditionFacet:
+        fields:
+          taxonId: string
+          taxonCode: string
+          taxonName: string
+      FacetsResult:
+        fields:
+          traditions:
+            type: list<TraditionFacet>
+            docs: Distinct tradition taxa actually classified on at least one public, non-hidden site.
+          languages:
+            type: list<string>
+            docs: Distinct service-schedule languages actually present on at least one public, non-hidden site.
 
     errors:
       Forbidden:
         docs: The caller does not hold the registration-operator's target-scoped grant on the root unit.
         namespace: Discovery
         code: PERMISSION_DENIED
+        safe-args: {}
+      SiteNotFound:
+        docs: >
+          The unit has no discoverable (public, non-hidden) site — either it has none at all, or its
+          only site(s) are private/unlisted/hidden, which is deliberately indistinguishable to an
+          anonymous caller.
+        namespace: Discovery
+        code: NOT_FOUND
+        safe-args: {}
+      InvalidFilter:
+        docs: >
+          An `accessibility` query value did not match one of SiteAttributes.Accessibility's known
+          criterion keys (M13.1) — returned instead of silently matching zero sites, the same
+          "fail loudly" fix this milestone applied to the pre-existing `tradition` bug.
+        namespace: Discovery
+        code: INVALID_ARGUMENT
         safe-args: {}
 
 services:
@@ -93,7 +146,37 @@ services:
             type: optional<string>
             param-type: query
             docs: Fuzzy match on the congregation's name.
+          accessibility:
+            type: optional<string>
+            param-type: query
+            docs: >
+              Comma-separated Accessibility criterion keys (e.g. `stepFreeEntrance,hearingLoop`) — a
+              site must have every requested criterion true (JSONB containment, M13.1). Throws
+              InvalidFilter if any key isn't one of SiteAttributes.Accessibility's own field names.
+          onlineOnly:
+            type: optional<boolean>
+            param-type: query
+            docs: When true, only sites with attributes.onlineStream true (M13.1).
         returns: SearchResult
+      facets:
+        http: GET /facets
+        returns: FacetsResult
+        docs: >
+          Distinct tradition/language values actually present among public, non-hidden sites (M13.1)
+          — backs the picker UI (M13.4) so it never offers a filter value that would zero out every
+          result. Always live, same as getSite — cheap, infrequent, and facets must reflect current
+          data.
+      getSite:
+        http: GET /sites/{unitId}
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: DiscoverySite
+        docs: >
+          A single congregation's discoverable site, always live (never the disposable search
+          cache) — the per-congregation detail page's server-rendered fetch (M13.0). Throws
+          SiteNotFound if the unit has no public, non-hidden site.
 
   DiscoveryService:
     name: Discovery Service

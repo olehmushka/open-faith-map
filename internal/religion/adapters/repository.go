@@ -12,6 +12,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -197,11 +198,50 @@ func (r *Repository) ListOrgKinds(ctx context.Context) ([]OrgKind, error) {
 	return out, nil
 }
 
-func toSite(id, orgUnitID, locationID, siteTypeID, siteTypeCode, siteTypeName, visibility, publicPrecision string, isPrimary bool, latitude, longitude float64) domain.Site {
+// attributesFromJSON unmarshals a religion_sites.attributes column into its Go shape; an empty
+// document degrades to the zero-value SiteAttributes (every criterion unset) rather than erroring —
+// matches the column's own `NOT NULL DEFAULT '{}'`.
+func attributesFromJSON(raw json.RawMessage) domain.SiteAttributes {
+	var a domain.SiteAttributes
+	if len(raw) == 0 {
+		return a
+	}
+	_ = json.Unmarshal(raw, &a)
+	return a
+}
+
+// attributesContainmentFilter builds the JSONB document SearchSites containment-matches
+// religion_sites.attributes against (M13.1's Accessibility/OnlineOnly filter, GIN index
+// religion_sites_attributes_gin) — e.g. {"accessibility":{"stepFreeEntrance":true},
+// "onlineStream":true}. ok is false (no filter to apply) when neither accessibility nor onlineOnly
+// was requested.
+func attributesContainmentFilter(accessibility []string, onlineOnly bool) (doc string, ok bool) {
+	if len(accessibility) == 0 && !onlineOnly {
+		return "", false
+	}
+	filter := map[string]any{}
+	if len(accessibility) > 0 {
+		acc := make(map[string]bool, len(accessibility))
+		for _, key := range accessibility {
+			acc[key] = true
+		}
+		filter["accessibility"] = acc
+	}
+	if onlineOnly {
+		filter["onlineStream"] = true
+	}
+	b, err := json.Marshal(filter)
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
+}
+
+func toSite(id, orgUnitID, locationID, siteTypeID, siteTypeCode, siteTypeName, visibility, publicPrecision string, isPrimary bool, attributes json.RawMessage, latitude, longitude float64) domain.Site {
 	return domain.Site{
 		ID: id, OrgUnitID: orgUnitID, LocationID: locationID, SiteTypeID: siteTypeID, SiteTypeCode: siteTypeCode,
 		SiteTypeName: siteTypeName, Visibility: visibility, PublicPrecision: publicPrecision, IsPrimary: isPrimary,
-		Latitude: latitude, Longitude: longitude,
+		Attributes: attributesFromJSON(attributes), Latitude: latitude, Longitude: longitude,
 	}
 }
 
@@ -212,7 +252,7 @@ func (r *Repository) ListSitesByUnit(ctx context.Context, unitID string) ([]doma
 	}
 	out := make([]domain.Site, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toSite(row.ID, row.OrgUnitID, row.LocationID, row.SiteTypeID, row.SiteTypeCode, row.SiteTypeName, row.Visibility, row.PublicPrecision, row.IsPrimary, row.Latitude, row.Longitude))
+		out = append(out, toSite(row.ID, row.OrgUnitID, row.LocationID, row.SiteTypeID, row.SiteTypeCode, row.SiteTypeName, row.Visibility, row.PublicPrecision, row.IsPrimary, row.Attributes, row.Latitude, row.Longitude))
 	}
 	return out, nil
 }
@@ -233,24 +273,72 @@ func (r *Repository) InsertSite(ctx context.Context, in CreateSiteInput) (domain
 	if err != nil {
 		return domain.Site{}, err
 	}
-	return toSite(row.ID, row.OrgUnitID, row.LocationID, row.SiteTypeID, row.SiteTypeCode, row.SiteTypeName, row.Visibility, row.PublicPrecision, row.IsPrimary, row.Latitude, row.Longitude), nil
+	return toSite(row.ID, row.OrgUnitID, row.LocationID, row.SiteTypeID, row.SiteTypeCode, row.SiteTypeName, row.Visibility, row.PublicPrecision, row.IsPrimary, row.Attributes, row.Latitude, row.Longitude), nil
+}
+
+// UpdateSiteAttributesByID overwrites siteID's attributes wholesale (M13.2) — the caller (religion/
+// application.Service.UpdateSiteAttributes) has already resolved which site by unit+is_primary, so
+// this only persists the new value.
+func (r *Repository) UpdateSiteAttributesByID(ctx context.Context, siteID string, attrs domain.SiteAttributes) error {
+	b, err := json.Marshal(attrs)
+	if err != nil {
+		return err
+	}
+	return r.q.UpdateSiteAttributes(ctx, religionsql.UpdateSiteAttributesParams{ID: siteID, Attributes: b})
 }
 
 // ---------------------------------------------------------------- discovery search
 
+// siteCols/siteFrom back SearchSites only (M13.0 extended them with the public-projection
+// enrichment: congregation name, address components, primary tradition tag, and aggregated
+// service-schedule language/day — GetSiteRow/ListSitesByUnit stay on their own, unenriched sqlc
+// query text in queries/religion.sql, since those authenticated-owner paths already know their own
+// unit's name/address and have no discovery-card use for it).
 const siteCols = `s.id, s.org_unit_id, s.location_id, s.site_type_id, st.code, st.name,
-	s.visibility, s.public_precision, s.is_primary,
-	ST_Y(l.geom::geometry)::double precision, ST_X(l.geom::geometry)::double precision`
+	s.visibility, s.public_precision, s.is_primary, s.attributes,
+	ST_Y(l.geom::geometry)::double precision, ST_X(l.geom::geometry)::double precision,
+	u.name, COALESCE(l.locality,''), COALESCE(l.admin_area_1,''), COALESCE(l.admin_area_2,''),
+	COALESCE(l.street,''), COALESCE(l.house_number,''), COALESCE(l.postal_code,''),
+	prim.taxon_id, prim.taxon_code, prim.taxon_name,
+	COALESCE(svc.languages, '{}'), COALESCE(svc.days, '{}')`
 
 const siteFrom = `FROM openfaithmap.religion_sites s
 	JOIN openfaithmap.religion_site_types st ON st.id = s.site_type_id
-	JOIN openfaithmap.location_locations l ON l.id = s.location_id`
+	JOIN openfaithmap.location_locations l ON l.id = s.location_id
+	JOIN openfaithmap.directory_units u ON u.id = s.org_unit_id
+	LEFT JOIN LATERAL (
+		SELECT oc.taxon_id, t.code AS taxon_code, t.name AS taxon_name
+		FROM openfaithmap.religion_org_classifications oc
+		JOIN openfaithmap.religion_taxa t ON t.id = oc.taxon_id
+		WHERE oc.unit_id = s.org_unit_id AND oc.deleted_at IS NULL
+		ORDER BY oc.is_primary DESC, t.code
+		LIMIT 1
+	) prim ON true
+	LEFT JOIN LATERAL (
+		SELECT array_agg(DISTINCT sch.language) FILTER (WHERE sch.language IS NOT NULL) AS languages,
+			array_agg(DISTINCT sch.day_of_week) FILTER (WHERE sch.day_of_week IS NOT NULL) AS days
+		FROM openfaithmap.religion_service_schedules sch
+		WHERE sch.site_id = s.id AND sch.deleted_at IS NULL
+	) svc ON true`
 
 func scanSite(row pgx.Row) (domain.Site, error) {
 	var s domain.Site
+	var attributes json.RawMessage
+	var days []int16
 	err := row.Scan(&s.ID, &s.OrgUnitID, &s.LocationID, &s.SiteTypeID, &s.SiteTypeCode, &s.SiteTypeName,
-		&s.Visibility, &s.PublicPrecision, &s.IsPrimary, &s.Latitude, &s.Longitude)
-	return s, err
+		&s.Visibility, &s.PublicPrecision, &s.IsPrimary, &attributes, &s.Latitude, &s.Longitude,
+		&s.Name, &s.Locality, &s.AdminArea1, &s.AdminArea2, &s.Street, &s.HouseNumber, &s.PostalCode,
+		&s.TraditionTaxonID, &s.TraditionTaxonCode, &s.TraditionTaxonName,
+		&s.ServiceLanguages, &days)
+	if err != nil {
+		return domain.Site{}, err
+	}
+	s.Attributes = attributesFromJSON(attributes)
+	s.ServiceDays = make([]int, len(days))
+	for i, d := range days {
+		s.ServiceDays[i] = int(d)
+	}
+	return s, nil
 }
 
 // snappedGeom is the position-oracle fix (docs/architecture/decisions.md's D-InProcessAuthz
@@ -297,13 +385,26 @@ func (r *Repository) SearchSites(ctx context.Context, q domain.DiscoveryQuery) (
 		env := "ST_MakeEnvelope(" + add(*q.MinLng) + "::double precision," + add(*q.MinLat) + "::double precision," +
 			add(*q.MaxLng) + "::double precision," + add(*q.MaxLat) + "::double precision,4326)::geography"
 		conds = append(conds, "ST_Intersects("+snappedGeom+", "+env+")")
+	case q.UnitID != nil:
+		// A unit-scoped lookup (M13.0's single-site detail-page fetch) has no spatial ordering to
+		// fall back on — prefer the unit's primary site, matching ListSitesByUnit's own tiebreak.
+		orderBy = "s.is_primary DESC, s.id"
+	}
+
+	if q.UnitID != nil {
+		conds = append(conds, "s.org_unit_id = "+add(*q.UnitID))
 	}
 
 	if q.Religion != "" {
+		// M13.1 fix: q.Religion is a taxon CODE (api/discovery.conjure.yml's own `tradition` docs),
+		// not an id — join through religion_taxa.code (unique among active rows,
+		// religion_taxa_code_active) instead of binding the raw string straight to
+		// religion_taxa_closure.ancestor_id, a uuid column, which previously matched nothing.
 		conds = append(conds, `s.org_unit_id IN (
 			SELECT oc.unit_id FROM openfaithmap.religion_org_classifications oc
 			JOIN openfaithmap.religion_taxa_closure tc ON tc.descendant_id = oc.taxon_id
-			WHERE tc.ancestor_id = `+add(q.Religion)+` AND oc.deleted_at IS NULL)`)
+			JOIN openfaithmap.religion_taxa rt ON rt.id = tc.ancestor_id
+			WHERE rt.code = `+add(q.Religion)+` AND rt.deleted_at IS NULL AND oc.deleted_at IS NULL)`)
 	}
 
 	if q.Query != "" {
@@ -321,6 +422,10 @@ func (r *Repository) SearchSites(ctx context.Context, q domain.DiscoveryQuery) (
 	if q.DayOfWeek != nil {
 		conds = append(conds, `EXISTS (SELECT 1 FROM openfaithmap.religion_service_schedules sch
 				WHERE sch.site_id = s.id AND sch.deleted_at IS NULL AND sch.day_of_week = `+add(*q.DayOfWeek)+`)`)
+	}
+
+	if filter, ok := attributesContainmentFilter(q.Accessibility, q.OnlineOnly); ok {
+		conds = append(conds, "s.attributes @> "+add(filter)+"::jsonb")
 	}
 
 	limit := q.Limit
@@ -345,4 +450,58 @@ func (r *Repository) SearchSites(ctx context.Context, q domain.DiscoveryQuery) (
 		out = append(out, site)
 	}
 	return out, rows.Err()
+}
+
+// searchableSitePredicate is SearchSites' own base WHERE conditions (deleted/public/non-hidden),
+// duplicated here rather than shared as a helper: SearchSites builds its conds slice dynamically
+// alongside optional filters, while SearchFacets' two queries are fixed-shape and each only need
+// this one clause once.
+const searchableSitePredicate = `s.deleted_at IS NULL AND s.visibility = 'public' AND s.public_precision <> 'hidden'`
+
+// SearchFacets returns every distinct tradition taxon / service-schedule language actually present
+// among public, non-hidden sites (M13.1) — the same visibility predicate SearchSites itself applies,
+// so a hidden or private site's tradition/language never leaks into the picker UI's options.
+func (r *Repository) SearchFacets(ctx context.Context) (domain.Facets, error) {
+	traditionRows, err := r.conn.Query(ctx, `
+		SELECT DISTINCT t.id, t.code, t.name
+		FROM openfaithmap.religion_sites s
+		JOIN openfaithmap.religion_org_classifications oc ON oc.unit_id = s.org_unit_id AND oc.deleted_at IS NULL
+		JOIN openfaithmap.religion_taxa t ON t.id = oc.taxon_id AND t.deleted_at IS NULL
+		WHERE `+searchableSitePredicate+`
+		ORDER BY t.name`)
+	if err != nil {
+		return domain.Facets{}, err
+	}
+	var out domain.Facets
+	for traditionRows.Next() {
+		var f domain.TraditionFacet
+		if err := traditionRows.Scan(&f.TaxonID, &f.TaxonCode, &f.TaxonName); err != nil {
+			traditionRows.Close()
+			return domain.Facets{}, err
+		}
+		out.Traditions = append(out.Traditions, f)
+	}
+	traditionRows.Close()
+	if err := traditionRows.Err(); err != nil {
+		return domain.Facets{}, err
+	}
+
+	languageRows, err := r.conn.Query(ctx, `
+		SELECT DISTINCT sch.language
+		FROM openfaithmap.religion_sites s
+		JOIN openfaithmap.religion_service_schedules sch ON sch.site_id = s.id AND sch.deleted_at IS NULL
+		WHERE `+searchableSitePredicate+`
+		ORDER BY sch.language`)
+	if err != nil {
+		return domain.Facets{}, err
+	}
+	defer languageRows.Close()
+	for languageRows.Next() {
+		var lang string
+		if err := languageRows.Scan(&lang); err != nil {
+			return domain.Facets{}, err
+		}
+		out.Languages = append(out.Languages, lang)
+	}
+	return out, languageRows.Err()
 }

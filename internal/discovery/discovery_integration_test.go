@@ -55,7 +55,7 @@ func TestDiscoveryIntegration(t *testing.T) {
 	pdp := authzdomain.NewPDP(closurePort)
 	authzStore := authzadapters.NewRepository(pool)
 	authzSvc := authz.NewService(pdp, authzStore, pool)
-	religionSvc := religionapplication.NewService(pool, directorySvc)
+	religionSvc := religionapplication.NewService(pool, directorySvc, authzSvc)
 	locationSvc := locationapplication.NewService(pool)
 	discoveryStore := adapters.NewRepository(pool)
 	discoverySvc := application.NewService(discoveryStore, nil, religionSvc, authzSvc, application.Config{
@@ -164,10 +164,94 @@ func TestDiscoveryIntegration(t *testing.T) {
 		if r.CongregationUnitRID == unit.ID {
 			saw = true
 			cacheIDs = append(cacheIDs, r.ID)
+			// M13.0: the cache row now carries the congregation's real name straight from the
+			// live SearchSites hit, not just an opaque RID/coordinate.
+			if r.Name != "M10.6 Discovery Test Congregation" {
+				t.Errorf("CacheRow.Name = %q, want %q", r.Name, "M10.6 Discovery Test Congregation")
+			}
 		}
 	}
 	if !saw {
 		t.Fatalf("Search(lat/lng/radius) = %+v, want to include unit %s", results, unit.ID)
+	}
+
+	// --- M13.1: Accessibility/OnlineOnly force the live path (BypassesCache) and filter via JSONB
+	// containment against the real site's attributes.
+	if _, err := pool.Exec(ctx, `UPDATE openfaithmap.religion_sites SET attributes = '{"onlineStream": true, "accessibility": {"hearingLoop": true}}' WHERE id = $1`, site.ID); err != nil {
+		t.Fatalf("set site attributes: %v", err)
+	}
+	accessibility := "hearingLoop"
+	byAccessibility, err := discoverySvc.Search(context.Background(), discoverydomain.SearchQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Accessibility: &accessibility})
+	if err != nil {
+		t.Fatalf("Search(Accessibility=hearingLoop): %v", err)
+	}
+	var sawAccessibility bool
+	for _, r := range byAccessibility {
+		if r.CongregationUnitRID == unit.ID {
+			sawAccessibility = true
+		}
+	}
+	if !sawAccessibility {
+		t.Errorf("Search(Accessibility=hearingLoop) did not return unit %s", unit.ID)
+	}
+
+	onlineOnly := true
+	byOnlineOnly, err := discoverySvc.Search(context.Background(), discoverydomain.SearchQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, OnlineOnly: &onlineOnly})
+	if err != nil {
+		t.Fatalf("Search(OnlineOnly=true): %v", err)
+	}
+	var sawOnlineOnly bool
+	for _, r := range byOnlineOnly {
+		if r.CongregationUnitRID == unit.ID {
+			sawOnlineOnly = true
+		}
+	}
+	if !sawOnlineOnly {
+		t.Errorf("Search(OnlineOnly=true) did not return unit %s", unit.ID)
+	}
+
+	// --- M13.1: an unrecognized accessibility= value is a real client error (ErrInvalidFilter),
+	// not a silent zero-result match — the same "fail loudly" fix applied to the tradition bug.
+	bogus := "not-a-real-criterion"
+	if _, err := discoverySvc.Search(context.Background(), discoverydomain.SearchQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Accessibility: &bogus}); !errors.Is(err, discoverydomain.ErrInvalidFilter) {
+		t.Errorf("Search(Accessibility=not-a-real-criterion) error = %v, want ErrInvalidFilter", err)
+	}
+
+	// --- M13.1: Facets is always live and answers without error (religion_integration_test.go
+	// covers the actual distinct-value/hidden-site-exclusion logic against religion.SearchFacets
+	// directly; this only proves the discovery-module delegation wiring).
+	if _, err := discoverySvc.Facets(ctx); err != nil {
+		t.Fatalf("Facets: %v", err)
+	}
+
+	// --- M13.0: GetSiteByUnit answers the detail page's server-rendered fetch, always live, for
+	// exactly the unit asked about.
+	got, found, err := discoverySvc.GetSiteByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("GetSiteByUnit: %v", err)
+	}
+	if !found {
+		t.Fatalf("GetSiteByUnit(%s) found = false, want true", unit.ID)
+	}
+	if got.Name != "M10.6 Discovery Test Congregation" {
+		t.Errorf("GetSiteByUnit.Name = %q, want %q", got.Name, "M10.6 Discovery Test Congregation")
+	}
+	if got.ReligionSiteRID != site.ID {
+		t.Errorf("GetSiteByUnit.ReligionSiteRID = %q, want %q", got.ReligionSiteRID, site.ID)
+	}
+
+	if _, found, err := discoverySvc.GetSiteByUnit(ctx, seed.RootUnitID); err != nil {
+		t.Errorf("GetSiteByUnit(rootUnit, no site): %v", err)
+	} else if found {
+		t.Errorf("GetSiteByUnit(rootUnit, no site) found = true, want false")
+	}
+
+	// --- M13.0: a malformed unitId (org_unit_id is a real `uuid` column) must degrade to
+	// found=false, not a raw Postgres type-coercion error surfacing as a 500.
+	if _, found, err := discoverySvc.GetSiteByUnit(ctx, "not-a-uuid"); err != nil {
+		t.Errorf("GetSiteByUnit(malformed id): %v, want a clean found=false, no error", err)
+	} else if found {
+		t.Errorf("GetSiteByUnit(malformed id) found = true, want false")
 	}
 
 	// --- RefreshRegion (requireOperator) is denied for a non-operator, allowed for a real operator.

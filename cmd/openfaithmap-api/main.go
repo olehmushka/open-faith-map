@@ -75,14 +75,17 @@ func serve() int {
 // registerIdentity first (builds the boot-time authenticator and runs the first-admin seed, no
 // routes of its own), registerCore second (M10.1-M10.5's in-process modules — directory/authz/
 // religion/location/membership/refdata — every consumer module below depends on directly),
-// registerContent before registerDiscovery (discovery's constructor needs content's app service via
-// deps.ContentAppSvc), registerModeration before registerVouching (same shape, deps.ModerationAppSvc).
+// registerReligion right after (M13.2 — its only dependency is deps.ReligionSvc, populated by
+// registerCore), registerContent before registerDiscovery (discovery's constructor needs content's
+// app service via deps.ContentAppSvc), registerModeration before registerVouching (same shape,
+// deps.ModerationAppSvc).
 var registerOrder = []struct {
 	name string
 	fn   registerFunc
 }{
 	{"identity", registerIdentity},
 	{"core", registerCore},
+	{"religion", registerReligion},
 	{"registration", registerRegistration},
 	{"content", registerContent},
 	{"discovery", registerDiscovery},

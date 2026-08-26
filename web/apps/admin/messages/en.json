@@ -146,7 +146,17 @@
     "accentColorLabel": "Accent color",
     "fontPairingLabel": "Font pairing",
     "headerLayoutLabel": "Header layout",
-    "saveTheme": "Save theme"
+    "saveTheme": "Save theme",
+    "attributesHeading": "Accessibility & streaming",
+    "stepFreeEntranceLabel": "Step-free entrance",
+    "accessibleRestroomLabel": "Accessible restroom",
+    "hearingLoopLabel": "Hearing loop",
+    "signLanguageInterpretationLabel": "Sign-language interpretation",
+    "accessibleParkingLabel": "Accessible parking",
+    "wheelchairSeatingLabel": "Wheelchair seating",
+    "brailleOrLargePrintLabel": "Braille or large-print materials",
+    "onlineStreamLabel": "Online stream available",
+    "saveAttributes": "Save attributes"
   },
   "DocumentsPage": {
     "heading": "Pages",

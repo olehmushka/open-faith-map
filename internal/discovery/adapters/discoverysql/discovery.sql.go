@@ -7,25 +7,46 @@ package discoverysql
 
 import (
 	"context"
+	"encoding/json"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const searchAllCacheRows = `-- name: SearchAllCacheRows :many
 SELECT id, religion_site_rid, congregation_unit_rid, content_site_id, latitude, longitude,
-	tradition_taxon_id, service_languages, service_days, refreshed_at
+	name, address_line, tradition_taxon_id, tradition_taxon_code, tradition_taxon_name,
+	service_languages, service_days, attributes, refreshed_at
 FROM openfaithmap.discovery_site_cache
 `
 
-func (q *Queries) SearchAllCacheRows(ctx context.Context) ([]OpenfaithmapDiscoverySiteCache, error) {
+type SearchAllCacheRowsRow struct {
+	ID                  string
+	ReligionSiteRid     string
+	CongregationUnitRid string
+	ContentSiteID       pgtype.Text
+	Latitude            pgtype.Numeric
+	Longitude           pgtype.Numeric
+	Name                string
+	AddressLine         pgtype.Text
+	TraditionTaxonID    pgtype.Text
+	TraditionTaxonCode  pgtype.Text
+	TraditionTaxonName  pgtype.Text
+	ServiceLanguages    []string
+	ServiceDays         []int16
+	Attributes          json.RawMessage
+	RefreshedAt         time.Time
+}
+
+func (q *Queries) SearchAllCacheRows(ctx context.Context) ([]SearchAllCacheRowsRow, error) {
 	rows, err := q.db.Query(ctx, searchAllCacheRows)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []OpenfaithmapDiscoverySiteCache
+	var items []SearchAllCacheRowsRow
 	for rows.Next() {
-		var i OpenfaithmapDiscoverySiteCache
+		var i SearchAllCacheRowsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ReligionSiteRid,
@@ -33,9 +54,14 @@ func (q *Queries) SearchAllCacheRows(ctx context.Context) ([]OpenfaithmapDiscove
 			&i.ContentSiteID,
 			&i.Latitude,
 			&i.Longitude,
+			&i.Name,
+			&i.AddressLine,
 			&i.TraditionTaxonID,
+			&i.TraditionTaxonCode,
+			&i.TraditionTaxonName,
 			&i.ServiceLanguages,
 			&i.ServiceDays,
+			&i.Attributes,
 			&i.RefreshedAt,
 		); err != nil {
 			return nil, err
@@ -51,21 +77,30 @@ func (q *Queries) SearchAllCacheRows(ctx context.Context) ([]OpenfaithmapDiscove
 const upsertCacheRow = `-- name: UpsertCacheRow :one
 INSERT INTO openfaithmap.discovery_site_cache
 	(religion_site_rid, congregation_unit_rid, content_site_id, latitude, longitude,
-	 tradition_taxon_id, service_languages, service_days, refreshed_at)
+	 name, address_line, tradition_taxon_id, tradition_taxon_code, tradition_taxon_name,
+	 service_languages, service_days, attributes, refreshed_at)
 VALUES ($1, $2, $3,
-	$4, $5, $6,
-	$7, $8, now())
+	$4, $5,
+	$6, $7, $8,
+	$9, $10,
+	$11, $12, $13, now())
 ON CONFLICT (religion_site_rid) DO UPDATE SET
 	congregation_unit_rid = EXCLUDED.congregation_unit_rid,
 	content_site_id       = EXCLUDED.content_site_id,
 	latitude              = EXCLUDED.latitude,
 	longitude             = EXCLUDED.longitude,
+	name                  = EXCLUDED.name,
+	address_line          = EXCLUDED.address_line,
 	tradition_taxon_id    = EXCLUDED.tradition_taxon_id,
+	tradition_taxon_code  = EXCLUDED.tradition_taxon_code,
+	tradition_taxon_name  = EXCLUDED.tradition_taxon_name,
 	service_languages     = EXCLUDED.service_languages,
 	service_days          = EXCLUDED.service_days,
+	attributes            = EXCLUDED.attributes,
 	refreshed_at          = now()
 RETURNING id, religion_site_rid, congregation_unit_rid, content_site_id, latitude, longitude,
-	tradition_taxon_id, service_languages, service_days, refreshed_at
+	name, address_line, tradition_taxon_id, tradition_taxon_code, tradition_taxon_name,
+	service_languages, service_days, attributes, refreshed_at
 `
 
 type UpsertCacheRowParams struct {
@@ -74,23 +109,51 @@ type UpsertCacheRowParams struct {
 	ContentSiteID       pgtype.Text
 	Latitude            pgtype.Numeric
 	Longitude           pgtype.Numeric
+	Name                string
+	AddressLine         pgtype.Text
 	TraditionTaxonID    pgtype.Text
+	TraditionTaxonCode  pgtype.Text
+	TraditionTaxonName  pgtype.Text
 	ServiceLanguages    []string
 	ServiceDays         []int16
+	Attributes          json.RawMessage
 }
 
-func (q *Queries) UpsertCacheRow(ctx context.Context, arg UpsertCacheRowParams) (OpenfaithmapDiscoverySiteCache, error) {
+type UpsertCacheRowRow struct {
+	ID                  string
+	ReligionSiteRid     string
+	CongregationUnitRid string
+	ContentSiteID       pgtype.Text
+	Latitude            pgtype.Numeric
+	Longitude           pgtype.Numeric
+	Name                string
+	AddressLine         pgtype.Text
+	TraditionTaxonID    pgtype.Text
+	TraditionTaxonCode  pgtype.Text
+	TraditionTaxonName  pgtype.Text
+	ServiceLanguages    []string
+	ServiceDays         []int16
+	Attributes          json.RawMessage
+	RefreshedAt         time.Time
+}
+
+func (q *Queries) UpsertCacheRow(ctx context.Context, arg UpsertCacheRowParams) (UpsertCacheRowRow, error) {
 	row := q.db.QueryRow(ctx, upsertCacheRow,
 		arg.ReligionSiteRid,
 		arg.CongregationUnitRid,
 		arg.ContentSiteID,
 		arg.Latitude,
 		arg.Longitude,
+		arg.Name,
+		arg.AddressLine,
 		arg.TraditionTaxonID,
+		arg.TraditionTaxonCode,
+		arg.TraditionTaxonName,
 		arg.ServiceLanguages,
 		arg.ServiceDays,
+		arg.Attributes,
 	)
-	var i OpenfaithmapDiscoverySiteCache
+	var i UpsertCacheRowRow
 	err := row.Scan(
 		&i.ID,
 		&i.ReligionSiteRid,
@@ -98,9 +161,14 @@ func (q *Queries) UpsertCacheRow(ctx context.Context, arg UpsertCacheRowParams) 
 		&i.ContentSiteID,
 		&i.Latitude,
 		&i.Longitude,
+		&i.Name,
+		&i.AddressLine,
 		&i.TraditionTaxonID,
+		&i.TraditionTaxonCode,
+		&i.TraditionTaxonName,
 		&i.ServiceLanguages,
 		&i.ServiceDays,
+		&i.Attributes,
 		&i.RefreshedAt,
 	)
 	return i, err

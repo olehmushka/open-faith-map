@@ -40,3 +40,38 @@ func TestCoarsen(t *testing.T) {
 		})
 	}
 }
+
+func TestCoarsenAddress(t *testing.T) {
+	const locality, adminArea1, adminArea2, street, houseNumber, postalCode = "Kyiv", "Kyiv City", "Kyiv Raion", "Khreshchatyk St", "22", "01001"
+
+	tests := []struct {
+		name      string
+		precision string
+		wantOK    bool
+		want      string
+	}{
+		{"empty precision shows the full address", "", true, "Khreshchatyk St 22, Kyiv, Kyiv Raion, Kyiv City, 01001"},
+		{"exact shows the full address", PrecisionExact, true, "Khreshchatyk St 22, Kyiv, Kyiv Raion, Kyiv City, 01001"},
+		{"street shows the full address (coordinate is already ~11m via Coarsen)", PrecisionStreet, true, "Khreshchatyk St 22, Kyiv, Kyiv Raion, Kyiv City, 01001"},
+		{"neighborhood shows locality + admin area 1 only", PrecisionNeighborhood, true, "Kyiv, Kyiv City"},
+		{"city shows locality + admin area 1 only", PrecisionCity, true, "Kyiv, Kyiv City"},
+		{"hidden omits the address entirely", PrecisionHidden, false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := CoarsenAddress(locality, adminArea1, adminArea2, street, houseNumber, postalCode, tt.precision)
+			if ok != tt.wantOK {
+				t.Fatalf("CoarsenAddress(%q) ok = %v, want %v", tt.precision, ok, tt.wantOK)
+			}
+			if ok && got != tt.want {
+				t.Errorf("CoarsenAddress(%q) = %q, want %q", tt.precision, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("neighborhood with no locality or admin area 1 has nothing to show", func(t *testing.T) {
+		if _, ok := CoarsenAddress("", "", adminArea2, street, houseNumber, postalCode, PrecisionNeighborhood); ok {
+			t.Errorf("CoarsenAddress with empty locality/adminArea1 at neighborhood precision, ok = true, want false")
+		}
+	})
+}

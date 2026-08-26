@@ -89,7 +89,7 @@ func TestCongregationImportIntegration(t *testing.T) {
 	pdp := authzdomain.NewPDP(closurePort)
 	authzStore := authzadapters.NewRepository(pool)
 	authzSvc := authz.NewService(pdp, authzStore, pool)
-	religionSvc := religionapplication.NewService(pool, directorySvc)
+	religionSvc := religionapplication.NewService(pool, directorySvc, authzSvc)
 	locationSvc := locationapplication.NewService(pool)
 	refdataSvc := refdataapplication.NewService(pool)
 	store := congregationimportadapters.NewRepository(pool)

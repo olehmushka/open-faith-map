@@ -53,7 +53,7 @@ WHERE deleted_at IS NULL ORDER BY sort_order NULLS LAST, code;
 
 -- name: ListSitesByUnit :many
 SELECT s.id, s.org_unit_id, s.location_id, s.site_type_id, st.code AS site_type_code, st.name AS site_type_name,
-	s.visibility, s.public_precision, s.is_primary,
+	s.visibility, s.public_precision, s.is_primary, s.attributes,
 	ST_Y(l.geom::geometry)::double precision AS latitude, ST_X(l.geom::geometry)::double precision AS longitude
 FROM openfaithmap.religion_sites s
 JOIN openfaithmap.religion_site_types st ON st.id = s.site_type_id
@@ -66,9 +66,15 @@ INSERT INTO openfaithmap.religion_sites (org_unit_id, location_id, site_type_id,
 VALUES (sqlc.arg('org_unit_id'), sqlc.arg('location_id'), sqlc.arg('site_type_id'), sqlc.arg('is_primary'))
 RETURNING id;
 
+-- name: UpdateSiteAttributes :exec
+-- M13.2: the caller already holds the pre-fetched row (ListSitesByUnit resolved which site by
+-- unit+is_primary), so this only needs to persist the new value, not RETURNING a full re-read.
+UPDATE openfaithmap.religion_sites SET attributes = sqlc.arg('attributes')
+WHERE id = sqlc.arg('id') AND deleted_at IS NULL;
+
 -- name: GetSiteRow :one
 SELECT s.id, s.org_unit_id, s.location_id, s.site_type_id, st.code AS site_type_code, st.name AS site_type_name,
-	s.visibility, s.public_precision, s.is_primary,
+	s.visibility, s.public_precision, s.is_primary, s.attributes,
 	ST_Y(l.geom::geometry)::double precision AS latitude, ST_X(l.geom::geometry)::double precision AS longitude
 FROM openfaithmap.religion_sites s
 JOIN openfaithmap.religion_site_types st ON st.id = s.site_type_id

@@ -7,9 +7,10 @@
 import { isConjureError } from "conjure-client";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
-import type { IDiscoverySite } from "./openfaithmap/generated/discovery";
+import type { IDiscoverySite, IFacetsResult } from "./openfaithmap/generated/discovery";
 
 export type DiscoverySite = IDiscoverySite;
+export type DiscoveryFacets = IFacetsResult;
 
 export class DiscoveryApiError extends Error {
   constructor(
@@ -53,6 +54,8 @@ export interface SearchParams {
   language?: string;
   dayOfWeek?: number;
   query?: string;
+  accessibility?: string;
+  onlineOnly?: boolean;
 }
 
 export async function search(params: SearchParams): Promise<DiscoverySite[]> {
@@ -65,7 +68,24 @@ export async function search(params: SearchParams): Promise<DiscoverySite[]> {
       params.language,
       params.dayOfWeek,
       params.query,
+      params.accessibility,
+      params.onlineOnly,
     ),
   );
   return result.sites;
+}
+
+// Distinct tradition/language values actually present among public sites (M13.1's facets
+// endpoint) — backs the filter-bar's Select pickers so they never offer a value that would zero
+// out every result. Fetched once per page load, not re-fetched per search.
+export async function facets(): Promise<DiscoveryFacets> {
+  return unwrap(client().discoveryPublic.facets());
+}
+
+// Single-site lookup backing the congregation detail page (M13.5) — always live (never the
+// disposable search cache). Throws DiscoveryApiError("Discovery:SiteNotFound", ...) when the
+// unit has no public, non-hidden religion site — a real, expected case, so callers must
+// .catch(() => null) rather than treat it as a hard failure.
+export async function getSite(unitId: string): Promise<DiscoverySite> {
+  return unwrap(client().discoveryPublic.getSite(unitId));
 }
