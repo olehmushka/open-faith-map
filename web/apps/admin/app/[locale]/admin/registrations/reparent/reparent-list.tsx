@@ -26,10 +26,9 @@ export function ReparentList({
   labels: {
     noApprovedCongregations: string;
     congregationName: string;
-    currentJurisdiction: (value: string) => string;
-    currentJurisdictionNone: string;
-    lastMove: (oldParent: string, newParent: string, status: string) => string;
-    unitLabel: (unitId: string) => string;
+    currentJurisdictionById: Record<string, string>;
+    lastMoveById: Record<string, string>;
+    unitLabelById: Record<string, string>;
     newParentUnitIdPlaceholder: string;
     resumeMove: string;
     reparentButton: string;
@@ -51,7 +50,7 @@ export function ReparentList({
           <div className="flex flex-col">
             <span className="font-medium">{row.original.request.congregationName}</span>
             <span className="text-xs text-muted-foreground">
-              {labels.unitLabel(row.original.request.createdUnitId ?? "")}
+              {labels.unitLabelById[row.original.request.id]}
             </span>
           </div>
         ),
@@ -62,7 +61,7 @@ export function ReparentList({
         accessorFn: (r) => r.request.jurisdictionUnitId ?? "",
         cell: ({ row }) => (
           <span className="text-sm text-muted-foreground">
-            {labels.currentJurisdiction(row.original.request.jurisdictionUnitId ?? labels.currentJurisdictionNone)}
+            {labels.currentJurisdictionById[row.original.request.id]}
           </span>
         ),
       },
@@ -77,7 +76,7 @@ export function ReparentList({
             <div className="flex flex-col gap-1 text-sm">
               <ReparentStatusBadge status={job.status} />
               <span className="text-xs text-muted-foreground">
-                {labels.lastMove(job.oldParentUnitId, job.newParentUnitId, job.status)}
+                {labels.lastMoveById[row.original.request.id]}
                 {job.error && <span className="text-destructive"> ({job.error})</span>}
               </span>
             </div>

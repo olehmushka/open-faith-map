@@ -26,6 +26,15 @@ export default async function RegistrationsPage({
   const t = await getTranslations("RegistrationsPage");
   const { requests } = await listRegistrations();
   const { jurisdictionQuery } = await searchParams;
+
+  // Pre-formatted server-side, keyed by request id — a closure over `t` can't be passed to
+  // RequestList (a Client Component); only plain serializable values cross that boundary.
+  const rejectionReasonById: Record<string, string> = {};
+  for (const r of requests) {
+    if (r.status === "REJECTED" && r.rejectionReason) {
+      rejectionReasonById[r.id] = t("rejectionReason", { reason: r.rejectionReason });
+    }
+  }
   const jurisdictionResults = jurisdictionQuery ? await searchJurisdictionUnits(jurisdictionQuery) : [];
 
   async function approve(formData: FormData) {
@@ -110,7 +119,7 @@ export default async function RegistrationsPage({
           approve: t("approve"),
           rejectionReasonPlaceholder: t("rejectionReasonPlaceholder"),
           reject: t("reject"),
-          rejectionReason: (reason: string) => t("rejectionReason", { reason }),
+          rejectionReasonById,
           filterRequests: t("filterRequests"),
           congregationName: t("congregationName"),
           status: t("status"),
