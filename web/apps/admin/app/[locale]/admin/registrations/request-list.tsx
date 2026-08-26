@@ -30,7 +30,7 @@ export function RequestList({
     approve: string;
     rejectionReasonPlaceholder: string;
     reject: string;
-    rejectionReason: (reason: string) => string;
+    rejectionReasonById: Record<string, string>;
     filterRequests: string;
     congregationName: string;
     status: string;
@@ -86,7 +86,7 @@ export function RequestList({
             );
           }
           if (r.status === "REJECTED" && r.rejectionReason) {
-            return <span className="text-sm text-muted-foreground">{labels.rejectionReason(r.rejectionReason)}</span>;
+            return <span className="text-sm text-muted-foreground">{labels.rejectionReasonById[r.id]}</span>;
           }
           return null;
         },

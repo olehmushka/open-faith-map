@@ -32,6 +32,26 @@ export default async function ReparentPage({
   );
   const jobByRequestId = new Map(jobs.filter((j) => j.job).map((j) => [j.requestId, j.job!]));
 
+  // Pre-formatted server-side, keyed by request id — a closure over `t` can't be passed to
+  // ReparentList (a Client Component); only plain serializable values cross that boundary.
+  const currentJurisdictionById: Record<string, string> = {};
+  const unitLabelById: Record<string, string> = {};
+  const lastMoveById: Record<string, string> = {};
+  for (const r of requests) {
+    currentJurisdictionById[r.id] = t("currentJurisdiction", {
+      value: r.jurisdictionUnitId ?? t("currentJurisdictionNone"),
+    });
+    unitLabelById[r.id] = t("unitLabel", { unitId: r.createdUnitId ?? "" });
+    const job = jobByRequestId.get(r.id);
+    if (job) {
+      lastMoveById[r.id] = t("lastMove", {
+        oldParent: job.oldParentUnitId,
+        newParent: job.newParentUnitId,
+        status: job.status,
+      });
+    }
+  }
+
   async function createJurisdiction(formData: FormData) {
     "use server";
     const parentUnitId = String(formData.get("parentUnitId") ?? "").trim() || undefined;
@@ -109,11 +129,9 @@ export default async function ReparentPage({
         labels={{
           noApprovedCongregations: t("noApprovedCongregations"),
           congregationName: t("congregationName"),
-          currentJurisdiction: (value: string) => t("currentJurisdiction", { value }),
-          currentJurisdictionNone: t("currentJurisdictionNone"),
-          lastMove: (oldParent: string, newParent: string, status: string) =>
-            t("lastMove", { oldParent, newParent, status }),
-          unitLabel: (unitId: string) => t("unitLabel", { unitId }),
+          currentJurisdictionById,
+          lastMoveById,
+          unitLabelById,
           newParentUnitIdPlaceholder: t("newParentUnitIdPlaceholder"),
           resumeMove: t("resumeMove"),
           reparentButton: t("reparentButton"),
