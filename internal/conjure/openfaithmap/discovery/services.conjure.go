@@ -16,6 +16,8 @@ import (
 // Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never widens what internal/religion.SearchSites would already return publicly (the position-oracle fix: hidden sites excluded, others coordinate-snapped). See docs/modules/discovery.md.
 type DiscoveryPublicServiceClient interface {
 	Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string) (SearchResult, error)
+	// A single congregation's discoverable site, always live (never the disposable search cache) — the per-congregation detail page's server-rendered fetch (M13.0). Throws SiteNotFound if the unit has no public, non-hidden site.
+	GetSite(ctx context.Context, unitIdArg string) (DiscoverySite, error)
 }
 
 type discoveryPublicServiceClient struct {
@@ -61,6 +63,22 @@ func (c *discoveryPublicServiceClient) Search(ctx context.Context, latArg *float
 	}
 	if returnVal == nil {
 		return *new(SearchResult), werror.ErrorWithContextParams(ctx, "search response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *discoveryPublicServiceClient) GetSite(ctx context.Context, unitIdArg string) (DiscoverySite, error) {
+	var returnVal *DiscoverySite
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetSite"))
+	requestParams = append(requestParams, httpclient.WithPathf("/discovery/v1/sites/%s", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(DiscoverySite), werror.WrapWithContextParams(ctx, err, "getSite failed")
+	}
+	if returnVal == nil {
+		return *new(DiscoverySite), werror.ErrorWithContextParams(ctx, "getSite response cannot be nil")
 	}
 	return *returnVal, nil
 }

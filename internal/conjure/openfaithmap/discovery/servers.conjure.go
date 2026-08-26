@@ -19,6 +19,8 @@ import (
 // Anonymous public map/search (openfaithmap-web holds no session — D-AdminSurface). Never widens what internal/religion.SearchSites would already return publicly (the position-oracle fix: hidden sites excluded, others coordinate-snapped). See docs/modules/discovery.md.
 type DiscoveryPublicService interface {
 	Search(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, traditionArg *string, languageArg *string, dayOfWeekArg *int, queryArg *string) (SearchResult, error)
+	// A single congregation's discoverable site, always live (never the disposable search cache) — the per-congregation detail page's server-rendered fetch (M13.0). Throws SiteNotFound if the unit has no public, non-hidden site.
+	GetSite(ctx context.Context, unitIdArg string) (DiscoverySite, error)
 }
 
 // RegisterRoutesDiscoveryPublicService registers handlers for the DiscoveryPublicService endpoints with a witchcraft wrouter.
@@ -30,6 +32,9 @@ func RegisterRoutesDiscoveryPublicService(router wrouter.Router, impl DiscoveryP
 	resource := wresource.New("discoverypublicservice", router)
 	if err := resource.Get("Search", "/discovery/v1/search", httpserver.NewJSONHandler(handler.HandleSearch, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add search route")
+	}
+	if err := resource.Get("GetSite", "/discovery/v1/sites/{unitId}", httpserver.NewJSONHandler(handler.HandleGetSite, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getSite route")
 	}
 	return nil
 }
@@ -87,6 +92,23 @@ func (d *discoveryPublicServiceHandler) HandleSearch(rw http.ResponseWriter, req
 		queryArg = &queryArgInternal
 	}
 	respArg, err := d.impl.Search(req.Context(), latArg, lngArg, radiusMArg, traditionArg, languageArg, dayOfWeekArg, queryArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (d *discoveryPublicServiceHandler) HandleGetSite(rw http.ResponseWriter, req *http.Request) error {
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	respArg, err := d.impl.GetSite(req.Context(), unitIdArg)
 	if err != nil {
 		return err
 	}

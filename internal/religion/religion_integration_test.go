@@ -168,6 +168,12 @@ func TestReligionIntegration(t *testing.T) {
 	}
 	siteIDs = append(siteIDs, exactSite.ID)
 
+	// M13.0's enrichment assertions below need excludedParent to carry a primary classification —
+	// unlike profile.UnitID (classified via CreateChildOrg above), excludedParent never got one.
+	if _, err := rel.AddOrgClassification(ctx, excludedParent.ID, taxonID, true); err != nil {
+		t.Fatalf("AddOrgClassification(excludedParent): %v", err)
+	}
+
 	radius := 1000.0
 	hits, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Limit: 50})
 	if err != nil {
@@ -224,6 +230,93 @@ func TestReligionIntegration(t *testing.T) {
 	}
 	if len(noMatch) != 0 {
 		t.Errorf("SearchSites(Language=es) = %+v, want no matches", noMatch)
+	}
+
+	// --- M13.0: SearchSites now returns name, address (precision-coarsened), primary tradition
+	// tag, and site attributes — previously the projection carried none of these.
+	enriched, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites (enrichment check): %v", err)
+	}
+	var gotExact *domain.DiscoverySite
+	for i := range enriched {
+		if enriched[i].ID == exactSite.ID {
+			gotExact = &enriched[i]
+		}
+	}
+	if gotExact == nil {
+		t.Fatalf("SearchSites (enrichment check) did not return exactSite")
+	}
+	if gotExact.Name != "M10.5 test excluded parent" {
+		t.Errorf("DiscoverySite.Name = %q, want %q", gotExact.Name, "M10.5 test excluded parent")
+	}
+	if gotExact.TraditionTaxonCode == nil || *gotExact.TraditionTaxonCode != "christianity" {
+		t.Errorf("DiscoverySite.TraditionTaxonCode = %v, want christianity (via profile's primary classification)", gotExact.TraditionTaxonCode)
+	}
+	var sawUK bool
+	for _, l := range gotExact.ServiceLanguages {
+		if l == "uk" {
+			sawUK = true
+		}
+	}
+	if !sawUK {
+		t.Errorf("DiscoverySite.ServiceLanguages = %v, want it to include the schedule's language uk", gotExact.ServiceLanguages)
+	}
+
+	// --- M13.0: address is populated at exact precision (full text), omitted for a hidden site.
+	if _, err := pool.Exec(ctx, `UPDATE openfaithmap.location_locations SET locality = 'Kyiv', admin_area_1 = 'Kyiv City', street = 'Khreshchatyk St', house_number = '1' WHERE id = $1`, exactLoc.ID); err != nil {
+		t.Fatalf("set exactLoc address: %v", err)
+	}
+	withAddress, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites (address check): %v", err)
+	}
+	var gotAddress *domain.DiscoverySite
+	for i := range withAddress {
+		if withAddress[i].ID == exactSite.ID {
+			gotAddress = &withAddress[i]
+		}
+	}
+	if gotAddress == nil || gotAddress.Address == nil || *gotAddress.Address != "Khreshchatyk St 1, Kyiv, Kyiv City" {
+		t.Errorf("DiscoverySite.Address = %v, want \"Khreshchatyk St 1, Kyiv, Kyiv City\"", gotAddress)
+	}
+
+	// --- M13.0: religion_sites.attributes round-trips through SearchSites unfiltered by precision.
+	if _, err := pool.Exec(ctx, `UPDATE openfaithmap.religion_sites SET attributes = '{"onlineStream": true, "accessibility": {"stepFreeEntrance": true}}' WHERE id = $1`, exactSite.ID); err != nil {
+		t.Fatalf("set exactSite attributes: %v", err)
+	}
+	withAttrs, err := rel.SearchSites(ctx, domain.DiscoveryQuery{Lat: &lat, Lng: &lng, RadiusM: &radius, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites (attributes check): %v", err)
+	}
+	var gotAttrs *domain.DiscoverySite
+	for i := range withAttrs {
+		if withAttrs[i].ID == exactSite.ID {
+			gotAttrs = &withAttrs[i]
+		}
+	}
+	if gotAttrs == nil || !gotAttrs.Attributes.OnlineStream || !gotAttrs.Attributes.Accessibility.StepFreeEntrance {
+		t.Errorf("DiscoverySite.Attributes = %+v, want OnlineStream=true, Accessibility.StepFreeEntrance=true", gotAttrs)
+	}
+
+	// --- M13.0: DiscoveryQuery.UnitID scopes SearchSites to exactly one unit's public sites,
+	// preferring the primary site, for the detail page's single-record lookup.
+	byUnit, err := rel.SearchSites(ctx, domain.DiscoveryQuery{UnitID: &excludedParent.ID, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites(UnitID): %v", err)
+	}
+	if len(byUnit) != 1 || byUnit[0].ID != exactSite.ID {
+		t.Errorf("SearchSites(UnitID=%s) = %+v, want exactly [exactSite]", excludedParent.ID, byUnit)
+	}
+	otherUnitID := profile.UnitID
+	byOtherUnit, err := rel.SearchSites(ctx, domain.DiscoveryQuery{UnitID: &otherUnitID, Limit: 50})
+	if err != nil {
+		t.Fatalf("SearchSites(UnitID=other): %v", err)
+	}
+	for _, h := range byOtherUnit {
+		if h.ID == exactSite.ID {
+			t.Errorf("SearchSites(UnitID=%s) unexpectedly returned exactSite (belongs to a different unit)", otherUnitID)
+		}
 	}
 
 	// --- ListTaxa (M10.7): a code/name search finds the seeded "christianity" taxon.

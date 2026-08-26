@@ -2460,3 +2460,39 @@ comparable pattern doesn't actually fit this app's trust model.
   this decoupling by conflating "visible" with "joinable."
 - If self-service join is wanted later, it needs its own decision block re-litigating this
   trade-off, not a silent addition to M12's invite/grant endpoints.
+
+### D-DiscoveryAddressPrecision — address text is gated at the same `PublicPrecision` tier as the coordinate; name is not gated at all
+
+**Decision.** M13.0 adds a derived address text alongside the coordinate every `DiscoverySite` hit
+already carried, coarsened by `internal/religion.CoarsenAddress` per the site's own
+`public_precision`:
+
+| Precision | Address text shown |
+|---|---|
+| `exact` / `street` | full: house number + street, locality, admin area 2, admin area 1, postal code |
+| `neighborhood` / `city` | locality + admin area 1 only — no street/house number |
+| `hidden` | omitted (the site is already excluded from `SearchSites`' result set entirely) |
+
+The congregation's **name** (`directory_units.name`) is shown at every precision tier, including
+`neighborhood`/`city` — it is never gated.
+
+**Why.** `street` and `exact` are folded into one address tier even though `Coarsen` still
+distinguishes them for the coordinate (~11m rounding at `street`): at ~11m the coordinate itself
+already pinpoints the building, so gating the *address text* more tightly than the *pin* adds no
+real privacy — a visitor who can already see the pin on the map gains nothing from also being
+denied the street name. `neighborhood`/`city` collapse to the same locality-only text for the same
+reason: the two coordinate tiers (~110m vs ~1.1km rounding) don't correspond to two meaningfully
+different amounts of showable address detail once street-level fields are already withheld.
+Name-always-shown was scoped explicitly with the user: a name alone carries no finer location
+signal than what SearchSites already exposes at every precision (a coordinate, however coarse,
+plus a site-type label) — withholding it would make a `city`-precision result unusable (an
+unnamed pin on a city-wide map) without buying any real privacy back.
+
+**Consequences.**
+- `CoarsenAddress` (`internal/religion/domain/religion.go`) is a second, independent coarsening
+  function alongside `Coarsen` — not a shared table, since the two inputs (a coordinate, a
+  five-field structured address) round differently. Any future precision tier must update both
+  functions' tables together or the two will drift.
+- `SiteAttributes` (accessibility criteria, online-stream flag) similarly passes through
+  `DiscoverySite` unfiltered by precision — neither is location-sensitive, so neither needed a
+  place in this decision's table.

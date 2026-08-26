@@ -53,7 +53,7 @@ WHERE deleted_at IS NULL ORDER BY sort_order NULLS LAST, code;
 
 -- name: ListSitesByUnit :many
 SELECT s.id, s.org_unit_id, s.location_id, s.site_type_id, st.code AS site_type_code, st.name AS site_type_name,
-	s.visibility, s.public_precision, s.is_primary,
+	s.visibility, s.public_precision, s.is_primary, s.attributes,
 	ST_Y(l.geom::geometry)::double precision AS latitude, ST_X(l.geom::geometry)::double precision AS longitude
 FROM openfaithmap.religion_sites s
 JOIN openfaithmap.religion_site_types st ON st.id = s.site_type_id
@@ -68,7 +68,7 @@ RETURNING id;
 
 -- name: GetSiteRow :one
 SELECT s.id, s.org_unit_id, s.location_id, s.site_type_id, st.code AS site_type_code, st.name AS site_type_name,
-	s.visibility, s.public_precision, s.is_primary,
+	s.visibility, s.public_precision, s.is_primary, s.attributes,
 	ST_Y(l.geom::geometry)::double precision AS latitude, ST_X(l.geom::geometry)::double precision AS longitude
 FROM openfaithmap.religion_sites s
 JOIN openfaithmap.religion_site_types st ON st.id = s.site_type_id

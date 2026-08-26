@@ -12,6 +12,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -197,11 +198,23 @@ func (r *Repository) ListOrgKinds(ctx context.Context) ([]OrgKind, error) {
 	return out, nil
 }
 
-func toSite(id, orgUnitID, locationID, siteTypeID, siteTypeCode, siteTypeName, visibility, publicPrecision string, isPrimary bool, latitude, longitude float64) domain.Site {
+// attributesFromJSON unmarshals a religion_sites.attributes column into its Go shape; an empty
+// document degrades to the zero-value SiteAttributes (every criterion unset) rather than erroring —
+// matches the column's own `NOT NULL DEFAULT '{}'`.
+func attributesFromJSON(raw json.RawMessage) domain.SiteAttributes {
+	var a domain.SiteAttributes
+	if len(raw) == 0 {
+		return a
+	}
+	_ = json.Unmarshal(raw, &a)
+	return a
+}
+
+func toSite(id, orgUnitID, locationID, siteTypeID, siteTypeCode, siteTypeName, visibility, publicPrecision string, isPrimary bool, attributes json.RawMessage, latitude, longitude float64) domain.Site {
 	return domain.Site{
 		ID: id, OrgUnitID: orgUnitID, LocationID: locationID, SiteTypeID: siteTypeID, SiteTypeCode: siteTypeCode,
 		SiteTypeName: siteTypeName, Visibility: visibility, PublicPrecision: publicPrecision, IsPrimary: isPrimary,
-		Latitude: latitude, Longitude: longitude,
+		Attributes: attributesFromJSON(attributes), Latitude: latitude, Longitude: longitude,
 	}
 }
 
@@ -212,7 +225,7 @@ func (r *Repository) ListSitesByUnit(ctx context.Context, unitID string) ([]doma
 	}
 	out := make([]domain.Site, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toSite(row.ID, row.OrgUnitID, row.LocationID, row.SiteTypeID, row.SiteTypeCode, row.SiteTypeName, row.Visibility, row.PublicPrecision, row.IsPrimary, row.Latitude, row.Longitude))
+		out = append(out, toSite(row.ID, row.OrgUnitID, row.LocationID, row.SiteTypeID, row.SiteTypeCode, row.SiteTypeName, row.Visibility, row.PublicPrecision, row.IsPrimary, row.Attributes, row.Latitude, row.Longitude))
 	}
 	return out, nil
 }
@@ -233,24 +246,61 @@ func (r *Repository) InsertSite(ctx context.Context, in CreateSiteInput) (domain
 	if err != nil {
 		return domain.Site{}, err
 	}
-	return toSite(row.ID, row.OrgUnitID, row.LocationID, row.SiteTypeID, row.SiteTypeCode, row.SiteTypeName, row.Visibility, row.PublicPrecision, row.IsPrimary, row.Latitude, row.Longitude), nil
+	return toSite(row.ID, row.OrgUnitID, row.LocationID, row.SiteTypeID, row.SiteTypeCode, row.SiteTypeName, row.Visibility, row.PublicPrecision, row.IsPrimary, row.Attributes, row.Latitude, row.Longitude), nil
 }
 
 // ---------------------------------------------------------------- discovery search
 
+// siteCols/siteFrom back SearchSites only (M13.0 extended them with the public-projection
+// enrichment: congregation name, address components, primary tradition tag, and aggregated
+// service-schedule language/day — GetSiteRow/ListSitesByUnit stay on their own, unenriched sqlc
+// query text in queries/religion.sql, since those authenticated-owner paths already know their own
+// unit's name/address and have no discovery-card use for it).
 const siteCols = `s.id, s.org_unit_id, s.location_id, s.site_type_id, st.code, st.name,
-	s.visibility, s.public_precision, s.is_primary,
-	ST_Y(l.geom::geometry)::double precision, ST_X(l.geom::geometry)::double precision`
+	s.visibility, s.public_precision, s.is_primary, s.attributes,
+	ST_Y(l.geom::geometry)::double precision, ST_X(l.geom::geometry)::double precision,
+	u.name, COALESCE(l.locality,''), COALESCE(l.admin_area_1,''), COALESCE(l.admin_area_2,''),
+	COALESCE(l.street,''), COALESCE(l.house_number,''), COALESCE(l.postal_code,''),
+	prim.taxon_id, prim.taxon_code, prim.taxon_name,
+	COALESCE(svc.languages, '{}'), COALESCE(svc.days, '{}')`
 
 const siteFrom = `FROM openfaithmap.religion_sites s
 	JOIN openfaithmap.religion_site_types st ON st.id = s.site_type_id
-	JOIN openfaithmap.location_locations l ON l.id = s.location_id`
+	JOIN openfaithmap.location_locations l ON l.id = s.location_id
+	JOIN openfaithmap.directory_units u ON u.id = s.org_unit_id
+	LEFT JOIN LATERAL (
+		SELECT oc.taxon_id, t.code AS taxon_code, t.name AS taxon_name
+		FROM openfaithmap.religion_org_classifications oc
+		JOIN openfaithmap.religion_taxa t ON t.id = oc.taxon_id
+		WHERE oc.unit_id = s.org_unit_id AND oc.deleted_at IS NULL
+		ORDER BY oc.is_primary DESC, t.code
+		LIMIT 1
+	) prim ON true
+	LEFT JOIN LATERAL (
+		SELECT array_agg(DISTINCT sch.language) FILTER (WHERE sch.language IS NOT NULL) AS languages,
+			array_agg(DISTINCT sch.day_of_week) FILTER (WHERE sch.day_of_week IS NOT NULL) AS days
+		FROM openfaithmap.religion_service_schedules sch
+		WHERE sch.site_id = s.id AND sch.deleted_at IS NULL
+	) svc ON true`
 
 func scanSite(row pgx.Row) (domain.Site, error) {
 	var s domain.Site
+	var attributes json.RawMessage
+	var days []int16
 	err := row.Scan(&s.ID, &s.OrgUnitID, &s.LocationID, &s.SiteTypeID, &s.SiteTypeCode, &s.SiteTypeName,
-		&s.Visibility, &s.PublicPrecision, &s.IsPrimary, &s.Latitude, &s.Longitude)
-	return s, err
+		&s.Visibility, &s.PublicPrecision, &s.IsPrimary, &attributes, &s.Latitude, &s.Longitude,
+		&s.Name, &s.Locality, &s.AdminArea1, &s.AdminArea2, &s.Street, &s.HouseNumber, &s.PostalCode,
+		&s.TraditionTaxonID, &s.TraditionTaxonCode, &s.TraditionTaxonName,
+		&s.ServiceLanguages, &days)
+	if err != nil {
+		return domain.Site{}, err
+	}
+	s.Attributes = attributesFromJSON(attributes)
+	s.ServiceDays = make([]int, len(days))
+	for i, d := range days {
+		s.ServiceDays[i] = int(d)
+	}
+	return s, nil
 }
 
 // snappedGeom is the position-oracle fix (docs/architecture/decisions.md's D-InProcessAuthz
@@ -297,6 +347,14 @@ func (r *Repository) SearchSites(ctx context.Context, q domain.DiscoveryQuery) (
 		env := "ST_MakeEnvelope(" + add(*q.MinLng) + "::double precision," + add(*q.MinLat) + "::double precision," +
 			add(*q.MaxLng) + "::double precision," + add(*q.MaxLat) + "::double precision,4326)::geography"
 		conds = append(conds, "ST_Intersects("+snappedGeom+", "+env+")")
+	case q.UnitID != nil:
+		// A unit-scoped lookup (M13.0's single-site detail-page fetch) has no spatial ordering to
+		// fall back on — prefer the unit's primary site, matching ListSitesByUnit's own tiebreak.
+		orderBy = "s.is_primary DESC, s.id"
+	}
+
+	if q.UnitID != nil {
+		conds = append(conds, "s.org_unit_id = "+add(*q.UnitID))
 	}
 
 	if q.Religion != "" {

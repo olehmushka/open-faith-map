@@ -163,11 +163,12 @@ func (s *Service) CreateSite(ctx context.Context, in adapters.CreateSiteInput) (
 	return adapters.NewRepository(s.pool).InsertSite(ctx, in)
 }
 
-// SearchSites runs the public discovery search and coarsens each hit's coordinate per its own
-// publish precision (religiondomain.Coarsen) — the adapter-level snappedGeom fix keeps a `hidden`
-// site out of the result set (and every other site's predicate off the exact geometry) in the first
-// place; this coarsens the RETURNED coordinate on top of that, matching upstream's own behaviour for
-// the non-hidden precisions.
+// SearchSites runs the public discovery search and coarsens each hit's coordinate and address text
+// per its own publish precision (religiondomain.Coarsen/CoarsenAddress, D-DiscoveryAddressPrecision)
+// — the adapter-level snappedGeom fix keeps a `hidden` site out of the result set (and every other
+// site's predicate off the exact geometry) in the first place; this coarsens the RETURNED coordinate
+// and address on top of that. Name and Attributes pass through unfiltered — neither is gated by
+// precision (see DiscoverySite's own doc comment for why).
 func (s *Service) SearchSites(ctx context.Context, q religiondomain.DiscoveryQuery) ([]religiondomain.DiscoverySite, error) {
 	sites, err := adapters.NewRepository(s.pool).SearchSites(ctx, q)
 	if err != nil {
@@ -179,9 +180,16 @@ func (s *Service) SearchSites(ctx context.Context, q religiondomain.DiscoveryQue
 			ID: site.ID, OrgUnitID: site.OrgUnitID, SiteTypeID: site.SiteTypeID,
 			SiteTypeCode: site.SiteTypeCode, SiteTypeName: site.SiteTypeName,
 			PublicPrecision: site.PublicPrecision, IsPrimary: site.IsPrimary,
+			Name: site.Name, Attributes: site.Attributes,
+			TraditionTaxonID: site.TraditionTaxonID, TraditionTaxonCode: site.TraditionTaxonCode,
+			TraditionTaxonName: site.TraditionTaxonName,
+			ServiceLanguages:   site.ServiceLanguages, ServiceDays: site.ServiceDays,
 		}
 		if lat, lng, ok := religiondomain.Coarsen(site.Latitude, site.Longitude, site.PublicPrecision); ok {
 			hit.Latitude, hit.Longitude = &lat, &lng
+		}
+		if line, ok := religiondomain.CoarsenAddress(site.Locality, site.AdminArea1, site.AdminArea2, site.Street, site.HouseNumber, site.PostalCode, site.PublicPrecision); ok {
+			hit.Address = &line
 		}
 		out = append(out, hit)
 	}

@@ -306,6 +306,15 @@ func isBypassPath(method, path string) bool {
 	if strings.HasPrefix(path, "/core/v1/public") {
 		return true
 	}
+	// M13.0's GetSite carries a path parameter (/discovery/v1/sites/{unitId}), so it can't be an
+	// anonymousRoutes exact-match entry the way /discovery/v1/search is — a prefix is safe here
+	// (unlike a blanket /discovery/v1/ prefix would be) since it's distinct from the sibling
+	// DiscoveryService's own /discovery/v1/refresh, the one authenticated endpoint sharing the base
+	// path this module's own anonymousRoute doc comment already flags as the reason a base-path
+	// prefix bypass can't be used for this pair of services.
+	if method == http.MethodGet && strings.HasPrefix(path, "/discovery/v1/sites/") {
+		return true
+	}
 	for _, r := range anonymousRoutes {
 		if r.method == method && r.path == path {
 			return true

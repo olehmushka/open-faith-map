@@ -8,6 +8,32 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+type Accessibility struct {
+	StepFreeEntrance           bool `json:"stepFreeEntrance"`
+	AccessibleRestroom         bool `json:"accessibleRestroom"`
+	HearingLoop                bool `json:"hearingLoop"`
+	SignLanguageInterpretation bool `json:"signLanguageInterpretation"`
+	AccessibleParking          bool `json:"accessibleParking"`
+	WheelchairSeating          bool `json:"wheelchairSeating"`
+	BrailleOrLargePrint        bool `json:"brailleOrLargePrint"`
+}
+
+func (o Accessibility) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Accessibility) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type DiscoverySite struct {
 	Id string `json:"id"`
 	// The religion_sites RID this row projects (opaque value).
@@ -16,12 +42,19 @@ type DiscoverySite struct {
 	// Set once the congregation has published a site (content module) — nullable.
 	ContentSiteId *string `json:"contentSiteId,omitempty"`
 	// Already public_precision-coarsened by internal/religion.Coarsen; null when precision is hidden.
-	Latitude         *float64 `json:"latitude,omitempty"`
-	Longitude        *float64 `json:"longitude,omitempty"`
-	TraditionTaxonId *string  `json:"traditionTaxonId,omitempty"`
-	ServiceLanguages []string `json:"serviceLanguages"`
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
+	// The congregation's display name (directory_units.name) — shown regardless of public_precision (D-DiscoveryAddressPrecision).
+	Name string `json:"name"`
+	// Precision-coarsened address text (D-DiscoveryAddressPrecision) — full street address at exact/street, locality-only at neighborhood/city, absent at hidden.
+	Address            *string  `json:"address,omitempty"`
+	TraditionTaxonId   *string  `json:"traditionTaxonId,omitempty"`
+	TraditionTaxonCode *string  `json:"traditionTaxonCode,omitempty"`
+	TraditionTaxonName *string  `json:"traditionTaxonName,omitempty"`
+	ServiceLanguages   []string `json:"serviceLanguages"`
 	// 0=Sunday .. 6=Saturday, matching religion_service_schedules.day_of_week.
 	ServiceDays []int             `json:"serviceDays"`
+	Attributes  SiteAttributes    `json:"attributes"`
 	RefreshedAt datetime.DateTime `json:"refreshedAt"`
 }
 
@@ -145,6 +178,27 @@ func (o SearchResult) MarshalYAML() (interface{}, error) {
 }
 
 func (o *SearchResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type SiteAttributes struct {
+	Accessibility Accessibility `json:"accessibility"`
+	OnlineStream  bool          `json:"onlineStream"`
+}
+
+func (o SiteAttributes) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SiteAttributes) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

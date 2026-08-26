@@ -164,10 +164,45 @@ func TestDiscoveryIntegration(t *testing.T) {
 		if r.CongregationUnitRID == unit.ID {
 			saw = true
 			cacheIDs = append(cacheIDs, r.ID)
+			// M13.0: the cache row now carries the congregation's real name straight from the
+			// live SearchSites hit, not just an opaque RID/coordinate.
+			if r.Name != "M10.6 Discovery Test Congregation" {
+				t.Errorf("CacheRow.Name = %q, want %q", r.Name, "M10.6 Discovery Test Congregation")
+			}
 		}
 	}
 	if !saw {
 		t.Fatalf("Search(lat/lng/radius) = %+v, want to include unit %s", results, unit.ID)
+	}
+
+	// --- M13.0: GetSiteByUnit answers the detail page's server-rendered fetch, always live, for
+	// exactly the unit asked about.
+	got, found, err := discoverySvc.GetSiteByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("GetSiteByUnit: %v", err)
+	}
+	if !found {
+		t.Fatalf("GetSiteByUnit(%s) found = false, want true", unit.ID)
+	}
+	if got.Name != "M10.6 Discovery Test Congregation" {
+		t.Errorf("GetSiteByUnit.Name = %q, want %q", got.Name, "M10.6 Discovery Test Congregation")
+	}
+	if got.ReligionSiteRID != site.ID {
+		t.Errorf("GetSiteByUnit.ReligionSiteRID = %q, want %q", got.ReligionSiteRID, site.ID)
+	}
+
+	if _, found, err := discoverySvc.GetSiteByUnit(ctx, seed.RootUnitID); err != nil {
+		t.Errorf("GetSiteByUnit(rootUnit, no site): %v", err)
+	} else if found {
+		t.Errorf("GetSiteByUnit(rootUnit, no site) found = true, want false")
+	}
+
+	// --- M13.0: a malformed unitId (org_unit_id is a real `uuid` column) must degrade to
+	// found=false, not a raw Postgres type-coercion error surfacing as a 500.
+	if _, found, err := discoverySvc.GetSiteByUnit(ctx, "not-a-uuid"); err != nil {
+		t.Errorf("GetSiteByUnit(malformed id): %v, want a clean found=false, no error", err)
+	} else if found {
+		t.Errorf("GetSiteByUnit(malformed id) found = true, want false")
 	}
 
 	// --- RefreshRegion (requireOperator) is denied for a non-operator, allowed for a real operator.

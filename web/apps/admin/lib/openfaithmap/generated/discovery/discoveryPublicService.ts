@@ -1,3 +1,4 @@
+import { IDiscoverySite } from "./discoverySite";
 import { ISearchResult } from "./searchResult";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -10,6 +11,11 @@ const __undefined: undefined = undefined;
  */
 export interface IDiscoveryPublicService {
     search(lat?: number | "NaN" | null, lng?: number | "NaN" | null, radiusM?: number | "NaN" | null, tradition?: string | null, language?: string | null, dayOfWeek?: number | null, query?: string | null): Promise<ISearchResult>;
+    /**
+     * A single congregation's discoverable site, always live (never the disposable search cache) — the per-congregation detail page's server-rendered fetch (M13.0). Throws SiteNotFound if the unit has no public, non-hidden site.
+     *
+     */
+    getSite(unitId: string): Promise<IDiscoverySite>;
 }
 
 export class DiscoveryPublicService implements IDiscoveryPublicService {
@@ -34,6 +40,27 @@ export class DiscoveryPublicService implements IDiscoveryPublicService {
                 "query": query,
             },
             __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * A single congregation's discoverable site, always live (never the disposable search cache) — the per-congregation detail page's server-rendered fetch (M13.0). Throws SiteNotFound if the unit has no public, non-hidden site.
+     *
+     */
+    public getSite(unitId: string): Promise<IDiscoverySite> {
+        return this.bridge.call<IDiscoverySite>(
+            "DiscoveryPublicService",
+            "getSite",
+            "GET",
+            "/discovery/v1/sites/{unitId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                unitId,
+            ],
             __undefined,
             __undefined
         );

@@ -20,6 +20,7 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/discovery/domain"
 	religionapplication "github.com/olehmushka/open-faith-map/internal/religion/application"
 	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
+	"github.com/palantir/pkg/uuid"
 )
 
 // operatorPermission mirrors registration's IsOperator (M2.3) and content's content.manage — the
@@ -70,6 +71,30 @@ func (s *Service) Search(ctx context.Context, q domain.SearchQuery) ([]domain.Ca
 	return s.refreshFromLive(ctx, q)
 }
 
+// GetSiteByUnit answers the detail page's server-rendered fetch (M13.0's getSite endpoint) — always
+// live, never cache: a direct link/refresh/crawler hit needs the current, correctly precision-
+// coarsened record for exactly one congregation, not whatever radius search last happened to cache.
+// Returns found=false if the unit has no public, non-hidden site (a private/unlisted/hidden site,
+// or no site at all, are indistinguishable to an anonymous caller by design) — including when
+// unitID isn't even a well-formed RID: org_unit_id is a real `uuid` column, so a malformed path
+// parameter would otherwise reach Postgres and come back as a raw type-coercion error (500) rather
+// than the same "nothing here" a syntactically valid but nonexistent id already gets (404).
+func (s *Service) GetSiteByUnit(ctx context.Context, unitID string) (domain.CacheRow, bool, error) {
+	if _, err := uuid.ParseUUID(unitID); err != nil {
+		return domain.CacheRow{}, false, nil
+	}
+	sites, err := s.religion.SearchSites(ctx, religiondomain.DiscoveryQuery{UnitID: &unitID, Limit: 1})
+	if err != nil {
+		return domain.CacheRow{}, false, err
+	}
+	if len(sites) == 0 || sites[0].Latitude == nil || sites[0].Longitude == nil {
+		return domain.CacheRow{}, false, nil
+	}
+	row := cacheRowFromDiscoverySite(sites[0])
+	s.enrichContentSite(ctx, &row)
+	return row, true, nil
+}
+
 func (s *Service) refreshFromLive(ctx context.Context, q domain.SearchQuery) ([]domain.CacheRow, error) {
 	sites, err := s.religion.SearchSites(ctx, religiondomain.DiscoveryQuery{
 		Lat: q.Lat, Lng: q.Lng, RadiusM: q.RadiusM,
@@ -88,12 +113,7 @@ func (s *Service) refreshFromLive(ctx context.Context, q domain.SearchQuery) ([]
 		if site.Latitude == nil || site.Longitude == nil {
 			continue // hidden sites are already excluded by SearchSites; defensive, not expected
 		}
-		row := domain.CacheRow{
-			ReligionSiteRID:     site.ID,
-			CongregationUnitRID: site.OrgUnitID,
-			Latitude:            site.Latitude,
-			Longitude:           site.Longitude,
-		}
+		row := cacheRowFromDiscoverySite(site)
 		s.enrichContentSite(ctx, &row)
 		persisted, err := s.store.UpsertRow(ctx, row)
 		if err != nil {
@@ -102,6 +122,26 @@ func (s *Service) refreshFromLive(ctx context.Context, q domain.SearchQuery) ([]
 		rows = append(rows, persisted)
 	}
 	return rows, nil
+}
+
+// cacheRowFromDiscoverySite projects a live religion.DiscoverySite hit onto the cache's own shape
+// (M13.0) — every field CacheRow carries now comes straight from this one SearchSites call, closing
+// the pre-existing gap where a cached/live row left tradition/language/day nil regardless of path.
+func cacheRowFromDiscoverySite(site religiondomain.DiscoverySite) domain.CacheRow {
+	return domain.CacheRow{
+		ReligionSiteRID:     site.ID,
+		CongregationUnitRID: site.OrgUnitID,
+		Latitude:            site.Latitude,
+		Longitude:           site.Longitude,
+		Name:                site.Name,
+		Address:             site.Address,
+		TraditionTaxonID:    site.TraditionTaxonID,
+		TraditionTaxonCode:  site.TraditionTaxonCode,
+		TraditionTaxonName:  site.TraditionTaxonName,
+		ServiceLanguages:    site.ServiceLanguages,
+		ServiceDays:         site.ServiceDays,
+		Attributes:          site.Attributes,
+	}
 }
 
 func (s *Service) enrichContentSite(ctx context.Context, row *domain.CacheRow) {
@@ -129,12 +169,7 @@ func (s *Service) RefreshRegion(ctx context.Context, region domain.RefreshRegion
 		if site.Latitude == nil || site.Longitude == nil {
 			continue
 		}
-		row := domain.CacheRow{
-			ReligionSiteRID:     site.ID,
-			CongregationUnitRID: site.OrgUnitID,
-			Latitude:            site.Latitude,
-			Longitude:           site.Longitude,
-		}
+		row := cacheRowFromDiscoverySite(site)
 		s.enrichContentSite(ctx, &row)
 		if _, err := s.store.UpsertRow(ctx, row); err != nil {
 			return 0, err

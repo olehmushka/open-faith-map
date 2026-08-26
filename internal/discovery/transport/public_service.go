@@ -11,6 +11,7 @@ import (
 	gendiscovery "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/discovery"
 	"github.com/olehmushka/open-faith-map/internal/discovery/application"
 	"github.com/olehmushka/open-faith-map/internal/discovery/domain"
+	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
 	"github.com/palantir/pkg/datetime"
 )
 
@@ -42,12 +43,41 @@ func (s *PublicService) Search(ctx context.Context, latArg *float64, lngArg *flo
 	return gendiscovery.SearchResult{Sites: toAPISites(rows)}, nil
 }
 
+// GetSite answers the per-congregation detail page's server-rendered fetch — always live (see
+// application.Service.GetSiteByUnit's own doc for why), throwing SiteNotFound rather than a bare
+// 404 so the generated TS client can distinguish "no discoverable site" from a transport error.
+func (s *PublicService) GetSite(ctx context.Context, unitIdArg string) (gendiscovery.DiscoverySite, error) {
+	row, found, err := s.appService.GetSiteByUnit(ctx, unitIdArg)
+	if err != nil {
+		return gendiscovery.DiscoverySite{}, err
+	}
+	if !found {
+		return gendiscovery.DiscoverySite{}, gendiscovery.NewSiteNotFound()
+	}
+	return toAPISite(row), nil
+}
+
 func toAPISites(rows []domain.CacheRow) []gendiscovery.DiscoverySite {
 	out := make([]gendiscovery.DiscoverySite, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, toAPISite(r))
 	}
 	return out
+}
+
+func toAPIAttributes(a religiondomain.SiteAttributes) gendiscovery.SiteAttributes {
+	return gendiscovery.SiteAttributes{
+		Accessibility: gendiscovery.Accessibility{
+			StepFreeEntrance:           a.Accessibility.StepFreeEntrance,
+			AccessibleRestroom:         a.Accessibility.AccessibleRestroom,
+			HearingLoop:                a.Accessibility.HearingLoop,
+			SignLanguageInterpretation: a.Accessibility.SignLanguageInterpretation,
+			AccessibleParking:          a.Accessibility.AccessibleParking,
+			WheelchairSeating:          a.Accessibility.WheelchairSeating,
+			BrailleOrLargePrint:        a.Accessibility.BrailleOrLargePrint,
+		},
+		OnlineStream: a.OnlineStream,
+	}
 }
 
 func toAPISite(r domain.CacheRow) gendiscovery.DiscoverySite {
@@ -66,9 +96,14 @@ func toAPISite(r domain.CacheRow) gendiscovery.DiscoverySite {
 		ContentSiteId:       r.ContentSiteID,
 		Latitude:            r.Latitude,
 		Longitude:           r.Longitude,
+		Name:                r.Name,
+		Address:             r.Address,
 		TraditionTaxonId:    r.TraditionTaxonID,
+		TraditionTaxonCode:  r.TraditionTaxonCode,
+		TraditionTaxonName:  r.TraditionTaxonName,
 		ServiceLanguages:    languages,
 		ServiceDays:         days,
+		Attributes:          toAPIAttributes(r.Attributes),
 		RefreshedAt:         datetime.DateTime(r.RefreshedAt),
 	}
 }
