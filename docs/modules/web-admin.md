@@ -35,9 +35,19 @@ single-app `openfaithmap-web` used to before the split.
 - **Operator-approval console** — a registration operator reviews pending requests and
   approves/rejects them, performing the real go-oikumenea writes with their own token
   ([registration.md](registration.md)).
-- **Congregation-admin console** — site editor (block-based page builder), staff/clergy roster (thin
-  views over go-oikumenea's `person`/`membership`/`religion` data), vouching request UI,
-  report/appeal filing for an admin's own congregation.
+- **Congregation-admin console** — a real block-form site editor (M14, superseding the raw-JSON
+  textarea M3 shipped): a categorized block inserter, drag-and-drop plus keyboard-accessible
+  reorder (M14.5), a generic form derived from each block type's `json_schema`/`ui_schema` pair
+  (M14.4 — no JSON visible anywhere), inline validation, undo/redo, autosave into a draft revision
+  with an explicit Publish (M14.6/M14.8), a device-toggle preview reached on the tenant subdomain
+  (M14.7), a nav-menu editor and theme picker with live preview (M14.10/M14.12), and starter
+  patterns for new sites (M14.13). Staff/clergy roster stays a thin view over go-oikumenea's
+  `person`/`membership`/`religion` data. Vouching request UI, report/appeal filing for an admin's
+  own congregation.
+- **Messages** (M14.16, new) — an inbox for a congregation's anonymous contact-form submissions
+  (`content_form_submissions`), `content.manage`-gated per
+  [D-InAppInbox](../architecture/decisions.md#d-inappinbox--contact-submissions-stay-in-app-no-email-sent).
+  Submission text renders as plain text only, never rich text or a block.
 - **Moderator console** — report queue, action history, appeal decisions, guarantor management.
   Small audience (platform moderators only); gated by the `moderation.read`/`moderation.act` checks
   documented in [moderation.md](moderation.md).
@@ -107,4 +117,6 @@ single-app `openfaithmap-web` used to before the split.
   fully independent, no `web/packages/*`. Revisit only if config/UI-primitive duplication between
   them becomes a real cost.
 - **`admin.openfaithmap.org`-style dedicated subdomain** isn't provisioned yet — this app runs on a
-  plain host port (`3004`) in local dev, same as every other compose service.
+  plain host port (`3004`) in local dev, same as every other compose service. Distinct from M14.9's
+  per-congregation tenant subdomains ([web-facade.md](web-facade.md)), which are a different
+  concern (public-site hosting, not this app's own origin).

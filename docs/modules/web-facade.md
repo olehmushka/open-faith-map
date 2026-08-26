@@ -29,6 +29,22 @@ congregation-admin console, the registration wizard, the moderator console — l
 - **Public report filing** — anyone can file a moderation report or run the exclusion pre-check
   without logging in (see [moderation.md](moderation.md)) — these stay here, not in
   `openfaithmap-admin`, because they don't require a session either.
+- **Tenant subdomain routing (M14.9) — `[slug].<apex>` per congregation.** `middleware.ts`
+  resolves the `Host` header to a `content_sites.slug` and rewrites into an internal
+  `/_sites/[slug]/…` route tree, which renders `content_documents`/`content_blocks` on the
+  congregation's own subdomain instead of an apex-hosted `/congregations/[unitId]` route (301s
+  from the old path preserve indexed/shared URLs). The apex host keeps serving discovery, search,
+  and the registration entry point unchanged. **`/_sites/*` is unreachable directly from the apex
+  host — a hard 404** ([D-TenantSubdomains](../architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist)),
+  the boundary that keeps this one-app-plus-middleware shape (Phase 1) from collapsing the two host
+  shapes into one; a later Phase 2 can extract `/_sites` into its own deployment
+  (`openfaithmap-sites`) without this boundary changing. Nested page routes, navigation, and site
+  chrome are M14.10/M14.11 — see [content.md](content.md) for the underlying schema
+  (`content_site_nav_items`, site-level settings).
+  - **Preview (M14.7)** reaches a draft revision on this same tenant origin via a short-lived
+    signed token — never inside the admin origin — so untrusted congregation content rendering for
+    a higher-privileged viewer is cross-origin by construction, the WordPress-CVE lesson
+    D-TenantSubdomains and D-ContentRevisions both cite.
 
 ## Session & identity
 
@@ -81,8 +97,13 @@ can hold a credential. Anything that needs to know who's logged in belongs in
 
 ## Open seams
 
-- **Locale switching UX** for the public site (which locales are offered, how a visitor's
-  preference is detected) is not designed yet — content translation groups
-  ([content.md](content.md)) support it structurally; the UI decision is open.
+- **Locale switching UX** for the public site — **scheduled to M14.14** (`DS-OFM-7`, 2026-08-27).
+  Content translation groups ([content.md](content.md)) support it structurally; M14.14 adds a
+  visitor-facing picker offering only locales with a published variant, plus `hreflang` alternates.
 - **Mobile app / native client** is out of scope for the current milestone set entirely — the
   public site is responsive web only at MVP.
+- **`admin`/`www`/etc. reserved-slug enforcement lives in `internal/content`, not here** — worth
+  restating because `middleware.ts`'s `Host`-header resolution (M14.9) is the surface a client
+  would probe first; the actual rejection is server-side per
+  [D-TenantSubdomains](../architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist),
+  never a client-side check on this app alone.

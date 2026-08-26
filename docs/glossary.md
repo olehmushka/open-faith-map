@@ -38,7 +38,23 @@ conceptual page/post/event. Each document in a group has its own `locale`, edite
 public and menu-listed. Unlisted is public via direct URL but omitted from menus and sitemaps.
 
 **Site theme.** A small set of presentation choices (accent color, font pairing, header layout)
-a congregation picks for its site. Data, not code — never a per-tenant template fork.
+a congregation picks for its site. Data, not code — never a per-tenant template fork. As of M14.12
+a fixed, contrast-checked vocabulary, not free-form CSS or an arbitrary hex value — see
+[D-CuratedTheme](architecture/decisions.md).
+
+**Rich-text node.** The unit of inline formatting (a `text` run carrying `bold`/`italic`/`link`
+marks, or a `list`/`listItem`) inside a block's text fields, as of M14.2. Never an HTML string —
+there is no HTML parser or sanitizer anywhere in `content`'s pipeline, by design. See
+[D-RichTextNodes](architecture/decisions.md).
+
+**Revision.** A snapshot of one document's blocks, as of M14.6. A document has a **published**
+revision (what visitors see) and a **draft** revision (what an admin edits); editing never changes
+what's live until an explicit publish. See [D-ContentRevisions](architecture/decisions.md).
+
+**Pattern.** A pre-built starting layout (e.g. "Parish home page," "Service times") a congregation
+can insert into a new site, as of M14.13. **Unsynced**: inserting one copies its blocks into the
+document and detaches immediately — no ongoing link back to the source pattern. See
+[D-SitePatterns](architecture/decisions.md).
 
 ---
 
@@ -98,6 +114,17 @@ unchanged from go-oikumenea's `religion_sites.public_precision`
 (`exact`/`street`/`neighborhood`/`city`/`hidden`), coarsened app-side. This is the mechanism that
 protects congregations in hostile or persecuted-church contexts; OpenFaithMap never overrides it
 client-side.
+
+---
+
+## Web (routing/infrastructure vocabulary, introduced M14)
+
+**Tenant subdomain.** A congregation's public site served on its own hostname
+(`<slug>.<apex>`, e.g. `grace.openfaithmap.org`) rather than a path segment, as of M14.9. Resolved
+via `Host`-header routing in `openfaithmap-web`'s middleware; gives real same-origin isolation
+between congregations' sites. `content_sites.slug` becomes the hostname component, validated
+against a reserved-subdomain blocklist. See
+[D-TenantSubdomains](architecture/decisions.md) and [web-facade.md](modules/web-facade.md).
 
 ---
 
