@@ -751,6 +751,29 @@ services:
             type: string
             param-type: path
         returns: UnitRefPage
+      unitChildren:
+        http: GET /units/{unitId}/children
+        docs: >
+          One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time —
+          not the full subtree ancestors/descendants-style closure reads return). Capped at limit
+          (default/max 50), same shape as listUnits.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          limit:
+            type: optional<integer>
+            param-type: query
+        returns: UnitPage
+      rootUnit:
+        http: GET /root-unit
+        docs: >
+          The single root unit — M12.7's tree-view starting point. Deliberately not nested under
+          /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId}
+          wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the
+          POST tree in M12.1) — a top-level static resource with no {} segment, following
+          updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+        returns: Unit
       listTaxa:
         http: GET /taxa
         docs: Free-text search over code/name, capped at limit (default/max 50).

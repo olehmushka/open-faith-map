@@ -455,7 +455,15 @@
     "search": "Пошук",
     "noResults": "Нічого не знайдено.",
     "bulkArchiveHeading": "Масове архівування",
-    "archiveSelected": "Архівувати {count} обраних"
+    "archiveSelected": "Архівувати {count} обраних",
+    "browseHierarchy": "Переглянути ієрархію"
+  },
+  "SuperAdminUnitTreePage": {
+    "heading": "Ієрархія юнітів",
+    "loadError": "Не вдалося завантажити дочірні елементи.",
+    "expand": "Розгорнути {name}",
+    "collapse": "Згорнути {name}",
+    "truncatedHint": "Показано перші 50 — уточніть пошук, щоб побачити більше."
   },
   "SuperAdminUnitPage": {
     "detailsHeading": "Деталі",

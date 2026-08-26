@@ -70,6 +70,10 @@ type CoreServiceClient interface {
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
 	UnitAncestors(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitRefPage, error)
+	// One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time — not the full subtree ancestors/descendants-style closure reads return). Capped at limit (default/max 50), same shape as listUnits.
+	UnitChildren(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, limitArg *int) (UnitPage, error)
+	// The single root unit — M12.7's tree-view starting point. Deliberately not nested under /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId} wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the POST tree in M12.1) — a top-level static resource with no {} segment, following updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+	RootUnit(ctx context.Context, authHeader bearertoken.Token) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListTaxa(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (TaxonPage, error)
 	GetTaxon(ctx context.Context, authHeader bearertoken.Token, taxonIdArg string) (Taxon, error)
@@ -324,6 +328,45 @@ func (c *coreServiceClient) UnitAncestors(ctx context.Context, authHeader bearer
 	}
 	if returnVal == nil {
 		return *new(UnitRefPage), werror.ErrorWithContextParams(ctx, "unitAncestors response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) UnitChildren(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, limitArg *int) (UnitPage, error) {
+	var returnVal *UnitPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UnitChildren"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/units/%s/children", url.PathEscape(fmt.Sprint(unitIdArg))))
+	queryParams := make(url.Values)
+	if limitArg != nil {
+		queryParams.Set("limit", fmt.Sprint(*limitArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(UnitPage), werror.WrapWithContextParams(ctx, err, "unitChildren failed")
+	}
+	if returnVal == nil {
+		return *new(UnitPage), werror.ErrorWithContextParams(ctx, "unitChildren response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) RootUnit(ctx context.Context, authHeader bearertoken.Token) (Unit, error) {
+	var returnVal *Unit
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RootUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/root-unit"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(Unit), werror.WrapWithContextParams(ctx, err, "rootUnit failed")
+	}
+	if returnVal == nil {
+		return *new(Unit), werror.ErrorWithContextParams(ctx, "rootUnit response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -636,6 +679,10 @@ type CoreServiceClientWithAuth interface {
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, queryArg *string, limitArg *int) (UnitPage, error)
 	UnitAncestors(ctx context.Context, unitIdArg string) (UnitRefPage, error)
+	// One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time — not the full subtree ancestors/descendants-style closure reads return). Capped at limit (default/max 50), same shape as listUnits.
+	UnitChildren(ctx context.Context, unitIdArg string, limitArg *int) (UnitPage, error)
+	// The single root unit — M12.7's tree-view starting point. Deliberately not nested under /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId} wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the POST tree in M12.1) — a top-level static resource with no {} segment, following updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+	RootUnit(ctx context.Context) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListTaxa(ctx context.Context, queryArg *string, limitArg *int) (TaxonPage, error)
 	GetTaxon(ctx context.Context, taxonIdArg string) (Taxon, error)
@@ -723,6 +770,14 @@ func (c *coreServiceClientWithAuth) ListUnits(ctx context.Context, queryArg *str
 
 func (c *coreServiceClientWithAuth) UnitAncestors(ctx context.Context, unitIdArg string) (UnitRefPage, error) {
 	return c.client.UnitAncestors(ctx, c.authHeader, unitIdArg)
+}
+
+func (c *coreServiceClientWithAuth) UnitChildren(ctx context.Context, unitIdArg string, limitArg *int) (UnitPage, error) {
+	return c.client.UnitChildren(ctx, c.authHeader, unitIdArg, limitArg)
+}
+
+func (c *coreServiceClientWithAuth) RootUnit(ctx context.Context) (Unit, error) {
+	return c.client.RootUnit(ctx, c.authHeader)
 }
 
 func (c *coreServiceClientWithAuth) ListTaxa(ctx context.Context, queryArg *string, limitArg *int) (TaxonPage, error) {
@@ -900,6 +955,22 @@ func (c *coreServiceClientWithTokenProvider) UnitAncestors(ctx context.Context, 
 		return *new(UnitRefPage), err
 	}
 	return c.client.UnitAncestors(ctx, bearertoken.Token(token), unitIdArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) UnitChildren(ctx context.Context, unitIdArg string, limitArg *int) (UnitPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitPage), err
+	}
+	return c.client.UnitChildren(ctx, bearertoken.Token(token), unitIdArg, limitArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) RootUnit(ctx context.Context) (Unit, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Unit), err
+	}
+	return c.client.RootUnit(ctx, bearertoken.Token(token))
 }
 
 func (c *coreServiceClientWithTokenProvider) ListTaxa(ctx context.Context, queryArg *string, limitArg *int) (TaxonPage, error) {

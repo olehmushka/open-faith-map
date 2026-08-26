@@ -455,7 +455,15 @@
     "search": "Buscar",
     "noResults": "Nenhum resultado encontrado.",
     "bulkArchiveHeading": "Arquivar em lote",
-    "archiveSelected": "Arquivar {count} selecionadas"
+    "archiveSelected": "Arquivar {count} selecionadas",
+    "browseHierarchy": "Ver hierarquia"
+  },
+  "SuperAdminUnitTreePage": {
+    "heading": "Hierarquia de unidades",
+    "loadError": "Não foi possível carregar os filhos.",
+    "expand": "Expandir {name}",
+    "collapse": "Recolher {name}",
+    "truncatedHint": "Mostrando os primeiros 50 — refine a busca para mais."
   },
   "SuperAdminUnitPage": {
     "detailsHeading": "Detalhes",

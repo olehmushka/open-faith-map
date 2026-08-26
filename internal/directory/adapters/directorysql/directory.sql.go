@@ -579,6 +579,64 @@ func (q *Queries) ListAncestors(ctx context.Context, arg ListAncestorsParams) ([
 	return items, nil
 }
 
+const listChildren = `-- name: ListChildren :many
+SELECT u.id, u.code, u.name, u.level, u.state, u.metadata, u.created_at, u.updated_at
+FROM openfaithmap.directory_unit_edges e
+JOIN openfaithmap.directory_units u ON u.id = e.child_id AND u.deleted_at IS NULL
+WHERE e.graph_id = $1 AND e.parent_id = $2
+ORDER BY u.name
+LIMIT $3
+`
+
+type ListChildrenParams struct {
+	GraphID    string
+	UnitID     string
+	LimitCount int32
+}
+
+type ListChildrenRow struct {
+	ID        string
+	Code      pgtype.Text
+	Name      string
+	Level     pgtype.Int2
+	State     string
+	Metadata  json.RawMessage
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// One-hop direct children via the edge table (not the closure table — M12.7's admin hierarchy
+// tree loads one level at a time, so this deliberately doesn't reuse ListDescendants' depth>0
+// closure query, which returns the whole subtree).
+func (q *Queries) ListChildren(ctx context.Context, arg ListChildrenParams) ([]ListChildrenRow, error) {
+	rows, err := q.db.Query(ctx, listChildren, arg.GraphID, arg.UnitID, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListChildrenRow
+	for rows.Next() {
+		var i ListChildrenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Level,
+			&i.State,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDescendants = `-- name: ListDescendants :many
 SELECT u.id, COALESCE(u.code, '') AS code, u.name, c.depth
 FROM openfaithmap.directory_unit_closure c

@@ -455,7 +455,15 @@
     "search": "Search",
     "noResults": "No matches found.",
     "bulkArchiveHeading": "Bulk archive",
-    "archiveSelected": "Archive {count} selected"
+    "archiveSelected": "Archive {count} selected",
+    "browseHierarchy": "Browse hierarchy"
+  },
+  "SuperAdminUnitTreePage": {
+    "heading": "Unit hierarchy",
+    "loadError": "Couldn't load children.",
+    "expand": "Expand {name}",
+    "collapse": "Collapse {name}",
+    "truncatedHint": "Showing the first 50 — refine via search for more."
   },
   "SuperAdminUnitPage": {
     "detailsHeading": "Details",

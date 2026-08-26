@@ -49,6 +49,17 @@ SET deleted_at = now()
 WHERE id = sqlc.arg('id') AND deleted_at IS NULL
 RETURNING id, code, name, level, state, metadata, created_at, updated_at;
 
+-- name: ListChildren :many
+-- One-hop direct children via the edge table (not the closure table — M12.7's admin hierarchy
+-- tree loads one level at a time, so this deliberately doesn't reuse ListDescendants' depth>0
+-- closure query, which returns the whole subtree).
+SELECT u.id, u.code, u.name, u.level, u.state, u.metadata, u.created_at, u.updated_at
+FROM openfaithmap.directory_unit_edges e
+JOIN openfaithmap.directory_units u ON u.id = e.child_id AND u.deleted_at IS NULL
+WHERE e.graph_id = sqlc.arg('graph_id') AND e.parent_id = sqlc.arg('unit_id')
+ORDER BY u.name
+LIMIT sqlc.arg('limit_count');
+
 -- name: SearchUnits :many
 SELECT id, code, name, level, state, metadata, created_at, updated_at
 FROM openfaithmap.directory_units

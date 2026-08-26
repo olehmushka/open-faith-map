@@ -69,6 +69,16 @@ export interface ICoreService {
     /** Free-text search over code/name, capped at limit (default/max 50). */
     listUnits(query?: string | null, limit?: number | null): Promise<IUnitPage>;
     unitAncestors(unitId: string): Promise<IUnitRefPage>;
+    /**
+     * One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time — not the full subtree ancestors/descendants-style closure reads return). Capped at limit (default/max 50), same shape as listUnits.
+     *
+     */
+    unitChildren(unitId: string, limit?: number | null): Promise<IUnitPage>;
+    /**
+     * The single root unit — M12.7's tree-view starting point. Deliberately not nested under /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId} wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the POST tree in M12.1) — a top-level static resource with no {} segment, following updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+     *
+     */
+    rootUnit(): Promise<IUnit>;
     /** Free-text search over code/name, capped at limit (default/max 50). */
     listTaxa(query?: string | null, limit?: number | null): Promise<ITaxonPage>;
     getTaxon(taxonId: string): Promise<ITaxon>;
@@ -336,6 +346,48 @@ export class CoreService implements ICoreService {
             [
                 unitId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time — not the full subtree ancestors/descendants-style closure reads return). Capped at limit (default/max 50), same shape as listUnits.
+     *
+     */
+    public unitChildren(unitId: string, limit?: number | null): Promise<IUnitPage> {
+        return this.bridge.call<IUnitPage>(
+            "CoreService",
+            "unitChildren",
+            "GET",
+            "/core/v1/units/{unitId}/children",
+            __undefined,
+            __undefined,
+            {
+                "limit": limit,
+            },
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * The single root unit — M12.7's tree-view starting point. Deliberately not nested under /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId} wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the POST tree in M12.1) — a top-level static resource with no {} segment, following updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+     *
+     */
+    public rootUnit(): Promise<IUnit> {
+        return this.bridge.call<IUnit>(
+            "CoreService",
+            "rootUnit",
+            "GET",
+            "/core/v1/root-unit",
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
             __undefined,
             __undefined
         );

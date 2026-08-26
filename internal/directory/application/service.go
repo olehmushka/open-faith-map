@@ -257,6 +257,18 @@ func (s *Service) Ancestors(ctx context.Context, unitID, graphCode string) ([]do
 	return store.ListAncestors(ctx, g.ID, unitID)
 }
 
+// Children returns a bounded (default/max 50, same clamp as ListUnits) list of unitID's direct
+// children in graphCode (default "canonical") — one hop via the edge table, not the closure-table
+// subtree Descendants returns. M12.7's admin hierarchy tree loads one level at a time.
+func (s *Service) Children(ctx context.Context, unitID, graphCode string, limit int) ([]domain.Unit, error) {
+	store := adapters.NewRepository(s.pool)
+	g, err := store.GetGraphByCode(ctx, defaultGraph(graphCode))
+	if err != nil {
+		return nil, err
+	}
+	return store.ListChildren(ctx, g.ID, unitID, limit)
+}
+
 // Descendants returns a bounded (non-paginated — see adapters.Store.ListDescendants) list of
 // unitID's subtree in graphCode (default "canonical").
 func (s *Service) Descendants(ctx context.Context, unitID, graphCode string, limit int) ([]domain.UnitRef, error) {

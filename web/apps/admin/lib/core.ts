@@ -145,6 +145,17 @@ export async function unitAncestors(unitId: string): Promise<UnitRef[]> {
   return page.units;
 }
 
+/** M12.7 — one-hop direct children, capped at limit (default/max 50, same as listUnits). */
+export async function unitChildren(unitId: string, limit?: number): Promise<Unit[]> {
+  const page = await unwrap((await client()).core.unitChildren(unitId, limit));
+  return page.units;
+}
+
+/** M12.7 — the single root unit, the hierarchy tree's starting point. */
+export async function rootUnit(): Promise<Unit> {
+  return unwrap((await client()).core.rootUnit());
+}
+
 export async function listTaxa(query?: string, limit = 500): Promise<Taxon[]> {
   const page = await unwrap((await client()).core.listTaxa(query, limit));
   return page.taxa;

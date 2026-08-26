@@ -78,6 +78,10 @@ type CoreService interface {
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
 	UnitAncestors(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitRefPage, error)
+	// One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time — not the full subtree ancestors/descendants-style closure reads return). Capped at limit (default/max 50), same shape as listUnits.
+	UnitChildren(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, limitArg *int) (UnitPage, error)
+	// The single root unit — M12.7's tree-view starting point. Deliberately not nested under /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId} wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the POST tree in M12.1) — a top-level static resource with no {} segment, following updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+	RootUnit(ctx context.Context, authHeader bearertoken.Token) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListTaxa(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (TaxonPage, error)
 	GetTaxon(ctx context.Context, authHeader bearertoken.Token, taxonIdArg string) (Taxon, error)
@@ -151,6 +155,12 @@ func RegisterRoutesCoreService(router wrouter.Router, impl CoreService, routerPa
 	}
 	if err := resource.Get("UnitAncestors", "/core/v1/units/{unitId}/ancestors", httpserver.NewJSONHandler(handler.HandleUnitAncestors, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add unitAncestors route")
+	}
+	if err := resource.Get("UnitChildren", "/core/v1/units/{unitId}/children", httpserver.NewJSONHandler(handler.HandleUnitChildren, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add unitChildren route")
+	}
+	if err := resource.Get("RootUnit", "/core/v1/root-unit", httpserver.NewJSONHandler(handler.HandleRootUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add rootUnit route")
 	}
 	if err := resource.Get("ListTaxa", "/core/v1/taxa", httpserver.NewJSONHandler(handler.HandleListTaxa, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listTaxa route")
@@ -424,6 +434,48 @@ func (c *coreServiceHandler) HandleUnitAncestors(rw http.ResponseWriter, req *ht
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
 	}
 	respArg, err := c.impl.UnitAncestors(req.Context(), bearertoken.Token(authHeader), unitIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleUnitChildren(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	var limitArg *int
+	if limitArgStr := req.URL.Query().Get("limit"); limitArgStr != "" {
+		limitArgInternal, err := strconv.Atoi(limitArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"limit\" as integer")
+		}
+		limitArg = &limitArgInternal
+	}
+	respArg, err := c.impl.UnitChildren(req.Context(), bearertoken.Token(authHeader), unitIdArg, limitArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *coreServiceHandler) HandleRootUnit(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := c.impl.RootUnit(req.Context(), bearertoken.Token(authHeader))
 	if err != nil {
 		return err
 	}

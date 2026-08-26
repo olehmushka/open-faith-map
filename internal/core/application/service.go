@@ -128,6 +128,17 @@ func (s *Service) UnitAncestors(ctx context.Context, unitID string) ([]directory
 	return s.directory.Ancestors(ctx, unitID, directorydomain.CanonicalGraphCode)
 }
 
+// RootUnit is M12.7's tree-view starting point — a thin read over s.rootUnitID (already resolved at
+// boot via internal/platform/seed.Resolve, the same field ErrRootUnitProtected checks use), not a
+// new topology query.
+func (s *Service) RootUnit(ctx context.Context) (directorydomain.Unit, error) {
+	return s.directory.GetUnit(ctx, s.rootUnitID)
+}
+
+func (s *Service) UnitChildren(ctx context.Context, unitID string, limit int) ([]directorydomain.Unit, error) {
+	return s.directory.Children(ctx, unitID, directorydomain.CanonicalGraphCode, limit)
+}
+
 // ---------------------------------------------------------------- religion catalog (read-only, same
 // no-per-call-gate reasoning as units — register/page.tsx's own use of these needs to work for a
 // freshly-signed-in caller who holds no grant on anything yet)

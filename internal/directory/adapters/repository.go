@@ -336,6 +336,24 @@ func (r *Repository) ListDescendants(ctx context.Context, graphID, unitID string
 	return out, nil
 }
 
+// ListChildren returns unitID's direct children in graphID (one hop, via the edge table — not the
+// closure table ListAncestors/ListDescendants use), bounded by limit (default/max 50, same clamp as
+// SearchUnits). M12.7's admin hierarchy tree loads exactly one level at a time.
+func (r *Repository) ListChildren(ctx context.Context, graphID, unitID string, limit int) ([]domain.Unit, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 50
+	}
+	rows, err := r.q.ListChildren(ctx, directorysql.ListChildrenParams{GraphID: graphID, UnitID: unitID, LimitCount: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Unit, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.Unit{ID: row.ID, Code: fromNullableText(row.Code), Name: row.Name, Level: fromNullableInt2(row.Level), State: domain.State(row.State), Metadata: row.Metadata, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt})
+	}
+	return out, nil
+}
+
 // ---------------------------------------------------------------- move jobs (M12.2)
 
 func toMoveJob(row directorysql.OpenfaithmapDirectoryUnitMoveJob) domain.MoveJob {

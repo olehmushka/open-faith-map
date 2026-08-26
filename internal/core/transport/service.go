@@ -164,6 +164,26 @@ func (s *Service) UnitAncestors(ctx context.Context, _ bearertoken.Token, unitId
 	return gencore.UnitRefPage{Units: out}, nil
 }
 
+func (s *Service) UnitChildren(ctx context.Context, _ bearertoken.Token, unitIdArg string, limitArg *int) (gencore.UnitPage, error) {
+	units, err := s.app.UnitChildren(ctx, unitIdArg, derefInt(limitArg))
+	if err != nil {
+		return gencore.UnitPage{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	out := make([]gencore.Unit, len(units))
+	for i, u := range units {
+		out[i] = toAPIUnit(u)
+	}
+	return gencore.UnitPage{Units: out}, nil
+}
+
+func (s *Service) RootUnit(ctx context.Context, _ bearertoken.Token) (gencore.Unit, error) {
+	unit, err := s.app.RootUnit(ctx)
+	if err != nil {
+		return gencore.Unit{}, mapErr(err, errCtx{})
+	}
+	return toAPIUnit(unit), nil
+}
+
 func (s *Service) ListTaxa(ctx context.Context, _ bearertoken.Token, queryArg *string, limitArg *int) (gencore.TaxonPage, error) {
 	taxa, err := s.app.ListTaxa(ctx, derefStr(queryArg), derefInt(limitArg))
 	if err != nil {

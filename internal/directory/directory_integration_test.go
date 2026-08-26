@@ -101,6 +101,23 @@ func TestDirectoryClosureIntegration(t *testing.T) {
 		t.Errorf("Ancestors(grandchild) = %+v, want [child, root] nearest-first", ancestors)
 	}
 
+	// --- Children (M12.7): one hop only — root's children is [child], not [child, grandchild] the
+	// way a closure-table subtree read would return; a leaf has none.
+	rootChildren, err := svc.Children(ctx, root.ID, graphCode, 0)
+	if err != nil {
+		t.Fatalf("Children(root): %v", err)
+	}
+	if len(rootChildren) != 1 || rootChildren[0].ID != child.ID {
+		t.Fatalf("Children(root) = %+v, want exactly [child]", rootChildren)
+	}
+	grandchildChildren, err := svc.Children(ctx, grandchild.ID, graphCode, 0)
+	if err != nil {
+		t.Fatalf("Children(grandchild): %v", err)
+	}
+	if len(grandchildChildren) != 0 {
+		t.Errorf("Children(grandchild, a leaf) = %+v, want none", grandchildChildren)
+	}
+
 	// --- AddEdge that would close a cycle is rejected.
 	_, err = svc.AddEdge(ctx, root.ID, grandchild.ID, graphCode)
 	if err != domain.ErrEdgeCycle {
@@ -289,6 +306,15 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 		t.Errorf("DeleteUnit(parent with a child) error = %v, want ErrUnitHasChildren", err)
 	}
 
+	// --- Children (M12.7) sees the live child before delete.
+	beforeDelete, err := svc.Children(ctx, parent.ID, graphCode, 0)
+	if err != nil {
+		t.Fatalf("Children(parent) before delete: %v", err)
+	}
+	if len(beforeDelete) != 1 || beforeDelete[0].ID != child.ID {
+		t.Fatalf("Children(parent) before delete = %+v, want exactly [child]", beforeDelete)
+	}
+
 	// --- DeleteUnit on the childless leaf succeeds, and the deleted unit disappears from GetUnit
 	// (its deleted_at IS NULL filter) immediately — no separate "purge" step needed.
 	deleted, err := svc.DeleteUnit(ctx, child.ID)
@@ -300,6 +326,17 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 	}
 	if _, err := svc.GetUnit(ctx, child.ID); err != domain.ErrUnitNotFound {
 		t.Errorf("GetUnit(deleted child) error = %v, want ErrUnitNotFound", err)
+	}
+
+	// --- Children (M12.7) excludes the now-soft-deleted child — its edge is still in the table (no
+	// edge/closure cleanup on delete, per this module's own established design), so this proves the
+	// query's deleted_at IS NULL join, not just an absent edge.
+	afterDelete, err := svc.Children(ctx, parent.ID, graphCode, 0)
+	if err != nil {
+		t.Fatalf("Children(parent) after delete: %v", err)
+	}
+	if len(afterDelete) != 0 {
+		t.Errorf("Children(parent) after deleting its only child = %+v, want none", afterDelete)
 	}
 
 	// --- Deleting an already-deleted unit is not idempotent: it 0-rows and reports ErrUnitNotFound,
@@ -442,6 +479,75 @@ func TestUnitMoveIntegration(t *testing.T) {
 	}
 	if cyclicJob.Status != domain.MoveFailed || cyclicJob.Error == nil {
 		t.Fatalf("Move(child -> its own grandchild) = %+v, want Status=FAILED with a non-nil Error", cyclicJob)
+	}
+}
+
+// TestUnitChildrenCapIntegration proves M12.7's Children caps its result at 50 (same default/max
+// clamp as ListUnits/SearchUnits) even when a unit genuinely has more direct children than that —
+// the concrete guarantee behind the admin hierarchy tree only ever pulling one bounded hop, never an
+// unbounded fan-out.
+//
+//	DATABASE_URL="postgres://openfaithmap:dev@localhost:5432/postgres?sslmode=disable" \
+//	  go test ./internal/directory/... -run TestUnitChildrenCapIntegration -v
+func TestUnitChildrenCapIntegration(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set DATABASE_URL to run against a live Postgres instance")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	var unitIDs []string
+	graphID, graphCode := createTestGraph(t, ctx, pool)
+	t.Cleanup(func() {
+		bg := context.Background()
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_closure WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete closure rows: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_edges WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete edges: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_closure_status WHERE graph_id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete closure status: %v", err)
+		}
+		for _, id := range unitIDs {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_units WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete unit %s: %v", id, err)
+			}
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_graphs WHERE id = $1`, graphID); err != nil {
+			t.Errorf("cleanup: delete graph: %v", err)
+		}
+	})
+
+	svc := application.NewService(pool)
+
+	parent, err := svc.CreateUnit(ctx, domain.Unit{Name: "Fan-out parent"})
+	if err != nil {
+		t.Fatalf("CreateUnit(parent): %v", err)
+	}
+	unitIDs = append(unitIDs, parent.ID)
+
+	const childCount = 55
+	for i := 0; i < childCount; i++ {
+		c, err := svc.CreateUnitWithEdge(ctx, domain.Unit{Name: "Child"}, parent.ID, graphCode)
+		if err != nil {
+			t.Fatalf("CreateUnitWithEdge(child %d): %v", i, err)
+		}
+		unitIDs = append(unitIDs, c.ID)
+	}
+
+	children, err := svc.Children(ctx, parent.ID, graphCode, 0)
+	if err != nil {
+		t.Fatalf("Children(parent): %v", err)
+	}
+	if len(children) != 50 {
+		t.Errorf("Children(parent with %d real children) = %d entries, want the 50-cap to hold", childCount, len(children))
 	}
 }
 

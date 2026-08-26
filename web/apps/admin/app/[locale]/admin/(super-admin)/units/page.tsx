@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
 import { listUnits, setUnitState } from "@/lib/core";
-import { redirect } from "@/i18n/navigation";
+import { Link, redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +35,12 @@ export default async function SuperAdminUnitsPage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-      <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+        <Link href="/admin/units/tree" className="text-sm text-muted-foreground hover:underline">
+          {t("browseHierarchy")} →
+        </Link>
+      </div>
 
       <Card>
         <CardHeader>
