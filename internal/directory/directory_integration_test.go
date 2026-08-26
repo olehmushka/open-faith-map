@@ -17,6 +17,7 @@ package directory_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -462,6 +463,17 @@ func TestUnitMoveIntegration(t *testing.T) {
 	}
 	if secondJob.ID == job.ID {
 		t.Errorf("second Move reused the first job's id (%s) — want a new row, not a resume of a terminal one", job.ID)
+	}
+
+	// --- Move(child, parentA -> parentA) — already at that parent (found via browser verification,
+	// 2026-08-26) — is rejected upfront with a Go error, never started as a job: add-before-remove
+	// can't represent this with only one edge to begin with (adding the "new" edge no-ops since it
+	// already exists, and removing the "old" edge deletes that same edge, orphaning the unit).
+	if _, err := svc.Move(ctx, graphCode, child.ID, parentA.ID, "test-mover"); !errors.Is(err, domain.ErrUnitAlreadyAtParent) {
+		t.Fatalf("Move(child, already at parentA) = %v, want ErrUnitAlreadyAtParent", err)
+	}
+	if ancestors, err := svc.Ancestors(ctx, child.ID, graphCode); err != nil || len(ancestors) != 1 || ancestors[0].ID != parentA.ID {
+		t.Fatalf("Ancestors(child) after rejected same-parent move = %+v, %v, want unchanged [parentA] — must not be orphaned", ancestors, err)
 	}
 
 	// --- Move onto a unit's own descendant is rejected as a cycle, recorded as a FAILED job (not a Go

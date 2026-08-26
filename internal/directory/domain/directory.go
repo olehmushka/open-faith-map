@@ -33,6 +33,12 @@ var (
 	// parent than the one just requested — the caller must resolve it (retry with the same
 	// newParentUnitID to resume, or wait for it to fail out) before starting a move elsewhere (M12.2).
 	ErrUnitMoveConflict = errors.New("unit already has a live move job targeting a different parent")
+	// ErrUnitAlreadyAtParent: Move's newParentUnitID is already unitID's current parent — rejected
+	// upfront, never started as a job. The add-before-remove state machine cannot represent a
+	// same-parent move: with only one edge to begin with, "add the new edge" no-ops (it already
+	// exists) and "remove the old edge" deletes that same edge, orphaning the unit with zero parents
+	// (found in browser verification, 2026-08-26; M12.2).
+	ErrUnitAlreadyAtParent = errors.New("unit is already at the requested parent")
 )
 
 // State is a unit's lifecycle state.

@@ -309,6 +309,12 @@ func (s *Service) Move(ctx context.Context, graphCode, unitID, newParentUnitID, 
 		if err != nil {
 			return domain.MoveJob{}, fmt.Errorf("resolve current parent: %w", err)
 		}
+		// A same-parent move can't be represented by add-before-remove: with only one edge to begin
+		// with, adding the "new" edge no-ops (it already exists) and removing the "old" edge deletes
+		// that same edge, orphaning the unit. Reject it before ever starting a job.
+		if oldParentUnitID == newParentUnitID {
+			return domain.MoveJob{}, domain.ErrUnitAlreadyAtParent
+		}
 		created, err := store.CreateMoveJob(ctx, g.ID, unitID, oldParentUnitID, newParentUnitID, performedByPersonID)
 		if err != nil {
 			return domain.MoveJob{}, fmt.Errorf("createMoveJob: %w", err)

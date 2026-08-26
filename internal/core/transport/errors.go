@@ -55,6 +55,8 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewUnitHasNoCurrentParent(c.UnitID)
 	case errors.Is(err, directorydomain.ErrUnitMoveConflict):
 		return gencore.NewUnitMoveConflict(c.UnitID)
+	case errors.Is(err, directorydomain.ErrUnitAlreadyAtParent):
+		return gencore.NewUnitAlreadyAtParent(c.UnitID)
 	case errors.Is(err, directorydomain.ErrEdgeCycle):
 		return gencore.NewEdgeCycle(c.UnitID)
 	case errors.Is(err, religiondomain.ErrTaxonNotFound):

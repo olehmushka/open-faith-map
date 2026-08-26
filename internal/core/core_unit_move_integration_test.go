@@ -208,6 +208,19 @@ func TestMoveUnitIntegration(t *testing.T) {
 		t.Fatalf("GetUnitMoveStatus = %+v, want the same job (id %s)", status, job.ID)
 	}
 
+	// ---------------------------------------------------------------- a move targeting the unit's OWN
+	// current parent (found via browser verification, 2026-08-26) must be rejected upfront, not
+	// orphan the unit. child's current parent is now newParent (the move above just landed) — the
+	// add-before-remove state machine can't represent "move to the same parent" since there is only
+	// one edge to begin with: adding the "new" edge no-ops (already exists) and removing the "old"
+	// edge deletes that same edge, leaving zero parents. This must never reach that state machine.
+	if _, err := coreApp.MoveUnit(subtreeCtx, child.ID, newParent.ID, graphCode); !errorsIs(err, directorydomain.ErrUnitAlreadyAtParent) {
+		t.Errorf("MoveUnit(already at newParent) = %v, want ErrUnitAlreadyAtParent", err)
+	}
+	if ancestors, err := dir.Ancestors(ctx, child.ID, graphCode); err != nil || len(ancestors) != 2 || ancestors[0].ID != newParent.ID {
+		t.Fatalf("Ancestors(child) after rejected same-parent move = %+v, %v, want unchanged [newParent, jurisdiction] — must not be orphaned", ancestors, err)
+	}
+
 	// ---------------------------------------------------------------- the root unit refuses every
 	// move outright, same hard guard SetUnitState/DeleteUnit already use.
 	if _, err := coreApp.MoveUnit(subtreeCtx, seed.RootUnitID, newParent.ID, graphCode); !errorsIs(err, coreapplication.ErrRootUnitProtected) {

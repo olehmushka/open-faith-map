@@ -71,6 +71,7 @@ export * from "./taxon";
 export * from "./taxonNotFound";
 export * from "./taxonPage";
 export * from "./unit";
+export * from "./unitAlreadyAtParent";
 export * from "./unitDeleteEligibility";
 export * from "./unitGrantMustNotSpecifyGraph";
 export * from "./unitHasActiveRoleAssignments";

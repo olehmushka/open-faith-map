@@ -567,6 +567,17 @@ types:
         code: CONFLICT
         safe-args:
           unitId: string
+      UnitAlreadyAtParent:
+        docs: >
+          M12.2 (bug fix, found in browser verification 2026-08-26) — moveUnit's newParentUnitId is
+          already unitId's current parent, a no-op the add-before-remove state machine cannot
+          represent: with only one edge to begin with, adding the "new" edge is a no-op (it already
+          exists) and removing the "old" edge deletes that same edge, orphaning unitId with zero
+          parents. Rejected upfront instead of ever starting the job.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
       EdgeCycle:
         docs: M12.2 — moveUnit's newParentUnitId is unitId itself or already one of unitId's descendants in the graph.
         namespace: Core
