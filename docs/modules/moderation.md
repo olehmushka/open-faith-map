@@ -34,7 +34,7 @@ audit found were resolved into decisions; one remains real work.
 
 **Built (2026-08-10).** `internal/moderation` (domain/adapters/application/transport),
 `api/moderation.conjure.yml`, `migrations/0007_moderation.sql`, and a moderator console +
-public report form in `web/apps/{admin,web}` — see [milestones.md](../milestones.md#m5--moderation)
+public report form in `web/apps/{admin,web}` — see [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md#m5--moderation)
 for the stage-board detail. Not yet Verified: needs a green CI run on `main` at the merge commit and
 a live two-real-token proof (a non-moderator refused, a `platform-moderator`-granted caller allowed).
 

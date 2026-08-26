@@ -112,8 +112,12 @@ const (
 // here, on the error path — collapsing what was 19 repeated call sites in the pre-M10.5.5 flat
 // function.
 func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *identitymiddleware.Authenticator) (func(), error) {
-	databaseURL := requireEnv("DATABASE_URL")
-	poolCfg, err := pgxpool.ParseConfig(databaseURL)
+	install, _ := info.InstallConfig.(config.Install)
+	if install.DatabaseURL == "" {
+		return nil, werror.ErrorWithContextParams(ctx, "install config: database-url is required")
+	}
+
+	poolCfg, err := pgxpool.ParseConfig(install.DatabaseURL)
 	if err != nil {
 		return nil, werror.WrapWithContextParams(ctx, err, "parse postgres config")
 	}
@@ -133,7 +137,6 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *id
 		return nil, werror.WrapWithContextParams(ctx, err, "resolve seed IDs")
 	}
 
-	install, _ := info.InstallConfig.(config.Install)
 	deps := newDeps(pool, install, ids)
 	deps.Authenticator = authenticator
 
@@ -145,12 +148,4 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *id
 	}
 
 	return pool.Close, nil
-}
-
-func requireEnv(name string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		panic(fmt.Sprintf("missing required env var %s", name))
-	}
-	return v
 }

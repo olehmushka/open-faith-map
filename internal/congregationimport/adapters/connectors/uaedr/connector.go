@@ -114,7 +114,7 @@ func (c *Connector) Fetch(ctx context.Context, cursor *string) (batch []domain.R
 // the skip re-decode, since the pass walks the file from the beginning every time. So by the time
 // this call returns, seen already equals the correct new cumulative position (skip + however many
 // new elements this call actually processed) — the cursor returned must be seen alone, not
-// cursorOf(skip + seen). See docs/milestones.md's corrected M8 entry for the real double-counting
+// cursorOf(skip + seen). See docs/milestones-2026-08-07-2026-08-26.md's corrected M8 entry for the real double-counting
 // bug this used to have before go-uaedr's Reader existed as a separate package.
 func (c *Connector) fetchFile(ctx context.Context, cursor *string) (batch []domain.RawRecord, nextCursor *string, err error) {
 	skip := 0

@@ -41,7 +41,9 @@ Full detail — request paths, deployment topology, module boundaries — lives 
 
 ## Status
 
-The [stage board](docs/milestones.md#stage-board) is authoritative.
+The stage board is authoritative: [the active one](docs/milestones-2026-08-26-now.md#stage-board)
+for anything after 2026-08-26, [the closed record](docs/milestones-2026-08-07-2026-08-26.md#stage-board)
+for M0–M13.6 (all done).
 
 > **Corrected 2026-08-18.** This section previously described a go-oikumenea-dependent architecture
 > with M10 "decided but not started." M10 (D-OwnCore) is now built: the core it once depended on
@@ -60,7 +62,7 @@ Running today:
   `core` (the admin app's own session-gated + super-admin Conjure surface, D-SuperAdminFold). Seven
   Conjure contracts under `api/`, twenty Atlas migrations under `migrations/` (collapsed by domain
   from twenty-three at the 2026-08-19 migration-collapse session, then folded further at the
-  2026-08-25 pass — see docs/milestones.md), and generated server code in `internal/conjure/`.
+  2026-08-25 pass — see docs/milestones-2026-08-07-2026-08-26.md), and generated server code in `internal/conjure/`.
 - **Two Next.js apps** (D-AdminSurface): `web/apps/web` (anonymous, no session, ever) and
   `web/apps/admin` (the only surface that ever holds a credential — login, registration wizard,
   operator console, roster, moderation queue, import review, and the four instance-admin screens
@@ -73,7 +75,7 @@ Running today:
   jurisdiction-tree sync — plus a pluggable Nominatim geocoder.
 
 See [D-OwnCore](docs/architecture/decisions.md#d-owncore--openfaithmap-owns-its-core-go-oikumenea-is-removed)
-for the reasoning behind the absorption and the [stage board](docs/milestones.md#stage-board) for
+for the reasoning behind the absorption and the [stage board](docs/milestones-2026-08-07-2026-08-26.md#stage-board) for
 the full M10.x breakdown.
 
 ## Repository layout
@@ -144,7 +146,8 @@ app.
 
 To bring up the full stack — no sibling checkout, no service-account key, no
 `docker.io/olegamysk/*` pull (D-OwnCore's teardown, M10.8) — just a populated `.env`
-(copy `.env.example`):
+(copy `.env.example`) and a `var/conf/install.yml` (copy `var/conf/install.example.yml`;
+gitignored since it carries the Postgres connection string, U12):
 
 ```sh
 docker compose up --build

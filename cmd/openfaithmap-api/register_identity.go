@@ -27,6 +27,10 @@ import (
 // the boot-time first-admin seed. Registers no HTTP routes — identity has no Conjure surface until
 // M10.7.
 func registerIdentity(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
+	if deps.Install.GoogleOAuthClientID == "" {
+		return werror.ErrorWithContextParams(ctx, "install config: google-oauth-client-id is required")
+	}
+
 	identityStore := identityadapters.NewRepository(deps.Pool)
 	identitySvc := identityapplication.NewService(identityStore)
 	deps.IdentitySvc = identitySvc
@@ -34,7 +38,7 @@ func registerIdentity(ctx context.Context, info witchcraft.InitInfo, deps *Deps)
 	issuers := []identitymiddleware.IssuerConfig{
 		{
 			Issuer: "https://accounts.google.com", Type: identitymiddleware.IssuerOIDC,
-			Audiences: []string{requireEnv("GOOGLE_OAUTH_CLIENT_ID")},
+			Audiences: []string{deps.Install.GoogleOAuthClientID},
 		},
 	}
 	if devHMACKey := os.Getenv("DEV_ISSUER_HMAC_KEY"); devHMACKey != "" {

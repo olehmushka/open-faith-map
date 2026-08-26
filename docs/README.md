@@ -1,11 +1,12 @@
 # OpenFaithMap — architecture documentation
 
 > **Audience: Claude Code (and any future contributor).** These docs are the source of truth code is
-> held to. Part of the system is built and part is still design-only — the
-> [stage board](milestones.md#stage-board) is authoritative for which is which, and
-> [Status](#status) summarizes it. Every module doc is self-contained: read one without reading the
-> others. Treat [`architecture/decisions.md`](architecture/decisions.md) as binding, and follow the
-> feature pipeline in [`development-process.md`](development-process.md).
+> held to. Part of the system is built and part is still design-only — the stage board is
+> authoritative for which is which: [the active one](milestones-2026-08-26-now.md#stage-board) for
+> anything after 2026-08-26, [the closed record](milestones-2026-08-07-2026-08-26.md#stage-board)
+> for M0–M13.6. [Status](#status) summarizes it. Every module doc is self-contained: read one
+> without reading the others. Treat [`architecture/decisions.md`](architecture/decisions.md) as
+> binding, and follow the feature pipeline in [`development-process.md`](development-process.md).
 
 ## What OpenFaithMap is
 
@@ -81,11 +82,13 @@ search, and the audit trail.
    of it.
 8. The relevant [`modules/*.md`](modules/) for the work at hand.
 9. [`open-questions.md`](open-questions.md) — the live backlog for the next planning session.
-10. [`milestones.md`](milestones.md) — the implementation roadmap, sequenced M0…M7, and its
-    [stage board](milestones.md#stage-board), the scannable index of where each milestone sits.
-    It opens with the
-    [unresolved-unknowns index](milestones.md#unresolved-unknowns--read-this-before-building-anything)
-    — read that before starting any build work, whichever milestone you're on.
+10. [`milestones-2026-08-26-now.md`](milestones-2026-08-26-now.md) — the active implementation
+    roadmap and its [stage board](milestones-2026-08-26-now.md#stage-board), the scannable index of
+    where each current milestone sits. It opens with the
+    [unresolved-unknowns index](milestones-2026-08-26-now.md#unresolved-unknowns--read-this-before-building-anything)
+    — read that before starting any build work, whichever milestone you're on. M0–M13.6 (all done)
+    are closed history in
+    [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md).
 11. [`development-process.md`](development-process.md) — the feature pipeline (idea → decided →
     designed → backend → migrated → ui → verified), the runbook to advance a milestone, and how the
     stage board is kept honest. Read it before starting or reporting on any feature.
@@ -103,7 +106,7 @@ vouching). See [D-Facade](architecture/decisions.md) for the full rationale and
 
 ## Status
 
-The [stage board](milestones.md#stage-board) is authoritative; this is the summary.
+The [stage board](milestones-2026-08-07-2026-08-26.md#stage-board) is authoritative; this is the summary.
 
 > **Corrected 2026-08-17.** This section listed M3–M6 as "designed, not built" and told readers that
 > "find the code that does X" would have no answer for them. That was true around M2.2 and went
@@ -133,11 +136,13 @@ OpenFaithMap — content, discovery glue, moderation, vouching — are unchanged
 **Build order:** M0 → M1 → M2 → M2.3–M2.6 → M3 → M4 → M4.1 → M5 → M6 → M7 → M8 → M9 → **M10.1–M10.9**.
 
 > **Before building anything, read
-> [milestones.md's unresolved-unknowns index](milestones.md#unresolved-unknowns--read-this-before-building-anything).**
-> It lists every place this doc set says "we don't actually know" — three assumptions that must be
-> measured against a live go-oikumenea instance before the plans resting on them are trustworthy,
-> five deferred decisions, and five contradictions or orphans. Nothing is parked silently; if a
-> design has a hole, it is in that table.
+> [milestones-2026-08-26-now.md's unresolved-unknowns index](milestones-2026-08-26-now.md#unresolved-unknowns--read-this-before-building-anything).**
+> It's **empty as of 2026-08-26** — every item carried into it (two resolved back in
+> 2026-08-09/2026-08-10 but never struck until this split, plus one deferred decision and two
+> contradictions/orphans resolved the same day) has since been closed. Nothing is parked silently;
+> if a design has a hole, it will be in that table. (The closed
+> [milestones-2026-08-07-2026-08-26.md](milestones-2026-08-07-2026-08-26.md#unresolved-unknowns--read-this-before-building-anything)
+> keeps the full original table, including every item's resolution note.)
 
 Two habits this doc set has, worth knowing before reading further. First, a decision that turned
 out to be wrong is **corrected in place with its history intact**, not deleted — see D-BulkImport

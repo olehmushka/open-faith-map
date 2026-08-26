@@ -13,7 +13,7 @@ go-oikumenea's PDP, never a locally-cached role — reviews and approves or reje
 performs the real go-oikumenea writes with the **operator's own forwarded token**, never a
 service-principal on-behalf-of write (D-Facade, D-CoreDependency's no-on-behalf-of invariant).
 
-This is OpenFaithMap's **first real schema** — a correction to `milestones.md`'s original M2
+This is OpenFaithMap's **first real schema** — a correction to `milestones-2026-08-07-2026-08-26.md`'s original M2
 framing ("no dedicated schema of its own — writes go through go-oikumenea directly"), found while
 building it: go-oikumenea has no "draft org" or self-service org-creation concept a brand-new,
 ungranted user can invoke (see the authority-bootstrapping finding below), so a request needs
@@ -92,10 +92,10 @@ at a time.
 
 ## Known defects (audit 2026-08-09)
 
-**Fixed by [milestones.md](../milestones.md)'s M2.3, which also blocks M2's `Verified`.**
+**Fixed by [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s M2.3, which also blocks M2's `Verified`.**
 The module below is built and works on its happy path (proven by curl at M2). Three defects were
 found by reading it against this doc, none of which the happy-path proof would have surfaced. They
-are recorded here rather than only in `milestones.md` because this doc is what the next person
+are recorded here rather than only in `milestones-2026-08-07-2026-08-26.md` because this doc is what the next person
 reads before touching the module.
 
 **1 · The operator gate is untargeted, and leaks every submitter's PII.** ~~`application.IsOperator`
@@ -134,7 +134,7 @@ reject a duplicate on — a gap the original ticket text didn't account for.
 All three defects are now fixed in code. Live proof against the two-real-token acceptance criterion
 (a `congregation-admin`-only account sees only its own requests; a `registration-operator` account
 sees all) has not been run yet — that needs a real browser Google OAuth login, not something
-achievable headlessly. See `milestones.md`'s M2.3 "As implemented" note.
+achievable headlessly. See `milestones-2026-08-07-2026-08-26.md`'s M2.3 "As implemented" note.
 
 ## Dependencies
 
@@ -217,4 +217,4 @@ is why `scripts/bootstrap-registration-org` grants it to `registration-operator`
   `Religion.GetTaxon` through the caller's client, which works because a real person's token can
   read the taxonomy. There is no machine-callable path (M1.1 item 2), so any future non-interactive
   caller of this check — a scheduled re-validation, a bulk importer — has no mechanism today. See
-  [milestones.md](../milestones.md)'s M2.5.
+  [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s M2.5.

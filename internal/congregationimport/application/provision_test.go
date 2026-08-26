@@ -9,7 +9,7 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
 )
 
-// TestIsApprovable is a regression test for a real, live-caught bug (docs/milestones.md's M8
+// TestIsApprovable is a regression test for a real, live-caught bug (docs/milestones-2026-08-07-2026-08-26.md's M8
 // detail): the original precondition was a denylist that only excluded
 // REJECTED/REJECTED_EXCLUDED, so re-approving an already-PROVISIONED candidate fell through and
 // created a real duplicate go-oikumenea unit. isApprovable must be an allowlist — every status not

@@ -3,7 +3,7 @@
 These are OpenFaithMap's binding decisions. If code and a decision recorded here disagree, **the
 code is wrong** — change the decision (with rationale) before diverging in code, exactly as
 go-oikumenea's own `decisions.md` governs that project. Each decision is a `D-<Name>` block;
-**decided-but-not-yet-built** is a normal state — see the [stage board](../milestones.md).
+**decided-but-not-yet-built** is a normal state — see the [stage board](../milestones-2026-08-07-2026-08-26.md).
 
 ## Decision index
 
@@ -64,7 +64,7 @@ next, then the rest of EU/LATAM/Africa/Asia.
 > islam, judaism, hinduism, and 12 more root religions alongside christianity — since the port was a
 > straight lift of upstream's curated reference data, not a scope-filtered one. This was a real,
 > unnoticed drift from this decision's own "Nicene-affirming Christian traditions" eligibility line,
-> caught and fixed in the same session as M10's migration-collapse pass (`docs/milestones.md`'s
+> caught and fixed in the same session as M10's migration-collapse pass (`docs/milestones-2026-08-07-2026-08-26.md`'s
 > M10.9 row): `migrations/0011_core_religion.sql` now seeds only `christianity`'s subtree, and the
 > two denominations that don't confess the Nicene Creed — LDS/Mormon and Jehovah's Witnesses — are
 > hard-deleted from the taxonomy, not just excluded at the application layer
@@ -188,7 +188,7 @@ go-oikumenea:
 - **Interactive (a visitor or congregation admin using the site).** OpenFaithMap's Next.js facade
   owns the browser session (httpOnly cookie via Auth.js v5, Google as the sole OIDC provider — no
   Keycloak, no shared realm; see M1's as-built note and M1.1 item 3 in
-  [milestones.md](../milestones.md)) and forwards the end user's Google ID token on every call to
+  [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)) and forwards the end user's Google ID token on every call to
   go-oikumenea — the console-bff pattern, reused verbatim (D-HeadlessTopology).
 - **Background (moderation sweeps, vouching-graph checks, exclusion-list sync).** OpenFaithMap's
   backend registers as a **service principal** via OAuth2 client-credentials against the same IdP
@@ -583,7 +583,7 @@ directory of churches — instead of one submission at a time through `openfaith
 registration wizard. It does this by **replaying registration's existing Conjure endpoints in a
 loop** ([registration.md](../modules/registration.md)'s `POST /requests` then
 `POST /requests/{id}/approve`), reading rows from a structured input file (schema decided when
-M2.2 is actually built — see [milestones.md](../milestones.md)) and calling exactly the API
+M2.2 is actually built — see [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)) and calling exactly the API
 surface the wizard and the operator-approval console already call. It introduces **no new write
 path and no new credential**: `hermenea` holds no token of its own — an operator hands it their
 own real forwarded token for the duration of one run, the same "operator-owned" trust level
@@ -784,7 +784,7 @@ it would be configuration with nothing to protect.
 `Organization`/`Unit` (`scripts/bootstrap-registration-org`), not beneath a denomination's or a
 diocese's own unit. There is no intermediate jurisdiction layer in the `canonical` graph today.
 This is accepted as-built for M2–M4, and **must be replaced with real jurisdiction units before M5**
-— sequenced as [milestones.md](../milestones.md)'s **M4.1**. Recorded here retroactively: the
+— sequenced as [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s **M4.1**. Recorded here retroactively: the
 flattening was a build-time simplification noted in
 [registration.md](../modules/registration.md)'s open seams, never a decision block.
 
@@ -821,7 +821,7 @@ report to the small platform-wide roster.
 **Consequences.**
 - M4.1 must migrate **existing** congregations, not just accept new ones under jurisdictions:
   re-parenting a live `Unit` in the `canonical` graph, preserving each congregation admin's
-  `unit`-scoped grant. Scoped in [milestones.md](../milestones.md).
+  `unit`-scoped grant. Scoped in [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md).
 - Until M4.1 lands, `moderation.md` keeps `jurisdiction` in its design but marks it blocked; M5
   cannot pass its `designed` gate while that dependency is open.
 - D-Exclusions' org-level backstop stays documented as **designed-not-real** until per-body root
@@ -851,10 +851,10 @@ Orthodox jurisdiction is often multiple and parallel even within one country and
 tradition (more than one patriarchate/synod claiming overlapping territory), and many Protestant
 congregations are independent with no jurisdiction at all. A single "true" hierarchy encoded in
 schema would be doctrinally false for exactly the traditions where it matters most. This is a
-product decision, not an oversight — see this doc's own instruction (milestones.md's M4.1) that the
+product decision, not an oversight — see this doc's own instruction (milestones-2026-08-07-2026-08-26.md's M4.1) that the
 jurisdiction model "needs its own D-block... not just a schema."
 
-**Exit criterion revised.** milestones.md's M4.1 originally read "a congregation's ancestor walk
+**Exit criterion revised.** milestones-2026-08-07-2026-08-26.md's M4.1 originally read "a congregation's ancestor walk
 returns at least one unit between it and the root" for *every* congregation — written before this
 decision settled jurisdiction as genuinely optional. Revised to: **at least one unit when a
 jurisdiction applies**. A congregation with no real denomination-specific jurisdiction remains a
@@ -947,7 +947,7 @@ invariant). Two roles keep that separable.
   implementation.** It used to ask `MyCapabilities()` for a bare permission string with **no target
   unit**, so it answered "does this caller hold `religionorg.manage` *anywhere*" — and
   `congregation-admin` holds `religionorg.manage` on its own unit, so every approved congregation
-  admin read as an operator. [milestones.md](../milestones.md)'s **M2.3** fixed this: `IsOperator`
+  admin read as an operator. [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s **M2.3** fixed this: `IsOperator`
   now calls go-oikumenea's `Authorize` (`POST /authorize`), scoped to the shared root unit — the
   mechanism `MyCapabilities()` couldn't provide (it's deliberately flat/self-only), and one that
   itself required granting `registration-operator` an `assignment.read` reach it didn't have, since
@@ -1142,7 +1142,7 @@ It's request-level telemetry, which the metrics counter above already covers.
   `api/moderation.conjure.yml`'s own comments as a deliberate, permanent exception to this repo's
   Conjure-error-body convention — not a gap to "eventually fix."
 - `modules/moderation.md`'s Open Seam "Rate limiting on anonymous report filing is parked at M7"
-  is resolved by this block; `DS-OFM-9` (open-questions.md) and `milestones.md`'s `U10` are both
+  is resolved by this block; `DS-OFM-9` (open-questions.md) and `milestones-2026-08-07-2026-08-26.md`'s `U10` are both
   closed out.
 - Read-side rate limiting (content/discovery public GETs) and multi-replica coordination remain
   open — recorded in `hardening.md`'s Open Seams, not silently dropped.
@@ -1381,7 +1381,7 @@ question for the upstream issue to raise, not decided unilaterally here.
 > etc.) set to match the real request, succeeds** — proving the policy/grant model itself is correct
 > and the gap is in how go-oikumenea's Go server propagates those GUCs to the specific connection/
 > transaction `tenant.Service.CreateUnitWithEdge`'s internal `InsertEdge` call runs on, not in the
-> RLS design. Filed as a new go-oikumenea issue (see `docs/milestones.md`'s M8 detail for the link) —
+> RLS design. Filed as a new go-oikumenea issue (see `docs/milestones-2026-08-07-2026-08-26.md`'s M8 detail for the link) —
 > this one genuinely needs the repo owner's own server-side instrumentation to pin down, since it
 > could not be isolated further by black-box HTTP/SQL probing alone
 > ([go-oikumenea#41](https://github.com/olehmushka/go-oikumenea/issues/41)). `RunJurisdictionSync` is
@@ -1419,7 +1419,7 @@ question for the upstream issue to raise, not decided unilaterally here.
 sized around M8's own stated budget (~500MB–1GB RAM), running the existing `docker-compose.yml`
 stack unmodified as its base. This decision is **provider-agnostic on purpose** — the concrete VM
 provider is explicitly undecided and deferred; nothing below depends on which one gets picked.
-Scoped as [milestones.md](../milestones.md)'s **M9**, a design-only milestone (no VM is provisioned,
+Scoped as [milestones-2026-08-07-2026-08-26.md](../milestones-2026-08-07-2026-08-26.md)'s **M9**, a design-only milestone (no VM is provisioned,
 no compose override is written yet — that is M9's own inherited build-phase work, done once a
 provider exists).
 
@@ -1480,7 +1480,7 @@ to (`open-questions.md`'s `DS-OFM-14`). Re-deciding them here would duplicate, n
 entries.
 
 **Consequences.**
-- `open-questions.md`'s `DS-OFM-14` and `milestones.md`'s `U13` are resolved by this block — both
+- `open-questions.md`'s `DS-OFM-14` and `milestones-2026-08-07-2026-08-26.md`'s `U13` are resolved by this block — both
   said the reason per-surface OAuth clients and WireGuard had no owner was that no deployment
   milestone existed; M9 is that milestone.
 - A follow-up build milestone (numbering TBD — likely `M9.1` once a provider is picked) does the
@@ -1590,7 +1590,7 @@ services nothing calls — most of the maintenance burden, with none of the simp
 > Neither correction changes the decision. "Conjure transport only where a client actually needs
 > it" is still the reason the port is tractable; the number attached to it was just too small. The
 > cutover remains straight-line on one branch — an informed bet at 12–15k LOC, mitigated by the
-> pre-cutover baselines and the authorization matrix in `milestones.md`'s M10.9, not by optimism.
+> pre-cutover baselines and the authorization matrix in `milestones-2026-08-07-2026-08-26.md`'s M10.9, not by optimism.
 
 ---
 
@@ -2024,7 +2024,7 @@ Owning the tables makes the values ours to choose, so we choose them once.
 
 **Why not** keep scripts and have them emit deterministic RIDs: rejected — that is a seed migration
 with extra steps, and it keeps the "did you remember to run the four scripts, in order" failure mode
-that `docs/milestones.md` records as a recurring source of broken local stacks.
+that `docs/milestones-2026-08-07-2026-08-26.md` records as a recurring source of broken local stacks.
 
 **Consequences.**
 - Three required environment variables disappear. `docker compose up --build` becomes genuinely
@@ -2422,7 +2422,7 @@ registration-approval flow itself), a deliberate tightening, not an oversight.
 > **Addendum (M12.2 build, 2026-08-24): U14 resolved — real `scope="subtree"` grant provisioning,
 > not a scope-workaround.** This decision's own dual-parent check is only meaningful for a non-root
 > move if a caller can actually be granted `unit.edges.manage` reach over an arbitrary jurisdiction
-> ancestor — U14 (`docs/milestones.md`) flagged that, before this build, `scope="subtree"` was fully
+> ancestor — U14 (`docs/milestones-2026-08-07-2026-08-26.md`) flagged that, before this build, `scope="subtree"` was fully
 > implemented in the PDP (`internal/authz/domain/pdp.go`'s `Decide` already cascaded it through the
 > closure table) but **unprovisionable through any surface**: `InsertRoleAssignment`/
 > `BulkInsertRoleAssignments` (`internal/authz/adapters/store.go`) hardcoded `scope='unit'`, and the

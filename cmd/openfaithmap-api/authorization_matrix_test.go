@@ -54,7 +54,7 @@ type matrixSubjects struct {
 	// M11.3: every non-anonymous subject also carries its own identity_sessions row id, sent as
 	// X-Session-Id alongside the bearer — the per-request session check (D-SessionTracking) applies
 	// to dev-issued tokens the same as real Google ID tokens, no issuer-based carve-out (confirmed
-	// decision, docs/milestones.md's M11.3 row).
+	// decision, docs/milestones-2026-08-07-2026-08-26.md's M11.3 row).
 	congAdminOwnSession   string
 	congAdminOtherSession string
 	operatorSession       string
@@ -547,7 +547,7 @@ func insecureClient() *http.Client {
 
 // doReq issues one HTTP request as (token, sessionID) — both empty for anonymous. sessionID is
 // sent as X-Session-Id (M11.3, D-SessionTracking): every authenticated request now needs one,
-// dev-issued tokens included (confirmed decision, docs/milestones.md's M11.3 row) — see
+// dev-issued tokens included (confirmed decision, docs/milestones-2026-08-07-2026-08-26.md's M11.3 row) — see
 // seedSubjects, which inserts a real identity_sessions row per minted subject.
 func doReq(t *testing.T, client *http.Client, base, method, path, token, sessionID string, body any) (int, []byte) {
 	t.Helper()

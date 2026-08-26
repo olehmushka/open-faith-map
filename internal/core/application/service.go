@@ -193,7 +193,7 @@ func (s *Service) CreateChildOrg(ctx context.Context, parentUnitID, code, name s
 
 var (
 	// ErrRootUnitProtected: SetUnitState/DeleteUnit refuse the root unit outright, regardless of the
-	// caller's grant — milestones.md's M12.1 row calls for a hard guard, not merely a stricter
+	// caller's grant — milestones-2026-08-07-2026-08-26.md's M12.1 row calls for a hard guard, not merely a stricter
 	// permission check.
 	ErrRootUnitProtected = errors.New("the root unit cannot be modified")
 	// ErrUnitHasActiveRoleAssignments: DeleteUnit's orphan-protection against a unit that still has a
@@ -223,7 +223,7 @@ func (s *Service) CreateUnit(ctx context.Context, parentUnitID, code, name strin
 	return created, nil
 }
 
-// UpdateUnit rewrites unitID's name/code/level (M12.1). No root-unit guard — milestones.md's M12.1
+// UpdateUnit rewrites unitID's name/code/level (M12.1). No root-unit guard — milestones-2026-08-07-2026-08-26.md's M12.1
 // row only calls for one on state changes and delete, not a rename.
 func (s *Service) UpdateUnit(ctx context.Context, unitID, name string, code *string, level *int16) (directorydomain.Unit, error) {
 	if err := s.authz.Require(ctx, authzdomain.PermUnitLifecycle, unitID); err != nil {
@@ -699,7 +699,7 @@ func (s *Service) PreviewMergePersons(ctx context.Context, survivorID, duplicate
 // MergePersons reassigns duplicateID's active role-assignment and membership rows onto survivorID,
 // moves or disables duplicateID's account (see internal/identity/adapters.MergePersonIdentity),
 // soft-deletes the duplicate person, and audit-logs the merge — M11.8, "the riskiest of the nine"
-// (docs/milestones.md). Everything below runs inside one transaction spanning identity's, authz's,
+// (docs/milestones-2026-08-07-2026-08-26.md). Everything below runs inside one transaction spanning identity's, authz's,
 // and membership's own tables: each module's store still only touches its own tables by name (no
 // cross-module SQL), but this method is the one place that binds all three to the same pgx.Tx and
 // commits once — the same shape internal/identity/bootstrap.Run already established for the

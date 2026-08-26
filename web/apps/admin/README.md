@@ -4,7 +4,7 @@ The `openfaithmap-admin` service described in
 [`docs/modules/web-admin.md`](../../../docs/modules/web-admin.md): the **only** app in OpenFaithMap
 that ever holds a session — registration wizard, operator-approval console, congregation-admin
 console, moderator console (D-AdminSurface). Split out of the original single `web/` app at M2.1;
-see `docs/milestones.md`'s M2.1 entry for the history.
+see `docs/milestones-2026-08-07-2026-08-26.md`'s M2.1 entry for the history.
 
 **Session layer** (`auth.ts`, `app/api/auth/[...nextauth]/route.ts`, `lib/oikumenea.ts`): Auth.js v5
 with Google as the sole OIDC provider (no Keycloak — see
