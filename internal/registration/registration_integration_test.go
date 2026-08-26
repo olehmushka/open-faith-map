@@ -55,7 +55,7 @@ func TestRegistrationIntegration(t *testing.T) {
 	pdp := authzdomain.NewPDP(closurePort)
 	authzStore := authzadapters.NewRepository(pool)
 	authzSvc := authz.NewService(pdp, authzStore, pool)
-	religionSvc := religionapplication.NewService(pool, directorySvc)
+	religionSvc := religionapplication.NewService(pool, directorySvc, authzSvc)
 	locationSvc := locationapplication.NewService(pool)
 	membershipSvc := membershipapplication.NewService(pool)
 	regStore := regadapters.NewRepository(pool)

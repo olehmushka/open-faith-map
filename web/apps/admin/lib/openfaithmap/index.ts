@@ -21,6 +21,7 @@ import { CorePublicService, CoreService, CoreSuperAdminService } from "./generat
 import { DiscoveryPublicService, DiscoveryService } from "./generated/discovery";
 import { ModerationPublicService, ModerationService } from "./generated/moderation";
 import { RegistrationService } from "./generated/registration";
+import { ReligionService } from "./generated/religion";
 import { VouchingService } from "./generated/vouching";
 
 export * from "./generated";
@@ -46,6 +47,7 @@ export interface OpenFaithMapClientOptions {
 /** Every generated service, bound to one shared HTTP bridge. Returned by {@link createOpenFaithMapClient}. */
 export interface OpenFaithMapClient {
   readonly registration: RegistrationService;
+  readonly religion: ReligionService;
   readonly content: ContentService;
   readonly contentPublic: ContentPublicService;
   readonly discovery: DiscoveryService;
@@ -85,6 +87,7 @@ export function createOpenFaithMapClient(
 
   return {
     registration: new RegistrationService(bridge),
+    religion: new ReligionService(bridge),
     content: new ContentService(bridge),
     contentPublic: new ContentPublicService(bridge),
     discovery: new DiscoveryService(bridge),

@@ -2,16 +2,25 @@ import { getTranslations } from "next-intl/server";
 import { FileText } from "lucide-react";
 
 import { createSite, getSite, updateSiteTheme } from "@/lib/content";
+import { getSite as getReligionSite, isSiteNotFound, updateSiteAttributes } from "@/lib/religion";
 import { Link, redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { ACCESSIBILITY_KEYS, AttributesForm } from "./attributes-form";
+
 // Site creation + theme editor for one congregation's unit (M3, docs/modules/content.md). getSite
 // is a public-read call (ContentPublicService) — no site yet is a normal, expected state (a
 // congregation admin's first visit), not an error, hence .catch(() => null) rather than surfacing
 // Content:SiteNotFound.
+//
+// M13.2 adds a second, unrelated "site" concept to this same page: religion_sites (physical/online
+// presence — accessibility criteria, online-stream flag), fetched via the religion module's own
+// site.manage-gated getSite(unitId). A unit with no religion_sites row yet (never approved through
+// registration, or created via the super-admin unit tree) is a normal state too — the Accessibility
+// card is simply omitted, not an error.
 export default async function SitePage({
   params,
 }: {
@@ -20,6 +29,44 @@ export default async function SitePage({
   const { locale, unitId } = await params;
   const t = await getTranslations("SitePage");
   const site = await getSite(unitId).catch(() => null);
+  const religionSite = await getReligionSite(unitId).catch((e) => {
+    if (isSiteNotFound(e)) return null;
+    throw e;
+  });
+
+  async function saveAttributes(formData: FormData) {
+    "use server";
+    await updateSiteAttributes(unitId, {
+      accessibility: {
+        stepFreeEntrance: formData.get("stepFreeEntrance") === "on",
+        accessibleRestroom: formData.get("accessibleRestroom") === "on",
+        hearingLoop: formData.get("hearingLoop") === "on",
+        signLanguageInterpretation: formData.get("signLanguageInterpretation") === "on",
+        accessibleParking: formData.get("accessibleParking") === "on",
+        wheelchairSeating: formData.get("wheelchairSeating") === "on",
+        brailleOrLargePrint: formData.get("brailleOrLargePrint") === "on",
+      },
+      onlineStream: formData.get("onlineStream") === "on",
+    });
+    redirect({ href: `/admin/sites/${unitId}`, locale });
+  }
+
+  const attributesCard = religionSite ? (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("attributesHeading")}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <AttributesForm
+          initial={religionSite.attributes}
+          labels={Object.fromEntries(ACCESSIBILITY_KEYS.map((key) => [key, t(`${key}Label`)])) as Record<(typeof ACCESSIBILITY_KEYS)[number], string>}
+          onlineStreamLabel={t("onlineStreamLabel")}
+          submitLabel={t("saveAttributes")}
+          action={saveAttributes}
+        />
+      </CardContent>
+    </Card>
+  ) : null;
 
   if (!site) {
     async function create(formData: FormData) {
@@ -58,6 +105,7 @@ export default async function SitePage({
             </form>
           </CardContent>
         </Card>
+        {attributesCard}
       </div>
     );
   }
@@ -110,6 +158,7 @@ export default async function SitePage({
           </form>
         </CardContent>
       </Card>
+      {attributesCard}
     </div>
   );
 }

@@ -31,12 +31,13 @@ type UnitCreator interface {
 }
 
 type Service struct {
-	pool  *pgxpool.Pool
-	units UnitCreator
+	pool     *pgxpool.Pool
+	units    UnitCreator
+	authzSvc *authz.Service
 }
 
-func NewService(pool *pgxpool.Pool, units UnitCreator) *Service {
-	return &Service{pool: pool, units: units}
+func NewService(pool *pgxpool.Pool, units UnitCreator, authzSvc *authz.Service) *Service {
+	return &Service{pool: pool, units: units, authzSvc: authzSvc}
 }
 
 func (s *Service) inTx(ctx context.Context, fn func(store *adapters.Repository) error) error {
@@ -161,6 +162,48 @@ func (s *Service) ListSitesByUnit(ctx context.Context, unitID string) ([]religio
 // CreateSite attaches a site to unitID at locationID.
 func (s *Service) CreateSite(ctx context.Context, in adapters.CreateSiteInput) (religiondomain.Site, error) {
 	return adapters.NewRepository(s.pool).InsertSite(ctx, in)
+}
+
+// GetSiteByUnit answers ReligionService.getSite (M13.2) — the owner's own private view of their
+// unit's primary site, exact/uncoarsened (unlike discovery's public-precision-filtered
+// DiscoverySite). site.manage-gated, target-scoped to unitID. Resolves via ListSitesByUnit's own
+// is_primary DESC, id ordering — the same "prefer primary" convention SearchSites(UnitID) already
+// establishes — returning ErrSiteNotFound if the unit has no site at all (site creation stays
+// registration's/congregationimport's own job, never this method's).
+func (s *Service) GetSiteByUnit(ctx context.Context, unitID string) (religiondomain.Site, error) {
+	if err := s.requireManage(ctx, unitID); err != nil {
+		return religiondomain.Site{}, err
+	}
+	sites, err := s.ListSitesByUnit(ctx, unitID)
+	if err != nil {
+		return religiondomain.Site{}, err
+	}
+	if len(sites) == 0 {
+		return religiondomain.Site{}, religiondomain.ErrSiteNotFound
+	}
+	return sites[0], nil
+}
+
+// UpdateSiteAttributes overwrites unitID's primary site's attributes wholesale (M13.2) — the admin
+// form always submits the complete SiteAttributes shape, never a partial patch. site.manage-gated,
+// target-scoped to unitID; returns ErrSiteNotFound if the unit has no site yet.
+func (s *Service) UpdateSiteAttributes(ctx context.Context, unitID string, attrs religiondomain.SiteAttributes) (religiondomain.Site, error) {
+	if err := s.requireManage(ctx, unitID); err != nil {
+		return religiondomain.Site{}, err
+	}
+	sites, err := s.ListSitesByUnit(ctx, unitID)
+	if err != nil {
+		return religiondomain.Site{}, err
+	}
+	if len(sites) == 0 {
+		return religiondomain.Site{}, religiondomain.ErrSiteNotFound
+	}
+	site := sites[0]
+	if err := adapters.NewRepository(s.pool).UpdateSiteAttributesByID(ctx, site.ID, attrs); err != nil {
+		return religiondomain.Site{}, err
+	}
+	site.Attributes = attrs
+	return site, nil
 }
 
 // SearchSites runs the public discovery search and coarsens each hit's coordinate and address text

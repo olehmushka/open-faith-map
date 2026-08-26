@@ -42,7 +42,7 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	authzStore := authzadapters.NewRepository(deps.Pool)
 	authzSvc := authz.NewService(pdp, authzStore, deps.Pool)
 
-	religionSvc := religionapplication.NewService(deps.Pool, directorySvc)
+	religionSvc := religionapplication.NewService(deps.Pool, directorySvc, authzSvc)
 	locationSvc := locationapplication.NewService(deps.Pool)
 	membershipSvc := membershipapplication.NewService(deps.Pool)
 	refdataSvc := refdataapplication.NewService(deps.Pool)

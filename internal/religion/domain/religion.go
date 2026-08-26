@@ -20,6 +20,15 @@ var (
 	ErrTaxonNotFound         = errors.New("religion: taxon not found")
 	ErrProfileNotFound       = errors.New("religion: org profile not found")
 	ErrChildCreationExcluded = errors.New("religion: parent excludes child creation")
+	// ErrSiteNotFound is GetSiteByUnit/UpdateSiteAttributes' (M13.2) not-found sentinel — the unit
+	// has no religion_sites row at all. Site creation stays registration's/congregationimport's own
+	// job (ensureSite); neither of these two methods ever creates one.
+	ErrSiteNotFound = errors.New("religion: site not found")
+	// ErrForbidden is requireManage's (application/authorize.go) denial sentinel, mirroring
+	// internal/content/domain's own — religion previously carried zero authorization logic (every
+	// write went through some caller's own application layer), but GetSiteByUnit/UpdateSiteAttributes
+	// (M13.2) are religion's first direct authenticated entrypoints of its own.
+	ErrForbidden = errors.New("religion: caller lacks site.manage on this unit")
 )
 
 // PolicyExcludesChildCreation is the policy-kind code that blocks creating child organizations

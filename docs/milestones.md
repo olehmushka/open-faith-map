@@ -134,7 +134,7 @@ Verified (admin-UI browser click-through and a green CI run at the merge commit 
 | M13 · Public discovery redesign | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Decided (2026-08-26).** A discovery pass (codebase audit of `web/apps/web`'s public map plus external research against comparable place-discovery UX — Airbnb, Zillow, Yelp, church-finder sites, NN/g guidance) found the current public discovery page is a single ~200-line component: a Leaflet map with a raw two-field text form (taxon *code*, ISO-639-3 *code* — no dropdown) whose marker popups show no congregation name or address at all. Root cause: `religion.DiscoverySite`, the domain type backing the public API, never carried a name or address field — even though both already exist in-process (`directory_units.name`, `location_locations`' structured address, both already joined into the same query for other purposes). Scoped jointly with the user across four rounds of questions into seven sub-milestones (M13.0–M13.6): component library — introduce shadcn/Radix into `web/apps/web` (matching `web/apps/admin`); distance — request browser geolocation with a fallback; new filters — a JSONB `attributes` column on `religion_sites` holding detailed (not single-flag) accessibility criteria plus an online-stream boolean; favoriting/save — explicitly out of scope for M13. See D-DiscoveryAddressPrecision (`architecture/decisions.md`) for the address/name precision-gating rule this milestone introduced. |
 | M13.0 · Backend: site enrichment (name, address, tags, attributes) | ✅ | ✅ | ✅ | ✅ | ➖ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** `internal/religion.DiscoverySite` gained `Name`, `Address` (precision-coarsened via new `CoarsenAddress`, D-DiscoveryAddressPrecision), `TraditionTaxonID/Code/Name`, `ServiceLanguages`/`ServiceDays`, and `Attributes` (new `religion_sites.attributes JSONB` column + GIN index, `SiteAttributes`'s accessibility-criteria/online-stream shape); `discovery.CacheRow` mirrors all of it, closing a real pre-existing bug where `refreshFromLive`/`RefreshRegion` left tradition/language/day nil even on a live (non-cached) fetch. New `DiscoveryPublicService.getSite(unitId)` (always live, never cache) for M13.4's detail page, gated into the identity middleware's anonymous-route allowlist via a new path-prefix bypass (`/discovery/v1/sites/`, since a path-parameterized route can't be the existing exact-match `anonymousRoutes` entries `/discovery/v1/search` uses). Found and fixed one real bug along the way: a malformed `unitId` hit `religion_sites.org_unit_id`'s `uuid` column directly and 500'd instead of 404ing — `GetSiteByUnit` now validates via `palantir/pkg/uuid.ParseUUID` first. Migration `0021_discovery_site_enrichment.sql`, expand-only, no backfill (cache is disposable per this module's own invariant). Proof: `go build`/`go vet`/`godelw verify`(fmt+lint+conjure-backcompat)/`go test ./...` clean; new integration coverage in `religion_integration_test.go` (name/address/tradition-tag/attributes round-trip through `SearchSites`, the new `UnitID` query filter) and `discovery_integration_test.go` (`CacheRow.Name` populated from a live search, `GetSiteByUnit` found/not-found/malformed-id paths) against real Postgres; new `TestCoarsenAddress` unit test; new `TestIsBypassPath` cases for the path-prefix bypass. `make sdk`/`sdk-verify` clean. Live-verified over the real `docker compose` network: `GET /discovery/v1/search` returns real `name`/`serviceLanguages`/`attributes` fields (confirmed both an unrefreshed pre-M13.0 cache row showing `name:""` and a freshly-searched row showing the real name, proving the enrichment path itself rather than a coincidence); `GET /discovery/v1/sites/{unitId}` returns `200` for a real site, a clean `404 SiteNotFound` for both a nonexistent-but-valid id and a malformed one (no more raw Postgres error), and correctly bypasses authentication (`401` before the fix, `404`/`200` after). |
 | M13.1 · Backend: filters (attributes containment, facets, tradition bug fix) | ✅ | ✅ | ✅ | ➖ | ➖ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** Fixed the pre-existing `tradition` filter bug: `SearchSites` now joins `religion_taxa` on `code` instead of binding the raw code string straight to the closure's `uuid` `ancestor_id` column, which previously matched nothing for any real code. Added `DiscoveryQuery.Accessibility`/`OnlineOnly`, translated to JSONB containment (`attributes @>`) against M13.0's GIN index — an unrecognized `accessibility` value throws a new `InvalidFilter` rather than silently matching zero sites. New `GET /discovery/v1/facets` endpoint (distinct tradition/language values actually present among public, non-hidden sites), always live, so the picker UI (M13.4) never offers a dead-end filter. No new migration (uses M13.0's existing `attributes`/GIN index). Cache-side filtering and bbox/pagination on `GET /search` stay explicitly out of scope. See M13.1's own build narrative below for proof details. |
-| M13.2 · Admin UI — edit site attributes | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Without this, `religion_sites.attributes` has no write path and stays permanently empty. New `UpdateSiteAttributes` endpoint (same target-scoped `content.manage`/registration-operator pattern as M2.3/`content.md`) plus an admin form (checkboxes per accessibility criterion, an online-stream toggle) in `web/apps/admin`. |
+| M13.2 · Admin UI — edit site attributes | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** `internal/religion` gained its first transport layer (`api/religion.conjure.yml`, `internal/religion/transport`): `ReligionService.getSite(unitId)`/`updateSiteAttributes(unitId, request)`, gated by a newly-activated `site.manage` permission (seeded since before M13, never checked until now) rather than a reuse of `content.manage`. New "Accessibility & streaming" card on `web/apps/admin`'s existing site-editor page, new shadcn `Checkbox`/`Switch` components paired with hidden native inputs (the installed Radix version's stable controls don't participate in `FormData` on their own). No new migration — writes into M13.0's existing `attributes` column. See M13.2's own build narrative below for proof details, including why the real browser click-through wasn't driven (Google-OAuth-only, no headless auth path in this dev setup). |
 | M13.3 · Frontend: component architecture + split-pane layout | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Replaces the monolithic `discovery-map.tsx` with a real component tree (shell/map/list/filter-bar), introduces shadcn/Radix into `web/apps/web`, hover-sync between list card and map pin, a "search this area" button replacing auto-refetch on pan, geolocation-driven distance/initial-center with a fallback, filter state promoted into the URL query string. |
 | M13.4 · Frontend: result card, marker popup, clustering, filter UI | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Real result-card (name/distance/address/tags/badges/directions CTA) and marker popup replacing the current placeholder text; pin clustering; a "more filters" drawer for language/day/accessibility/online-only, tradition/language as real pickers backed by M13.1's facets endpoint. |
 | M13.5 · Detail page enhancement | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Wires M13.0's `getSite(unitId)` into `congregations/[unitId]/page.tsx` alongside the existing content-blocks call — address, tradition, service language/day, accessibility/online-stream badges, a "Get Directions" CTA. Deliberately no star-rating/review UI. |
@@ -3038,3 +3038,82 @@ v1/search?tradition=adventism` returns the real matching site, `?onlineOnly=true
 set (no seeded site has it set), `?accessibility=stepFreeEntrance` returns `200` with a real
 (empty) result set, `?accessibility=bogusValue` returns a clean `400` (`InvalidFilter`), and `GET
 /discovery/v1/facets` returns real distinct tradition data with no authentication required.
+
+### M13.2 · Admin UI — edit site attributes
+
+**Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** Without this,
+`religion_sites.attributes` (M13.0's JSONB column, filterable since M13.1) had no write path at
+all — it stayed permanently empty. Depends on M13.0 only (the `attributes` column this milestone
+writes into).
+
+**`internal/religion` gained its first transport layer.** Every prior consumer
+(`content`/`discovery`/`registration`/`congregationimport`/`core`) called
+`religionapplication.Service` in-process only; new `api/religion.conjure.yml` +
+`internal/religion/transport/` (mirroring `content`'s exact hexagonal shape) give it a real,
+authenticated entrypoint of its own: `ReligionService` (`/religion/v1`, `default-auth: header`) —
+`getSite(unitId)` (the owner's own private, exact/uncoarsened view — unlike discovery's
+public-precision-filtered `DiscoverySite`) and `updateSiteAttributes(unitId, request)` (overwrites
+the unit's primary site's attributes wholesale). Both unit-scoped, not site-ID-scoped — mirroring
+M13.0's own `DiscoveryPublicService.getSite(unitId)` precedent, and resolving "the unit's site" via
+the existing `ListSitesByUnit`'s own `is_primary DESC, id` ordering, the same "prefer primary"
+convention `SearchSites(UnitID)` already established. Both throw `Religion:SiteNotFound` when the
+unit has no site at all — site creation stays registration's/congregationimport's own job
+(`ensureSite`), never this service's.
+
+**Gated by `site.manage` (`PermSiteManage`), not a reuse of `content.manage`'s
+`PermReligionOrgManage`.** `site.manage` already existed in the closed authz catalog
+(`internal/authz/domain/permissions.go`) and was already seeded to `congregation-admin` and
+`registration-operator` (`migrations/0015_core_seed.sql`) — but no code path checked it anywhere
+until this milestone. New `internal/religion/application/authorize.go` mirrors
+`internal/content/application/authorize.go`'s `requireManage` almost exactly, just against this
+permission. `religionapplication.Service` gained an `authzSvc *authz.Service` field to support
+this — a deliberate departure from religion's previous "carries zero authorization logic by
+design" framing (true only as long as every write went through some *caller's* own application
+layer); this is religion's first direct authenticated entrypoint, so it needs its own gate,
+joining every other module's own established "authz lives in the application layer" convention.
+Only one production call site (`cmd/openfaithmap-api/register_core.go`) constructs
+`religionapplication.NewService` — a one-line addition, since it already builds an `authz.Service`
+a few lines above; six integration test files across `religion`/`discovery`/`core`/
+`congregationimport`/`registration`/`moderation` needed the same one-argument threading.
+
+**New admin UI**: `web/apps/admin/app/[locale]/admin/sites/[unitId]/page.tsx` (M3's existing site
+editor) gained a second, independent "Accessibility & streaming" card below its existing Theme
+card — a religion-module concept (`religion_sites`) alongside the page's original content-module
+one (`content_sites`), fetched/edited through the new `lib/religion.ts` wrapper (mirrors
+`lib/content.ts`'s `client()`/`unwrap()` shape exactly). New shadcn `Checkbox`/`Switch` components
+(neither existed in `web/apps/admin` before this ticket) back seven accessibility checkboxes plus
+one online-stream switch. **A real implementation snag, found only by reading the installed Radix
+package's own type definitions, not by assumption**: the stable `Checkbox`/`Switch` `Root` this
+shadcn version wraps has no `name`/`BubbleInput` form-participation support (only the still-
+`unstable_` Provider API does), so neither control's checked state lands in `FormData` on its own
+the way a plain `<Input name=...>` does elsewhere on this same page. New client component
+`attributes-form.tsx` pairs each controlled Radix control with a hidden native `<input>` mirroring
+its checked state, so the surrounding `<form action={saveAttributes}>` Server Action still works
+exactly like the Theme card's own `saveTheme` action next to it. A unit with no `religion_sites`
+row yet (never approved through registration, or created via the super-admin unit tree) is a
+normal state — `getSite(unitId)` degrades `Religion:SiteNotFound` to `null` (mirroring the existing
+Theme card's own `getSite(unitId).catch(() => null)` pattern) and the card is simply omitted, not
+an error.
+
+**Proof**: `go build`/`go vet`/`godelw verify` (fmt, lint, conjure-backcompat) clean; `go test
+./...` clean, including every fan-out test file. `make sdk`/`sdk-verify` clean for both TypeScript
+consumers (new `Site`/`SiteAttributes`/`Accessibility`/`UpdateSiteAttributesRequest`/`Forbidden`/
+`SiteNotFound` generated types under `generated/religion`). New integration coverage
+(`religion_integration_test.go`): a congregation-admin's own-unit grant allowed, the same grant on
+an unrelated unit denied (`ErrForbidden`), a registration-operator's grant also allowed (both roles
+hold `site.manage`), a full `UpdateSiteAttributes` → `GetSiteByUnit` round-trip proving the write
+really persists, and `ErrSiteNotFound` for a unit with no site at all. `web/apps/admin`: clean
+`tsc --noEmit`, `eslint`, and `next build` (Turbopack) for the new page/component/lib files.
+**Live-verified over the real `docker compose` network** (rebuilt both `openfaithmap-api` and
+`openfaithmap-admin`): using `scripts/mint-local-token` against this environment's real
+`DEV_ISSUER_HMAC_KEY` plus a real `congregation-admin` grant inserted directly, confirmed
+`GET /religion/v1/units/{unitId}/site` returns real data, `PUT .../site/attributes` persists and
+echoes the new attributes back, a follow-up `GET` confirms the write really round-tripped, the
+same write is immediately visible on the next `GET /discovery/v1/search` hit (tying M13.0/M13.1/
+M13.2 together end-to-end), the same token against an *unrelated* unit gets a clean `403
+Religion:Forbidden`, and no bearer at all gets `401`. **The real signed-in browser flow (clicking
+checkboxes, submitting the form) was not driven**: `web/apps/admin/auth.ts` configures Google OAuth
+only, no credentials/dev provider — there is no headless browser-auth path in this repo's dev
+setup, so the UI's interactive round-trip rests on the `tsc`/`eslint`/`next build` checks plus the
+HTTP-level proof above, not a screenshot. Test data (a throwaway person/account/external-identity/
+role-assignment/session, and the site's own `attributes` value) was cleaned up after verification.

@@ -407,6 +407,23 @@ func (q *Queries) ListTaxa(ctx context.Context, arg ListTaxaParams) ([]ListTaxaR
 	return items, nil
 }
 
+const updateSiteAttributes = `-- name: UpdateSiteAttributes :exec
+UPDATE openfaithmap.religion_sites SET attributes = $1
+WHERE id = $2 AND deleted_at IS NULL
+`
+
+type UpdateSiteAttributesParams struct {
+	Attributes json.RawMessage
+	ID         string
+}
+
+// M13.2: the caller already holds the pre-fetched row (ListSitesByUnit resolved which site by
+// unit+is_primary), so this only needs to persist the new value, not RETURNING a full re-read.
+func (q *Queries) UpdateSiteAttributes(ctx context.Context, arg UpdateSiteAttributesParams) error {
+	_, err := q.db.Exec(ctx, updateSiteAttributes, arg.Attributes, arg.ID)
+	return err
+}
+
 const upsertOrgProfile = `-- name: UpsertOrgProfile :exec
 INSERT INTO openfaithmap.religion_org_profiles (unit_id, org_kind_id, short_code)
 VALUES ($1, $2, $3)

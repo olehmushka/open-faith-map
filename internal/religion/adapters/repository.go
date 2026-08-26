@@ -276,6 +276,17 @@ func (r *Repository) InsertSite(ctx context.Context, in CreateSiteInput) (domain
 	return toSite(row.ID, row.OrgUnitID, row.LocationID, row.SiteTypeID, row.SiteTypeCode, row.SiteTypeName, row.Visibility, row.PublicPrecision, row.IsPrimary, row.Attributes, row.Latitude, row.Longitude), nil
 }
 
+// UpdateSiteAttributesByID overwrites siteID's attributes wholesale (M13.2) — the caller (religion/
+// application.Service.UpdateSiteAttributes) has already resolved which site by unit+is_primary, so
+// this only persists the new value.
+func (r *Repository) UpdateSiteAttributesByID(ctx context.Context, siteID string, attrs domain.SiteAttributes) error {
+	b, err := json.Marshal(attrs)
+	if err != nil {
+		return err
+	}
+	return r.q.UpdateSiteAttributes(ctx, religionsql.UpdateSiteAttributesParams{ID: siteID, Attributes: b})
+}
+
 // ---------------------------------------------------------------- discovery search
 
 // siteCols/siteFrom back SearchSites only (M13.0 extended them with the public-projection

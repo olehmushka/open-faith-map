@@ -1,0 +1,100 @@
+# Religion module API (M13.2). docs/modules/religion.md. internal/religion has always been called
+# in-process only (by content/discovery/registration/congregationimport/core) — this is its first
+# real transport layer, added because religion_sites.attributes (M13.0's JSONB column, filterable
+# since M13.1) has no write path at all otherwise.
+#
+# site.manage (internal/authz's PermSiteManage) is a target-scoped capability check, the same
+# "content.manage" pattern M2.3/content.md established (internal/authz.Require against the SITE's
+# own congregation unit, never a shared root) — just a different, previously-unused permission code
+# already seeded to congregation-admin and registration-operator (migrations/0015_core_seed.sql),
+# now given its first real check. See D-PlatformModerator (docs/architecture/decisions.md).
+#
+# Both endpoints are unit-scoped (never a religion_sites row's own id): a congregation has at most
+# one PRIMARY site in practice (religion_sites_one_primary unique partial index), and the admin app
+# only ever has a unitId in scope, never a site's own RID — mirrors discovery's own
+# DiscoveryPublicService.getSite(unitId) precedent (M13.0).
+#
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: openfaithmap.religion
+    objects:
+      Accessibility:
+        fields:
+          stepFreeEntrance: boolean
+          accessibleRestroom: boolean
+          hearingLoop: boolean
+          signLanguageInterpretation: boolean
+          accessibleParking: boolean
+          wheelchairSeating: boolean
+          brailleOrLargePrint: boolean
+      SiteAttributes:
+        fields:
+          accessibility: Accessibility
+          onlineStream: boolean
+      Site:
+        fields:
+          id: string
+          orgUnitId: string
+          locationId: string
+          siteTypeId: string
+          siteTypeCode: string
+          siteTypeName: string
+          visibility: string
+          publicPrecision: string
+          isPrimary: boolean
+          latitude: double
+          longitude: double
+          attributes: SiteAttributes
+      UpdateSiteAttributesRequest:
+        fields:
+          attributes: SiteAttributes
+
+    errors:
+      Forbidden:
+        docs: The caller does not hold site.manage on this unit.
+        namespace: Religion
+        code: PERMISSION_DENIED
+        safe-args: {}
+      SiteNotFound:
+        docs: >
+          The unit has no religion_sites row at all — site creation stays registration's/
+          congregationimport's own job (ensureSite), never this endpoint's.
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args: {}
+
+services:
+  ReligionService:
+    name: Religion Service
+    package: openfaithmap.religion
+    base-path: /religion/v1
+    default-auth: header
+    docs: >
+      Authenticated congregation-admin/registration-operator surface over religion_sites — the
+      physical/online presence a discovery search or a congregation's own admin form reads.
+      site.manage-gated, target-scoped to each unit. See docs/modules/religion.md.
+    endpoints:
+      getSite:
+        http: GET /units/{unitId}/site
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: Site
+        docs: >
+          The unit's primary site, exact/uncoarsened (an owner's own private view, unlike
+          discovery's public-precision-filtered projection). Throws SiteNotFound if the unit has no
+          site yet.
+      updateSiteAttributes:
+        http: PUT /units/{unitId}/site/attributes
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: UpdateSiteAttributesRequest
+        returns: Site
+        docs: >
+          Overwrites the unit's primary site's attributes wholesale (the admin form always submits
+          the complete SiteAttributes shape, never a partial patch). Throws SiteNotFound if the unit
+          has no site yet.

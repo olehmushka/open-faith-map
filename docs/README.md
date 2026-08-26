@@ -34,6 +34,7 @@ EU/LATAM/Africa/Asia.
 | Module | Owns | Kind |
 |---|---|---|
 | [core-integration](modules/core-integration.md) | The mapping from a church-discovery product's needs onto go-oikumenea's modules; the congregation-provisioning flow | Bridge doc — no schema |
+| [religion](modules/religion.md) | The faith taxonomy, a unit's org profile/classifications, and `religion_sites` (location, visibility/precision, accessibility/online-stream attributes) | In-process module (M10 absorption); own transport (`ReligionService`) since M13.2 |
 | [registration](modules/registration.md) | Congregation self-service registration: submission, D-Exclusions check, operator approval | New backend module — OpenFaithMap's first schema (M2) |
 | [content](modules/content.md) | Site content: pages, posts, events, typed blocks, translation groups | New backend module |
 | [discovery](modules/discovery.md) | Public map/search facade + a disposable read-through cache over go-oikumenea's religion discovery search | New backend module (cache only) |
