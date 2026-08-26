@@ -10,6 +10,7 @@ import { searchAction } from "../actions";
 import type { DiscoverySite, DiscoveryFacets } from "@/lib/discovery";
 import { DEFAULT_CENTER, useGeolocation } from "@/lib/geolocation";
 import { filtersToSearchParams, parseFilters, type DiscoveryFilters } from "@/lib/discovery-url-state";
+import { haversineMeters, resolveDistanceUnit } from "@/lib/geo";
 import { useRouter } from "@/i18n/navigation";
 import { FilterBar } from "./filter-bar";
 import { ListPane } from "./list-pane";
@@ -25,16 +26,6 @@ function viewportsDiffer(a: PendingViewport, b: PendingViewport): boolean {
   const centerDistanceM = haversineMeters(a.lat, a.lng, b.lat, b.lng);
   const threshold = Math.max(500, b.radiusM * 0.15);
   return centerDistanceM > threshold || Math.abs(a.radiusM - b.radiusM) > b.radiusM * 0.15;
-}
-
-function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6_371_000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 export function DiscoveryShell({
@@ -75,6 +66,9 @@ export function DiscoveryShell({
         lat: next.lat,
         lng: next.lng,
         radiusM: next.radiusM,
+        dayOfWeek: next.dayOfWeek,
+        accessibility: next.accessibility?.join(","),
+        onlineOnly: next.onlineOnly,
       });
       setSites(result);
       router.replace({ pathname: "/", query: Object.fromEntries(filtersToSearchParams(next)) }, { scroll: false });
@@ -84,6 +78,18 @@ export function DiscoveryShell({
   function handleFilterSubmit(next: Pick<DiscoveryFilters, "tradition" | "language">) {
     const location = lastSearchedViewport;
     runSearch({
+      ...filters,
+      ...next,
+      lat: location?.lat,
+      lng: location?.lng,
+      radiusM: location?.radiusM,
+    });
+  }
+
+  function handleMoreFiltersSubmit(next: Pick<DiscoveryFilters, "dayOfWeek" | "accessibility" | "onlineOnly">) {
+    const location = lastSearchedViewport;
+    runSearch({
+      ...filters,
       ...next,
       lat: location?.lat,
       lng: location?.lng,
@@ -93,7 +99,7 @@ export function DiscoveryShell({
 
   function handleSearchThisArea() {
     if (!pendingViewport) return;
-    runSearch({ tradition: filters.tradition, language: filters.language, ...pendingViewport });
+    runSearch({ ...filters, ...pendingViewport });
     setLastSearchedViewport(pendingViewport);
   }
 
@@ -101,18 +107,33 @@ export function DiscoveryShell({
     pendingViewport != null &&
     (lastSearchedViewport == null || viewportsDiffer(pendingViewport, lastSearchedViewport));
 
+  const distanceOrigin = lastSearchedViewport
+    ? { lat: lastSearchedViewport.lat, lng: lastSearchedViewport.lng }
+    : null;
+  const distanceUnit = resolveDistanceUnit(geolocation);
+
   return (
     <div className="grid h-[calc(100vh-6rem)] grid-rows-[auto_1fr] gap-2">
       <FilterBar
         initialTradition={filters.tradition}
         initialLanguage={filters.language}
+        initialDayOfWeek={filters.dayOfWeek}
+        initialAccessibility={filters.accessibility}
+        initialOnlineOnly={filters.onlineOnly}
         facets={facets}
         onSubmit={handleFilterSubmit}
+        onMoreFiltersSubmit={handleMoreFiltersSubmit}
         pending={isPending}
       />
       <div className="grid min-h-0 grid-cols-[minmax(280px,360px)_1fr] gap-2 px-3 pb-3">
         <div className="min-h-0 overflow-hidden rounded border">
-          <ListPane sites={sites} activeSiteId={activeSiteId} onHoverSite={setActiveSiteId} />
+          <ListPane
+            sites={sites}
+            activeSiteId={activeSiteId}
+            onHoverSite={setActiveSiteId}
+            distanceOrigin={distanceOrigin}
+            distanceUnit={distanceUnit}
+          />
         </div>
         <div className="relative min-h-0 overflow-hidden rounded border">
           <MapPane
@@ -124,6 +145,8 @@ export function DiscoveryShell({
             onViewportChange={setPendingViewport}
             geolocation={geolocation}
             geolocationEnabled={!hasExplicitLocation}
+            distanceOrigin={distanceOrigin}
+            distanceUnit={distanceUnit}
           />
           {showSearchThisArea ? (
             <SearchThisAreaButton onClick={handleSearchThisArea} pending={isPending} />

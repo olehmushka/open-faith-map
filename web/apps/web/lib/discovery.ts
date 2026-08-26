@@ -54,6 +54,8 @@ export interface SearchParams {
   language?: string;
   dayOfWeek?: number;
   query?: string;
+  accessibility?: string;
+  onlineOnly?: boolean;
 }
 
 export async function search(params: SearchParams): Promise<DiscoverySite[]> {
@@ -66,6 +68,8 @@ export async function search(params: SearchParams): Promise<DiscoverySite[]> {
       params.language,
       params.dayOfWeek,
       params.query,
+      params.accessibility,
+      params.onlineOnly,
     ),
   );
   return result.sites;

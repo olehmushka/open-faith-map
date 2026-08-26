@@ -11,6 +11,9 @@ export interface DiscoveryFilters {
   lat?: number;
   lng?: number;
   radiusM?: number;
+  dayOfWeek?: number;
+  accessibility?: string[];
+  onlineOnly?: boolean;
 }
 
 interface SearchParamsLike {
@@ -25,12 +28,16 @@ function numberOrUndefined(value: string | null): number | undefined {
 
 /** Works with both `URLSearchParams`/`ReadonlyURLSearchParams` (client) and `searchParamsFromRecord` (server). */
 export function parseFilters(params: SearchParamsLike): DiscoveryFilters {
+  const accessibility = params.get("accessibility")?.split(",").filter(Boolean);
   return {
     tradition: params.get("tradition") ?? undefined,
     language: params.get("language") ?? undefined,
     lat: numberOrUndefined(params.get("lat")),
     lng: numberOrUndefined(params.get("lng")),
     radiusM: numberOrUndefined(params.get("radiusM")),
+    dayOfWeek: numberOrUndefined(params.get("dayOfWeek")),
+    accessibility: accessibility?.length ? accessibility : undefined,
+    onlineOnly: params.get("onlineOnly") === "true" ? true : undefined,
   };
 }
 
@@ -41,6 +48,9 @@ export function filtersToSearchParams(filters: DiscoveryFilters): URLSearchParam
   if (filters.lat != null) params.set("lat", String(filters.lat));
   if (filters.lng != null) params.set("lng", String(filters.lng));
   if (filters.radiusM != null) params.set("radiusM", String(filters.radiusM));
+  if (filters.dayOfWeek != null) params.set("dayOfWeek", String(filters.dayOfWeek));
+  if (filters.accessibility?.length) params.set("accessibility", filters.accessibility.join(","));
+  if (filters.onlineOnly) params.set("onlineOnly", "true");
   return params;
 }
 

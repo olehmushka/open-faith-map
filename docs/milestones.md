@@ -136,7 +136,7 @@ Verified (admin-UI browser click-through and a green CI run at the merge commit 
 | M13.1 · Backend: filters (attributes containment, facets, tradition bug fix) | ✅ | ✅ | ✅ | ➖ | ➖ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** Fixed the pre-existing `tradition` filter bug: `SearchSites` now joins `religion_taxa` on `code` instead of binding the raw code string straight to the closure's `uuid` `ancestor_id` column, which previously matched nothing for any real code. Added `DiscoveryQuery.Accessibility`/`OnlineOnly`, translated to JSONB containment (`attributes @>`) against M13.0's GIN index — an unrecognized `accessibility` value throws a new `InvalidFilter` rather than silently matching zero sites. New `GET /discovery/v1/facets` endpoint (distinct tradition/language values actually present among public, non-hidden sites), always live, so the picker UI (M13.4) never offers a dead-end filter. No new migration (uses M13.0's existing `attributes`/GIN index). Cache-side filtering and bbox/pagination on `GET /search` stay explicitly out of scope. See M13.1's own build narrative below for proof details. |
 | M13.2 · Admin UI — edit site attributes | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** `internal/religion` gained its first transport layer (`api/religion.conjure.yml`, `internal/religion/transport`): `ReligionService.getSite(unitId)`/`updateSiteAttributes(unitId, request)`, gated by a newly-activated `site.manage` permission (seeded since before M13, never checked until now) rather than a reuse of `content.manage`. New "Accessibility & streaming" card on `web/apps/admin`'s existing site-editor page, new shadcn `Checkbox`/`Switch` components paired with hidden native inputs (the installed Radix version's stable controls don't participate in `FormData` on their own). No new migration — writes into M13.0's existing `attributes` column. See M13.2's own build narrative below for proof details, including why the real browser click-through wasn't driven (Google-OAuth-only, no headless auth path in this dev setup). |
 | M13.3 · Frontend: component architecture + split-pane layout | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Replaced the monolithic `discovery-map.tsx` with a real component tree under `web/apps/web/app/discovery/` (shell/map-pane/list-pane/filter-bar/search-this-area-button); introduced shadcn/Radix into `web/apps/web` matching `web/apps/admin`'s setup (`components.json`, pinned dep versions, copied theme tokens). Filter state lives in the URL query string (`tradition`/`language`/`lat`/`lng`/`radiusM`), read/written via a shared `lib/discovery-url-state.ts` on both the server page and the client shell. Hover-sync between a list card and its map pin (shared `activeSiteId` state, div-icon color swap). A "search this area" button appears when the map's viewport (derived from `map.getBounds()`, center+radius via Leaflet's own `distanceTo`) diverges from the last-searched viewport — there was no pan-driven auto-refetch to replace (confirmed absent pre-M13.3); this is net-new, deliberately never automatic. Geolocation (`lib/geolocation.ts`'s `useGeolocation`) sets only the *initial* map center/zoom (recentering once via `map.setView` if it resolves after mount, never re-searching on its own) with a same-as-before Kyiv fallback on denial/timeout/no-API/SSR. At the user's direction, this milestone also pulled forward M13.4's tradition/language *pickers*: `filter-bar.tsx` now renders real shadcn `Select`s populated from a new `lib/discovery.ts` `facets()` wrapper (M13.1's `GET /discovery/v1/facets`), fetched once server-side alongside the initial search. See M13.3's own build narrative below for proof details, including a real rate-limiter false-positive hit during verification (existing `internal/platform/ratelimit`, ~5 req/min/IP, not a regression) and how it was worked around. |
-| M13.4 · Frontend: result card, marker popup, clustering, filter UI | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Real result-card (name/distance/address/tags/badges/directions CTA) and marker popup replacing the current placeholder text; pin clustering; a "more filters" drawer for language/day/accessibility/online-only. Tradition/language pickers backed by M13.1's facets endpoint were pulled forward into M13.3 already. |
+| M13.4 · Frontend: result card, marker popup, clustering, filter UI | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** A shared `ResultCard` (name/distance/address/tradition+accessibility+online-stream badges/directions CTA) now backs both `list-pane.tsx`'s cards and `map-pane.tsx`'s marker popups, replacing the old name-only card and the placeholder "view page"/"no page" popup. Pins now cluster via `react-leaflet-cluster`. A new `more-filters-sheet.tsx` (shadcn `Sheet`) adds day-of-week/accessibility/online-only filtering with explicit Apply/Clear, wired end-to-end through the URL state M13.3 already established. See M13.4's own build narrative below for proof details, including the distance-unit heuristic and how the existing rate limiter was worked around again during verification. |
 | M13.5 · Detail page enhancement | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Wires M13.0's `getSite(unitId)` into `congregations/[unitId]/page.tsx` alongside the existing content-blocks call — address, tradition, service language/day, accessibility/online-stream badges, a "Get Directions" CTA. Deliberately no star-rating/review UI. |
 | M13.6 · Mobile responsive pass | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** List-first default on mobile with an explicit List↔Map toggle, tap-a-pin → bottom-sheet card, filter bar collapsing into the "more filters" pattern earlier on narrow viewports. Last in sequence — needs M13.3/M13.4's real component shapes to exist first. |
 
@@ -3216,3 +3216,92 @@ initial pin lands exactly at `[50.45, 30.52]`), not the `GeolocationRecenter`/`m
 path. That code path is exercised by `tsc`/`eslint`/`next build` and manual review, not a live
 browser fix, mirroring M13.2's disclosed-gap convention for what a headless verification pass
 can't reach.
+
+### M13.4 · Frontend: result card, marker popup, clustering, filter UI
+
+**Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Depends on
+M13.0/M13.1/M13.3 only (all already built) — pure frontend, no backend/migration change. Every
+field this milestone surfaces (`address`, `serviceLanguages`/`serviceDays`, `attributes`,
+`traditionTaxonCode`) was already present on every `DiscoverySite` search result since M13.0/M13.1
+but entirely unused in the UI; the backend already accepted `dayOfWeek`/`accessibility`/`onlineOnly`
+search params since M13.1, just not threaded through from the frontend's own `SearchParams`.
+
+**New shared `result-card.tsx`** replaces both `list-pane.tsx`'s old name-and-tradition-only card
+and `map-pane.tsx`'s old placeholder popup ("View congregation page" link / "No published page yet"
+text, with no name/address/anything else) with one component: name with distance right-aligned,
+address, a badge row (tradition/online-stream/accessibility, shadcn `Badge`), and a "Get directions"
+CTA linking to `https://www.google.com/maps/dir/?api=1&destination=lat,lng` — gated on the site
+having coordinates, the same null-check `map-pane.tsx` already applied before placing a marker.
+`map-pane.tsx`'s popup keeps the pre-existing "has a published page" link/text below the card body;
+that's a different question than M13.4's field list, not something to drop.
+
+**Distance** is computed client-side (no `distance` field exists on the wire type) via a `
+haversineMeters` helper lifted out of `discovery-shell.tsx` into new `lib/geo.ts`, from
+`lastSearchedViewport` — the shell's own existing "point results were searched around" concept —
+rather than raw live geolocation, so a card reads as "distance from the search area," stays stable
+while panning without re-searching, and is simply omitted (not "unknown") before any search has run.
+**Distance unit** (`resolveDistanceUnit`) is chosen from the user's own resolved geolocation via a
+documented US-bounding-box heuristic (continental US/Alaska/Hawaii → miles, everything else,
+including a denied/unsupported/pending geolocation → km) — a heuristic, not a reverse-geocode,
+decided with the user up front alongside two other UI calls (below).
+
+**Pin clustering**: `react-leaflet-cluster` (`^4.1.3`, peer deps confirmed against this repo's
+already-installed `react ^19`/`react-leaflet ^5`/`leaflet ^1.9`) wraps the existing `Marker` list in
+a `MarkerClusterGroup` — no change to individual marker props/icon/`eventHandlers`, the library
+passes `react-leaflet` children through unmodified. New devDependency `@types/leaflet.markercluster`
+(the library's own `.d.ts` references `L.MarkerClusterGroupOptions`, which only that separate types
+package provides). Hover-sync keeps working for any marker not currently absorbed into a cluster
+bubble; a marker inside a collapsed cluster simply can't be individually highlighted at that zoom —
+inherent to clustering, not something this milestone works around.
+
+**New "more filters" Sheet** (`more-filters-sheet.tsx`, shadcn `Sheet` — installed via the same
+pinned CLI M13.3 used, `npx shadcn@4.18.0 add sheet badge checkbox switch separator`, matching the
+component already present in `web/apps/admin` under the identical `radix-nova` style config) adds
+day-of-week (a `Select`, same `ANY`-sentinel pattern as the tradition/language pickers), the seven
+accessibility criteria (`Checkbox` rows, same key order as `web/apps/admin`'s `attributes-form.tsx`'s
+`ACCESSIBILITY_KEYS`, duplicated into new `lib/accessibility.ts` since the two Next apps share no
+internal package), and online-only (`Switch`). Explicit **Apply filters**/**Clear** buttons, not
+live-apply — decided with the user to match the existing filter bar's own submit pattern and avoid
+firing a burst of search requests that could retrip the rate limiter M13.3's own verification
+already hit once. `discovery-shell.tsx`'s two submit handlers (`handleFilterSubmit`,
+`handleMoreFiltersSubmit`) each spread the current URL-derived `filters` and override only their own
+slice, so tradition/language and day/accessibility/online-only compose without a new merged-state
+object beyond what M13.3 already built. `lib/discovery-url-state.ts`'s `DiscoveryFilters` gained
+`dayOfWeek`/`accessibility` (comma-separated in the URL, matching the API's own shape)/`onlineOnly`;
+`lib/discovery.ts`'s `SearchParams` gained `accessibility`/`onlineOnly`, threaded into the generated
+SDK's already-capable `search(...)` call at its existing trailing positional slots.
+
+**Three UI decisions made with the user before implementation**: `Sheet` (side panel) over `Drawer`
+(bottom-sheet, vaul-based — no new UI paradigm needed, `Sheet` already exists in `web/apps/admin`);
+explicit Apply/Clear over live-apply (rate-limiter risk, above); distance unit resolved from the
+viewer's own geolocation rather than a fixed default.
+
+**Proof.** `web/apps/web`: `npx tsc --noEmit`, `npm run lint`, and `npm run build` (Turbopack) all
+clean, including inside the real `node:22-alpine`-based Docker build (regenerated
+`package-lock.json` inside a matching container first, the same host(Node 25)/container(Node 22)
+lockfile-mismatch gotcha M13.3 documented).
+
+**Live-verified in a real headless-Chromium browser** against the rebuilt `docker compose` stack
+(`playwright-core` driving the system's installed Google Chrome via `executablePath`): result cards
+in the list pane and marker popups both render real name/distance/address/badges/directions-link
+data for live seeded sites (including two pre-existing `M10.5 test excluded parent` fixture sites
+that already carried real `onlineStream`/`stepFreeEntrance` attributes from an earlier milestone's
+test data — a useful, unplanned confirmation that badge rendering matches real historical data, not
+just freshly-seeded fixtures); a real cluster bubble grouped 3 nearby markers and correctly expanded
+into individual pins on click/zoom; the "More filters" sheet opened, and applying
+`accessibility=stepFreeEntrance&onlineOnly=true` updated the URL and correctly narrowed results to
+exactly the one seeded site whose `attributes` matched (confirmed via a throwaway direct `UPDATE` on
+a test site's `religion_sites.attributes`, reverted after verification, the same cleanup precedent
+M13.0–M13.2 used); a direct-link load carrying `?accessibility=...&onlineOnly=true` server-rendered
+pre-filtered with the sheet's checkboxes pre-checked to match (confirmed via `aria-checked`); the
+Clear button reset the sheet and the URL back to bare `/en`; panning the map and clicking "Search
+this area" set an explicit `lat`/`lng` origin, after which every result card showed a real computed
+distance (`152 km`, confirmed both in rendered text and by screenshot).
+
+**One real, pre-existing thing hit again during verification, not a regression**: the same
+`internal/platform/ratelimit` ~5 req/min/IP limiter M13.3's own verification tripped once returned a
+generic Next.js error-boundary page mid-verification here too, after a burst of rapid searches
+(initial load, more-filters apply, clear, a direct-link load, and a pan-triggered search in quick
+succession). Not fixed here (still explicitly out of scope, same as M13.3's own disclosed gap) —
+waiting for the bucket to refill and re-running the same check with fewer, spaced-out requests
+confirmed the "search this area" → distance flow works cleanly.

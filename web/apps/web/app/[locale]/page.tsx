@@ -34,6 +34,9 @@ export default async function Home({
       lat: filters.lat,
       lng: filters.lng,
       radiusM: filters.radiusM,
+      dayOfWeek: filters.dayOfWeek,
+      accessibility: filters.accessibility?.join(","),
+      onlineOnly: filters.onlineOnly,
     }),
     facets(),
   ]);

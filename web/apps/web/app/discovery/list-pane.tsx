@@ -7,18 +7,22 @@ import { useTranslations } from "next-intl";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import type { DistanceUnit } from "@/lib/geo";
 import type { DiscoverySite } from "@/lib/discovery";
+import { ResultCard } from "./result-card";
 
-// Minimal card: name + tradition. The full result card (distance/address/tags/badges/directions
-// CTA) is M13.4's scope — this only needs enough surface for hover-sync with the map to be real.
 export function ListPane({
   sites,
   activeSiteId,
   onHoverSite,
+  distanceOrigin,
+  distanceUnit,
 }: {
   sites: DiscoverySite[];
   activeSiteId: string | null;
   onHoverSite: (id: string | null) => void;
+  distanceOrigin: { lat: number; lng: number } | null;
+  distanceUnit: DistanceUnit;
 }) {
   const t = useTranslations("DiscoveryMap");
 
@@ -38,11 +42,8 @@ export function ListPane({
             s.id === activeSiteId && "border-primary bg-accent",
           )}
         >
-          <CardContent className="flex flex-col gap-0.5 px-3">
-            <span className="text-sm font-medium">{s.name || t("unnamedSite")}</span>
-            {s.traditionTaxonName ? (
-              <span className="text-xs text-muted-foreground">{s.traditionTaxonName}</span>
-            ) : null}
+          <CardContent className="px-3">
+            <ResultCard site={s} origin={distanceOrigin} unit={distanceUnit} />
           </CardContent>
         </Card>
       ))}

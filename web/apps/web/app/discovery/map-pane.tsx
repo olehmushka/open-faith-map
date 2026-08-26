@@ -4,15 +4,20 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
+import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
+import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 
 import { useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 
 import type { DiscoverySite } from "@/lib/discovery";
 import type { GeolocationResult } from "@/lib/geolocation";
+import type { DistanceUnit } from "@/lib/geo";
 import { Link } from "@/i18n/navigation";
+import { ResultCard } from "./result-card";
 
 // A plain SVG pin div-icon, deliberately not Leaflet's default marker image — the default's icon
 // URLs resolve relative to leaflet's own asset layout and break under Next's bundler without extra
@@ -79,6 +84,8 @@ export function MapPane({
   onViewportChange,
   geolocation,
   geolocationEnabled,
+  distanceOrigin,
+  distanceUnit,
 }: {
   sites: DiscoverySite[];
   center: [number, number];
@@ -88,6 +95,8 @@ export function MapPane({
   onViewportChange: (viewport: PendingViewport) => void;
   geolocation: GeolocationResult;
   geolocationEnabled: boolean;
+  distanceOrigin: { lat: number; lng: number } | null;
+  distanceUnit: DistanceUnit;
 }) {
   const t = useTranslations("DiscoveryMap");
 
@@ -99,30 +108,35 @@ export function MapPane({
       />
       <ViewportWatcher onViewportChange={onViewportChange} />
       <GeolocationRecenter geolocation={geolocation} enabled={geolocationEnabled} />
-      {sites
-        .filter((s) => s.latitude != null && s.longitude != null)
-        .map((s) => (
-          <Marker
-            key={s.id}
-            position={[s.latitude as number, s.longitude as number]}
-            icon={s.id === activeSiteId ? pinIconActive : pinIcon}
-            eventHandlers={{
-              mouseover: () => onHoverSite(s.id),
-              mouseout: () => onHoverSite(null),
-            }}
-          >
-            <Popup>
-              {/* contentSiteId is content's internal uuid, not what getSite accepts (see
-                  app/congregations/[unitId]/page.tsx's header comment) — its presence is
-                  still the right "has this congregation published a site at all" signal. */}
-              {s.contentSiteId ? (
-                <Link href={`/congregations/${s.congregationUnitRid}`}>{t("viewCongregationPage")}</Link>
-              ) : (
-                <span>{t("noPublishedPage")}</span>
-              )}
-            </Popup>
-          </Marker>
-        ))}
+      <MarkerClusterGroup chunkedLoading>
+        {sites
+          .filter((s) => s.latitude != null && s.longitude != null)
+          .map((s) => (
+            <Marker
+              key={s.id}
+              position={[s.latitude as number, s.longitude as number]}
+              icon={s.id === activeSiteId ? pinIconActive : pinIcon}
+              eventHandlers={{
+                mouseover: () => onHoverSite(s.id),
+                mouseout: () => onHoverSite(null),
+              }}
+            >
+              <Popup minWidth={224}>
+                <ResultCard site={s} origin={distanceOrigin} unit={distanceUnit} />
+                {/* contentSiteId is content's internal uuid, not what getSite accepts (see
+                    app/congregations/[unitId]/page.tsx's header comment) — its presence is
+                    still the right "has this congregation published a site at all" signal. */}
+                <div className="pt-1">
+                  {s.contentSiteId ? (
+                    <Link href={`/congregations/${s.congregationUnitRid}`}>{t("viewCongregationPage")}</Link>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{t("noPublishedPage")}</span>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+      </MarkerClusterGroup>
     </MapContainer>
   );
 }
