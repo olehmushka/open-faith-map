@@ -48,9 +48,9 @@ type Deps struct {
 	// server permanently unbound.
 	Authenticator *identitymiddleware.Authenticator
 
-	// CoreRootUnitID/CoreCongregationAdminRoleID are fixed structural RIDs from
-	// internal/platform/seed (migrations/0022_core_seed.sql) — every one of the six consumer
-	// modules now reads these directly; the go-oikumenea-SDK-era OikumeneaBaseURL/RootUnitID/
+	// CoreRootUnitID/CoreCongregationAdminRoleID are the fixed structural RIDs seed.Resolve looks
+	// up by code at boot (migrations/0015_core_seed.sql) — every one of the six consumer modules
+	// now reads these directly; the go-oikumenea-SDK-era OikumeneaBaseURL/RootUnitID/
 	// CongregationAdminRoleID/ServicePrincipal fields this struct carried pre-M10.6 are gone
 	// (D-SeedBootstrap: "three required environment variables disappear" once every module reading
 	// them is cut over — true as of this milestone's close).
@@ -77,12 +77,12 @@ type Deps struct {
 	IdentitySvc *identityapplication.Service
 }
 
-func newDeps(pool *pgxpool.Pool, install config.Install) *Deps {
+func newDeps(pool *pgxpool.Pool, install config.Install, ids seed.IDs) *Deps {
 	return &Deps{
 		Pool:                        pool,
 		Install:                     install,
-		CoreRootUnitID:              seed.RootUnitID,
-		CoreCongregationAdminRoleID: seed.CongregationAdminRoleID,
+		CoreRootUnitID:              ids.RootUnitID,
+		CoreCongregationAdminRoleID: ids.CongregationAdminRoleID,
 	}
 }
 

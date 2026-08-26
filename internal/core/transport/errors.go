@@ -8,6 +8,7 @@ import (
 
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
 	gencore "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/core"
+	"github.com/olehmushka/open-faith-map/internal/core/application"
 	directorydomain "github.com/olehmushka/open-faith-map/internal/directory/domain"
 	identitydomain "github.com/olehmushka/open-faith-map/internal/identity/domain"
 	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
@@ -34,6 +35,30 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewAccountNotFound(c.PersonID)
 	case errors.Is(err, directorydomain.ErrUnitNotFound):
 		return gencore.NewUnitNotFound(c.UnitID)
+	case errors.Is(err, directorydomain.ErrUnitHasChildren):
+		return gencore.NewUnitHasChildren(c.UnitID)
+	case errors.Is(err, application.ErrUnitHasActiveRoleAssignments):
+		return gencore.NewUnitHasActiveRoleAssignments(c.UnitID)
+	case errors.Is(err, application.ErrUnitHasOrgProfile):
+		return gencore.NewUnitHasOrgProfile(c.UnitID)
+	case errors.Is(err, application.ErrRootUnitProtected):
+		return gencore.NewRootUnitProtected(c.UnitID)
+	case errors.Is(err, application.ErrInvalidGrantScope):
+		return gencore.NewInvalidGrantScope()
+	case errors.Is(err, application.ErrSubtreeGrantRequiresGraph):
+		return gencore.NewSubtreeGrantRequiresGraph()
+	case errors.Is(err, application.ErrUnitGrantMustNotSpecifyGraph):
+		return gencore.NewUnitGrantMustNotSpecifyGraph()
+	case errors.Is(err, application.ErrExpiryInPast):
+		return gencore.NewExpiryInPast()
+	case errors.Is(err, directorydomain.ErrUnitHasNoCurrentParent):
+		return gencore.NewUnitHasNoCurrentParent(c.UnitID)
+	case errors.Is(err, directorydomain.ErrUnitMoveConflict):
+		return gencore.NewUnitMoveConflict(c.UnitID)
+	case errors.Is(err, directorydomain.ErrUnitAlreadyAtParent):
+		return gencore.NewUnitAlreadyAtParent(c.UnitID)
+	case errors.Is(err, directorydomain.ErrEdgeCycle):
+		return gencore.NewEdgeCycle(c.UnitID)
 	case errors.Is(err, religiondomain.ErrTaxonNotFound):
 		return gencore.NewTaxonNotFound(c.TaxonID)
 	case errors.Is(err, religiondomain.ErrProfileNotFound):
@@ -62,7 +87,7 @@ func mapErr(err error, c errCtx) error {
 		return gencore.NewCannotMergeSelf()
 	case errors.Is(err, identitydomain.ErrAPIKeyNotFound):
 		return gencore.NewApiKeyNotFound(c.ApiKeyID)
-	case errors.Is(err, identitydomain.ErrUnknownPermissionCode):
+	case errors.Is(err, authzdomain.ErrUnknownPermissionCode):
 		return gencore.NewUnknownPermissionCode()
 	case errors.Is(err, identitydomain.ErrAccountDisabled):
 		// No oracle leak to an anonymous invitee holding just a token guess (same reasoning

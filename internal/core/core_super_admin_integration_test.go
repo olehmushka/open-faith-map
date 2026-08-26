@@ -57,16 +57,16 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
-	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
-	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	// directory/religion/membership/refdata are nil: none of the six methods under test touch them
 	// (they're core.application.Service's read-only surfaces, wired by other tests).
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool)
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")
 
 	var actorID, targetID, targetAccountID string
 	var unit directorydomain.Unit
-	var assignmentID, instanceAdminGrantID, invitedPersonID string
+	var assignmentID, expiryAssignmentID, instanceAdminGrantID, invitedPersonID string
 	t.Cleanup(func() {
 		bg := context.Background()
 		// identity_audit_log is append-only (reject_mutation trigger) — disable it just for this
@@ -83,6 +83,11 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 		if assignmentID != "" {
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_role_assignments WHERE id = $1`, assignmentID); err != nil {
 				t.Errorf("cleanup: delete assignment: %v", err)
+			}
+		}
+		if expiryAssignmentID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_role_assignments WHERE id = $1`, expiryAssignmentID); err != nil {
+				t.Errorf("cleanup: delete expiry assignment: %v", err)
 			}
 		}
 		if instanceAdminGrantID != "" {
@@ -179,7 +184,7 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	}
 
 	// --- GrantUnitRole.
-	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID); err != nil {
+	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID, "unit", "", nil); err != nil {
 		t.Fatalf("GrantUnitRole: %v", err)
 	}
 	assignments, err := authzSvc.ListRoleAssignmentsByUnit(ctx, unit.ID)
@@ -208,6 +213,44 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	}
 	assertJSONField(t, row.before, "personId", targetID)
 	assertJSONField(t, row.before, "roleId", roleID)
+
+	// --- M12.3: GrantUnitRole with a past expiresAt is rejected before any store call (no audit row).
+	pastExpiry := time.Now().Add(-time.Hour)
+	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID, "unit", "", &pastExpiry); !errorsIs(err, coreapplication.ErrExpiryInPast) {
+		t.Errorf("GrantUnitRole with a past expiresAt = %v, want ErrExpiryInPast", err)
+	}
+
+	// --- GrantUnitRole with a future expiresAt succeeds, and the audit row carries it.
+	futureExpiry := time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
+	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID, "unit", "", &futureExpiry); err != nil {
+		t.Fatalf("GrantUnitRole (with expiry): %v", err)
+	}
+	expiringAssignments, err := authzSvc.ListRoleAssignmentsByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit (with expiry): %v", err)
+	}
+	if len(expiringAssignments) != 1 || expiringAssignments[0].ExpiresAt == nil || !expiringAssignments[0].ExpiresAt.Equal(futureExpiry) {
+		t.Fatalf("ListRoleAssignmentsByUnit = %+v, want one assignment with ExpiresAt=%s", expiringAssignments, futureExpiry)
+	}
+	expiryAssignmentID = expiringAssignments[0].ID
+	row = mustAuditRow(ctx, t, pool, "GRANT_UNIT_ROLE", expiryAssignmentID)
+	assertJSONField(t, row.after, "personId", targetID)
+
+	// --- ClearRoleAssignmentExpiry clears it, and audit-logs the clear.
+	if err := coreApp.ClearRoleAssignmentExpiry(actorCtx, expiryAssignmentID); err != nil {
+		t.Fatalf("ClearRoleAssignmentExpiry: %v", err)
+	}
+	row = mustAuditRow(ctx, t, pool, "CLEAR_ROLE_ASSIGNMENT_EXPIRY", expiryAssignmentID)
+	if row.actorPersonID != actorID || row.targetKind != "ROLE_ASSIGNMENT" || row.after != nil {
+		t.Errorf("CLEAR_ROLE_ASSIGNMENT_EXPIRY audit row = %+v, want actor=%s target_kind=ROLE_ASSIGNMENT after=nil", row, actorID)
+	}
+	afterClear, err := authzSvc.ListRoleAssignmentsByUnit(ctx, unit.ID)
+	if err != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit (after clear): %v", err)
+	}
+	if len(afterClear) != 1 || afterClear[0].ExpiresAt != nil {
+		t.Fatalf("ListRoleAssignmentsByUnit after clear = %+v, want ExpiresAt nil", afterClear)
+	}
 
 	// --- GrantInstanceAdmin.
 	grant, err := coreApp.GrantInstanceAdmin(actorCtx, targetID)
@@ -290,8 +333,8 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAuditLog: %v", err)
 	}
-	if len(entries) != 8 {
-		t.Errorf("ListAuditLog(actor=%s) returned %d entries, want 8 (one per mutation above)", actorID, len(entries))
+	if len(entries) != 10 {
+		t.Errorf("ListAuditLog(actor=%s) returned %d entries, want 10 (one per mutation above)", actorID, len(entries))
 	}
 }
 
@@ -316,8 +359,8 @@ func TestLastActiveIntegration(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, nil, pool)
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, nil, pool, "")
 
 	var noAccountID, withAccountID, accountID, sessionID string
 	t.Cleanup(func() {
@@ -458,9 +501,9 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
-	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, nil, nil, authzSvc, auditLogSvc, pool)
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, nil, nil, authzSvc, auditLogSvc, pool, "")
 
 	var actorID string
 	var unit directorydomain.Unit
@@ -554,7 +597,7 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 
 	// --- requireSubject gate: no subject in context must fail loud, nothing written.
 	p0 := insertPerson("M11.7 NoSubject")
-	if err := coreApp.BulkGrantUnitRole(ctx, []string{p0}, roleID, unit.ID); !errorsIs(err, authzdomain.ErrPermissionDenied) {
+	if err := coreApp.BulkGrantUnitRole(ctx, []string{p0}, roleID, unit.ID, "unit", "", nil); !errorsIs(err, authzdomain.ErrPermissionDenied) {
 		t.Errorf("BulkGrantUnitRole with no subject = %v, want ErrPermissionDenied", err)
 	}
 	if n := countAssignments(); n != 0 {
@@ -563,7 +606,7 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 
 	// --- Happy path: 3 persons -> 3 new active assignments, 3 audit rows.
 	p1, p2, p3 := insertPerson("M11.7 Happy One"), insertPerson("M11.7 Happy Two"), insertPerson("M11.7 Happy Three")
-	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p1, p2, p3}, roleID, unit.ID); err != nil {
+	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p1, p2, p3}, roleID, unit.ID, "unit", "", nil); err != nil {
 		t.Fatalf("BulkGrantUnitRole happy path: %v", err)
 	}
 	if n := countAssignments(); n != 3 {
@@ -593,7 +636,7 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 	p4, p5 := insertPerson("M11.7 Rollback Four"), insertPerson("M11.7 Rollback Five")
 	const nonexistentPersonID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	before := countAssignments()
-	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5, nonexistentPersonID}, roleID, unit.ID); err == nil {
+	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5, nonexistentPersonID}, roleID, unit.ID, "unit", "", nil); err == nil {
 		t.Fatal("BulkGrantUnitRole with a nonexistent person id = nil error, want a real error (FK violation)")
 	}
 	if n := countAssignments(); n != before {
@@ -617,11 +660,11 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 	// --- In-batch idempotent-conflict proof: a pre-existing active grant inside a batch must not
 	// abort the transaction (the regression this milestone's ON CONFLICT DO UPDATE design exists to
 	// prevent — see internal/authz/adapters/store.go's BulkInsertRoleAssignments doc comment).
-	if err := coreApp.GrantUnitRole(actorCtx, p4, roleID, unit.ID); err != nil {
+	if err := coreApp.GrantUnitRole(actorCtx, p4, roleID, unit.ID, "unit", "", nil); err != nil {
 		t.Fatalf("pre-grant for idempotent-conflict case: %v", err)
 	}
 	auditBefore := countAuditRows()
-	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5}, roleID, unit.ID); err != nil {
+	if err := coreApp.BulkGrantUnitRole(actorCtx, []string{p4, p5}, roleID, unit.ID, "unit", "", nil); err != nil {
 		t.Fatalf("BulkGrantUnitRole with an in-batch pre-existing grant: %v", err)
 	}
 	for _, p := range []string{p4, p5} {
@@ -639,6 +682,127 @@ func TestBulkGrantUnitRoleIntegration(t *testing.T) {
 	// GRANT_UNIT_ROLE row; the batch call adds one row per person in it (p4's re-touch included).
 	if n := countAuditRows(); n != auditBefore+2 {
 		t.Errorf("after idempotent-conflict batch: %d BULK_GRANT_UNIT_ROLE audit rows, want %d (+2)", n, auditBefore+2)
+	}
+}
+
+// TestExplainAccessIntegration proves M12.4's ExplainAccess against a real Postgres instance: a
+// known permission with a real grant explains as an allow with a matching Via contribution, a
+// known permission with no matching grant explains as a deny with a non-empty DenyReason, an
+// unknown permission code is rejected before the PDP ever runs, and — the one behavior this
+// milestone's own docs call out — none of these calls write an identity_audit_log row (pure read,
+// no requireSubject/actor involved at all, unlike every mutating method above).
+func TestExplainAccessIntegration(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set DATABASE_URL to run against a live Postgres instance")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	dir := directoryapplication.NewService(pool)
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, nil, nil, authzSvc, auditLogSvc, pool, "")
+
+	var personID, assignmentID string
+	var unit directorydomain.Unit
+	t.Cleanup(func() {
+		bg := context.Background()
+		if assignmentID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_role_assignments WHERE id = $1`, assignmentID); err != nil {
+				t.Errorf("cleanup: delete assignment: %v", err)
+			}
+		}
+		if personID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_persons WHERE id = $1`, personID); err != nil {
+				t.Errorf("cleanup: delete person: %v", err)
+			}
+		}
+		if unit.ID != "" {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_units WHERE id = $1`, unit.ID); err != nil {
+				t.Errorf("cleanup: delete unit: %v", err)
+			}
+		}
+	})
+
+	unit, err = dir.CreateUnit(ctx, directorydomain.Unit{Name: "M12.4 explain access test unit"})
+	if err != nil {
+		t.Fatalf("CreateUnit: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.identity_persons (display_name, given, surname)
+		VALUES ('M12.4 ExplainAccess Subject', 'M12.4', 'Subject') RETURNING id`).Scan(&personID); err != nil {
+		t.Fatalf("insert test person: %v", err)
+	}
+
+	roles, err := authzSvc.ListRoles(ctx)
+	if err != nil {
+		t.Fatalf("ListRoles: %v", err)
+	}
+	var roleID string
+	for _, r := range roles {
+		if r.Code == "registration-operator" {
+			roleID = r.ID
+		}
+	}
+	if roleID == "" {
+		t.Fatalf("ListRoles = %+v, want it to include the seeded registration-operator role", roles)
+	}
+
+	assignmentID, err = authzSvc.GrantUnitRole(ctx, personID, roleID, unit.ID, authzdomain.ScopeUnit, "", personID, nil)
+	if err != nil {
+		t.Fatalf("GrantUnitRole: %v", err)
+	}
+
+	auditRowCount := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM openfaithmap.identity_audit_log`).Scan(&n); err != nil {
+			t.Fatalf("count audit rows: %v", err)
+		}
+		return n
+	}
+	auditBefore := auditRowCount()
+
+	// --- Allow: personID really holds unit.read on unit.ID.
+	allowed, err := coreApp.ExplainAccess(ctx, personID, "unit.read", unit.ID)
+	if err != nil {
+		t.Fatalf("ExplainAccess (allow case): %v", err)
+	}
+	if !allowed.Allow {
+		t.Fatalf("ExplainAccess (allow case) = %+v, want Allow=true", allowed)
+	}
+	var foundContribution bool
+	for _, c := range allowed.Via {
+		if c.AssignmentID == assignmentID && c.RoleCode == "registration-operator" {
+			foundContribution = true
+		}
+	}
+	if !foundContribution {
+		t.Errorf("ExplainAccess (allow case) Via = %+v, want a contribution naming assignment %s / role registration-operator", allowed.Via, assignmentID)
+	}
+
+	// --- Deny: no grant reaches this unrelated unit.
+	denied, err := coreApp.ExplainAccess(ctx, personID, "unit.read", "00000000-0000-8000-8000-000000000000")
+	if err != nil {
+		t.Fatalf("ExplainAccess (deny case): %v", err)
+	}
+	if denied.Allow || denied.DenyReason == "" {
+		t.Errorf("ExplainAccess (deny case) = %+v, want Allow=false with a non-empty DenyReason", denied)
+	}
+
+	// --- Unknown permission code: rejected before the PDP ever runs.
+	if _, err := coreApp.ExplainAccess(ctx, personID, "not.a.real.permission", unit.ID); !errorsIs(err, authzdomain.ErrUnknownPermissionCode) {
+		t.Errorf("ExplainAccess (unknown code) error = %v, want ErrUnknownPermissionCode", err)
+	}
+
+	// --- Pure read: none of the three calls above wrote an audit row.
+	if n := auditRowCount(); n != auditBefore {
+		t.Errorf("identity_audit_log grew from %d to %d rows after three ExplainAccess calls, want no growth (pure read, no audit entry)", auditBefore, n)
 	}
 }
 
@@ -667,10 +831,10 @@ func TestMergePersonsIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
-	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
-	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool)
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")
 
 	var actorID string
 	var unit directorydomain.Unit
@@ -823,7 +987,7 @@ func TestMergePersonsIntegration(t *testing.T) {
 	// --- Happy path: duplicate has a role assignment, a plain membership, an instance-admin grant,
 	// and (Case A) an account+identity while the survivor has none of these. Everything should move.
 	sHappy, dHappy := insertPerson("M11.8 Happy Survivor"), insertPerson("M11.8 Happy Duplicate")
-	if _, err := authzSvc.GrantUnitRole(ctx, dHappy, roleID, unit.ID, actorID); err != nil {
+	if _, err := authzSvc.GrantUnitRole(ctx, dHappy, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID, nil); err != nil {
 		t.Fatalf("pre-grant role for happy path: %v", err)
 	}
 	insertMembership(dHappy)
@@ -904,7 +1068,7 @@ func TestMergePersonsIntegration(t *testing.T) {
 	// revoked/ended as redundant, not duplicated onto the survivor.
 	sColl, dColl := insertPerson("M11.8 Collision Survivor"), insertPerson("M11.8 Collision Duplicate")
 	for _, p := range []string{sColl, dColl} {
-		if _, err := authzSvc.GrantUnitRole(ctx, p, roleID, unit.ID, actorID); err != nil {
+		if _, err := authzSvc.GrantUnitRole(ctx, p, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID, nil); err != nil {
 			t.Fatalf("pre-grant role for collision case (%s): %v", p, err)
 		}
 		insertMembership(p)
@@ -1030,9 +1194,9 @@ func TestApiKeysAdminOversightIntegration(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
-	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, auditLogSvc, pool)
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, nil, auditLogSvc, pool, "")
 
 	var adminID, ownerID string
 	t.Cleanup(func() {

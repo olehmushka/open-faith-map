@@ -27,9 +27,9 @@ func (s *Service) CreateLocation(ctx context.Context, in domain.LocationInput) (
 	if err := in.Validate(); err != nil {
 		return domain.Location{}, err
 	}
-	return adapters.NewStore(s.pool).InsertLocation(ctx, in)
+	return adapters.NewRepository(s.pool).InsertLocation(ctx, in)
 }
 
 func (s *Service) GetLocation(ctx context.Context, id string) (domain.Location, error) {
-	return adapters.NewStore(s.pool).GetLocation(ctx, id)
+	return adapters.NewRepository(s.pool).GetLocation(ctx, id)
 }

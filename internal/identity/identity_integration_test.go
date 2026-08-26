@@ -43,7 +43,7 @@ func TestIdentityPersonReadsIntegration(t *testing.T) {
 		}
 	})
 
-	svc := application.NewService(adapters.NewStore(pool))
+	svc := application.NewService(adapters.NewRepository(pool))
 
 	var aliceID, bobID string
 	if err := pool.QueryRow(ctx, `

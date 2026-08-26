@@ -112,6 +112,10 @@ export function BulkGrantForm({
             ))}
           </select>
         </Label>
+        <Label className="flex flex-col items-start gap-1">
+          {t("expiryLabel")}
+          <Input type="datetime-local" name="expiresAt" />
+        </Label>
         <Button type="submit" disabled={selected.size === 0} className="self-start">
           {t("assignToSelected", { count: selected.size })}
         </Button>

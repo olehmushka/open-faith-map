@@ -164,6 +164,26 @@ func (s *Service) UnitAncestors(ctx context.Context, _ bearertoken.Token, unitId
 	return gencore.UnitRefPage{Units: out}, nil
 }
 
+func (s *Service) UnitChildren(ctx context.Context, _ bearertoken.Token, unitIdArg string, limitArg *int) (gencore.UnitPage, error) {
+	units, err := s.app.UnitChildren(ctx, unitIdArg, derefInt(limitArg))
+	if err != nil {
+		return gencore.UnitPage{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	out := make([]gencore.Unit, len(units))
+	for i, u := range units {
+		out[i] = toAPIUnit(u)
+	}
+	return gencore.UnitPage{Units: out}, nil
+}
+
+func (s *Service) RootUnit(ctx context.Context, _ bearertoken.Token) (gencore.Unit, error) {
+	unit, err := s.app.RootUnit(ctx)
+	if err != nil {
+		return gencore.Unit{}, mapErr(err, errCtx{})
+	}
+	return toAPIUnit(unit), nil
+}
+
 func (s *Service) ListTaxa(ctx context.Context, _ bearertoken.Token, queryArg *string, limitArg *int) (gencore.TaxonPage, error) {
 	taxa, err := s.app.ListTaxa(ctx, derefStr(queryArg), derefInt(limitArg))
 	if err != nil {
@@ -210,6 +230,87 @@ func (s *Service) CreateChildOrg(ctx context.Context, _ bearertoken.Token, reque
 		return gencore.OrgProfile{}, mapErr(err, errCtx{UnitID: requestArg.ParentUnitId})
 	}
 	return toAPIOrgProfile(p), nil
+}
+
+// M12.1 — unit lifecycle CRUD.
+
+func (s *Service) CreateUnit(ctx context.Context, _ bearertoken.Token, requestArg gencore.CreateUnitRequest) (gencore.Unit, error) {
+	unit, err := s.app.CreateUnit(ctx, requestArg.ParentUnitId, requestArg.Code, requestArg.Name, toInt16Ptr(requestArg.Level))
+	if err != nil {
+		return gencore.Unit{}, mapErr(err, errCtx{UnitID: requestArg.ParentUnitId})
+	}
+	return toAPIUnit(unit), nil
+}
+
+func (s *Service) UpdateUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string, requestArg gencore.UpdateUnitRequest) (gencore.Unit, error) {
+	unit, err := s.app.UpdateUnit(ctx, unitIdArg, requestArg.Name, requestArg.Code, toInt16Ptr(requestArg.Level))
+	if err != nil {
+		return gencore.Unit{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return toAPIUnit(unit), nil
+}
+
+func (s *Service) SetUnitState(ctx context.Context, _ bearertoken.Token, unitIdArg string, requestArg gencore.SetUnitStateRequest) (gencore.Unit, error) {
+	state := directorydomain.State(requestArg.State)
+	switch state {
+	case directorydomain.StateActive, directorydomain.StateSuspended, directorydomain.StateArchived:
+	default:
+		return gencore.Unit{}, gencore.NewInvalidUnitState()
+	}
+	unit, err := s.app.SetUnitState(ctx, unitIdArg, state)
+	if err != nil {
+		return gencore.Unit{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return toAPIUnit(unit), nil
+}
+
+func (s *Service) DeleteUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string) error {
+	if _, err := s.app.DeleteUnit(ctx, unitIdArg); err != nil {
+		return mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return nil
+}
+
+func (s *Service) UnitDeleteEligibility(ctx context.Context, _ bearertoken.Token, unitIdArg string) (gencore.UnitDeleteEligibility, error) {
+	e, err := s.app.UnitDeleteEligibility(ctx, unitIdArg)
+	if err != nil {
+		return gencore.UnitDeleteEligibility{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return gencore.UnitDeleteEligibility{
+		IsRoot: e.IsRoot, HasChildren: e.HasChildren, HasOrgProfile: e.HasOrgProfile,
+		HasActiveRoleAssignments: e.HasActiveRoleAssignments, CanDelete: e.CanDelete,
+	}, nil
+}
+
+// M12.2 — generic unit move/reparent.
+
+func (s *Service) MoveUnit(ctx context.Context, _ bearertoken.Token, unitIdArg string, requestArg gencore.MoveUnitRequest) (gencore.UnitMoveJob, error) {
+	job, err := s.app.MoveUnit(ctx, unitIdArg, requestArg.NewParentUnitId, derefStr(requestArg.GraphCode))
+	if err != nil {
+		return gencore.UnitMoveJob{}, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	return toAPIUnitMoveJob(job), nil
+}
+
+func (s *Service) GetUnitMoveStatus(ctx context.Context, _ bearertoken.Token, unitIdArg string, graphCodeArg *string) (*gencore.UnitMoveJob, error) {
+	job, err := s.app.GetUnitMoveStatus(ctx, unitIdArg, derefStr(graphCodeArg))
+	if err != nil {
+		return nil, mapErr(err, errCtx{UnitID: unitIdArg})
+	}
+	if job == nil {
+		return nil, nil
+	}
+	out := toAPIUnitMoveJob(*job)
+	return &out, nil
+}
+
+func toAPIUnitMoveJob(j directorydomain.MoveJob) gencore.UnitMoveJob {
+	return gencore.UnitMoveJob{
+		Id: j.ID, GraphId: j.GraphID, UnitId: j.UnitID,
+		OldParentUnitId: j.OldParentUnitID, NewParentUnitId: j.NewParentUnitID,
+		Status: string(j.Status), PerformedByPersonId: j.PerformedByPersonID, Error: j.Error,
+		CreatedAt: datetime.DateTime(j.CreatedAt), UpdatedAt: datetime.DateTime(j.UpdatedAt),
+	}
 }
 
 func (s *Service) ListCountries(ctx context.Context, _ bearertoken.Token) (gencore.CountryPage, error) {
@@ -316,6 +417,16 @@ func optionalDateTime(t *time.Time) *datetime.DateTime {
 	return &dt
 }
 
+// optionalTime is optionalDateTime's inverse — an optional<datetime> request field (M12.3's
+// GrantUnitRoleRequest.ExpiresAt) to the *time.Time application-layer calls take, nil-safe.
+func optionalTime(dt *datetime.DateTime) *time.Time {
+	if dt == nil {
+		return nil
+	}
+	t := time.Time(*dt)
+	return &t
+}
+
 // toAPISession converts one identity_sessions row (M11.3). currentSessionID is the caller's own
 // authz.Subject.SessionID — compared against sess.ID to compute IsCurrent server-side, rather than
 // asking the client to know which of its own sessions it's presently using.
@@ -357,4 +468,12 @@ func derefInt(i *int) int {
 		return 0
 	}
 	return *i
+}
+
+func toInt16Ptr(i *int) *int16 {
+	if i == nil {
+		return nil
+	}
+	l := int16(*i)
+	return &l
 }

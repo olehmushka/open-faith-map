@@ -22,7 +22,7 @@ import (
 
 type Config struct {
 	// RootUnitID is the same shared root unit registration/content/discovery/moderation already
-	// use (internal/platform/seed.RootUnitID) — the target of the platform-moderator-scoped
+	// use (internal/platform/seed.Resolve's RootUnitID) — the target of the platform-moderator-scoped
 	// Require check.
 	RootUnitID string
 }
@@ -49,13 +49,13 @@ type ModerationReporter interface {
 }
 
 type Service struct {
-	store      *adapters.Store
+	store      *adapters.Repository
 	moderation ModerationReporter
 	authzSvc   *authz.Service
 	cfg        Config
 }
 
-func NewService(store *adapters.Store, moderation ModerationReporter, authzSvc *authz.Service, cfg Config) *Service {
+func NewService(store *adapters.Repository, moderation ModerationReporter, authzSvc *authz.Service, cfg Config) *Service {
 	return &Service{store: store, moderation: moderation, authzSvc: authzSvc, cfg: cfg}
 }
 

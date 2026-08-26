@@ -12,12 +12,13 @@ import (
 )
 
 // moderatePermission is platform-moderator's underlying internal/authz permission
-// (D-PlatformModerator, resolved at M5) — same constant value as moderation's own moderatePermission,
-// duplicated here rather than imported: this repo's real, observed convention is each module holding
-// its own copy of this check (content's requireManage and moderation's requireCongregationAdmin are
-// already independent copies of the identical shape), not importing another module's application
-// package.
-const moderatePermission = authzdomain.PermUnitLifecycle
+// (D-PlatformModerator, resolved at M5; split into its own PermModerationStanding at M12.0 — see
+// moderation's own moderatePermission doc comment for why) — same constant value as moderation's own
+// moderatePermission, duplicated here rather than imported: this repo's real, observed convention is
+// each module holding its own copy of this check (content's requireManage and moderation's
+// requireCongregationAdmin are already independent copies of the identical shape), not importing
+// another module's application package.
+const moderatePermission = authzdomain.PermModerationStanding
 
 // requireModerate asks internal/authz's PDP whether the request's subject (from ctx) holds
 // moderatePermission on Config.RootUnitID specifically. moderation.read and moderation.act

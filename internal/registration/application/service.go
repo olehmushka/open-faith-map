@@ -48,16 +48,16 @@ const operatorPermission = authzdomain.PermReligionOrgManage
 
 type Config struct {
 	// RootUnitID is the single shared root unit every congregation is registered as a child of
-	// (internal/platform/seed.RootUnitID — a fixed structural RID since D-SeedBootstrap, not an env
+	// (internal/platform/seed.Resolve's RootUnitID — a fixed structural RID since D-SeedBootstrap, not an env
 	// var).
 	RootUnitID string
 	// CongregationAdminRoleID is the role granted to a submitter on their own new unit at approval
-	// time (internal/platform/seed.CongregationAdminRoleID).
+	// time (internal/platform/seed.Resolve's CongregationAdminRoleID).
 	CongregationAdminRoleID string
 }
 
 type Service struct {
-	store      *adapters.Store
+	store      *adapters.Repository
 	religion   *religionapplication.Service
 	location   *locationapplication.Service
 	membership *membershipapplication.Service
@@ -67,7 +67,7 @@ type Service struct {
 }
 
 func NewService(
-	store *adapters.Store,
+	store *adapters.Repository,
 	religionSvc *religionapplication.Service,
 	locationSvc *locationapplication.Service,
 	membershipSvc *membershipapplication.Service,
@@ -350,7 +350,7 @@ func (s *Service) ensureFilled(ctx context.Context, position membershipdomain.Po
 // ensureGrant grants CongregationAdminRoleID to personID on unitID, idempotent on a resumed retry
 // (internal/authz.Service.GrantUnitRole's own unique-index-conflict-as-success handling).
 func (s *Service) ensureGrant(ctx context.Context, personID, unitID, grantedByPersonID string) error {
-	if _, err := s.authzSvc.GrantUnitRole(ctx, personID, s.cfg.CongregationAdminRoleID, unitID, grantedByPersonID); err != nil {
+	if _, err := s.authzSvc.GrantUnitRole(ctx, personID, s.cfg.CongregationAdminRoleID, unitID, authzdomain.ScopeUnit, "", grantedByPersonID, nil); err != nil {
 		return fmt.Errorf("grantUnitRole: %w", err)
 	}
 	return nil
@@ -371,23 +371,34 @@ func (s *Service) Reject(ctx context.Context, decidedByPersonID, id, reason stri
 }
 
 // GetReparentStatus returns the most recent re-parenting job for id, or nil if none has ever been
-// started.
+// started (M12.2: a thin view over internal/directory.GetMoveStatus — see Reparent's own doc for
+// why registration no longer owns this job's storage).
 func (s *Service) GetReparentStatus(ctx context.Context, id string) (*domain.ReparentingJob, error) {
-	if _, err := s.store.Get(ctx, id); err != nil {
+	req, err := s.store.Get(ctx, id)
+	if err != nil {
 		return nil, err
 	}
-	return s.store.GetLatestReparentJob(ctx, id)
+	if req.CreatedUnitID == nil {
+		return nil, nil
+	}
+	mj, err := s.directory.GetMoveStatus(ctx, directorydomain.CanonicalGraphCode, *req.CreatedUnitID)
+	if err != nil {
+		return nil, err
+	}
+	if mj == nil {
+		return nil, nil
+	}
+	job := moveJobToReparentingJob(req, *mj)
+	return &job, nil
 }
 
 // Reparent starts or resumes moving an APPROVED request's congregation unit onto newParentUnitID
-// (M4.1, D-JurisdictionUnits). internal/directory has no single atomic "move" call for a unit (only
-// AddEdge/RemoveEdge exist — the same shape as pre-cutover go-oikumenea), so this is a resumable
-// state machine, re-entrant on requestId: a repeat call with the request already mid-job resumes
-// from whichever ReparentStatus step last durably landed, driven by runReparentSteps below.
-//
-// Add-before-remove by design (D-JurisdictionUnits): the congregation briefly has two canonical
-// parents mid-migration rather than momentarily zero, so a subtree-scoped grant never loses reach to
-// it during the move.
+// (M4.1, D-JurisdictionUnits). M12.2: the actual add-before-remove, resumable, closure-safe move —
+// formerly a state machine private to this service, backed by its own jurisdiction_reparenting_jobs
+// table — is now internal/directory.Move, generalized so internal/registration is a caller rather
+// than the sole owner (docs/milestones.md's M12.2 row); this method is now just the
+// approval/operator-gate wrapper around it. jurisdiction_reparenting_jobs itself is left in place,
+// untouched, as a frozen historical log — this service no longer writes to it.
 func (s *Service) Reparent(ctx context.Context, performedByPersonID, id, newParentUnitID string) (domain.ReparentingJob, error) {
 	req, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -399,100 +410,29 @@ func (s *Service) Reparent(ctx context.Context, performedByPersonID, id, newPare
 	if err := s.requireOperator(ctx); err != nil {
 		return domain.ReparentingJob{}, err
 	}
-	congregationUnitID := *req.CreatedUnitID
-
-	job, err := s.store.GetLiveReparentJob(ctx, congregationUnitID)
+	mj, err := s.directory.Move(ctx, directorydomain.CanonicalGraphCode, *req.CreatedUnitID, newParentUnitID, performedByPersonID)
 	if err != nil {
-		return domain.ReparentingJob{}, fmt.Errorf("getLiveReparentJob: %w", err)
+		return domain.ReparentingJob{}, err
 	}
-	if job == nil {
-		oldParentUnitID, err := s.currentParent(ctx, req)
-		if err != nil {
-			return domain.ReparentingJob{}, fmt.Errorf("resolve current parent: %w", err)
-		}
-		created, err := s.store.CreateReparentJob(ctx, req.ID, congregationUnitID, oldParentUnitID, newParentUnitID, performedByPersonID)
-		if err != nil {
-			return domain.ReparentingJob{}, fmt.Errorf("createReparentJob: %w", err)
-		}
-		job = &created
-	} else if job.NewParentUnitID != newParentUnitID {
-		return domain.ReparentingJob{}, fmt.Errorf("unit %s already has a live reparent job targeting %s — resolve it before starting a move to %s", congregationUnitID, job.NewParentUnitID, newParentUnitID)
-	}
-
-	return s.runReparentSteps(ctx, *job)
+	return moveJobToReparentingJob(req, mj), nil
 }
 
-// currentParent resolves congregationUnitID's actual current parent: the most recent VERIFIED
-// reparent job's target if one exists (this store IS the record of every successful move this
-// service has ever performed), else the jurisdiction chosen at approval time, else the configured
-// root unit.
-func (s *Service) currentParent(ctx context.Context, req domain.Request) (string, error) {
-	latest, err := s.store.GetLatestReparentJob(ctx, req.ID)
-	if err != nil {
-		return "", err
+// moveJobToReparentingJob adapts a directorydomain.MoveJob onto this module's own ReparentingJob wire
+// shape (M12.2), so registration's public API contract is unchanged for its own callers even though
+// the underlying job storage moved to internal/directory.
+func moveJobToReparentingJob(req domain.Request, mj directorydomain.MoveJob) domain.ReparentingJob {
+	return domain.ReparentingJob{
+		ID:                    mj.ID,
+		RegistrationRequestID: req.ID,
+		CongregationUnitID:    mj.UnitID,
+		OldParentUnitID:       mj.OldParentUnitID,
+		NewParentUnitID:       mj.NewParentUnitID,
+		Status:                domain.ReparentStatus(mj.Status),
+		PerformedByPersonID:   mj.PerformedByPersonID,
+		Error:                 mj.Error,
+		CreatedAt:             mj.CreatedAt,
+		UpdatedAt:             mj.UpdatedAt,
 	}
-	if latest != nil && latest.Status == domain.ReparentVerified {
-		return latest.NewParentUnitID, nil
-	}
-	if req.JurisdictionUnitID != nil && *req.JurisdictionUnitID != "" {
-		return *req.JurisdictionUnitID, nil
-	}
-	return s.cfg.RootUnitID, nil
-}
-
-// runReparentSteps drives job through whichever steps haven't durably landed yet. Each step
-// persists its own completion before the next runs, so a crash between any two steps resumes
-// exactly here on the next call rather than repeating or skipping work.
-func (s *Service) runReparentSteps(ctx context.Context, job domain.ReparentingJob) (domain.ReparentingJob, error) {
-	if job.Status == domain.ReparentPending {
-		if _, err := s.directory.AddEdge(ctx, job.CongregationUnitID, job.NewParentUnitID, directorydomain.CanonicalGraphCode); err != nil && !errors.Is(err, directorydomain.ErrEdgeExists) {
-			return s.store.FailReparentJob(ctx, job.ID, fmt.Sprintf("addEdge(new parent): %v", err))
-		}
-		updated, err := s.store.AdvanceReparentJob(ctx, job.ID, domain.ReparentNewEdgeAdded)
-		if err != nil {
-			return domain.ReparentingJob{}, err
-		}
-		job = updated
-	}
-
-	if job.Status == domain.ReparentNewEdgeAdded {
-		// RemoveEdge on an already-absent edge is a documented no-op (idempotent by design), so a
-		// resumed retry re-calling this needs no special-case error handling.
-		if err := s.directory.RemoveEdge(ctx, job.CongregationUnitID, job.OldParentUnitID, directorydomain.CanonicalGraphCode); err != nil {
-			return s.store.FailReparentJob(ctx, job.ID, fmt.Sprintf("removeEdge(old parent): %v", err))
-		}
-		updated, err := s.store.AdvanceReparentJob(ctx, job.ID, domain.ReparentOldEdgeRemoved)
-		if err != nil {
-			return domain.ReparentingJob{}, err
-		}
-		job = updated
-	}
-
-	if job.Status == domain.ReparentOldEdgeRemoved {
-		ancestors, err := s.directory.Ancestors(ctx, job.CongregationUnitID, directorydomain.CanonicalGraphCode)
-		if err != nil {
-			return s.store.FailReparentJob(ctx, job.ID, fmt.Sprintf("ancestors (verify): %v", err))
-		}
-		if !ancestorsInclude(ancestors, job.NewParentUnitID) {
-			return s.store.FailReparentJob(ctx, job.ID, fmt.Sprintf("verify: %s not found in %s's ancestors after re-parenting", job.NewParentUnitID, job.CongregationUnitID))
-		}
-		updated, err := s.store.AdvanceReparentJob(ctx, job.ID, domain.ReparentVerified)
-		if err != nil {
-			return domain.ReparentingJob{}, err
-		}
-		job = updated
-	}
-
-	return job, nil
-}
-
-func ancestorsInclude(refs []directorydomain.UnitRef, unitID string) bool {
-	for _, u := range refs {
-		if u.ID == unitID {
-			return true
-		}
-	}
-	return false
 }
 
 func ptrOrEmpty(s *string) string {

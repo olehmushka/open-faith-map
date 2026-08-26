@@ -8,6 +8,76 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+// M12.4 — explainAccess's return value; mirrors internal/authz/domain.Decision exactly. via is empty when allow is false; denyReason is the empty string when allow is true.
+type AccessExplanation struct {
+	Allow      bool                            `json:"allow"`
+	Via        []AccessExplanationContribution `json:"via"`
+	DenyReason string                          `json:"denyReason"`
+}
+
+func (o AccessExplanation) MarshalJSON() ([]byte, error) {
+	if o.Via == nil {
+		o.Via = make([]AccessExplanationContribution, 0)
+	}
+	type _tmpAccessExplanation AccessExplanation
+	return safejson.Marshal(_tmpAccessExplanation(o))
+}
+
+func (o *AccessExplanation) UnmarshalJSON(data []byte) error {
+	type _tmpAccessExplanation AccessExplanation
+	var rawAccessExplanation _tmpAccessExplanation
+	if err := safejson.Unmarshal(data, &rawAccessExplanation); err != nil {
+		return err
+	}
+	if rawAccessExplanation.Via == nil {
+		rawAccessExplanation.Via = make([]AccessExplanationContribution, 0)
+	}
+	*o = AccessExplanation(rawAccessExplanation)
+	return nil
+}
+
+func (o AccessExplanation) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AccessExplanation) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M12.4 — one reason an ALLOW was reached; mirrors internal/authz/domain.Contribution exactly. For an instance-plane allow only instanceAdmin is true and every other field is the empty string.
+type AccessExplanationContribution struct {
+	InstanceAdmin bool   `json:"instanceAdmin"`
+	AssignmentId  string `json:"assignmentId"`
+	RoleCode      string `json:"roleCode"`
+	TargetUnitId  string `json:"targetUnitId"`
+	Scope         string `json:"scope"`
+	GraphCode     string `json:"graphCode"`
+}
+
+func (o AccessExplanationContribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AccessExplanationContribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // status is "active", "disabled", or "none" (the person has never had a login attached).
 type AccountStatus struct {
 	PersonId string `json:"personId"`
@@ -194,11 +264,14 @@ func (o *AuditLogPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// M11.7 — the batch variant of GrantUnitRoleRequest: the same role and unit, granted to every id in personIds at once, atomically.
+// M11.7 — the batch variant of GrantUnitRoleRequest: the same role, unit, and scope, granted to every id in personIds at once, atomically. scope/graphId follow GrantUnitRoleRequest's own rules (M12.2); expiresAt follows the same rule too (M12.3).
 type BulkGrantUnitRoleRequest struct {
-	PersonIds []string `json:"personIds"`
-	RoleId    string   `json:"roleId"`
-	UnitId    string   `json:"unitId"`
+	PersonIds []string           `json:"personIds"`
+	RoleId    string             `json:"roleId"`
+	UnitId    string             `json:"unitId"`
+	Scope     string             `json:"scope"`
+	GraphId   *string            `json:"graphId,omitempty"`
+	ExpiresAt *datetime.DateTime `json:"expiresAt,omitempty"`
 }
 
 func (o BulkGrantUnitRoleRequest) MarshalJSON() ([]byte, error) {
@@ -438,6 +511,30 @@ func (o *CreateChildOrgRequest) UnmarshalYAML(unmarshal func(interface{}) error)
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M12.1 — createUnit's request. General unit creation under a parent, without createChildOrg's religion-profile side effects.
+type CreateUnitRequest struct {
+	ParentUnitId string `json:"parentUnitId"`
+	Code         string `json:"code"`
+	Name         string `json:"name"`
+	Level        *int   `json:"level,omitempty"`
+}
+
+func (o CreateUnitRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateUnitRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type GetPersonsRequest struct {
 	PersonIds []string `json:"personIds"`
 }
@@ -499,10 +596,14 @@ func (o *GrantInstanceAdminRequest) UnmarshalYAML(unmarshal func(interface{}) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M12.2 — scope must be "unit" or "subtree"; graphId is required when scope is "subtree" (the graph a subtree grant cascades over) and must be omitted for "unit". M12.3 — expiresAt is optional and, when set, must be in the future.
 type GrantUnitRoleRequest struct {
-	PersonId string `json:"personId"`
-	RoleId   string `json:"roleId"`
-	UnitId   string `json:"unitId"`
+	PersonId  string             `json:"personId"`
+	RoleId    string             `json:"roleId"`
+	UnitId    string             `json:"unitId"`
+	Scope     string             `json:"scope"`
+	GraphId   *string            `json:"graphId,omitempty"`
+	ExpiresAt *datetime.DateTime `json:"expiresAt,omitempty"`
 }
 
 func (o GrantUnitRoleRequest) MarshalYAML() (interface{}, error) {
@@ -794,6 +895,28 @@ func (o MergeResult) MarshalYAML() (interface{}, error) {
 }
 
 func (o *MergeResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M12.2 — moveUnit's request. graphCode defaults to "canonical" when unset.
+type MoveUnitRequest struct {
+	NewParentUnitId string  `json:"newParentUnitId"`
+	GraphCode       *string `json:"graphCode,omitempty"`
+}
+
+func (o MoveUnitRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MoveUnitRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -1119,6 +1242,8 @@ type RoleAssignment struct {
 	TargetUnitId string            `json:"targetUnitId"`
 	Scope        string            `json:"scope"`
 	GrantedAt    datetime.DateTime `json:"grantedAt"`
+	// M12.3 — set only when the grant was given an expiry; the PDP already enforces it, this just surfaces it.
+	ExpiresAt *datetime.DateTime `json:"expiresAt,omitempty"`
 }
 
 func (o RoleAssignment) MarshalYAML() (interface{}, error) {
@@ -1287,6 +1412,27 @@ func (o *SessionPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M12.1 — setUnitState's request. state must be one of active/suspended/archived.
+type SetUnitStateRequest struct {
+	State string `json:"state"`
+}
+
+func (o SetUnitStateRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SetUnitStateRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Taxon struct {
 	Id string `json:"id"`
 	// Unset for a root religion.
@@ -1375,6 +1521,61 @@ func (o Unit) MarshalYAML() (interface{}, error) {
 }
 
 func (o *Unit) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M12.5 — unitDeleteEligibility's response, a preview of deleteUnit's own orphan-protection outcome without deleting anything. canDelete is the AND of the four negations, computed server-side so the client never re-derives the rule.
+type UnitDeleteEligibility struct {
+	IsRoot                   bool `json:"isRoot"`
+	HasChildren              bool `json:"hasChildren"`
+	HasOrgProfile            bool `json:"hasOrgProfile"`
+	HasActiveRoleAssignments bool `json:"hasActiveRoleAssignments"`
+	CanDelete                bool `json:"canDelete"`
+}
+
+func (o UnitDeleteEligibility) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitDeleteEligibility) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M12.2 — one move attempt's resumable state: PENDING -> NEW_EDGE_ADDED -> OLD_EDGE_REMOVED -> VERIFIED, or FAILED at any step (error then set). At most one non-FAILED job exists per (graphId, unitId) at a time.
+type UnitMoveJob struct {
+	Id                  string            `json:"id"`
+	GraphId             string            `json:"graphId"`
+	UnitId              string            `json:"unitId"`
+	OldParentUnitId     string            `json:"oldParentUnitId"`
+	NewParentUnitId     string            `json:"newParentUnitId"`
+	Status              string            `json:"status"`
+	PerformedByPersonId string            `json:"performedByPersonId"`
+	Error               *string           `json:"error,omitempty"`
+	CreatedAt           datetime.DateTime `json:"createdAt"`
+	UpdatedAt           datetime.DateTime `json:"updatedAt"`
+}
+
+func (o UnitMoveJob) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitMoveJob) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -1502,6 +1703,29 @@ func (o UpdateMyProfileRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpdateMyProfileRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M12.1 — updateUnit's request.
+type UpdateUnitRequest struct {
+	Name  string  `json:"name"`
+	Code  *string `json:"code,omitempty"`
+	Level *int    `json:"level,omitempty"`
+}
+
+func (o UpdateUnitRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateUnitRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

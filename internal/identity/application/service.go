@@ -383,10 +383,10 @@ func hashInviteToken(rawToken string) string {
 func (s *Service) CreateApiKey(ctx context.Context, personID, label string, permissionCodes []string) (domain.APIKey, string, error) {
 	for _, code := range permissionCodes {
 		if !authzdomain.IsKnownPermission(code) {
-			return domain.APIKey{}, "", domain.ErrUnknownPermissionCode
+			return domain.APIKey{}, "", authzdomain.ErrUnknownPermissionCode
 		}
 		if authzdomain.IsInstanceScope(code) {
-			return domain.APIKey{}, "", domain.ErrUnknownPermissionCode
+			return domain.APIKey{}, "", authzdomain.ErrUnknownPermissionCode
 		}
 	}
 	rawToken, tokenHash, err := newAPIKeyToken()

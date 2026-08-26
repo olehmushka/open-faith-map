@@ -31,7 +31,7 @@ import (
 
 type Config struct {
 	// RootUnitID is the same shared root unit registration/content/discovery/moderation already use
-	// (internal/platform/seed.RootUnitID) — the target of the operator-scoped Require check, and
+	// (internal/platform/seed.Resolve's RootUnitID) — the target of the operator-scoped Require check, and
 	// the default parent for provisioned units when a candidate has no jurisdiction chosen.
 	RootUnitID string
 	// ActiveGeocoderCode selects which registered Geocoder SuggestCoordinates uses (see geocoders
@@ -48,7 +48,7 @@ type Config struct {
 }
 
 type Service struct {
-	store    *adapters.Store
+	store    *adapters.Repository
 	religion *religionapplication.Service
 	location *locationapplication.Service
 	refdata  *refdataapplication.Service
@@ -69,7 +69,7 @@ type Service struct {
 }
 
 func NewService(
-	store *adapters.Store,
+	store *adapters.Repository,
 	religionSvc *religionapplication.Service,
 	locationSvc *locationapplication.Service,
 	refdataSvc *refdataapplication.Service,

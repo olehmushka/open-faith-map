@@ -70,20 +70,21 @@ func (s *SuperAdminService) ListRoleAssignmentsByUnit(ctx context.Context, _ bea
 		out[i] = gencore.RoleAssignment{
 			Id: a.ID, PersonId: a.PersonID, PersonName: a.PersonName, RoleId: a.RoleID, RoleCode: a.RoleCode,
 			TargetUnitId: a.TargetUnitID, Scope: string(a.Scope), GrantedAt: datetime.DateTime(a.GrantedAt),
+			ExpiresAt: optionalDateTime(a.ExpiresAt),
 		}
 	}
 	return gencore.RoleAssignmentPage{Assignments: out}, nil
 }
 
 func (s *SuperAdminService) GrantUnitRole(ctx context.Context, _ bearertoken.Token, requestArg gencore.GrantUnitRoleRequest) error {
-	if err := s.app.GrantUnitRole(ctx, requestArg.PersonId, requestArg.RoleId, requestArg.UnitId); err != nil {
+	if err := s.app.GrantUnitRole(ctx, requestArg.PersonId, requestArg.RoleId, requestArg.UnitId, requestArg.Scope, derefStr(requestArg.GraphId), optionalTime(requestArg.ExpiresAt)); err != nil {
 		return mapErr(err, errCtx{PersonID: requestArg.PersonId, UnitID: requestArg.UnitId})
 	}
 	return nil
 }
 
 func (s *SuperAdminService) BulkGrantUnitRole(ctx context.Context, _ bearertoken.Token, requestArg gencore.BulkGrantUnitRoleRequest) error {
-	if err := s.app.BulkGrantUnitRole(ctx, requestArg.PersonIds, requestArg.RoleId, requestArg.UnitId); err != nil {
+	if err := s.app.BulkGrantUnitRole(ctx, requestArg.PersonIds, requestArg.RoleId, requestArg.UnitId, requestArg.Scope, derefStr(requestArg.GraphId), optionalTime(requestArg.ExpiresAt)); err != nil {
 		return mapErr(err, errCtx{UnitID: requestArg.UnitId})
 	}
 	return nil
@@ -91,6 +92,13 @@ func (s *SuperAdminService) BulkGrantUnitRole(ctx context.Context, _ bearertoken
 
 func (s *SuperAdminService) RevokeRoleAssignment(ctx context.Context, _ bearertoken.Token, assignmentIdArg string) error {
 	if err := s.app.RevokeRoleAssignment(ctx, assignmentIdArg); err != nil {
+		return mapErr(err, errCtx{AssignmentID: assignmentIdArg})
+	}
+	return nil
+}
+
+func (s *SuperAdminService) ClearRoleAssignmentExpiry(ctx context.Context, _ bearertoken.Token, assignmentIdArg string) error {
+	if err := s.app.ClearRoleAssignmentExpiry(ctx, assignmentIdArg); err != nil {
 		return mapErr(err, errCtx{AssignmentID: assignmentIdArg})
 	}
 	return nil
@@ -282,6 +290,21 @@ func (s *SuperAdminService) InvitePerson(ctx context.Context, _ bearertoken.Toke
 		PersonId: result.PersonID, AccountId: result.AccountID, Token: result.Token,
 		ExpiresAt: datetime.DateTime(result.ExpiresAt),
 	}, nil
+}
+
+func (s *SuperAdminService) ExplainAccess(ctx context.Context, _ bearertoken.Token, subjectPersonIdArg, permissionCodeArg, unitIdArg string) (gencore.AccessExplanation, error) {
+	d, err := s.app.ExplainAccess(ctx, subjectPersonIdArg, permissionCodeArg, unitIdArg)
+	if err != nil {
+		return gencore.AccessExplanation{}, mapErr(err, errCtx{PersonID: subjectPersonIdArg, UnitID: unitIdArg})
+	}
+	via := make([]gencore.AccessExplanationContribution, len(d.Via))
+	for i, c := range d.Via {
+		via[i] = gencore.AccessExplanationContribution{
+			InstanceAdmin: c.InstanceAdmin, AssignmentId: c.AssignmentID, RoleCode: c.RoleCode,
+			TargetUnitId: c.TargetUnitID, Scope: string(c.Scope), GraphCode: c.GraphCode,
+		}
+	}
+	return gencore.AccessExplanation{Allow: d.Allow, Via: via, DenyReason: d.DenyReason}, nil
 }
 
 func auditLogPageSizeOrDefault(p *int) int {

@@ -44,7 +44,7 @@ func TestProfileIntegration(t *testing.T) {
 		t.Fatalf("insert person: %v", err)
 	}
 
-	svc := application.NewService(adapters.NewStore(pool))
+	svc := application.NewService(adapters.NewRepository(pool))
 
 	before, err := svc.GetPerson(ctx, personID)
 	if err != nil {

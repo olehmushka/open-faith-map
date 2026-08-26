@@ -17,6 +17,8 @@ import { auth } from "@/auth";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
 import type {
+  IAccessExplanation,
+  IAccessExplanationContribution,
   IAccountStatus,
   IApiKey,
   IAuditLogEntry,
@@ -24,6 +26,7 @@ import type {
   ICountry,
   ICreateApiKeyResult,
   ICreateChildOrgRequest,
+  ICreateUnitRequest,
   IInstanceAdminGrant,
   IInviteInfo,
   IInviteResult,
@@ -38,13 +41,22 @@ import type {
   ISession,
   ITaxon,
   IUnit,
+  IUnitDeleteEligibility,
+  IUnitMoveJob,
   IUnitRef,
+  IUpdateUnitRequest,
   IWhoami,
 } from "./openfaithmap/generated/core";
 
 export type Whoami = IWhoami;
+export type AccessExplanation = IAccessExplanation;
+export type AccessExplanationContribution = IAccessExplanationContribution;
 export type Unit = IUnit;
 export type UnitRef = IUnitRef;
+export type UnitDeleteEligibility = IUnitDeleteEligibility;
+export type UnitMoveJob = IUnitMoveJob;
+export type CreateUnitInput = ICreateUnitRequest;
+export type UpdateUnitInput = IUpdateUnitRequest;
 export type Taxon = ITaxon;
 export type OrgKind = IOrgKind;
 export type OrgProfile = IOrgProfile;
@@ -133,6 +145,17 @@ export async function unitAncestors(unitId: string): Promise<UnitRef[]> {
   return page.units;
 }
 
+/** M12.7 — one-hop direct children, capped at limit (default/max 50, same as listUnits). */
+export async function unitChildren(unitId: string, limit?: number): Promise<Unit[]> {
+  const page = await unwrap((await client()).core.unitChildren(unitId, limit));
+  return page.units;
+}
+
+/** M12.7 — the single root unit, the hierarchy tree's starting point. */
+export async function rootUnit(): Promise<Unit> {
+  return unwrap((await client()).core.rootUnit());
+}
+
 export async function listTaxa(query?: string, limit = 500): Promise<Taxon[]> {
   const page = await unwrap((await client()).core.listTaxa(query, limit));
   return page.taxa;
@@ -154,6 +177,44 @@ export async function getOrgProfile(unitId: string): Promise<OrgProfile> {
 /** Gated server-side — the caller must hold religionorg.manage over parentUnitId. */
 export async function createChildOrg(input: CreateChildOrgInput): Promise<OrgProfile> {
   return unwrap((await client()).core.createChildOrg(input));
+}
+
+// M12.5 — unit lifecycle CRUD wrappers over M12.1's endpoints. Gated server-side — the caller must
+// hold unit.lifecycle over the relevant unit (parentUnitId for createUnit, unitId otherwise), same as
+// createChildOrg above.
+export async function createUnit(input: CreateUnitInput): Promise<Unit> {
+  return unwrap((await client()).core.createUnit(input));
+}
+
+export async function updateUnit(unitId: string, input: UpdateUnitInput): Promise<Unit> {
+  return unwrap((await client()).core.updateUnit(unitId, input));
+}
+
+export async function setUnitState(unitId: string, state: string): Promise<Unit> {
+  return unwrap((await client()).core.setUnitState(unitId, { state }));
+}
+
+export async function deleteUnit(unitId: string): Promise<void> {
+  return unwrap((await client()).core.deleteUnit(unitId));
+}
+
+/** Gated server-side — no more permissive than deleteUnit itself (M12.5). */
+export async function unitDeleteEligibility(unitId: string): Promise<UnitDeleteEligibility> {
+  return unwrap((await client()).core.unitDeleteEligibility(unitId));
+}
+
+/**
+ * M12.2/M12.6 — generic move/reparent. Gated server-side on D-UnitMoveDualScope: unit.edges.manage
+ * over BOTH the unit's current parent (server-resolved) and the requested new parent. graphCode is
+ * omitted — this app has no UI concept of non-"canonical" graphs, and the backend defaults it.
+ */
+export async function moveUnit(unitId: string, newParentUnitId: string): Promise<UnitMoveJob> {
+  return unwrap((await client()).core.moveUnit(unitId, { newParentUnitId }));
+}
+
+/** Returns null when the unit has never been moved (no job row yet) — not a thrown error. */
+export async function getUnitMoveStatus(unitId: string): Promise<UnitMoveJob | null> {
+  return unwrap((await client()).core.getUnitMoveStatus(unitId));
 }
 
 export async function listCountries(): Promise<Country[]> {
@@ -254,18 +315,50 @@ export async function listRoleAssignmentsByUnit(unitId: string): Promise<RoleAss
   return page.assignments;
 }
 
-export async function grantUnitRole(personId: string, roleId: string, unitId: string): Promise<void> {
-  return unwrap((await client()).coreSuperAdmin.grantUnitRole({ personId, roleId, unitId }));
+// M12.4 — decision-tracing debug tool ("why does this user have this access"); pure read, no
+// audit log entry on the server side.
+export async function explainAccess(
+  subjectPersonId: string,
+  permissionCode: string,
+  unitId: string,
+): Promise<AccessExplanation> {
+  return unwrap((await client()).coreSuperAdmin.explainAccess(subjectPersonId, permissionCode, unitId));
+}
+
+// expiresAt (M12.3) is an optional ISO-8601 datetime string — nil/omitted for a non-expiring grant.
+// scope is hardcoded "unit" (M12.2 added real scope="subtree" provisioning, but no UI in this app
+// collects it yet — this wrapper preserves the exact behavior every grant from this screen already
+// had before the generated SDK caught up to the contract).
+export async function grantUnitRole(
+  personId: string,
+  roleId: string,
+  unitId: string,
+  expiresAt?: string,
+): Promise<void> {
+  return unwrap((await client()).coreSuperAdmin.grantUnitRole({ personId, roleId, unitId, scope: "unit", expiresAt }));
 }
 
 export async function revokeRoleAssignment(assignmentId: string): Promise<void> {
   return unwrap((await client()).coreSuperAdmin.revokeRoleAssignment(assignmentId));
 }
 
+// M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched.
+export async function clearRoleAssignmentExpiry(assignmentId: string): Promise<void> {
+  return unwrap((await client()).coreSuperAdmin.clearRoleAssignmentExpiry(assignmentId));
+}
+
 // M11.7 — the batch variant of grantUnitRole: the same role and unit, granted to every id in
-// personIds at once, atomically.
-export async function bulkGrantUnitRole(personIds: string[], roleId: string, unitId: string): Promise<void> {
-  return unwrap((await client()).coreSuperAdmin.bulkGrantUnitRole({ personIds, roleId, unitId }));
+// personIds at once, atomically. expiresAt (M12.3) follows grantUnitRole's own rule; scope is
+// hardcoded "unit" for the same reason grantUnitRole's own wrapper is.
+export async function bulkGrantUnitRole(
+  personIds: string[],
+  roleId: string,
+  unitId: string,
+  expiresAt?: string,
+): Promise<void> {
+  return unwrap(
+    (await client()).coreSuperAdmin.bulkGrantUnitRole({ personIds, roleId, unitId, scope: "unit", expiresAt }),
+  );
 }
 
 export async function listInstanceAdmins(): Promise<InstanceAdminGrant[]> {

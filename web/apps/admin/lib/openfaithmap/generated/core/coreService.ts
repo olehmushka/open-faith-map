@@ -3,8 +3,10 @@ import { ICountryPage } from "./countryPage";
 import { ICreateApiKeyRequest } from "./createApiKeyRequest";
 import { ICreateApiKeyResult } from "./createApiKeyResult";
 import { ICreateChildOrgRequest } from "./createChildOrgRequest";
+import { ICreateUnitRequest } from "./createUnitRequest";
 import { IGetPersonsRequest } from "./getPersonsRequest";
 import { IMembershipPage } from "./membershipPage";
+import { IMoveUnitRequest } from "./moveUnitRequest";
 import { IOrgKindPage } from "./orgKindPage";
 import { IOrgProfile } from "./orgProfile";
 import { IPermissionCodePage } from "./permissionCodePage";
@@ -14,12 +16,16 @@ import { IRegisterSessionRequest } from "./registerSessionRequest";
 import { IRoleAssignmentPage } from "./roleAssignmentPage";
 import { ISession } from "./session";
 import { ISessionPage } from "./sessionPage";
+import { ISetUnitStateRequest } from "./setUnitStateRequest";
 import { ITaxon } from "./taxon";
 import { ITaxonPage } from "./taxonPage";
 import { IUnit } from "./unit";
+import { IUnitDeleteEligibility } from "./unitDeleteEligibility";
+import { IUnitMoveJob } from "./unitMoveJob";
 import { IUnitPage } from "./unitPage";
 import { IUnitRefPage } from "./unitRefPage";
 import { IUpdateMyProfileRequest } from "./updateMyProfileRequest";
+import { IUpdateUnitRequest } from "./updateUnitRequest";
 import { IWhoami } from "./whoami";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -63,6 +69,16 @@ export interface ICoreService {
     /** Free-text search over code/name, capped at limit (default/max 50). */
     listUnits(query?: string | null, limit?: number | null): Promise<IUnitPage>;
     unitAncestors(unitId: string): Promise<IUnitRefPage>;
+    /**
+     * One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time — not the full subtree ancestors/descendants-style closure reads return). Capped at limit (default/max 50), same shape as listUnits.
+     *
+     */
+    unitChildren(unitId: string, limit?: number | null): Promise<IUnitPage>;
+    /**
+     * The single root unit — M12.7's tree-view starting point. Deliberately not nested under /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId} wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the POST tree in M12.1) — a top-level static resource with no {} segment, following updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+     *
+     */
+    rootUnit(): Promise<IUnit>;
     /** Free-text search over code/name, capped at limit (default/max 50). */
     listTaxa(query?: string | null, limit?: number | null): Promise<ITaxonPage>;
     getTaxon(taxonId: string): Promise<ITaxon>;
@@ -70,6 +86,35 @@ export interface ICoreService {
     getOrgProfile(unitId: string): Promise<IOrgProfile>;
     /** Gated — the caller must hold religionorg.manage over parentUnitId. */
     createChildOrg(request: ICreateChildOrgRequest): Promise<IOrgProfile>;
+    /** M12.1 — general unit creation under a parent. Gated — the caller must hold unit.lifecycle over request.parentUnitId. */
+    createUnit(request: ICreateUnitRequest): Promise<IUnit>;
+    /**
+     * M12.1 — rewrites name/code/level. Gated — the caller must hold unit.lifecycle over unitId. Deliberately not nested under /units/: httprouter (vendored v1.3.0) cannot register a wildcard child next to the existing static /units/children (createChildOrg) at the same POST tree depth — any route of the shape POST /units/{unitId}/* panics at startup regardless of what follows the wildcard, since a POST /units/children request would otherwise be genuinely ambiguous between the two routes. A sibling top-level resource, not a suffix, is the only fix; grantUnitRole/bulkGrantUnitRole already set this precedent (POST /role-assignments, not POST /units/{unitId}/role-assignments).
+     *
+     */
+    updateUnit(unitId: string, request: IUpdateUnitRequest): Promise<IUnit>;
+    /**
+     * M12.1 — archive/suspend/reactivate. Gated — the caller must hold unit.lifecycle over unitId. The root unit refuses every state change. See updateUnit's docs for why this lives under /unit-lifecycle/ rather than /units/.
+     *
+     */
+    setUnitState(unitId: string, request: ISetUnitStateRequest): Promise<IUnit>;
+    /**
+     * M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
+     *
+     */
+    deleteUnit(unitId: string): Promise<void>;
+    /**
+     * M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting anything, so the admin UI can gray out/explain the delete action instead of only discovering it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same authority deleteUnit itself requires (this read is no more permissive than the write it previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own httprouter wildcard-collision class applies.
+     *
+     */
+    unitDeleteEligibility(unitId: string): Promise<IUnitDeleteEligibility>;
+    /**
+     * M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
+     *
+     */
+    moveUnit(unitId: string, request: IMoveUnitRequest): Promise<IUnitMoveJob>;
+    /** Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started. */
+    getUnitMoveStatus(unitId: string, graphCode?: string | null): Promise<IUnitMoveJob | null>;
     listCountries(): Promise<ICountryPage>;
     listMembershipsByUnit(unitId: string): Promise<IMembershipPage>;
     getPerson(personId: string): Promise<IPerson>;
@@ -306,6 +351,48 @@ export class CoreService implements ICoreService {
         );
     }
 
+    /**
+     * One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time — not the full subtree ancestors/descendants-style closure reads return). Capped at limit (default/max 50), same shape as listUnits.
+     *
+     */
+    public unitChildren(unitId: string, limit?: number | null): Promise<IUnitPage> {
+        return this.bridge.call<IUnitPage>(
+            "CoreService",
+            "unitChildren",
+            "GET",
+            "/core/v1/units/{unitId}/children",
+            __undefined,
+            __undefined,
+            {
+                "limit": limit,
+            },
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * The single root unit — M12.7's tree-view starting point. Deliberately not nested under /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId} wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the POST tree in M12.1) — a top-level static resource with no {} segment, following updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+     *
+     */
+    public rootUnit(): Promise<IUnit> {
+        return this.bridge.call<IUnit>(
+            "CoreService",
+            "rootUnit",
+            "GET",
+            "/core/v1/root-unit",
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
     /** Free-text search over code/name, capped at limit (default/max 50). */
     public listTaxa(query?: string | null, limit?: number | null): Promise<ITaxonPage> {
         return this.bridge.call<ITaxonPage>(
@@ -385,6 +472,147 @@ export class CoreService implements ICoreService {
             __undefined,
             __undefined,
             __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M12.1 — general unit creation under a parent. Gated — the caller must hold unit.lifecycle over request.parentUnitId. */
+    public createUnit(request: ICreateUnitRequest): Promise<IUnit> {
+        return this.bridge.call<IUnit>(
+            "CoreService",
+            "createUnit",
+            "POST",
+            "/core/v1/units",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M12.1 — rewrites name/code/level. Gated — the caller must hold unit.lifecycle over unitId. Deliberately not nested under /units/: httprouter (vendored v1.3.0) cannot register a wildcard child next to the existing static /units/children (createChildOrg) at the same POST tree depth — any route of the shape POST /units/{unitId}/* panics at startup regardless of what follows the wildcard, since a POST /units/children request would otherwise be genuinely ambiguous between the two routes. A sibling top-level resource, not a suffix, is the only fix; grantUnitRole/bulkGrantUnitRole already set this precedent (POST /role-assignments, not POST /units/{unitId}/role-assignments).
+     *
+     */
+    public updateUnit(unitId: string, request: IUpdateUnitRequest): Promise<IUnit> {
+        return this.bridge.call<IUnit>(
+            "CoreService",
+            "updateUnit",
+            "POST",
+            "/core/v1/unit-lifecycle/{unitId}",
+            request,
+            __undefined,
+            __undefined,
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M12.1 — archive/suspend/reactivate. Gated — the caller must hold unit.lifecycle over unitId. The root unit refuses every state change. See updateUnit's docs for why this lives under /unit-lifecycle/ rather than /units/.
+     *
+     */
+    public setUnitState(unitId: string, request: ISetUnitStateRequest): Promise<IUnit> {
+        return this.bridge.call<IUnit>(
+            "CoreService",
+            "setUnitState",
+            "POST",
+            "/core/v1/unit-lifecycle/{unitId}/state",
+            request,
+            __undefined,
+            __undefined,
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
+     *
+     */
+    public deleteUnit(unitId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "CoreService",
+            "deleteUnit",
+            "DELETE",
+            "/core/v1/units/{unitId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting anything, so the admin UI can gray out/explain the delete action instead of only discovering it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same authority deleteUnit itself requires (this read is no more permissive than the write it previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own httprouter wildcard-collision class applies.
+     *
+     */
+    public unitDeleteEligibility(unitId: string): Promise<IUnitDeleteEligibility> {
+        return this.bridge.call<IUnitDeleteEligibility>(
+            "CoreService",
+            "unitDeleteEligibility",
+            "GET",
+            "/core/v1/unit-lifecycle/{unitId}/delete-eligibility",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
+     *
+     */
+    public moveUnit(unitId: string, request: IMoveUnitRequest): Promise<IUnitMoveJob> {
+        return this.bridge.call<IUnitMoveJob>(
+            "CoreService",
+            "moveUnit",
+            "POST",
+            "/core/v1/unit-moves/{unitId}",
+            request,
+            __undefined,
+            __undefined,
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started. */
+    public getUnitMoveStatus(unitId: string, graphCode?: string | null): Promise<IUnitMoveJob | null> {
+        return this.bridge.call<IUnitMoveJob | null>(
+            "CoreService",
+            "getUnitMoveStatus",
+            "GET",
+            "/core/v1/unit-moves/{unitId}",
+            __undefined,
+            __undefined,
+            {
+                "graphCode": graphCode,
+            },
+            [
+                unitId,
+            ],
             __undefined,
             __undefined
         );

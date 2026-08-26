@@ -15,6 +15,9 @@ import (
 var (
 	ErrAssignmentNotFound         = errors.New("authz: role assignment not found or already revoked")
 	ErrInstanceAdminGrantNotFound = errors.New("authz: instance-admin grant not found or already revoked")
+	// ErrRoleNotFound is GetRoleByCode's not-found sentinel — internal/platform/seed.Resolve's
+	// boot-time lookup of the three base roles by code.
+	ErrRoleNotFound = errors.New("authz: role not found")
 	// ErrEmptyPersonIDs is BulkGrantUnitRole's (M11.7) own validation failure — an empty batch has
 	// nothing to grant and nothing to audit-log, so it's rejected before any store call.
 	ErrEmptyPersonIDs = errors.New("authz: personIDs must not be empty")
@@ -31,7 +34,8 @@ type Role struct {
 
 // RoleAssignment is one active row of authz_role_assignments, as read back for a unit's role-grants
 // screen (M10.7) — distinct from ActiveGrant (the PDP's per-decision input, which carries the role's
-// resolved permission set rather than display fields).
+// resolved permission set rather than display fields). ExpiresAt (M12.3) is nil for a non-expiring
+// grant; the PDP (ActiveGrantsForSubject) already enforces it, this just surfaces it for display.
 type RoleAssignment struct {
 	ID           string
 	PersonID     string
@@ -41,6 +45,7 @@ type RoleAssignment struct {
 	TargetUnitID string
 	Scope        Scope
 	GrantedAt    time.Time
+	ExpiresAt    *time.Time
 }
 
 // InstanceAdminGrant is one active row of authz_instance_admins, as read back for the super-admin

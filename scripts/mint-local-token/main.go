@@ -92,7 +92,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	sess, err := identityadapters.NewStore(pool).InsertSession(ctx, *accountID, devtoken.Issuer, "mint-local-token")
+	sess, err := identityadapters.NewRepository(pool).InsertSession(ctx, *accountID, devtoken.Issuer, "mint-local-token")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "insert session:", err)
 		os.Exit(1)

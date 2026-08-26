@@ -59,6 +59,14 @@ async function client() {
   return createOpenFaithMapClient({
     baseUrl: requireBaseUrl(),
     token: session?.idToken,
+    // M11.3, D-SessionTracking: every authenticated request needs a valid X-Session-Id alongside
+    // the bearer (internal/identity/middleware.Authenticator.Handle) — omitted here until now,
+    // silently 401-ing every call through this file since M11.3 shipped (see lib/core.ts's own
+    // client() for the pattern this mirrors).
+    fetch: session?.sessionId
+      ? (url, init) =>
+          fetch(url, { ...init, headers: { ...init?.headers, "X-Session-Id": session.sessionId! } })
+      : undefined,
   });
 }
 

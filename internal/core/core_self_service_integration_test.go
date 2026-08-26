@@ -47,10 +47,10 @@ func TestSelfServiceProfileIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
-	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
-	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool)
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")
 
 	var personAID, personBID string
 	var unit directorydomain.Unit
@@ -155,11 +155,11 @@ func TestSelfServiceProfileIntegration(t *testing.T) {
 		t.Errorf("ListMyRoleAssignments with no subject = %v, want ErrPermissionDenied", err)
 	}
 
-	assignmentAID, err = authzSvc.GrantUnitRole(ctx, personAID, roleID, unit.ID, personAID)
+	assignmentAID, err = authzSvc.GrantUnitRole(ctx, personAID, roleID, unit.ID, authzdomain.ScopeUnit, "", personAID, nil)
 	if err != nil {
 		t.Fatalf("GrantUnitRole(A): %v", err)
 	}
-	assignmentBID, err = authzSvc.GrantUnitRole(ctx, personBID, roleID, unit.ID, personAID)
+	assignmentBID, err = authzSvc.GrantUnitRole(ctx, personBID, roleID, unit.ID, authzdomain.ScopeUnit, "", personAID, nil)
 	if err != nil {
 		t.Fatalf("GrantUnitRole(B): %v", err)
 	}
@@ -209,10 +209,10 @@ func TestSelfServiceApiKeysIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	dir := directoryapplication.NewService(pool)
-	identitySvc := identityapplication.NewService(identityadapters.NewStore(pool))
-	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewStore(pool))
-	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(pool))
-	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool)
+	identitySvc := identityapplication.NewService(identityadapters.NewRepository(pool))
+	authzSvc := authz.NewService(authzdomain.NewPDP(noopClosure{}), authzadapters.NewRepository(pool), pool)
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
+	coreApp := coreapplication.NewService(nil, nil, nil, identitySvc, nil, authzSvc, auditLogSvc, pool, "")
 
 	var personAID, personBID string
 	var unit directorydomain.Unit
@@ -353,7 +353,7 @@ func TestSelfServiceApiKeysIntegration(t *testing.T) {
 	// (migrations/0015_core_seed.sql) — deliberately picked so the allowlist below can be broader in
 	// one direction (includes person.read, which A doesn't hold) and narrower in the other (excludes
 	// person.update, which A does hold), proving the intersection cuts both ways.
-	assignmentID, err = authzSvc.GrantUnitRole(ctx, personAID, roleID, unit.ID, personAID)
+	assignmentID, err = authzSvc.GrantUnitRole(ctx, personAID, roleID, unit.ID, authzdomain.ScopeUnit, "", personAID, nil)
 	if err != nil {
 		t.Fatalf("GrantUnitRole(A): %v", err)
 	}

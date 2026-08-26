@@ -81,6 +81,24 @@ const GUARANTOR_TONE: Record<GuarantorStatus, StatusTone> = {
   REVOKED: "danger",
 };
 
+// Unit.state (M10.1) is a plain wire string, not a generated conjure enum, unlike every other status
+// above — the three values are directorydomain.State's own lowercase constants (M12.5).
+const UNIT_TONE: Record<string, StatusTone> = {
+  active: "success",
+  suspended: "warning",
+  archived: "neutral",
+};
+
+// UnitMoveJob.status (M12.2) is a plain wire string sharing ReparentStatus's vocabulary, not the
+// enum itself — same reasoning as UNIT_TONE above (M12.6).
+const UNIT_MOVE_TONE: Record<string, StatusTone> = {
+  PENDING: "warning",
+  NEW_EDGE_ADDED: "info",
+  OLD_EDGE_REMOVED: "info",
+  VERIFIED: "success",
+  FAILED: "danger",
+};
+
 export const CandidateStatusBadge = ({ status }: { status: CandidateStatus }) => (
   <StatusBadge status={status} tone={CANDIDATE_TONE[status]} />
 );
@@ -98,4 +116,10 @@ export const ReparentStatusBadge = ({ status }: { status: ReparentStatus }) => (
 );
 export const GuarantorStatusBadge = ({ status }: { status: GuarantorStatus }) => (
   <StatusBadge status={status} tone={GUARANTOR_TONE[status]} />
+);
+export const UnitStatusBadge = ({ status }: { status: string }) => (
+  <StatusBadge status={status} tone={UNIT_TONE[status] ?? "neutral"} />
+);
+export const UnitMoveStatusBadge = ({ status }: { status: string }) => (
+  <StatusBadge status={status} tone={UNIT_MOVE_TONE[status] ?? "neutral"} />
 );

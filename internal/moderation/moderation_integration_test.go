@@ -47,12 +47,12 @@ func TestModerationIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	directorySvc := directoryapplication.NewService(pool)
-	closurePort := directoryadapters.NewStore(pool)
+	closurePort := directoryadapters.NewRepository(pool)
 	pdp := authzdomain.NewPDP(closurePort)
-	authzStore := authzadapters.NewStore(pool)
-	authzSvc := authz.NewService(pdp, authzStore)
+	authzStore := authzadapters.NewRepository(pool)
+	authzSvc := authz.NewService(pdp, authzStore, pool)
 	religionSvc := religionapplication.NewService(pool, directorySvc)
-	modStore := moderationadapters.NewStore(pool)
+	modStore := moderationadapters.NewRepository(pool)
 	modSvc := application.NewService(modStore, religionSvc, authzSvc, application.Config{
 		RootUnitID: seed.RootUnitID,
 	})

@@ -99,7 +99,7 @@ func registerCongregationImport(ctx context.Context, info witchcraft.InitInfo, d
 		jurisdictionSources = append(jurisdictionSources, wikidataSource)
 	}
 
-	congregationimportStore := congregationimportadapters.NewStore(deps.Pool)
+	congregationimportStore := congregationimportadapters.NewRepository(deps.Pool)
 	congregationimportAppSvc := congregationimportapplication.NewService(
 		congregationimportStore, deps.ReligionSvc, deps.LocationSvc, deps.RefdataSvc, deps.AuthzSvc,
 		congregationimportapplication.Config{

@@ -6,7 +6,7 @@
 // representative, real, HTTP-level sample of every guarded endpoint across all 7 Conjure contracts
 // — not the full ~70-endpoint x 6-subject cartesian product (many writes need complex pre-existing
 // fixtures this test doesn't build), but every one of the four gate shapes
-// (anonymous / authenticated-only / target-scoped religionorg.manage / root-scoped unit.lifecycle /
+// (anonymous / authenticated-only / target-scoped religionorg.manage / root-scoped moderation.standing /
 // instance-admin plane) proven for real, per contract, with both a real denial and — wherever a
 // fixture is cheap to build — a real success.
 //
@@ -214,8 +214,189 @@ func TestAuthorizationMatrix(t *testing.T) {
 		})
 	})
 
-	// ---- category: unit.lifecycle on root (platform-moderator) ----
-	t.Run("root_scoped_unit_lifecycle", func(t *testing.T) {
+	// ---- category: unit.lifecycle, target-scoped (M12.1) ----
+	t.Run("target_scoped_unit_lifecycle", func(t *testing.T) {
+		createBody := map[string]any{"parentUnitId": subj.unitA, "code": "", "name": "Matrix Test M12.1 Child"}
+
+		anonStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units", "", "", createBody)
+		assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
+
+		// congAdminOwn holds religionorg.manage on unitA (M11's own seed), not unit.lifecycle — a
+		// real proof the two permission codes are genuinely distinct gates, not one conflated check.
+		deniedStatus, deniedBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units", subj.congAdminOwn, subj.congAdminOwnSession, createBody)
+		assertStatus(t, "congAdminOwn (holds religionorg.manage, not unit.lifecycle)", deniedStatus, http.StatusForbidden)
+		assertErrorName(t, deniedBody, "Core:Forbidden")
+
+		createStatus, createRespBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/units", subj.instanceAdmin, subj.instanceAdminSession, createBody)
+		if createStatus != http.StatusOK && createStatus != http.StatusCreated {
+			t.Fatalf("createUnit(instanceAdmin): status = %d, body: %s", createStatus, createRespBody)
+		}
+		var created struct {
+			Id string `json:"id"`
+		}
+		if err := json.Unmarshal(createRespBody, &created); err != nil || created.Id == "" {
+			t.Fatalf("parse createUnit response: %v (body: %s)", err, createRespBody)
+		}
+
+		updateStatus, updateBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/unit-lifecycle/"+created.Id, subj.instanceAdmin, subj.instanceAdminSession, map[string]any{"name": "Matrix Test M12.1 Child Renamed"})
+		assertStatus(t, "instanceAdmin updateUnit", updateStatus, http.StatusOK)
+		var updated struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(updateBody, &updated); err != nil || updated.Name != "Matrix Test M12.1 Child Renamed" {
+			t.Errorf("updateUnit response = %s, want name %q", updateBody, "Matrix Test M12.1 Child Renamed")
+		}
+
+		stateStatus, stateBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/unit-lifecycle/"+created.Id+"/state", subj.instanceAdmin, subj.instanceAdminSession, map[string]any{"state": "suspended"})
+		assertStatus(t, "instanceAdmin setUnitState", stateStatus, http.StatusOK)
+		var suspended struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(stateBody, &suspended); err != nil || suspended.State != "suspended" {
+			t.Errorf("setUnitState response = %s, want state %q", stateBody, "suspended")
+		}
+
+		// The root unit refuses every state change regardless of who's asking, instanceAdmin included.
+		rootStateStatus, rootStateBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/unit-lifecycle/"+seed.RootUnitID+"/state", subj.instanceAdmin, subj.instanceAdminSession, map[string]any{"state": "suspended"})
+		assertStatus(t, "instanceAdmin setUnitState(root)", rootStateStatus, http.StatusConflict)
+		assertErrorName(t, rootStateBody, "Core:RootUnitProtected")
+
+		deleteAnonStatus, _ := doReq(t, client, apiBase, http.MethodDelete, "/core/v1/units/"+created.Id, "", "", nil)
+		assertStatus(t, "anonymous deleteUnit", deleteAnonStatus, http.StatusUnauthorized)
+
+		deleteStatus, deleteBody := doReq(t, client, apiBase, http.MethodDelete, "/core/v1/units/"+created.Id, subj.instanceAdmin, subj.instanceAdminSession, nil)
+		if deleteStatus != http.StatusOK && deleteStatus != http.StatusNoContent {
+			t.Errorf("deleteUnit(instanceAdmin): status = %d, body: %s", deleteStatus, deleteBody)
+		}
+	})
+
+	// ---- category: unit.edges.manage dual-scope move, over real HTTP (M12.2) — the gap
+	// TestAuthorizationMatrix's own M12.1 pass left open (see insertRoleAssignment's comment):
+	// proves moveUnit/getUnitMoveStatus's D-UnitMoveDualScope gate for real, and along the way
+	// proves grantUnitRole's own scope="subtree" request field over real HTTP too, since the
+	// success case needs exactly that grant to reach both of the moved unit's parents. ----
+	t.Run("target_scoped_unit_move", func(t *testing.T) {
+		dirSvc := directoryapplication.NewService(pool)
+		child, err := dirSvc.CreateUnitWithEdge(ctx, directorydomain.Unit{Name: "Matrix Test Unit C (mover child)", State: directorydomain.StateActive}, subj.unitA, "")
+		if err != nil {
+			t.Fatalf("create unitC under unitA: %v", err)
+		}
+		var canonicalGraphID string
+		if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.directory_graphs WHERE code = 'canonical'`).Scan(&canonicalGraphID); err != nil {
+			t.Fatalf("look up canonical graph id: %v", err)
+		}
+
+		anonStatus, _ := doReq(t, client, apiBase, http.MethodPost, "/core/v1/unit-moves/"+child.ID, "", "", map[string]any{"newParentUnitId": subj.unitB})
+		assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
+
+		deniedStatus, deniedBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/unit-moves/"+child.ID, subj.congAdminOwn, subj.congAdminOwnSession, map[string]any{"newParentUnitId": subj.unitB})
+		assertStatus(t, "congAdminOwn (holds religionorg.manage, not unit.edges.manage)", deniedStatus, http.StatusForbidden)
+		assertErrorName(t, deniedBody, "Core:Forbidden")
+
+		// A fresh subject, granted scope="subtree" over root via the real grantUnitRole HTTP
+		// endpoint — reaches both unitA (child's old parent) and unitB (new parent) through the
+		// canonical graph's closure, the direct real-HTTP proof of U14's subtree-grant fix.
+		const moverSubject, moverEmail = "matrix-unit-mover", "matrix-unit-mover@example.com"
+		var moverPersonID, moverAccountID string
+		if err := pool.QueryRow(ctx, `INSERT INTO openfaithmap.identity_persons (display_name) VALUES ($1) RETURNING id`, "Matrix Test Mover").Scan(&moverPersonID); err != nil {
+			t.Fatalf("insert mover person: %v", err)
+		}
+		if err := pool.QueryRow(ctx, `INSERT INTO openfaithmap.identity_accounts (person_id, email) VALUES ($1, $2) RETURNING id`, moverPersonID, moverEmail).Scan(&moverAccountID); err != nil {
+			t.Fatalf("insert mover account: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO openfaithmap.identity_external_identities (account_id, issuer, subject) VALUES ($1, $2, $3)`, moverAccountID, devtoken.Issuer, moverSubject); err != nil {
+			t.Fatalf("insert mover external identity: %v", err)
+		}
+		var moverSessionID string
+		if err := pool.QueryRow(ctx, `INSERT INTO openfaithmap.identity_sessions (account_id, issuer) VALUES ($1, $2) RETURNING id`, moverAccountID, devtoken.Issuer).Scan(&moverSessionID); err != nil {
+			t.Fatalf("insert mover session: %v", err)
+		}
+		moverToken, err := devtoken.Mint(moverSubject, moverEmail, time.Hour, hmacKey)
+		if err != nil {
+			t.Fatalf("mint mover token: %v", err)
+		}
+
+		t.Cleanup(func() {
+			bg := context.Background()
+			if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log DISABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+				t.Errorf("cleanup: disable reject_mutation: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_audit_log WHERE actor_person_id = $1`, moverPersonID); err != nil {
+				t.Errorf("cleanup: delete audit rows for mover: %v", err)
+			}
+			if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log ENABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+				t.Errorf("cleanup: re-enable reject_mutation: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_move_jobs WHERE unit_id = $1`, child.ID); err != nil {
+				t.Errorf("cleanup: delete move job for unitC: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_role_assignments WHERE subject_person_id = $1`, moverPersonID); err != nil {
+				t.Errorf("cleanup: delete mover role assignments: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_sessions WHERE id = $1`, moverSessionID); err != nil {
+				t.Errorf("cleanup: delete mover session: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_external_identities WHERE account_id = $1`, moverAccountID); err != nil {
+				t.Errorf("cleanup: delete mover external identity: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_accounts WHERE id = $1`, moverAccountID); err != nil {
+				t.Errorf("cleanup: delete mover account: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_persons WHERE id = $1`, moverPersonID); err != nil {
+				t.Errorf("cleanup: delete mover person: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_closure WHERE ancestor_id = $1 OR descendant_id = $1`, child.ID); err != nil {
+				t.Errorf("cleanup: delete closure rows for unitC: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_edges WHERE child_id = $1`, child.ID); err != nil {
+				t.Errorf("cleanup: delete edges for unitC: %v", err)
+			}
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_units WHERE id = $1`, child.ID); err != nil {
+				t.Errorf("cleanup: delete unitC: %v", err)
+			}
+		})
+
+		grantStatus, grantBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/super-admin/role-assignments", subj.instanceAdmin, subj.instanceAdminSession, map[string]any{
+			"personId": moverPersonID,
+			"roleId":   seed.RegistrationOperatorRoleID,
+			"unitId":   seed.RootUnitID,
+			"scope":    "subtree",
+			"graphId":  canonicalGraphID,
+		})
+		if !containsStatus([]int{http.StatusOK, http.StatusCreated, http.StatusNoContent}, grantStatus) {
+			t.Fatalf("grantUnitRole(scope=subtree): status = %d, body: %s", grantStatus, grantBody)
+		}
+
+		moveStatus, moveBody := doReq(t, client, apiBase, http.MethodPost, "/core/v1/unit-moves/"+child.ID, moverToken, moverSessionID, map[string]any{"newParentUnitId": subj.unitB})
+		if moveStatus != http.StatusOK && moveStatus != http.StatusCreated {
+			t.Fatalf("moveUnit(subtree grant): status = %d, body: %s", moveStatus, moveBody)
+		}
+		var job struct {
+			Status          string `json:"status"`
+			NewParentUnitId string `json:"newParentUnitId"`
+		}
+		if err := json.Unmarshal(moveBody, &job); err != nil {
+			t.Fatalf("parse moveUnit response: %v (body: %s)", err, moveBody)
+		}
+		if job.NewParentUnitId != subj.unitB {
+			t.Errorf("moveUnit response newParentUnitId = %q, want %q", job.NewParentUnitId, subj.unitB)
+		}
+		if job.Status != "VERIFIED" {
+			t.Errorf("moveUnit response status = %q, want %q", job.Status, "VERIFIED")
+		}
+
+		statusCode, statusBody := doReq(t, client, apiBase, http.MethodGet, "/core/v1/unit-moves/"+child.ID, moverToken, moverSessionID, nil)
+		assertStatus(t, "getUnitMoveStatus(moverToken)", statusCode, http.StatusOK)
+		var readBack struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(statusBody, &readBack); err != nil || readBack.Status != "VERIFIED" {
+			t.Errorf("getUnitMoveStatus response = %s, want status VERIFIED", statusBody)
+		}
+	})
+
+	// ---- category: moderation.standing on root (platform-moderator) ----
+	t.Run("root_scoped_moderation_standing", func(t *testing.T) {
 		t.Run("moderation_listReports", func(t *testing.T) {
 			anonStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/moderation/v1/reports", "", "", nil)
 			assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
@@ -277,6 +458,13 @@ func TestAuthorizationMatrix(t *testing.T) {
 			// fixture needed.
 			{"bulkGrantUnitRole", http.MethodPost, "/core/v1/super-admin/bulk-role-assignments", []int{http.StatusBadRequest},
 				map[string]any{"personIds": []string{}, "roleId": "00000000-0000-8000-8000-000000000000", "unitId": "00000000-0000-8000-8000-000000000000"}},
+			// M12.4 — same reasoning: explainAccess must be refused by the same route-group gate too.
+			// A brand-new top-level static resource with no {} path segments, so a query string can
+			// just be concatenated onto the path.
+			{"explainAccess", http.MethodGet,
+				"/core/v1/super-admin/access-decisions/explain?subjectPersonId=" + subj.instanceAdminPersonID +
+					"&permissionCode=unit.read&unitId=" + subj.unitA,
+				[]int{http.StatusOK}, nil},
 		}
 		for _, ep := range endpoints {
 			t.Run(ep.name, func(t *testing.T) {
@@ -483,7 +671,7 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 		t.Fatalf("create unitB: %v", err)
 	}
 
-	authzStore := authzadapters.NewStore(pool)
+	authzStore := authzadapters.NewRepository(pool)
 
 	type personSpec struct {
 		label       string
@@ -557,6 +745,22 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 	unitIDs := []string{unitA.ID, unitB.ID}
 	t.Cleanup(func() {
 		bg := context.Background()
+		// M12.1's own new subtest is the first one in this file to make a real audit-logged write as
+		// instanceAdmin — identity_audit_log.actor_person_id is ON DELETE SET NULL
+		// (migrations/0016_core_audit.sql:27), and that SET NULL is itself an UPDATE the
+		// identity_audit_log_reject_mutation append-only trigger blocks unless disabled first, same
+		// dance core_self_service_integration_test.go's own cleanup already uses.
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log DISABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: disable reject_mutation: %v", err)
+		}
+		for _, id := range personIDs {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_audit_log WHERE actor_person_id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete audit rows for %s: %v", id, err)
+			}
+		}
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log ENABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: re-enable reject_mutation: %v", err)
+		}
 		for _, id := range instanceAdminIDs {
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_instance_admins WHERE id = $1`, id); err != nil {
 				t.Errorf("cleanup: delete instance admin %s: %v", id, err)
@@ -647,8 +851,12 @@ func seedSubjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hmacKey
 	}
 }
 
-func insertRoleAssignment(ctx context.Context, pool *pgxpool.Pool, store *authzadapters.Store, personID, roleID, unitID string) (string, error) {
+func insertRoleAssignment(ctx context.Context, pool *pgxpool.Pool, store *authzadapters.Repository, personID, roleID, unitID string) (string, error) {
 	// InsertRoleAssignment now returns the row's id directly (M11.2 — the audit log needs a real
 	// target_id, including on the idempotent-conflict path), so no separate lookup query is needed.
-	return store.InsertRoleAssignment(ctx, personID, roleID, unitID, personID)
+	// Always scope="unit" here (M12.2 added scope/graphID params) — this matrix's own seed points are
+	// all exact-unit grants; target_scoped_unit_move's own scope="subtree" grant (M12.2) goes through
+	// the real grantUnitRole HTTP endpoint instead of this helper, deliberately, since proving that
+	// endpoint's own scope field is part of what that subtest closes.
+	return store.InsertRoleAssignment(ctx, personID, roleID, unitID, "unit", "", personID, nil)
 }

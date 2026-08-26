@@ -3,7 +3,10 @@
 
 package domain
 
-import "slices"
+import (
+	"errors"
+	"slices"
+)
 
 // Permission is a closed vocabulary of action codes (D-InProcessAuthz): a permission no code path
 // checks is dead weight, and a code path checking a permission nobody can grant is a silent hole.
@@ -36,6 +39,14 @@ const (
 	PermReligionRead      Permission = "religion.read"
 	PermLocationCreate    Permission = "location.create"
 	PermRoleRead          Permission = "role.read"
+	// PermModerationStanding is platform-moderator's own identity marker (M12.0), split out of
+	// unit.lifecycle: that code was reused for this purpose only because go-oikumenea's permission
+	// catalog was closed pre-port (D-PlatformModerator's M5 addendum) — a constraint that no longer
+	// applies now that this catalog is this repo's own Go code (D-InProcessAuthz). Splitting it frees
+	// unit.lifecycle for M12.1's real setUnitState/deleteUnit endpoints without instantly handing
+	// every platform-moderator archive/suspend/delete power over every unit under root as a side
+	// effect of two unrelated features sharing one code.
+	PermModerationStanding Permission = "moderation.standing"
 
 	// Instance-scope — satisfiable only on the instance-admin plane (PDP.Decide step 2), never via a
 	// role assignment. Minimal set: granting/revoking the plane itself, and managing the custom-role
@@ -64,6 +75,7 @@ var catalog = map[Permission]struct{}{
 	PermPositionCreate: {}, PermPositionUpdate: {}, PermPositionRead: {},
 	PermUnitRead: {}, PermUnitLifecycle: {}, PermUnitEdgesManage: {},
 	PermReligionRead: {}, PermLocationCreate: {}, PermRoleRead: {},
+	PermModerationStanding:  {},
 	PermInstanceAdminManage: {}, PermRoleCreate: {}, PermRoleUpdate: {}, PermRoleDelete: {},
 }
 
@@ -72,6 +84,12 @@ func IsKnownPermission(code string) bool {
 	_, ok := catalog[Permission(code)]
 	return ok
 }
+
+// ErrUnknownPermissionCode is returned when a caller-supplied permission code isn't in the closed
+// catalog — shared across every module that validates a code against it (M11.9's CreateApiKey
+// allowlist, M12.4's ExplainAccess), so there's exactly one sentinel for this concept rather than a
+// per-module copy.
+var ErrUnknownPermissionCode = errors.New("permission code is not in the known catalog")
 
 // IsInstanceScope reports whether code is an instance-plane-only permission. The PDP satisfies these
 // only via the instance-admin plane (authz_instance_admins), never via a role assignment.

@@ -33,7 +33,7 @@ func TestAuditLogIntegration(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	store := adapters.NewStore(pool)
+	store := adapters.NewRepository(pool)
 
 	var actorID string
 	t.Cleanup(func() {

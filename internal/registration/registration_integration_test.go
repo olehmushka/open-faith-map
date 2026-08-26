@@ -51,14 +51,14 @@ func TestRegistrationIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	directorySvc := directoryapplication.NewService(pool)
-	closurePort := directoryadapters.NewStore(pool)
+	closurePort := directoryadapters.NewRepository(pool)
 	pdp := authzdomain.NewPDP(closurePort)
-	authzStore := authzadapters.NewStore(pool)
-	authzSvc := authz.NewService(pdp, authzStore)
+	authzStore := authzadapters.NewRepository(pool)
+	authzSvc := authz.NewService(pdp, authzStore, pool)
 	religionSvc := religionapplication.NewService(pool, directorySvc)
 	locationSvc := locationapplication.NewService(pool)
 	membershipSvc := membershipapplication.NewService(pool)
-	regStore := regadapters.NewStore(pool)
+	regStore := regadapters.NewRepository(pool)
 	regSvc := application.NewService(regStore, religionSvc, locationSvc, membershipSvc, directorySvc, authzSvc, application.Config{
 		RootUnitID:              seed.RootUnitID,
 		CongregationAdminRoleID: seed.CongregationAdminRoleID,
@@ -107,6 +107,12 @@ func TestRegistrationIntegration(t *testing.T) {
 			}
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.religion_org_profiles WHERE unit_id = $1`, id); err != nil {
 				t.Errorf("cleanup: delete org profile for %s: %v", id, err)
+			}
+			// M12.2: directory_unit_move_jobs (Reparent's now-generic backing store) FKs into
+			// directory_units ON DELETE RESTRICT, unlike the old jurisdiction_reparenting_jobs' opaque
+			// text columns — must clear these before the unit delete below.
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_move_jobs WHERE unit_id = $1 OR old_parent_unit_id = $1 OR new_parent_unit_id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete move jobs for %s: %v", id, err)
 			}
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.directory_unit_closure WHERE ancestor_id = $1 OR descendant_id = $1`, id); err != nil {
 				t.Errorf("cleanup: delete closure rows for %s: %v", id, err)

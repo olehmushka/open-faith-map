@@ -392,6 +392,29 @@ this — go-oikumenea's own `file:`/package shape is the fallback, not ruled out
 conventions follow go-oikumenea's `conventions.md` by reference (see
 [conventions.md](conventions.md)) rather than restating them.
 
+**sqlc adoption (closing the gap D-Stack always specified).** Every module's DB access was
+hand-written pgx until this pass — several store.go headers said so explicitly, flagging it as a
+deviation from this same D-Stack decision. All 14 modules now generate their queries via sqlc
+(`sqlc.yaml`, one entry per module, `internal/<module>/adapters/queries/*.sql` in,
+`internal/<module>/adapters/<module>sql` generated out), matching go-oikumenea's own setup. One
+tradeoff carried over deliberately, not by oversight: every module's sqlc entry points `schema:` at
+the *whole* migrations directory rather than a per-module slice — go-oikumenea's own
+`docs/architecture/review-2026-07.md` (R-08) flags this as leaking the full schema's generated types
+into every module's package. Kept here anyway because several modules run legitimate cross-module
+JOINs (authz joins `directory_graphs`/`identity_persons`; directory's closure queries assume the
+whole schema is visible) that a real per-module schema slice would break. Mitigation instead of
+elimination: each generated `<module>sql` package stays private to that module's own
+`adapters/repository.go` — never imported from `application/`, `domain/`, or another module.
+
+**Follow-ups surfaced by the sqlc pass, deliberately not fixed here:**
+- `migrations/0022_directory_unit_move_jobs.sql` mints its PK via bare `gen_random_uuid()` instead
+  of `openfaithmap.new_id(service,kind,type)` (the RID scheme every other table since
+  `migrations/0007_core_rid.sql` uses) — an inconsistency, not a bug; revisit if this table ever
+  needs the RID's decodable (service,kind,type) shape.
+- `created_at`/`updated_at` coverage is inconsistent on pure link/junction tables (e.g.
+  `authz_role_permissions` has neither) — every reified-entity table has both, junction tables are a
+  mixed bag. Low-risk to add later; not done here since it touches existing migrations' shape.
+
 ---
 
 ### D-AdminSurface — The admin/moderator console is a separate deployment from the public site
@@ -968,6 +991,38 @@ invariant). Two roles keep that separable.
 > `subtree`-scoped role assignment on the shared root unit, checked target-scoped, **not** an
 > OpenFaithMap roster table) is one of the things the port is specifically obliged to preserve, and
 > is a named verification criterion in M10.9.
+
+---
+
+> **Amended (M12.0, 2026-08-24): the audit before wiring `unit.lifecycle`/`unit.edges.manage` to a
+> live endpoint found this decision's own text no longer matches the code, on two points.**
+>
+> 1. **The M10.9 verification criterion above was never actually met.** Every real and
+>    test-covered grant of `registration-operator`/`platform-moderator` — the only production write
+>    path is the generic super-admin role-grants console
+>    (`internal/core/application/service.go`'s `GrantUnitRole`/`BulkGrantUnitRole`) — creates a
+>    `scope='unit'` assignment, never `subtree`: `internal/authz/adapters/store.go`'s
+>    `InsertRoleAssignment`/`BulkInsertRoleAssignments` hardcode `'unit'` in the INSERT itself, and
+>    the wire types (`GrantUnitRoleRequest`/`BulkGrantUnitRoleRequest`) carry no scope field for a
+>    caller to ask for `subtree` even if the code allowed it. `subtree` scope is fully implemented in
+>    the PDP/schema (`internal/authz/domain/pdp.go`'s `Decide`) but **unprovisionable through any
+>    surface that exists today.** This is left as a real, open item for **M12.2** to resolve —
+>    D-UnitMoveDualScope's dual-parent `unit.edges.manage` check needs real reach to non-root parent
+>    units to mean anything, and today nothing can grant that reach.
+> 2. **`unit.lifecycle` was not actually inert.** It is `Require`'d today, on every
+>    moderation/vouching call, as platform-moderator's own identity marker — exactly this decision's
+>    own mechanism, just not yet backing a literal unit-lifecycle mutation. Left unsplit, M12.1's real
+>    `setUnitState`/`deleteUnit` endpoints would have silently handed every platform-moderator
+>    archive/suspend/delete power over every unit it can reach, as a side effect of two unrelated
+>    features sharing one permission code — not a deliberate widening of moderator authority. Split
+>    into a dedicated `PermModerationStanding` (`moderation.standing`,
+>    `migrations/0021_core_moderation_standing_permission.sql`); `internal/moderation` and
+>    `internal/vouching`'s `authorize.go` now check it instead. `unit.lifecycle` itself is untouched
+>    and free for M12.1 to wire to its own real endpoints as originally designed.
+>
+> `registration-operator`'s `unit.edges.manage` is deliberately left as-is by this same session — see
+> item 1 above; its scope is decided together with M12.2, when
+> `internal/registration.Service.Reparent` is actually refactored to call the new generic `Move`.
 
 ---
 
@@ -2342,3 +2397,66 @@ Google already enforces this for any account/org that turns it on, with zero cod
   guarantee is parsing/requiring the OIDC token's `amr` claim (`internal/identity/middleware
   /validator.go`'s `project()` doesn't read it today) — recorded here so a future session doesn't
   have to rediscover this trade-off from scratch.
+
+### D-UnitMoveDualScope — moving a unit requires authority on both the source and destination parent
+
+**Decision.** M12.2's `moveUnit` requires the caller to hold `unit.edges.manage` on **both**
+`fromParentUnitId` and `toParentUnitId`, not just one side.
+
+**Why.** Research against mature enterprise org-hierarchy platforms (AWS Organizations, Entra
+Administrative Units) found subtree-scoped delegation is the norm, but none of them cleanly
+document a "one-sided move" authorization model. A single-sided check would let a grant reaching
+only the destination be used to pull a unit out of a part of the tree the caller has no authority
+over (or vice versa via the source side) — a lateral-movement gap the stricter, dual-sided check
+closes. This is stricter than the narrow reparent flow M12.2 generalizes
+(`internal/registration.Service.Reparent`, which only ever checked authority implicit in the
+registration-approval flow itself), a deliberate tightening, not an oversight.
+
+**Consequences.**
+- A caller with `unit.edges.manage` on a unit's current parent but not its intended new parent
+  cannot move it there unassisted — they need either a broader grant or a second admin with
+  authority on the destination to perform the move.
+- Root-unit guard (`unitID` may never be `seed.RootUnitID`) is enforced independently of this
+  check, not as a special case of it.
+
+> **Addendum (M12.2 build, 2026-08-24): U14 resolved — real `scope="subtree"` grant provisioning,
+> not a scope-workaround.** This decision's own dual-parent check is only meaningful for a non-root
+> move if a caller can actually be granted `unit.edges.manage` reach over an arbitrary jurisdiction
+> ancestor — U14 (`docs/milestones.md`) flagged that, before this build, `scope="subtree"` was fully
+> implemented in the PDP (`internal/authz/domain/pdp.go`'s `Decide` already cascaded it through the
+> closure table) but **unprovisionable through any surface**: `InsertRoleAssignment`/
+> `BulkInsertRoleAssignments` (`internal/authz/adapters/store.go`) hardcoded `scope='unit'`, and the
+> grant wire types carried no scope field at all. Two options were on the table: build real subtree
+> provisioning, or redesign this decision's check around `scope="unit"`-only reach (accepting that a
+> caller like `registration-operator`, whose only real grant targets root, could only ever move units
+> into/out of root). **Chose to build provisioning** — added `scope`/`graphId` to
+> `GrantUnitRoleRequest`/`BulkGrantUnitRoleRequest` (`api/core.conjure.yml`), threaded through to the
+> store's INSERT, with `internal/core`-level validation mirroring
+> `authz_role_assignments_graph_scope`'s own CHECK. No PDP or schema change was needed — only the
+> write path was ever missing. `internal/core.core_unit_move_integration_test.go`'s
+> `TestMoveUnitIntegration` is the direct proof: a `scope="subtree"` grant on a jurisdiction ancestor
+> reaches both a descendant unit's old and new parent, where a `scope="unit"` grant on only one side
+> does not.
+
+### D-TopDownUnitAccessOnly — unit access grants stay strictly top-down, no self-service join
+
+**Decision.** M12 does not add a self-service "request to join this unit" flow. Every role grant
+on a unit happens via an existing top-down mechanism — admin invite, registration approval, or a
+direct role grant — never a person-initiated request an admin then approves.
+
+**Why.** The user's own security reasoning, given when this was scoped: a bottom-up join-request
+flow reopens a privilege-escalation surface (IDOR/parameter-tampering risk on the approval
+endpoint itself) and an approval-fatigue/spam risk (admins flooded with requests, increasing the
+odds of an accidental approval) that a top-down-only model avoids by construction. Comparable
+ChMS products researched (Planning Center's Church Center join flow, CCB's group finder) do offer
+self-service join, but this app's unit model centers on institutions (congregations,
+jurisdictions) being provisioned by an operator, not persons freely self-enrolling — the
+comparable pattern doesn't actually fit this app's trust model.
+
+**Consequences.**
+- Public read-only discoverability of units in directory listings is explicitly preserved and
+  stays decoupled from authorization — anyone, including an anonymous caller, can see a unit
+  exists; only an admin action can grant access to manage it. Any future work must not regress
+  this decoupling by conflating "visible" with "joinable."
+- If self-service join is wanted later, it needs its own decision block re-litigating this
+  trade-off, not a silent addition to M12's invite/grant endpoints.

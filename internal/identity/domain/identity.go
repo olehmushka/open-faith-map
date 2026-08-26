@@ -23,7 +23,6 @@ var (
 	ErrInviteAlreadyAccepted = errors.New("invite has already been accepted")
 	ErrCannotMergeSelf       = errors.New("cannot merge a person with itself")
 	ErrAPIKeyNotFound        = errors.New("api key not found")
-	ErrUnknownPermissionCode = errors.New("permission code is not in the known catalog")
 )
 
 // Account status values — must match identity_accounts' CHECK constraint literals
@@ -145,7 +144,7 @@ type Invite struct {
 // PermissionCodes is a fixed allowlist the owner chose at creation time; the effective permission set
 // for a request authenticated via this key is that allowlist intersected with PersonID's LIVE authz
 // grants at request time (internal/authz.Service.Require), never stored as a materialized set here.
-// TokenHash is the only form of the raw secret ever persisted — see migrations/0020_core_api_keys.sql.
+// TokenHash is the only form of the raw secret ever persisted — see migrations/0019_core_api_keys.sql.
 type APIKey struct {
 	ID              string
 	PersonID        string

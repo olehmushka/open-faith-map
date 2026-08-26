@@ -26,7 +26,7 @@ import (
 // this same milestone precisely so this call site could reuse it) — it had none before, unlike every
 // other genuinely anonymous write/read endpoint in this API.
 func registerDiscovery(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
-	discoveryStore := discoveryadapters.NewStore(deps.Pool)
+	discoveryStore := discoveryadapters.NewRepository(deps.Pool)
 	discoveryAppSvc := discoveryapplication.NewService(discoveryStore, &contentSiteResolver{content: deps.ContentAppSvc}, deps.ReligionSvc, deps.AuthzSvc, discoveryapplication.Config{
 		RootUnitID: deps.CoreRootUnitID,
 	})

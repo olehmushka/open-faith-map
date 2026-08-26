@@ -70,6 +70,10 @@ type CoreServiceClient interface {
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (UnitPage, error)
 	UnitAncestors(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitRefPage, error)
+	// One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time — not the full subtree ancestors/descendants-style closure reads return). Capped at limit (default/max 50), same shape as listUnits.
+	UnitChildren(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, limitArg *int) (UnitPage, error)
+	// The single root unit — M12.7's tree-view starting point. Deliberately not nested under /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId} wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the POST tree in M12.1) — a top-level static resource with no {} segment, following updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+	RootUnit(ctx context.Context, authHeader bearertoken.Token) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListTaxa(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (TaxonPage, error)
 	GetTaxon(ctx context.Context, authHeader bearertoken.Token, taxonIdArg string) (Taxon, error)
@@ -77,6 +81,20 @@ type CoreServiceClient interface {
 	GetOrgProfile(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (OrgProfile, error)
 	// Gated — the caller must hold religionorg.manage over parentUnitId.
 	CreateChildOrg(ctx context.Context, authHeader bearertoken.Token, requestArg CreateChildOrgRequest) (OrgProfile, error)
+	// M12.1 — general unit creation under a parent. Gated — the caller must hold unit.lifecycle over request.parentUnitId.
+	CreateUnit(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitRequest) (Unit, error)
+	// M12.1 — rewrites name/code/level. Gated — the caller must hold unit.lifecycle over unitId. Deliberately not nested under /units/: httprouter (vendored v1.3.0) cannot register a wildcard child next to the existing static /units/children (createChildOrg) at the same POST tree depth — any route of the shape POST /units/{unitId}/* panics at startup regardless of what follows the wildcard, since a POST /units/children request would otherwise be genuinely ambiguous between the two routes. A sibling top-level resource, not a suffix, is the only fix; grantUnitRole/bulkGrantUnitRole already set this precedent (POST /role-assignments, not POST /units/{unitId}/role-assignments).
+	UpdateUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error)
+	// M12.1 — archive/suspend/reactivate. Gated — the caller must hold unit.lifecycle over unitId. The root unit refuses every state change. See updateUnit's docs for why this lives under /unit-lifecycle/ rather than /units/.
+	SetUnitState(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
+	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
+	DeleteUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) error
+	// M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting anything, so the admin UI can gray out/explain the delete action instead of only discovering it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same authority deleteUnit itself requires (this read is no more permissive than the write it previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own httprouter wildcard-collision class applies.
+	UnitDeleteEligibility(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitDeleteEligibility, error)
+	// M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
+	MoveUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error)
+	// Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
+	GetUnitMoveStatus(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error)
 	ListCountries(ctx context.Context, authHeader bearertoken.Token) (CountryPage, error)
 	ListMembershipsByUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (MembershipPage, error)
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
@@ -314,6 +332,45 @@ func (c *coreServiceClient) UnitAncestors(ctx context.Context, authHeader bearer
 	return *returnVal, nil
 }
 
+func (c *coreServiceClient) UnitChildren(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, limitArg *int) (UnitPage, error) {
+	var returnVal *UnitPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UnitChildren"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/units/%s/children", url.PathEscape(fmt.Sprint(unitIdArg))))
+	queryParams := make(url.Values)
+	if limitArg != nil {
+		queryParams.Set("limit", fmt.Sprint(*limitArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(UnitPage), werror.WrapWithContextParams(ctx, err, "unitChildren failed")
+	}
+	if returnVal == nil {
+		return *new(UnitPage), werror.ErrorWithContextParams(ctx, "unitChildren response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) RootUnit(ctx context.Context, authHeader bearertoken.Token) (Unit, error) {
+	var returnVal *Unit
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RootUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/root-unit"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(Unit), werror.WrapWithContextParams(ctx, err, "rootUnit failed")
+	}
+	if returnVal == nil {
+		return *new(Unit), werror.ErrorWithContextParams(ctx, "rootUnit response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 func (c *coreServiceClient) ListTaxa(ctx context.Context, authHeader bearertoken.Token, queryArg *string, limitArg *int) (TaxonPage, error) {
 	var returnVal *TaxonPage
 	var requestParams []httpclient.RequestParam
@@ -406,6 +463,126 @@ func (c *coreServiceClient) CreateChildOrg(ctx context.Context, authHeader beare
 		return *new(OrgProfile), werror.ErrorWithContextParams(ctx, "createChildOrg response cannot be nil")
 	}
 	return *returnVal, nil
+}
+
+func (c *coreServiceClient) CreateUnit(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitRequest) (Unit, error) {
+	var returnVal *Unit
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreateUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/units"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Unit), werror.WrapWithContextParams(ctx, err, "createUnit failed")
+	}
+	if returnVal == nil {
+		return *new(Unit), werror.ErrorWithContextParams(ctx, "createUnit response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) UpdateUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error) {
+	var returnVal *Unit
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-lifecycle/%s", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Unit), werror.WrapWithContextParams(ctx, err, "updateUnit failed")
+	}
+	if returnVal == nil {
+		return *new(Unit), werror.ErrorWithContextParams(ctx, "updateUnit response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) SetUnitState(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error) {
+	var returnVal *Unit
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("SetUnitState"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-lifecycle/%s/state", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Unit), werror.WrapWithContextParams(ctx, err, "setUnitState failed")
+	}
+	if returnVal == nil {
+		return *new(Unit), werror.ErrorWithContextParams(ctx, "setUnitState response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) DeleteUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/units/%s", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteUnit failed")
+	}
+	return nil
+}
+
+func (c *coreServiceClient) UnitDeleteEligibility(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitDeleteEligibility, error) {
+	var returnVal *UnitDeleteEligibility
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UnitDeleteEligibility"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-lifecycle/%s/delete-eligibility", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(UnitDeleteEligibility), werror.WrapWithContextParams(ctx, err, "unitDeleteEligibility failed")
+	}
+	if returnVal == nil {
+		return *new(UnitDeleteEligibility), werror.ErrorWithContextParams(ctx, "unitDeleteEligibility response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) MoveUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error) {
+	var returnVal *UnitMoveJob
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("MoveUnit"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-moves/%s", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(UnitMoveJob), werror.WrapWithContextParams(ctx, err, "moveUnit failed")
+	}
+	if returnVal == nil {
+		return *new(UnitMoveJob), werror.ErrorWithContextParams(ctx, "moveUnit response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *coreServiceClient) GetUnitMoveStatus(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error) {
+	var returnVal *UnitMoveJob
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetUnitMoveStatus"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/unit-moves/%s", url.PathEscape(fmt.Sprint(unitIdArg))))
+	queryParams := make(url.Values)
+	if graphCodeArg != nil {
+		queryParams.Set("graphCode", fmt.Sprint(*graphCodeArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "getUnitMoveStatus failed")
+	}
+	return returnVal, nil
 }
 
 func (c *coreServiceClient) ListCountries(ctx context.Context, authHeader bearertoken.Token) (CountryPage, error) {
@@ -502,6 +679,10 @@ type CoreServiceClientWithAuth interface {
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListUnits(ctx context.Context, queryArg *string, limitArg *int) (UnitPage, error)
 	UnitAncestors(ctx context.Context, unitIdArg string) (UnitRefPage, error)
+	// One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time — not the full subtree ancestors/descendants-style closure reads return). Capped at limit (default/max 50), same shape as listUnits.
+	UnitChildren(ctx context.Context, unitIdArg string, limitArg *int) (UnitPage, error)
+	// The single root unit — M12.7's tree-view starting point. Deliberately not nested under /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId} wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the POST tree in M12.1) — a top-level static resource with no {} segment, following updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+	RootUnit(ctx context.Context) (Unit, error)
 	// Free-text search over code/name, capped at limit (default/max 50).
 	ListTaxa(ctx context.Context, queryArg *string, limitArg *int) (TaxonPage, error)
 	GetTaxon(ctx context.Context, taxonIdArg string) (Taxon, error)
@@ -509,6 +690,20 @@ type CoreServiceClientWithAuth interface {
 	GetOrgProfile(ctx context.Context, unitIdArg string) (OrgProfile, error)
 	// Gated — the caller must hold religionorg.manage over parentUnitId.
 	CreateChildOrg(ctx context.Context, requestArg CreateChildOrgRequest) (OrgProfile, error)
+	// M12.1 — general unit creation under a parent. Gated — the caller must hold unit.lifecycle over request.parentUnitId.
+	CreateUnit(ctx context.Context, requestArg CreateUnitRequest) (Unit, error)
+	// M12.1 — rewrites name/code/level. Gated — the caller must hold unit.lifecycle over unitId. Deliberately not nested under /units/: httprouter (vendored v1.3.0) cannot register a wildcard child next to the existing static /units/children (createChildOrg) at the same POST tree depth — any route of the shape POST /units/{unitId}/* panics at startup regardless of what follows the wildcard, since a POST /units/children request would otherwise be genuinely ambiguous between the two routes. A sibling top-level resource, not a suffix, is the only fix; grantUnitRole/bulkGrantUnitRole already set this precedent (POST /role-assignments, not POST /units/{unitId}/role-assignments).
+	UpdateUnit(ctx context.Context, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error)
+	// M12.1 — archive/suspend/reactivate. Gated — the caller must hold unit.lifecycle over unitId. The root unit refuses every state change. See updateUnit's docs for why this lives under /unit-lifecycle/ rather than /units/.
+	SetUnitState(ctx context.Context, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error)
+	// M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the root unit outright, and is orphan-protected against child units, active role assignments, and an existing religion org profile.
+	DeleteUnit(ctx context.Context, unitIdArg string) error
+	// M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting anything, so the admin UI can gray out/explain the delete action instead of only discovering it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same authority deleteUnit itself requires (this read is no more permissive than the write it previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own httprouter wildcard-collision class applies.
+	UnitDeleteEligibility(ctx context.Context, unitIdArg string) (UnitDeleteEligibility, error)
+	// M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope: the caller must hold unit.edges.manage on BOTH unitId's current parent and request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never zero) and resumable — a repeat call while a live job targets the same new parent resumes it; targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling top-level resource, not nested under /units/, for the same httprouter reason updateUnit/ setUnitState already are (see updateUnit's own docs).
+	MoveUnit(ctx context.Context, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error)
+	// Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
+	GetUnitMoveStatus(ctx context.Context, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error)
 	ListCountries(ctx context.Context) (CountryPage, error)
 	ListMembershipsByUnit(ctx context.Context, unitIdArg string) (MembershipPage, error)
 	GetPerson(ctx context.Context, personIdArg string) (Person, error)
@@ -577,6 +772,14 @@ func (c *coreServiceClientWithAuth) UnitAncestors(ctx context.Context, unitIdArg
 	return c.client.UnitAncestors(ctx, c.authHeader, unitIdArg)
 }
 
+func (c *coreServiceClientWithAuth) UnitChildren(ctx context.Context, unitIdArg string, limitArg *int) (UnitPage, error) {
+	return c.client.UnitChildren(ctx, c.authHeader, unitIdArg, limitArg)
+}
+
+func (c *coreServiceClientWithAuth) RootUnit(ctx context.Context) (Unit, error) {
+	return c.client.RootUnit(ctx, c.authHeader)
+}
+
 func (c *coreServiceClientWithAuth) ListTaxa(ctx context.Context, queryArg *string, limitArg *int) (TaxonPage, error) {
 	return c.client.ListTaxa(ctx, c.authHeader, queryArg, limitArg)
 }
@@ -595,6 +798,34 @@ func (c *coreServiceClientWithAuth) GetOrgProfile(ctx context.Context, unitIdArg
 
 func (c *coreServiceClientWithAuth) CreateChildOrg(ctx context.Context, requestArg CreateChildOrgRequest) (OrgProfile, error) {
 	return c.client.CreateChildOrg(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) CreateUnit(ctx context.Context, requestArg CreateUnitRequest) (Unit, error) {
+	return c.client.CreateUnit(ctx, c.authHeader, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) UpdateUnit(ctx context.Context, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error) {
+	return c.client.UpdateUnit(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) SetUnitState(ctx context.Context, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error) {
+	return c.client.SetUnitState(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) DeleteUnit(ctx context.Context, unitIdArg string) error {
+	return c.client.DeleteUnit(ctx, c.authHeader, unitIdArg)
+}
+
+func (c *coreServiceClientWithAuth) UnitDeleteEligibility(ctx context.Context, unitIdArg string) (UnitDeleteEligibility, error) {
+	return c.client.UnitDeleteEligibility(ctx, c.authHeader, unitIdArg)
+}
+
+func (c *coreServiceClientWithAuth) MoveUnit(ctx context.Context, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error) {
+	return c.client.MoveUnit(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithAuth) GetUnitMoveStatus(ctx context.Context, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error) {
+	return c.client.GetUnitMoveStatus(ctx, c.authHeader, unitIdArg, graphCodeArg)
 }
 
 func (c *coreServiceClientWithAuth) ListCountries(ctx context.Context) (CountryPage, error) {
@@ -726,6 +957,22 @@ func (c *coreServiceClientWithTokenProvider) UnitAncestors(ctx context.Context, 
 	return c.client.UnitAncestors(ctx, bearertoken.Token(token), unitIdArg)
 }
 
+func (c *coreServiceClientWithTokenProvider) UnitChildren(ctx context.Context, unitIdArg string, limitArg *int) (UnitPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitPage), err
+	}
+	return c.client.UnitChildren(ctx, bearertoken.Token(token), unitIdArg, limitArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) RootUnit(ctx context.Context) (Unit, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Unit), err
+	}
+	return c.client.RootUnit(ctx, bearertoken.Token(token))
+}
+
 func (c *coreServiceClientWithTokenProvider) ListTaxa(ctx context.Context, queryArg *string, limitArg *int) (TaxonPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
@@ -764,6 +1011,62 @@ func (c *coreServiceClientWithTokenProvider) CreateChildOrg(ctx context.Context,
 		return *new(OrgProfile), err
 	}
 	return c.client.CreateChildOrg(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) CreateUnit(ctx context.Context, requestArg CreateUnitRequest) (Unit, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Unit), err
+	}
+	return c.client.CreateUnit(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) UpdateUnit(ctx context.Context, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Unit), err
+	}
+	return c.client.UpdateUnit(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) SetUnitState(ctx context.Context, unitIdArg string, requestArg SetUnitStateRequest) (Unit, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Unit), err
+	}
+	return c.client.SetUnitState(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) DeleteUnit(ctx context.Context, unitIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteUnit(ctx, bearertoken.Token(token), unitIdArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) UnitDeleteEligibility(ctx context.Context, unitIdArg string) (UnitDeleteEligibility, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitDeleteEligibility), err
+	}
+	return c.client.UnitDeleteEligibility(ctx, bearertoken.Token(token), unitIdArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) MoveUnit(ctx context.Context, unitIdArg string, requestArg MoveUnitRequest) (UnitMoveJob, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitMoveJob), err
+	}
+	return c.client.MoveUnit(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *coreServiceClientWithTokenProvider) GetUnitMoveStatus(ctx context.Context, unitIdArg string, graphCodeArg *string) (*UnitMoveJob, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.GetUnitMoveStatus(ctx, bearertoken.Token(token), unitIdArg, graphCodeArg)
 }
 
 func (c *coreServiceClientWithTokenProvider) ListCountries(ctx context.Context) (CountryPage, error) {
@@ -807,6 +1110,8 @@ type CoreSuperAdminServiceClient interface {
 	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
 	BulkGrantUnitRole(ctx context.Context, authHeader bearertoken.Token, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error
+	// M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched. A deeper path segment under the same {assignmentId} node as revokeRoleAssignment's own DELETE, not a new top-level resource — no wildcard-collision risk at this depth.
+	ClearRoleAssignmentExpiry(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context, authHeader bearertoken.Token) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
@@ -832,6 +1137,8 @@ type CoreSuperAdminServiceClient interface {
 	ListAuditLog(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
 	InvitePerson(ctx context.Context, authHeader bearertoken.Token, requestArg InvitePersonRequest) (InviteResult, error)
+	// M12.4 — decision-tracing debug tool for "why does this user have this access" (matching the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in the platforms researched): runs the same PDP.Decide the real enforcement path uses, with explain=true, against an ARBITRARY subjectPersonId (never the caller's own) — instance-admin-only via this whole route group's gate (RequireInstanceAdmin, attached once at registration), pure read, no audit log entry. A brand-new top-level static resource (no {} path segments) — every existing depth-1 segment under this base-path is already static, so a fresh zero-wildcard resource costs nothing and rules out the httprouter radix-tree collision class this file has hit repeatedly (M11.6/M12.1/M12.2) regardless of what gets added here later.
+	ExplainAccess(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error)
 }
 
 type coreSuperAdminServiceClient struct {
@@ -935,6 +1242,18 @@ func (c *coreSuperAdminServiceClient) RevokeRoleAssignment(ctx context.Context, 
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "revokeRoleAssignment failed")
+	}
+	return nil
+}
+
+func (c *coreSuperAdminServiceClient) ClearRoleAssignmentExpiry(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ClearRoleAssignmentExpiry"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/role-assignments/%s/clear-expiry", url.PathEscape(fmt.Sprint(assignmentIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "clearRoleAssignmentExpiry failed")
 	}
 	return nil
 }
@@ -1189,6 +1508,28 @@ func (c *coreSuperAdminServiceClient) InvitePerson(ctx context.Context, authHead
 	return *returnVal, nil
 }
 
+func (c *coreSuperAdminServiceClient) ExplainAccess(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error) {
+	var returnVal *AccessExplanation
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ExplainAccess"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/core/v1/super-admin/access-decisions/explain"))
+	queryParams := make(url.Values)
+	queryParams.Set("subjectPersonId", fmt.Sprint(subjectPersonIdArg))
+	queryParams.Set("permissionCode", fmt.Sprint(permissionCodeArg))
+	queryParams.Set("unitId", fmt.Sprint(unitIdArg))
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(AccessExplanation), werror.WrapWithContextParams(ctx, err, "explainAccess failed")
+	}
+	if returnVal == nil {
+		return *new(AccessExplanation), werror.ErrorWithContextParams(ctx, "explainAccess response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // The super-admin surface replacing the deleted oikumenea-console (D-SuperAdminFold): people search, role catalog, per-unit role-assignment grant/list/revoke, and the instance-admin plane's own grant/list/revoke. Every endpoint in this service is gated as a whole route group by internal/authz/transport.RequireInstanceAdmin, attached once at registration (cmd/openfaithmap-api/register_core.go) — not per-handler, so no future endpoint added here can be added without inheriting the check.
 type CoreSuperAdminServiceClientWithAuth interface {
 	SearchPersons(ctx context.Context, queryArg *string, limitArg *int) (PersonPage, error)
@@ -1198,6 +1539,8 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	// M11.7 — grants roleId on unitId to every id in personIds, atomically, in one transaction. A fresh top-level resource (not nested under /role-assignments/) deliberately: M11.6's POST /persons/invite collided with an existing {personId} wildcard sibling and caused a boot-time httprouter radix-tree panic — /role-assignments/{assignmentId} already exists as a wildcard sibling here, so this avoids the same class of collision.
 	BulkGrantUnitRole(ctx context.Context, requestArg BulkGrantUnitRoleRequest) error
 	RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error
+	// M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched. A deeper path segment under the same {assignmentId} node as revokeRoleAssignment's own DELETE, not a new top-level resource — no wildcard-collision risk at this depth.
+	ClearRoleAssignmentExpiry(ctx context.Context, assignmentIdArg string) error
 	ListInstanceAdmins(ctx context.Context) (InstanceAdminPage, error)
 	GrantInstanceAdmin(ctx context.Context, requestArg GrantInstanceAdminRequest) (InstanceAdminGrant, error)
 	RevokeInstanceAdmin(ctx context.Context, personIdArg string) error
@@ -1223,6 +1566,8 @@ type CoreSuperAdminServiceClientWithAuth interface {
 	ListAuditLog(ctx context.Context, actorPersonIdArg *string, targetKindArg *string, targetIdArg *string, fromArg *datetime.DateTime, toArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditLogPage, error)
 	// M11.6, D-InviteLinkMVP — pre-provisions a Person+Account for the given email/displayName and returns a one-time invite token; the admin app builds the shareable link from its own origin. Must produce a row M10.2's existing JIT link-on-match logic will actually match on the invitee's first Google sign-in (IDENTITY_JIT_MATCH=account-email). A top-level /invites path, not nested under /persons/{personId}: unlike deactivate/reactivate, invite creation has no existing personId to path-parameter against — and httprouter's radix tree can't have a static "invite" segment as a sibling of the existing ":personId" wildcard under /persons/ anyway (a real boot-time panic caught by live-verifying this milestone).
 	InvitePerson(ctx context.Context, requestArg InvitePersonRequest) (InviteResult, error)
+	// M12.4 — decision-tracing debug tool for "why does this user have this access" (matching the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in the platforms researched): runs the same PDP.Decide the real enforcement path uses, with explain=true, against an ARBITRARY subjectPersonId (never the caller's own) — instance-admin-only via this whole route group's gate (RequireInstanceAdmin, attached once at registration), pure read, no audit log entry. A brand-new top-level static resource (no {} path segments) — every existing depth-1 segment under this base-path is already static, so a fresh zero-wildcard resource costs nothing and rules out the httprouter radix-tree collision class this file has hit repeatedly (M11.6/M12.1/M12.2) regardless of what gets added here later.
+	ExplainAccess(ctx context.Context, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error)
 }
 
 func NewCoreSuperAdminServiceClientWithAuth(client CoreSuperAdminServiceClient, authHeader bearertoken.Token) CoreSuperAdminServiceClientWithAuth {
@@ -1256,6 +1601,10 @@ func (c *coreSuperAdminServiceClientWithAuth) BulkGrantUnitRole(ctx context.Cont
 
 func (c *coreSuperAdminServiceClientWithAuth) RevokeRoleAssignment(ctx context.Context, assignmentIdArg string) error {
 	return c.client.RevokeRoleAssignment(ctx, c.authHeader, assignmentIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithAuth) ClearRoleAssignmentExpiry(ctx context.Context, assignmentIdArg string) error {
+	return c.client.ClearRoleAssignmentExpiry(ctx, c.authHeader, assignmentIdArg)
 }
 
 func (c *coreSuperAdminServiceClientWithAuth) ListInstanceAdmins(ctx context.Context) (InstanceAdminPage, error) {
@@ -1314,6 +1663,10 @@ func (c *coreSuperAdminServiceClientWithAuth) InvitePerson(ctx context.Context, 
 	return c.client.InvitePerson(ctx, c.authHeader, requestArg)
 }
 
+func (c *coreSuperAdminServiceClientWithAuth) ExplainAccess(ctx context.Context, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error) {
+	return c.client.ExplainAccess(ctx, c.authHeader, subjectPersonIdArg, permissionCodeArg, unitIdArg)
+}
+
 func NewCoreSuperAdminServiceClientWithTokenProvider(client CoreSuperAdminServiceClient, tokenProvider httpclient.TokenProvider) CoreSuperAdminServiceClientWithAuth {
 	return &coreSuperAdminServiceClientWithTokenProvider{client: client, tokenProvider: tokenProvider}
 }
@@ -1369,6 +1722,14 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) RevokeRoleAssignment(ctx 
 		return err
 	}
 	return c.client.RevokeRoleAssignment(ctx, bearertoken.Token(token), assignmentIdArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ClearRoleAssignmentExpiry(ctx context.Context, assignmentIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.ClearRoleAssignmentExpiry(ctx, bearertoken.Token(token), assignmentIdArg)
 }
 
 func (c *coreSuperAdminServiceClientWithTokenProvider) ListInstanceAdmins(ctx context.Context) (InstanceAdminPage, error) {
@@ -1481,4 +1842,12 @@ func (c *coreSuperAdminServiceClientWithTokenProvider) InvitePerson(ctx context.
 		return *new(InviteResult), err
 	}
 	return c.client.InvitePerson(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *coreSuperAdminServiceClientWithTokenProvider) ExplainAccess(ctx context.Context, subjectPersonIdArg string, permissionCodeArg string, unitIdArg string) (AccessExplanation, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AccessExplanation), err
+	}
+	return c.client.ExplainAccess(ctx, bearertoken.Token(token), subjectPersonIdArg, permissionCodeArg, unitIdArg)
 }

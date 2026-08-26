@@ -47,11 +47,11 @@ func TestContentIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	directorySvc := directoryapplication.NewService(pool)
-	closurePort := directoryadapters.NewStore(pool)
+	closurePort := directoryadapters.NewRepository(pool)
 	pdp := authzdomain.NewPDP(closurePort)
-	authzStore := authzadapters.NewStore(pool)
-	authzSvc := authz.NewService(pdp, authzStore)
-	contentStore := contentadapters.NewStore(pool)
+	authzStore := authzadapters.NewRepository(pool)
+	authzSvc := authz.NewService(pdp, authzStore, pool)
+	contentStore := contentadapters.NewRepository(pool)
 	contentSvc := application.NewService(contentStore, authzSvc)
 
 	var personIDs, unitIDs, siteIDs, assignmentIDs []string

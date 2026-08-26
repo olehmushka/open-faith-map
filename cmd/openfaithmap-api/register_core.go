@@ -36,11 +36,11 @@ import (
 // either module.
 func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	directorySvc := directoryapplication.NewService(deps.Pool)
-	closurePort := directoryadapters.NewStore(deps.Pool)
+	closurePort := directoryadapters.NewRepository(deps.Pool)
 
 	pdp := authzdomain.NewPDP(closurePort)
-	authzStore := authzadapters.NewStore(deps.Pool)
-	authzSvc := authz.NewService(pdp, authzStore)
+	authzStore := authzadapters.NewRepository(deps.Pool)
+	authzSvc := authz.NewService(pdp, authzStore, deps.Pool)
 
 	religionSvc := religionapplication.NewService(deps.Pool, directorySvc)
 	locationSvc := locationapplication.NewService(deps.Pool)
@@ -51,7 +51,7 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	// dependency on any other module — so it's built here alongside the rest of core's deps rather
 	// than in a dedicated registerAuditLog, matching how locationSvc/refdataSvc are also assembled
 	// inline for a single consumer.
-	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewStore(deps.Pool))
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(deps.Pool))
 
 	deps.DirectorySvc = directorySvc
 	deps.AuthzSvc = authzSvc
@@ -63,7 +63,7 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	// M10.7: the Conjure surface these modules gain via api/core.conjure.yml, for
 	// openfaithmap-admin — deps.IdentitySvc is already built by registerIdentity, which runs before
 	// this function (registerOrder in main.go).
-	coreAppSvc := coreapplication.NewService(directorySvc, religionSvc, membershipSvc, deps.IdentitySvc, refdataSvc, authzSvc, auditLogSvc, deps.Pool)
+	coreAppSvc := coreapplication.NewService(directorySvc, religionSvc, membershipSvc, deps.IdentitySvc, refdataSvc, authzSvc, auditLogSvc, deps.Pool, deps.CoreRootUnitID)
 
 	coreTransportSvc := coretransport.NewService(coreAppSvc)
 	if err := gencore.RegisterRoutesCoreService(info.Router, coreTransportSvc); err != nil {

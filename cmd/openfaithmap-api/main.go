@@ -12,10 +12,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	identitymiddleware "github.com/olehmushka/open-faith-map/internal/identity/middleware"
 	"github.com/olehmushka/open-faith-map/internal/platform/config"
+	"github.com/olehmushka/open-faith-map/internal/platform/seed"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
@@ -89,6 +91,17 @@ var registerOrder = []struct {
 	{"congregationimport", registerCongregationImport},
 }
 
+// Conservative pool-sizing defaults for a single-instance API service — not yet operator-tunable
+// (no existing precedent in this codebase's config.Install/config.Runtime for exposing this class
+// of knob as an env var); revisit if this ever needs to scale beyond one instance's own good sense.
+const (
+	poolMaxConns          = 20
+	poolMinConns          = 2
+	poolMaxConnLifetime   = 30 * time.Minute
+	poolMaxConnIdleTime   = 5 * time.Minute
+	poolHealthCheckPeriod = time.Minute
+)
+
 // initServer is the composition root's InitFunc (docs/architecture/overview.md). Dials the shared
 // Postgres pool (openfaithmap schema — migrations applied out-of-band by docker-compose.yml's
 // openfaithmap-migrate, never by this binary), builds Deps once, then runs every module's
@@ -97,13 +110,28 @@ var registerOrder = []struct {
 // function.
 func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *identitymiddleware.Authenticator) (func(), error) {
 	databaseURL := requireEnv("DATABASE_URL")
-	pool, err := pgxpool.New(ctx, databaseURL)
+	poolCfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "parse postgres config")
+	}
+	poolCfg.MaxConns = poolMaxConns
+	poolCfg.MinConns = poolMinConns
+	poolCfg.MaxConnLifetime = poolMaxConnLifetime
+	poolCfg.MaxConnIdleTime = poolMaxConnIdleTime
+	poolCfg.HealthCheckPeriod = poolHealthCheckPeriod
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		return nil, werror.WrapWithContextParams(ctx, err, "dial postgres")
 	}
 
+	ids, err := seed.Resolve(ctx, pool)
+	if err != nil {
+		pool.Close()
+		return nil, werror.WrapWithContextParams(ctx, err, "resolve seed IDs")
+	}
+
 	install, _ := info.InstallConfig.(config.Install)
-	deps := newDeps(pool, install)
+	deps := newDeps(pool, install, ids)
 	deps.Authenticator = authenticator
 
 	for _, r := range registerOrder {

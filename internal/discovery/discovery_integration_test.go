@@ -51,13 +51,13 @@ func TestDiscoveryIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	directorySvc := directoryapplication.NewService(pool)
-	closurePort := directoryadapters.NewStore(pool)
+	closurePort := directoryadapters.NewRepository(pool)
 	pdp := authzdomain.NewPDP(closurePort)
-	authzStore := authzadapters.NewStore(pool)
-	authzSvc := authz.NewService(pdp, authzStore)
+	authzStore := authzadapters.NewRepository(pool)
+	authzSvc := authz.NewService(pdp, authzStore, pool)
 	religionSvc := religionapplication.NewService(pool, directorySvc)
 	locationSvc := locationapplication.NewService(pool)
-	discoveryStore := adapters.NewStore(pool)
+	discoveryStore := adapters.NewRepository(pool)
 	discoverySvc := application.NewService(discoveryStore, nil, religionSvc, authzSvc, application.Config{
 		RootUnitID: seed.RootUnitID,
 	})

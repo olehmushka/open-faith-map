@@ -17,7 +17,7 @@ import (
 // registerRegistration depends on deps.ReligionSvc/LocationSvc/MembershipSvc/DirectorySvc/AuthzSvc,
 // all populated by registerCore (M10.6) before registerOrder (main.go) reaches this function.
 func registerRegistration(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
-	store := regadapters.NewStore(deps.Pool)
+	store := regadapters.NewRepository(deps.Pool)
 	appSvc := regapplication.NewService(store, deps.ReligionSvc, deps.LocationSvc, deps.MembershipSvc, deps.DirectorySvc, deps.AuthzSvc, regapplication.Config{
 		RootUnitID:              deps.CoreRootUnitID,
 		CongregationAdminRoleID: deps.CoreCongregationAdminRoleID,

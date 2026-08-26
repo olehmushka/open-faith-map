@@ -128,6 +128,55 @@ types:
           name: string
           orgKindId: optional<string>
           primaryTaxonId: optional<string>
+      CreateUnitRequest:
+        docs: M12.1 — createUnit's request. General unit creation under a parent, without createChildOrg's religion-profile side effects.
+        fields:
+          parentUnitId: string
+          code: string
+          name: string
+          level: optional<integer>
+      UpdateUnitRequest:
+        docs: M12.1 — updateUnit's request.
+        fields:
+          name: string
+          code: optional<string>
+          level: optional<integer>
+      SetUnitStateRequest:
+        docs: M12.1 — setUnitState's request. state must be one of active/suspended/archived.
+        fields:
+          state: string
+      UnitDeleteEligibility:
+        docs: >
+          M12.5 — unitDeleteEligibility's response, a preview of deleteUnit's own orphan-protection
+          outcome without deleting anything. canDelete is the AND of the four negations, computed
+          server-side so the client never re-derives the rule.
+        fields:
+          isRoot: boolean
+          hasChildren: boolean
+          hasOrgProfile: boolean
+          hasActiveRoleAssignments: boolean
+          canDelete: boolean
+      MoveUnitRequest:
+        docs: M12.2 — moveUnit's request. graphCode defaults to "canonical" when unset.
+        fields:
+          newParentUnitId: string
+          graphCode: optional<string>
+      UnitMoveJob:
+        docs: >
+          M12.2 — one move attempt's resumable state: PENDING -> NEW_EDGE_ADDED -> OLD_EDGE_REMOVED ->
+          VERIFIED, or FAILED at any step (error then set). At most one non-FAILED job exists per
+          (graphId, unitId) at a time.
+        fields:
+          id: string
+          graphId: string
+          unitId: string
+          oldParentUnitId: string
+          newParentUnitId: string
+          status: string
+          performedByPersonId: string
+          error: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
 
       Country:
         fields:
@@ -177,22 +226,56 @@ types:
           targetUnitId: string
           scope: string
           grantedAt: datetime
+          expiresAt:
+            type: optional<datetime>
+            docs: M12.3 — set only when the grant was given an expiry; the PDP already enforces it, this just surfaces it.
       RoleAssignmentPage:
         fields:
           assignments: list<RoleAssignment>
+      AccessExplanationContribution:
+        docs: >
+          M12.4 — one reason an ALLOW was reached; mirrors internal/authz/domain.Contribution
+          exactly. For an instance-plane allow only instanceAdmin is true and every other field is
+          the empty string.
+        fields:
+          instanceAdmin: boolean
+          assignmentId: string
+          roleCode: string
+          targetUnitId: string
+          scope: string
+          graphCode: string
+      AccessExplanation:
+        docs: >
+          M12.4 — explainAccess's return value; mirrors internal/authz/domain.Decision exactly. via
+          is empty when allow is false; denyReason is the empty string when allow is true.
+        fields:
+          allow: boolean
+          via: list<AccessExplanationContribution>
+          denyReason: string
       GrantUnitRoleRequest:
+        docs: >
+          M12.2 — scope must be "unit" or "subtree"; graphId is required when scope is "subtree"
+          (the graph a subtree grant cascades over) and must be omitted for "unit". M12.3 —
+          expiresAt is optional and, when set, must be in the future.
         fields:
           personId: string
           roleId: string
           unitId: string
+          scope: string
+          graphId: optional<string>
+          expiresAt: optional<datetime>
       BulkGrantUnitRoleRequest:
         docs: >
-          M11.7 — the batch variant of GrantUnitRoleRequest: the same role and unit, granted to every
-          id in personIds at once, atomically.
+          M11.7 — the batch variant of GrantUnitRoleRequest: the same role, unit, and scope, granted
+          to every id in personIds at once, atomically. scope/graphId follow GrantUnitRoleRequest's
+          own rules (M12.2); expiresAt follows the same rule too (M12.3).
         fields:
           personIds: list<string>
           roleId: string
           unitId: string
+          scope: string
+          graphId: optional<string>
+          expiresAt: optional<datetime>
 
       MergePersonsRequest:
         docs: M11.8 — the path's personId is always the survivor; duplicatePersonId is merged into it.
@@ -419,10 +502,88 @@ types:
         safe-args:
           parentUnitId: string
       Forbidden:
-        docs: The caller does not hold religionorg.manage on the parent unit (createChildOrg) or is not an active instance admin (every CoreSuperAdminService endpoint).
+        docs: The caller does not hold religionorg.manage on the parent unit (createChildOrg), unit.lifecycle on the relevant unit (createUnit/updateUnit/setUnitState/deleteUnit/unitDeleteEligibility), or is not an active instance admin (every CoreSuperAdminService endpoint).
         namespace: Core
         code: PERMISSION_DENIED
         safe-args: {}
+      UnitHasChildren:
+        docs: M12.1 — deleteUnit's unitId still has at least one child unit.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      UnitHasActiveRoleAssignments:
+        docs: M12.1 — deleteUnit's unitId still has at least one active (non-revoked) role assignment.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      UnitHasOrgProfile:
+        docs: M12.1 — deleteUnit's unitId still has a religion org profile.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      RootUnitProtected:
+        docs: M12.1 — setUnitState/deleteUnit refuse the root unit outright, regardless of the caller's grant.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      InvalidUnitState:
+        docs: M12.1 — setUnitState's request.state is not one of active/suspended/archived.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      InvalidGrantScope:
+        docs: M12.2 — grantUnitRole/bulkGrantUnitRole's request.scope is not one of "unit"/"subtree".
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      SubtreeGrantRequiresGraph:
+        docs: M12.2 — a scope="subtree" grant must set request.graphId.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      ExpiryInPast:
+        docs: M12.3 — grantUnitRole/bulkGrantUnitRole's request.expiresAt, when set, must be in the future.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      UnitGrantMustNotSpecifyGraph:
+        docs: M12.2 — a scope="unit" grant must leave request.graphId unset.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args: {}
+      UnitHasNoCurrentParent:
+        docs: M12.2 — moveUnit's unitId has no parent in the graph (e.g. it is that graph's root) — nothing to move.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      UnitMoveConflict:
+        docs: M12.2 — unitId already has a live move job targeting a different parent; resolve it (retry with the same newParentUnitId to resume, or wait for it to fail out) before starting a move elsewhere.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      UnitAlreadyAtParent:
+        docs: >
+          M12.2 (bug fix, found in browser verification 2026-08-26) — moveUnit's newParentUnitId is
+          already unitId's current parent, a no-op the add-before-remove state machine cannot
+          represent: with only one edge to begin with, adding the "new" edge is a no-op (it already
+          exists) and removing the "old" edge deletes that same edge, orphaning unitId with zero
+          parents. Rejected upfront instead of ever starting the job.
+        namespace: Core
+        code: CONFLICT
+        safe-args:
+          unitId: string
+      EdgeCycle:
+        docs: M12.2 — moveUnit's newParentUnitId is unitId itself or already one of unitId's descendants in the graph.
+        namespace: Core
+        code: INVALID_ARGUMENT
+        safe-args:
+          unitId: string
       AssignmentNotFound:
         namespace: Core
         code: NOT_FOUND
@@ -601,6 +762,29 @@ services:
             type: string
             param-type: path
         returns: UnitRefPage
+      unitChildren:
+        http: GET /units/{unitId}/children
+        docs: >
+          One-hop direct children (M12.7's admin hierarchy tree, which loads one level at a time —
+          not the full subtree ancestors/descendants-style closure reads return). Capped at limit
+          (default/max 50), same shape as listUnits.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          limit:
+            type: optional<integer>
+            param-type: query
+        returns: UnitPage
+      rootUnit:
+        http: GET /root-unit
+        docs: >
+          The single root unit — M12.7's tree-view starting point. Deliberately not nested under
+          /units/ (a GET /units/root would sit at the same tree depth as the GET /units/{unitId}
+          wildcard, the same static-vs-wildcard ambiguity that panicked httprouter at boot for the
+          POST tree in M12.1) — a top-level static resource with no {} segment, following
+          updateUnit/moveUnit/explainAccess's own precedent for sidestepping that collision class.
+        returns: Unit
       listTaxa:
         http: GET /taxa
         docs: Free-text search over code/name, capped at limit (default/max 50).
@@ -635,6 +819,94 @@ services:
         args:
           request: CreateChildOrgRequest
         returns: OrgProfile
+      createUnit:
+        http: POST /units
+        docs: M12.1 — general unit creation under a parent. Gated — the caller must hold unit.lifecycle over request.parentUnitId.
+        args:
+          request: CreateUnitRequest
+        returns: Unit
+      updateUnit:
+        http: POST /unit-lifecycle/{unitId}
+        docs: >
+          M12.1 — rewrites name/code/level. Gated — the caller must hold unit.lifecycle over unitId.
+          Deliberately not nested under /units/: httprouter (vendored v1.3.0) cannot register a
+          wildcard child next to the existing static /units/children (createChildOrg) at the same POST
+          tree depth — any route of the shape POST /units/{unitId}/* panics at startup regardless of
+          what follows the wildcard, since a POST /units/children request would otherwise be
+          genuinely ambiguous between the two routes. A sibling top-level resource, not a suffix,
+          is the only fix; grantUnitRole/bulkGrantUnitRole already set this precedent (POST
+          /role-assignments, not POST /units/{unitId}/role-assignments).
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: UpdateUnitRequest
+        returns: Unit
+      setUnitState:
+        http: POST /unit-lifecycle/{unitId}/state
+        docs: >
+          M12.1 — archive/suspend/reactivate. Gated — the caller must hold unit.lifecycle over
+          unitId. The root unit refuses every state change. See updateUnit's docs for why this lives
+          under /unit-lifecycle/ rather than /units/.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: SetUnitStateRequest
+        returns: Unit
+      deleteUnit:
+        http: DELETE /units/{unitId}
+        docs: >
+          M12.1 — soft-delete. Gated — the caller must hold unit.lifecycle over unitId. Refuses the
+          root unit outright, and is orphan-protected against child units, active role assignments,
+          and an existing religion org profile.
+        args:
+          unitId:
+            type: string
+            param-type: path
+      unitDeleteEligibility:
+        http: GET /unit-lifecycle/{unitId}/delete-eligibility
+        docs: >
+          M12.5 — previews deleteUnit's own orphan-protection outcome for unitId without deleting
+          anything, so the admin UI can gray out/explain the delete action instead of only discovering
+          it via a failed 409. Gated — the caller must hold unit.lifecycle over unitId, the same
+          authority deleteUnit itself requires (this read is no more permissive than the write it
+          previews). A GET sibling under the existing /unit-lifecycle/{unitId} resource — a different
+          HTTP method from the POST routes already there, so none of updateUnit/setUnitState's own
+          httprouter wildcard-collision class applies.
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: UnitDeleteEligibility
+      moveUnit:
+        http: POST /unit-moves/{unitId}
+        docs: >
+          M12.2 — starts or resumes moving unitId onto request.newParentUnitId, generalized out of
+          internal/registration's own former private reparent state machine. Gated — D-UnitMoveDualScope:
+          the caller must hold unit.edges.manage on BOTH unitId's current parent and
+          request.newParentUnitId. Add-before-remove (unitId briefly has two parents mid-move, never
+          zero) and resumable — a repeat call while a live job targets the same new parent resumes it;
+          targeting a different parent while one is live is a conflict (unitMoveConflict). A sibling
+          top-level resource, not nested under /units/, for the same httprouter reason updateUnit/
+          setUnitState already are (see updateUnit's own docs).
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: MoveUnitRequest
+        returns: UnitMoveJob
+      getUnitMoveStatus:
+        http: GET /unit-moves/{unitId}
+        docs: Read the most recent move job for unitId (any graph — see graphCode), if one has ever been started.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          graphCode:
+            type: optional<string>
+            param-type: query
+        returns: optional<UnitMoveJob>
       listCountries:
         http: GET /countries
         returns: CountryPage
@@ -730,6 +1002,16 @@ services:
           request: BulkGrantUnitRoleRequest
       revokeRoleAssignment:
         http: DELETE /role-assignments/{assignmentId}
+        args:
+          assignmentId:
+            type: string
+            param-type: path
+      clearRoleAssignmentExpiry:
+        docs: >
+          M12.3 — clears an active assignment's expiresAt, leaving the grant itself untouched. A
+          deeper path segment under the same {assignmentId} node as revokeRoleAssignment's own
+          DELETE, not a new top-level resource — no wildcard-collision risk at this depth.
+        http: POST /role-assignments/{assignmentId}/clear-expiry
         args:
           assignmentId:
             type: string
@@ -891,3 +1173,28 @@ services:
         args:
           request: InvitePersonRequest
         returns: InviteResult
+
+      explainAccess:
+        docs: >
+          M12.4 — decision-tracing debug tool for "why does this user have this access" (matching
+          the role Google Cloud Policy Analyzer / AWS IAM Policy Simulator play in the platforms
+          researched): runs the same PDP.Decide the real enforcement path uses, with explain=true,
+          against an ARBITRARY subjectPersonId (never the caller's own) — instance-admin-only via
+          this whole route group's gate (RequireInstanceAdmin, attached once at registration), pure
+          read, no audit log entry. A brand-new top-level static resource (no {} path segments) —
+          every existing depth-1 segment under this base-path is already static, so a fresh
+          zero-wildcard resource costs nothing and rules out the httprouter radix-tree collision
+          class this file has hit repeatedly (M11.6/M12.1/M12.2) regardless of what gets added here
+          later.
+        http: GET /access-decisions/explain
+        args:
+          subjectPersonId:
+            type: string
+            param-type: query
+          permissionCode:
+            type: string
+            param-type: query
+          unitId:
+            type: string
+            param-type: query
+        returns: AccessExplanation

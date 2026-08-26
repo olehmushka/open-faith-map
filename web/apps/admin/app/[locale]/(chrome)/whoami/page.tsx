@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusBadge } from "@/components/status-badge";
 
 // M11.5 — the self-service profile page, replacing the raw JSON dump this route used to render.
 // M1's own exit-criterion proof (a real openfaithmap-api call with the logged-in user's forwarded
@@ -73,11 +74,15 @@ export default async function WhoamiPage({ params }: { params: Promise<{ locale:
           {roleAssignments.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("noRoles")}</p>
           ) : (
-            roleAssignments.map((a) => (
-              <p key={a.id} className="text-sm text-muted-foreground">
-                {t("roleAssignment", { roleName: a.roleCode, unitId: a.targetUnitId })}
-              </p>
-            ))
+            roleAssignments.map((a) => {
+              const isExpired = a.expiresAt ? new Date(a.expiresAt) <= new Date() : false;
+              return (
+                <p key={a.id} className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  {t("roleAssignment", { roleName: a.roleCode, unitId: a.targetUnitId })}
+                  {isExpired && <StatusBadge status={t("roleExpired")} tone="danger" />}
+                </p>
+              );
+            })
           )}
         </CardContent>
       </Card>

@@ -85,7 +85,7 @@ func TestLockContentionIntegration(t *testing.T) {
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
-		store := adapters.NewStore(tx)
+		store := adapters.NewRepository(tx)
 		if err := store.LockGraphForClosure(ctx, graphID); err != nil {
 			aErrCh <- err
 			close(aHasLock)
@@ -117,7 +117,7 @@ func TestLockContentionIntegration(t *testing.T) {
 		t.Fatalf("side B: pool.Begin: %v", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	storeB := adapters.NewStore(tx)
+	storeB := adapters.NewRepository(tx)
 	if err := storeB.LockGraphForClosure(ctx, graphID); err != nil {
 		t.Fatalf("side B: LockGraphForClosure: %v", err)
 	}
