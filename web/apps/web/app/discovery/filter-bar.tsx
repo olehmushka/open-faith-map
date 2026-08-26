@@ -34,7 +34,9 @@ export function FilterBar({
   initialOnlineOnly: boolean | undefined;
   facets: DiscoveryFacets;
   onSubmit: (filters: Pick<DiscoveryFilters, "tradition" | "language">) => void;
-  onMoreFiltersSubmit: (filters: Pick<DiscoveryFilters, "dayOfWeek" | "accessibility" | "onlineOnly">) => void;
+  onMoreFiltersSubmit: (
+    filters: Pick<DiscoveryFilters, "tradition" | "language" | "dayOfWeek" | "accessibility" | "onlineOnly">,
+  ) => void;
   pending: boolean;
 }) {
   const t = useTranslations("DiscoveryMap");
@@ -51,7 +53,7 @@ export function FilterBar({
 
   return (
     <div className="flex flex-wrap items-end gap-3 p-3">
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
+      <form onSubmit={handleSubmit} className="hidden flex-wrap items-end gap-3 md:flex">
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">{t("traditionLabel")}</span>
           <Select value={tradition} onValueChange={setTradition}>
@@ -89,9 +91,12 @@ export function FilterBar({
         </Button>
       </form>
       <MoreFiltersSheet
+        initialTradition={initialTradition}
+        initialLanguage={initialLanguage}
         initialDayOfWeek={initialDayOfWeek}
         initialAccessibility={initialAccessibility}
         initialOnlineOnly={initialOnlineOnly}
+        facets={facets}
         onSubmit={onMoreFiltersSubmit}
         pending={pending}
       />

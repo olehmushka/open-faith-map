@@ -7,15 +7,17 @@ import "leaflet/dist/leaflet.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { DiscoverySite } from "@/lib/discovery";
 import type { GeolocationResult } from "@/lib/geolocation";
 import type { DistanceUnit } from "@/lib/geo";
+import { useIsMobile } from "@/lib/use-is-mobile";
 import { Link } from "@/i18n/navigation";
 import { ResultCard } from "./result-card";
 
@@ -75,6 +77,24 @@ function ViewportWatcher({ onViewportChange }: { onViewportChange: (viewport: Pe
   return null;
 }
 
+/**
+ * On mobile, MapPane's container is toggled between `display:none` and visible (discovery-shell.tsx's
+ * List↔Map switch keeps the map mounted rather than remounting it). Leaflet doesn't recompute a
+ * map's tile grid on its own when its container comes back from `display:none` — it needs an
+ * explicit `invalidateSize()` or it renders blank/mis-tiled until the next manual pan/zoom.
+ */
+function InvalidateSizeOnShow({ active }: { active: boolean }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!active) return;
+    const id = requestAnimationFrame(() => map.invalidateSize());
+    return () => cancelAnimationFrame(id);
+  }, [active, map]);
+
+  return null;
+}
+
 export function MapPane({
   sites,
   center,
@@ -86,6 +106,7 @@ export function MapPane({
   geolocationEnabled,
   distanceOrigin,
   distanceUnit,
+  active = true,
 }: {
   sites: DiscoverySite[];
   center: [number, number];
@@ -97,46 +118,92 @@ export function MapPane({
   geolocationEnabled: boolean;
   distanceOrigin: { lat: number; lng: number } | null;
   distanceUnit: DistanceUnit;
+  /** Whether this pane is the one currently visible on a narrow (< md) viewport. Always treated as
+   * visible at `md` and up, where discovery-shell.tsx renders both panes side by side. */
+  active?: boolean;
 }) {
   const t = useTranslations("DiscoveryMap");
+  const isMobile = useIsMobile();
+  const [tappedSiteId, setTappedSiteId] = useState<string | null>(null);
+  const tappedSite = sites.find((s) => s.id === tappedSiteId) ?? null;
+
+  function handleMarkerClick(site: DiscoverySite) {
+    if (!isMobile) return;
+    onHoverSite(site.id);
+    setTappedSiteId(site.id);
+  }
+
+  function closeTappedSheet() {
+    setTappedSiteId(null);
+    onHoverSite(null);
+  }
 
   return (
-    <MapContainer center={center} zoom={zoom} style={{ height: "100%", width: "100%" }}>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      <ViewportWatcher onViewportChange={onViewportChange} />
-      <GeolocationRecenter geolocation={geolocation} enabled={geolocationEnabled} />
-      <MarkerClusterGroup chunkedLoading>
-        {sites
-          .filter((s) => s.latitude != null && s.longitude != null)
-          .map((s) => (
-            <Marker
-              key={s.id}
-              position={[s.latitude as number, s.longitude as number]}
-              icon={s.id === activeSiteId ? pinIconActive : pinIcon}
-              eventHandlers={{
-                mouseover: () => onHoverSite(s.id),
-                mouseout: () => onHoverSite(null),
-              }}
-            >
-              <Popup minWidth={224}>
-                <ResultCard site={s} origin={distanceOrigin} unit={distanceUnit} />
-                {/* contentSiteId is content's internal uuid, not what getSite accepts (see
-                    app/congregations/[unitId]/page.tsx's header comment) — its presence is
-                    still the right "has this congregation published a site at all" signal. */}
-                <div className="pt-1">
-                  {s.contentSiteId ? (
-                    <Link href={`/congregations/${s.congregationUnitRid}`}>{t("viewCongregationPage")}</Link>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">{t("noPublishedPage")}</span>
-                  )}
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-      </MarkerClusterGroup>
-    </MapContainer>
+    <>
+      <MapContainer center={center} zoom={zoom} style={{ height: "100%", width: "100%" }}>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <ViewportWatcher onViewportChange={onViewportChange} />
+        <GeolocationRecenter geolocation={geolocation} enabled={geolocationEnabled} />
+        <InvalidateSizeOnShow active={active} />
+        <MarkerClusterGroup chunkedLoading>
+          {sites
+            .filter((s) => s.latitude != null && s.longitude != null)
+            .map((s) => (
+              <Marker
+                key={s.id}
+                position={[s.latitude as number, s.longitude as number]}
+                icon={s.id === activeSiteId ? pinIconActive : pinIcon}
+                eventHandlers={{
+                  mouseover: () => onHoverSite(s.id),
+                  mouseout: () => onHoverSite(null),
+                  click: () => handleMarkerClick(s),
+                }}
+              >
+                {/* On mobile, tapping a pin opens the bottom sheet below instead — no Leaflet popup
+                    bound at all, so there's nothing for Leaflet's own click-to-open to trigger. */}
+                {!isMobile && (
+                  <Popup minWidth={224}>
+                    <ResultCard site={s} origin={distanceOrigin} unit={distanceUnit} />
+                    {/* contentSiteId is content's internal uuid, not what getSite accepts (see
+                        app/congregations/[unitId]/page.tsx's header comment) — its presence is
+                        still the right "has this congregation published a site at all" signal. */}
+                    <div className="pt-1">
+                      {s.contentSiteId ? (
+                        <Link href={`/congregations/${s.congregationUnitRid}`}>{t("viewCongregationPage")}</Link>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{t("noPublishedPage")}</span>
+                      )}
+                    </div>
+                  </Popup>
+                )}
+              </Marker>
+            ))}
+        </MarkerClusterGroup>
+      </MapContainer>
+      <Sheet open={tappedSiteId != null} onOpenChange={(open) => !open && closeTappedSheet()}>
+        <SheetContent side="bottom">
+          <SheetHeader className="sr-only">
+            <SheetTitle>{tappedSite?.name || t("unnamedSite")}</SheetTitle>
+          </SheetHeader>
+          {tappedSite ? (
+            <div className="px-4 pb-4">
+              <ResultCard site={tappedSite} origin={distanceOrigin} unit={distanceUnit} />
+              <div className="pt-1">
+                {tappedSite.contentSiteId ? (
+                  <Link href={`/congregations/${tappedSite.congregationUnitRid}`}>
+                    {t("viewCongregationPage")}
+                  </Link>
+                ) : (
+                  <span className="text-xs text-muted-foreground">{t("noPublishedPage")}</span>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

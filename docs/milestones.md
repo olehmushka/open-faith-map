@@ -138,7 +138,7 @@ Verified (admin-UI browser click-through and a green CI run at the merge commit 
 | M13.3 · Frontend: component architecture + split-pane layout | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Replaced the monolithic `discovery-map.tsx` with a real component tree under `web/apps/web/app/discovery/` (shell/map-pane/list-pane/filter-bar/search-this-area-button); introduced shadcn/Radix into `web/apps/web` matching `web/apps/admin`'s setup (`components.json`, pinned dep versions, copied theme tokens). Filter state lives in the URL query string (`tradition`/`language`/`lat`/`lng`/`radiusM`), read/written via a shared `lib/discovery-url-state.ts` on both the server page and the client shell. Hover-sync between a list card and its map pin (shared `activeSiteId` state, div-icon color swap). A "search this area" button appears when the map's viewport (derived from `map.getBounds()`, center+radius via Leaflet's own `distanceTo`) diverges from the last-searched viewport — there was no pan-driven auto-refetch to replace (confirmed absent pre-M13.3); this is net-new, deliberately never automatic. Geolocation (`lib/geolocation.ts`'s `useGeolocation`) sets only the *initial* map center/zoom (recentering once via `map.setView` if it resolves after mount, never re-searching on its own) with a same-as-before Kyiv fallback on denial/timeout/no-API/SSR. At the user's direction, this milestone also pulled forward M13.4's tradition/language *pickers*: `filter-bar.tsx` now renders real shadcn `Select`s populated from a new `lib/discovery.ts` `facets()` wrapper (M13.1's `GET /discovery/v1/facets`), fetched once server-side alongside the initial search. See M13.3's own build narrative below for proof details, including a real rate-limiter false-positive hit during verification (existing `internal/platform/ratelimit`, ~5 req/min/IP, not a regression) and how it was worked around. |
 | M13.4 · Frontend: result card, marker popup, clustering, filter UI | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** A shared `ResultCard` (name/distance/address/tradition+accessibility+online-stream badges/directions CTA) now backs both `list-pane.tsx`'s cards and `map-pane.tsx`'s marker popups, replacing the old name-only card and the placeholder "view page"/"no page" popup. Pins now cluster via `react-leaflet-cluster`. A new `more-filters-sheet.tsx` (shadcn `Sheet`) adds day-of-week/accessibility/online-only filtering with explicit Apply/Clear, wired end-to-end through the URL state M13.3 already established. See M13.4's own build narrative below for proof details, including the distance-unit heuristic and how the existing rate limiter was worked around again during verification. |
 | M13.5 · Detail page enhancement | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Wires M13.0's `DiscoveryPublicService.getSite(unitId)` into `congregations/[unitId]/page.tsx` alongside the existing content-blocks call: address, tradition, service language/day, accessibility/online-stream badges, a "Get Directions" CTA — reusing `result-card.tsx`'s exact badge/CTA pattern and the `DiscoveryMap` translation namespace M13.3/M13.4 already built, rather than inventing new UI. Deliberately no star-rating/review UI. See M13.5's own build narrative below for proof details. |
-| M13.6 · Mobile responsive pass | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** List-first default on mobile with an explicit List↔Map toggle, tap-a-pin → bottom-sheet card, filter bar collapsing into the "more filters" pattern earlier on narrow viewports. Last in sequence — needs M13.3/M13.4's real component shapes to exist first. |
+| M13.6 · Mobile responsive pass | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** List-first default on mobile (`<md`) with an explicit List↔Map toggle (both panes stay mounted, toggled via CSS `hidden`, so Leaflet's pan/zoom state survives switching back), tap-a-pin → bottom-sheet `ResultCard` instead of Leaflet's native popup, and the filter bar collapsing tradition/language into the existing "more filters" sheet on narrow viewports so only a single "Filters" trigger shows. Last in the M13 arc — no backend/migration change. See M13.6's own build narrative below for proof details, including the `map.invalidateSize()` Leaflet gotcha this milestone had to handle. |
 
 ## Per-milestone detail
 
@@ -3373,3 +3373,80 @@ blocks/events/news/report form all intact) with the new section simply absent �
 no regression. Both database rows (and the service-schedule row and attributes change) were
 deleted/reverted after verification, the same cleanup precedent M13.0–M13.2 established. No
 star-rating/review UI was added anywhere, per the ticket's explicit exclusion.
+
+### M13.6 · Mobile responsive pass
+
+**Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Depends on
+M13.0/M13.1/M13.3/M13.4 only (all already built) — pure frontend, no backend/migration/SDK change.
+Fixes a real, previously-confirmed gap: `app/discovery/` had zero responsive/breakpoint handling
+anywhere (`sm:`/`md:`/`useMediaQuery`/`matchMedia` were all absent from the whole tree before this
+milestone) — on a narrow viewport the fixed `grid-cols-[minmax(280px,360px)_1fr]` split-pane layout
+just squeezed both panes side by side instead of stacking. The congregation detail page
+(`congregations/[unitId]/page.tsx`, M13.5) was treated as out of scope — it has no map/list/
+filter-bar, and was already a single-column `max-w-3xl` stacked layout before this milestone.
+
+**List↔Map toggle** (new `mobile-view-toggle.tsx`, two plain `Button`s — deliberately not a new
+shadcn `Tabs`/`ToggleGroup` dependency): `discovery-shell.tsx` gained local
+`mobileView: "list" | "map"` state (not URL state — resets to list-first on every fresh load, and
+is irrelevant server-side/at desktop widths). Both `ListPane` and `MapPane` stay mounted at all
+times; the inactive one gets Tailwind `hidden` below `md`, overridden back to `md:block` — switching
+panes never remounts Leaflet, which would otherwise reset pan/zoom and re-fetch tiles every toggle.
+This surfaced a real Leaflet gotcha: a map whose container was `display:none` doesn't know its new
+size when unhidden and renders blank/mis-tiled until it's told. `map-pane.tsx` gained a small
+`InvalidateSizeOnShow` helper (same internal-component pattern as the existing
+`GeolocationRecenter`/`ViewportWatcher`) that calls `useMap().invalidateSize()` whenever a new
+`active` prop transitions to `true`, fed from `mobileView === "map"`.
+
+**Filter bar collapse**: `filter-bar.tsx`'s inline tradition/language form became `hidden md:flex`.
+Rather than sharing React state between that desktop form and a mobile duplicate (which would have
+let an unsubmitted desktop-select edit leak into an unrelated "Apply" click), `more-filters-sheet.tsx`
+gained its **own** local `tradition`/`language` state — mirroring how it already owned
+`dayOfWeek`/`accessibility`/`onlineOnly` — rendered in a `md:hidden` block above the existing Day
+field, initialized from the same `initialTradition`/`initialLanguage` props already passed in. Its
+submit callback widened to all five fields; `discovery-shell.tsx`'s existing
+`handleMoreFiltersSubmit` already spread `next` over `filters`, so no shell-side logic changed
+beyond the type. "Clear" now resets all five fields, matching its label. The sheet's trigger button
+became a single element at both breakpoints (Radix's `Dialog` context supports multiple triggers)
+with a `md:hidden`/`hidden md:inline` label swap — "Filters" (mobile, now the primary entry point)
+vs "More filters" (desktop, supplementary) — new translation key `filters`. The sheet itself stays
+`side="right"` at all breakpoints; only the pin-tap card below needed a bottom sheet.
+
+**Tap-a-pin → bottom-sheet card**: the one place pure CSS wasn't enough, since Leaflet's
+popup-on-click is an imperative binding, not a togglable React node. New SSR-safe
+`lib/use-is-mobile.ts` (`matchMedia("(max-width: 767.98px)")`, defaults `false` until mounted) — the
+only JS viewport-detection this milestone added; everything else stayed pure CSS breakpoints.
+`map-pane.tsx`: `{!isMobile && <Popup>...}` — no Leaflet popup is bound at all on mobile, so
+there's nothing for the default click-to-open to trigger. Each `Marker`'s `eventHandlers` gained a
+`click` case that, when `isMobile`, sets a new local `tappedSiteId` state and calls
+`onHoverSite(site.id)` (reusing the existing active-pin-color logic for tap feedback). A `Sheet`/
+`SheetContent side="bottom"` at the end of `map-pane.tsx` renders the tapped site's `ResultCard` —
+the same shared component `list-pane.tsx` and the desktop popup already use — self-contained, no
+new props threaded through `discovery-shell.tsx`. Desktop behavior (hover + native Leaflet popup on
+click) is completely unchanged.
+
+**Small mobile-quality fix while in this territory**: `discovery-shell.tsx`'s outer
+`h-[calc(100vh-6rem)]` → `h-[calc(100dvh-6rem)]` — `100vh` on mobile Safari/Chrome doesn't account
+for the collapsing address bar and causes layout jumps; `dvh` has solid modern mobile browser
+support.
+
+New translation keys (`filters`, `listView`, `mapView`, `viewToggleLabel`) added with identical
+English text to all four locale files (`en`/`es`/`pt`/`uk`), matching this namespace's own existing
+precedent that the three non-English files just copy the English text verbatim.
+
+**Proof.** `web/apps/web`: `npx tsc --noEmit`, `npm run lint`, and `npm run build` (Turbopack, inside
+the real Docker build) all clean.
+
+**Live-verified in a real headless-Chromium browser** (Playwright) against the rebuilt
+`docker compose` stack, at both a desktop (1280×900) and a mobile (375×812) viewport, using the
+existing seeded fixture sites from earlier milestones (no new test data needed). Desktop: the
+inline tradition/language form, the "More filters" sheet, and marker-click-opens-native-popup all
+confirmed unchanged from pre-M13.6 — no regression. Mobile: confirmed list-first default; the
+List↔Map toggle switches panes (screenshotted before/after); toggling List→Map→List→Map again after
+a marker-cluster click (which pans/zooms the map) rendered the map correctly on each return, with no
+blank/mis-tiled tiles, confirming `invalidateSize()` actually fixes the gotcha it targets; the filter
+bar collapsed to a single "Filters" trigger whose sheet contains all five fields (tradition first);
+and tapping an individual marker (after first clicking through the cluster bubble, which zooms/
+spiderfies rather than firing marker `click` — pre-existing `react-leaflet-cluster` behavior, not a
+regression) opened the bottom sheet with the pin turned to its active color, while
+`.leaflet-popup` stayed absent — confirmed no native popup opened alongside it. Zero console/page
+errors across every screenshot in both viewports.

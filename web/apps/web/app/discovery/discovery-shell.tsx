@@ -11,10 +11,12 @@ import type { DiscoverySite, DiscoveryFacets } from "@/lib/discovery";
 import { DEFAULT_CENTER, useGeolocation } from "@/lib/geolocation";
 import { filtersToSearchParams, parseFilters, type DiscoveryFilters } from "@/lib/discovery-url-state";
 import { haversineMeters, resolveDistanceUnit } from "@/lib/geo";
+import { cn } from "@/lib/utils";
 import { useRouter } from "@/i18n/navigation";
 import { FilterBar } from "./filter-bar";
 import { ListPane } from "./list-pane";
 import { MapPane, GEOLOCATION_ZOOM, type PendingViewport } from "./map-pane";
+import { MobileViewToggle, type MobileView } from "./mobile-view-toggle";
 import { SearchThisAreaButton } from "./search-this-area-button";
 
 const DEFAULT_ZOOM = 6;
@@ -42,6 +44,7 @@ export function DiscoveryShell({
   const [sites, setSites] = useState(initialSites);
   const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [mobileView, setMobileView] = useState<MobileView>("list");
 
   const hasExplicitLocation = filters.lat != null && filters.lng != null;
   const geolocation = useGeolocation();
@@ -86,7 +89,9 @@ export function DiscoveryShell({
     });
   }
 
-  function handleMoreFiltersSubmit(next: Pick<DiscoveryFilters, "dayOfWeek" | "accessibility" | "onlineOnly">) {
+  function handleMoreFiltersSubmit(
+    next: Pick<DiscoveryFilters, "tradition" | "language" | "dayOfWeek" | "accessibility" | "onlineOnly">,
+  ) {
     const location = lastSearchedViewport;
     runSearch({
       ...filters,
@@ -113,7 +118,7 @@ export function DiscoveryShell({
   const distanceUnit = resolveDistanceUnit(geolocation);
 
   return (
-    <div className="grid h-[calc(100vh-6rem)] grid-rows-[auto_1fr] gap-2">
+    <div className="grid h-[calc(100dvh-6rem)] grid-rows-[auto_auto_1fr] gap-2 md:grid-rows-[auto_1fr]">
       <FilterBar
         initialTradition={filters.tradition}
         initialLanguage={filters.language}
@@ -125,8 +130,14 @@ export function DiscoveryShell({
         onMoreFiltersSubmit={handleMoreFiltersSubmit}
         pending={isPending}
       />
-      <div className="grid min-h-0 grid-cols-[minmax(280px,360px)_1fr] gap-2 px-3 pb-3">
-        <div className="min-h-0 overflow-hidden rounded border">
+      <MobileViewToggle value={mobileView} onChange={setMobileView} />
+      <div className="grid min-h-0 grid-cols-1 gap-2 px-3 pb-3 md:grid-cols-[minmax(280px,360px)_1fr]">
+        <div
+          className={cn(
+            "min-h-0 overflow-hidden rounded border",
+            mobileView === "map" && "hidden md:block",
+          )}
+        >
           <ListPane
             sites={sites}
             activeSiteId={activeSiteId}
@@ -135,7 +146,12 @@ export function DiscoveryShell({
             distanceUnit={distanceUnit}
           />
         </div>
-        <div className="relative min-h-0 overflow-hidden rounded border">
+        <div
+          className={cn(
+            "relative min-h-0 overflow-hidden rounded border",
+            mobileView === "list" && "hidden md:block",
+          )}
+        >
           <MapPane
             sites={sites}
             center={initialCenter}
@@ -147,6 +163,7 @@ export function DiscoveryShell({
             geolocationEnabled={!hasExplicitLocation}
             distanceOrigin={distanceOrigin}
             distanceUnit={distanceUnit}
+            active={mobileView === "map"}
           />
           {showSearchThisArea ? (
             <SearchThisAreaButton onClick={handleSearchThisArea} pending={isPending} />
