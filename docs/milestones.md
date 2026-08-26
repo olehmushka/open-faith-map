@@ -137,7 +137,7 @@ Verified (admin-UI browser click-through and a green CI run at the merge commit 
 | M13.2 · Admin UI — edit site attributes | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP (2026-08-26), not yet CI-Verified.** `internal/religion` gained its first transport layer (`api/religion.conjure.yml`, `internal/religion/transport`): `ReligionService.getSite(unitId)`/`updateSiteAttributes(unitId, request)`, gated by a newly-activated `site.manage` permission (seeded since before M13, never checked until now) rather than a reuse of `content.manage`. New "Accessibility & streaming" card on `web/apps/admin`'s existing site-editor page, new shadcn `Checkbox`/`Switch` components paired with hidden native inputs (the installed Radix version's stable controls don't participate in `FormData` on their own). No new migration — writes into M13.0's existing `attributes` column. See M13.2's own build narrative below for proof details, including why the real browser click-through wasn't driven (Google-OAuth-only, no headless auth path in this dev setup). |
 | M13.3 · Frontend: component architecture + split-pane layout | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Replaced the monolithic `discovery-map.tsx` with a real component tree under `web/apps/web/app/discovery/` (shell/map-pane/list-pane/filter-bar/search-this-area-button); introduced shadcn/Radix into `web/apps/web` matching `web/apps/admin`'s setup (`components.json`, pinned dep versions, copied theme tokens). Filter state lives in the URL query string (`tradition`/`language`/`lat`/`lng`/`radiusM`), read/written via a shared `lib/discovery-url-state.ts` on both the server page and the client shell. Hover-sync between a list card and its map pin (shared `activeSiteId` state, div-icon color swap). A "search this area" button appears when the map's viewport (derived from `map.getBounds()`, center+radius via Leaflet's own `distanceTo`) diverges from the last-searched viewport — there was no pan-driven auto-refetch to replace (confirmed absent pre-M13.3); this is net-new, deliberately never automatic. Geolocation (`lib/geolocation.ts`'s `useGeolocation`) sets only the *initial* map center/zoom (recentering once via `map.setView` if it resolves after mount, never re-searching on its own) with a same-as-before Kyiv fallback on denial/timeout/no-API/SSR. At the user's direction, this milestone also pulled forward M13.4's tradition/language *pickers*: `filter-bar.tsx` now renders real shadcn `Select`s populated from a new `lib/discovery.ts` `facets()` wrapper (M13.1's `GET /discovery/v1/facets`), fetched once server-side alongside the initial search. See M13.3's own build narrative below for proof details, including a real rate-limiter false-positive hit during verification (existing `internal/platform/ratelimit`, ~5 req/min/IP, not a regression) and how it was worked around. |
 | M13.4 · Frontend: result card, marker popup, clustering, filter UI | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** A shared `ResultCard` (name/distance/address/tradition+accessibility+online-stream badges/directions CTA) now backs both `list-pane.tsx`'s cards and `map-pane.tsx`'s marker popups, replacing the old name-only card and the placeholder "view page"/"no page" popup. Pins now cluster via `react-leaflet-cluster`. A new `more-filters-sheet.tsx` (shadcn `Sheet`) adds day-of-week/accessibility/online-only filtering with explicit Apply/Clear, wired end-to-end through the URL state M13.3 already established. See M13.4's own build narrative below for proof details, including the distance-unit heuristic and how the existing rate limiter was worked around again during verification. |
-| M13.5 · Detail page enhancement | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** Wires M13.0's `getSite(unitId)` into `congregations/[unitId]/page.tsx` alongside the existing content-blocks call — address, tradition, service language/day, accessibility/online-stream badges, a "Get Directions" CTA. Deliberately no star-rating/review UI. |
+| M13.5 · Detail page enhancement | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Wires M13.0's `DiscoveryPublicService.getSite(unitId)` into `congregations/[unitId]/page.tsx` alongside the existing content-blocks call: address, tradition, service language/day, accessibility/online-stream badges, a "Get Directions" CTA — reusing `result-card.tsx`'s exact badge/CTA pattern and the `DiscoveryMap` translation namespace M13.3/M13.4 already built, rather than inventing new UI. Deliberately no star-rating/review UI. See M13.5's own build narrative below for proof details. |
 | M13.6 · Mobile responsive pass | ✅ | ✅ | ➖ | ➖ | ⬜ | ⬜ | **Scoped, not yet built.** List-first default on mobile with an explicit List↔Map toggle, tap-a-pin → bottom-sheet card, filter bar collapsing into the "more filters" pattern earlier on narrow viewports. Last in sequence — needs M13.3/M13.4's real component shapes to exist first. |
 
 ## Per-milestone detail
@@ -3305,3 +3305,71 @@ generic Next.js error-boundary page mid-verification here too, after a burst of 
 succession). Not fixed here (still explicitly out of scope, same as M13.3's own disclosed gap) —
 waiting for the bucket to refill and re-running the same check with fewer, spaced-out requests
 confirmed the "search this area" → distance flow works cleanly.
+
+### M13.5 · Detail page enhancement
+
+**Built and live-verified over real HTTP/browser (2026-08-26), not yet CI-Verified.** Depends on
+M13.0 (already built) — pure frontend, no backend/migration/SDK change:
+`DiscoveryPublicService.getSite(unitId)` and its generated TypeScript client method
+(`client().discoveryPublic.getSite`) already existed and worked since M13.0, just unused by any
+app code until now.
+
+`web/apps/web/lib/discovery.ts` gained a thin `getSite(unitId)` wrapper mirroring `search`/
+`facets`'s existing `client()`/`unwrap()` pattern exactly. `congregations/[unitId]/page.tsx`
+imports it aliased (`getSite as getDiscoverySite`) to avoid colliding with `@/lib/content`'s own
+`getSite` (a different type, already imported in this file for the content-blocks fetch) — the two
+`getSite`s serve genuinely different purposes (content's resolves `content_sites.id` to fetch
+page/post/event blocks; discovery's returns the public-precision-filtered address/tradition/
+schedule/attributes data this milestone renders) and happen to share a name only because each
+module named its own single-site lookup the same obvious thing.
+
+The new discovery-site fetch was folded into the page's existing `Promise.all` (alongside the
+`pages`/`posts`/`events` document-list fetches) for real parallelism, as a fourth independent
+branch: `getDiscoverySite(unitId).catch(() => null)`. It stays entirely separate from the
+pre-existing content-site fetch (`getSite(unitId).catch(() => null)` → `notFound()`), which alone
+still gates route validity. A congregation can have a published content site with no discoverable
+(public, non-hidden) religion site — `DiscoveryPublicService.getSite` throws
+`Discovery:SiteNotFound` in that real, expected case — so any error from the new fetch degrades to
+`null` and the whole new section is simply omitted, never escalated to `notFound()`, matching this
+codebase's established "may not exist yet" convention (`web/apps/admin`'s Theme card does the
+identical `getSite(...).catch(() => null)` → omit-the-card pattern from M13.2).
+
+The new section (address line, a tradition/online-stream/accessibility badge row reusing
+`ACCESSIBILITY_KEYS`/`ACCESSIBILITY_MESSAGE_KEYS` from `lib/accessibility.ts` and the shadcn
+`Badge` component, a service-languages line, a service-days line, and a "Get Directions" CTA to
+Google Maps) replicates `app/discovery/result-card.tsx`'s exact JSX pattern inline rather than
+importing that component directly — `ResultCard` is a `"use client"` component coupled to a
+`distance`/`origin` prop this server-rendered detail page has no equivalent for. Almost every
+label needed (`getDirections`, `onlineStream`, the seven `a11y*` keys, `dayLabel`/`day0`–`day6`)
+already existed in the `DiscoveryMap` translation namespace across all four locale files since
+M13.3/M13.4, loaded via a second `getTranslations("DiscoveryMap")` call alongside the page's
+existing `CongregationPage` one. Service-language codes render raw (ISO-639-3, unmapped),
+matching `filter-bar.tsx`'s own existing precedent — no new code→label reference module (out of
+scope, per M13's own scoping note). Service days index a `DAY_KEYS` const array
+(`["day0",...,"day6"]`), the same pattern `more-filters-sheet.tsx` already established, avoiding
+any dynamic-translation-key typing risk. Exactly one new translation key was needed —
+`CongregationPage.serviceLanguages` — added with identical English text to all four locale files
+(`en`/`es`/`pt`/`uk`), matching this namespace's own existing precedent that the three non-English
+files just copy the English text verbatim rather than carry real translations.
+
+**Proof.** `web/apps/web`: `npx tsc --noEmit`, `npm run lint`, and `npm run build` (Turbopack) all
+clean, including inside the real `node:22-alpine` Docker build.
+
+**Live-verified in a real headless-Chromium browser** against the rebuilt `docker compose` stack
+(`playwright-core` driving the system's installed Google Chrome via `executablePath`, the same
+method M13.3/M13.4 used). Since this local database had zero `content_sites` rows at all (no
+congregation had ever been carried through registration far enough to publish a page), throwaway
+test data was seeded directly to exercise both real branches: a `content_sites` row for the
+existing "Test Adv" fixture unit (whose `religion_sites` row already carried a real address,
+coordinates, and an Adventism tradition classification from earlier milestones' fixtures), plus a
+`religion_service_schedules` row (Sunday, Spanish) and a `religion_sites.attributes` update
+(`stepFreeEntrance`/`hearingLoop`/`onlineStream` all `true`) to exercise every field this milestone
+renders. Confirmed: the address, "Adventism" tradition badge, "Online stream" badge, "Step-free
+entrance"/"Hearing loop" accessibility badges, "Service languages: spa", "Day of week: Sunday",
+and a "Get directions" link with the correct `destination=lat,lng` all rendered exactly as
+designed. A second throwaway `content_sites` row was seeded against a unit with **no**
+`religion_sites` row at all, confirming the page still returns `200` and renders normally (page
+blocks/events/news/report form all intact) with the new section simply absent — no error boundary,
+no regression. Both database rows (and the service-schedule row and attributes change) were
+deleted/reverted after verification, the same cleanup precedent M13.0–M13.2 established. No
+star-rating/review UI was added anywhere, per the ticket's explicit exclusion.

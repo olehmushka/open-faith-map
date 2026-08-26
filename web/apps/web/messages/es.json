@@ -45,6 +45,7 @@
   },
   "CongregationPage": {
     "upcomingEvents": "Upcoming events",
+    "serviceLanguages": "Service languages",
     "dateTbd": "Date TBD",
     "news": "News",
     "reportHeading": "Report a problem with this listing",

@@ -81,3 +81,11 @@ export async function search(params: SearchParams): Promise<DiscoverySite[]> {
 export async function facets(): Promise<DiscoveryFacets> {
   return unwrap(client().discoveryPublic.facets());
 }
+
+// Single-site lookup backing the congregation detail page (M13.5) — always live (never the
+// disposable search cache). Throws DiscoveryApiError("Discovery:SiteNotFound", ...) when the
+// unit has no public, non-hidden religion site — a real, expected case, so callers must
+// .catch(() => null) rather than treat it as a hard failure.
+export async function getSite(unitId: string): Promise<DiscoverySite> {
+  return unwrap(client().discoveryPublic.getSite(unitId));
+}
