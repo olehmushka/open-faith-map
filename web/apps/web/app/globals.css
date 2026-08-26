@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
 :root {
+  /* Without this, native controls (a <select>'s own dropdown popup, date/time pickers, scrollbars)
+     always render with the OS-default light scheme, regardless of --background/--foreground below
+     switching for dark mode — light inherited text lands on a native white popup, unreadable. */
+  color-scheme: light dark;
   --background: #ffffff;
   --foreground: #171717;
 }
