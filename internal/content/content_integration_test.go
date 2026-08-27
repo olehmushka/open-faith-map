@@ -258,4 +258,120 @@ func TestContentIntegration(t *testing.T) {
 	} else if listErr.Field != "content" {
 		t.Errorf("PutBlocks(list, javascript: link nested in item) error field = %q, want %q", listErr.Field, "content")
 	}
+
+	// --- M14.3: a Google Drive share link normalizes to its direct-content form at write time,
+	// with the original preserved in a new "originalUrl" field (D-ExternalMediaOnly, DS-OFM-17).
+	driveBlocks, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "image", Position: 20, Data: json.RawMessage(
+			`{"url":"https://drive.google.com/file/d/1uEpd4IzXgwCzfxwivCTzbM5_ViMPLjZY/view?usp=sharing","alt":"A photo"}`,
+		)},
+	})
+	if err != nil {
+		t.Fatalf("PutBlocks(image, drive share link): %v", err)
+	}
+	var driveData map[string]any
+	if err := json.Unmarshal(driveBlocks[0].Data, &driveData); err != nil {
+		t.Fatalf("unmarshal drive block data: %v", err)
+	}
+	if want := "https://drive.google.com/uc?export=view&id=1uEpd4IzXgwCzfxwivCTzbM5_ViMPLjZY"; driveData["url"] != want {
+		t.Errorf("PutBlocks(image, drive share link) url = %v, want %q", driveData["url"], want)
+	}
+	if want := "https://drive.google.com/file/d/1uEpd4IzXgwCzfxwivCTzbM5_ViMPLjZY/view?usp=sharing"; driveData["originalUrl"] != want {
+		t.Errorf("PutBlocks(image, drive share link) originalUrl = %v, want %q", driveData["originalUrl"], want)
+	}
+
+	// A Dropbox share link normalizes to raw=1, original preserved.
+	dropboxBlocks, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "image", Position: 20, Data: json.RawMessage(
+			`{"url":"https://www.dropbox.com/s/abcd1234/photo.jpg?dl=0","alt":"A photo"}`,
+		)},
+	})
+	if err != nil {
+		t.Fatalf("PutBlocks(image, dropbox share link): %v", err)
+	}
+	var dropboxData map[string]any
+	if err := json.Unmarshal(dropboxBlocks[0].Data, &dropboxData); err != nil {
+		t.Fatalf("unmarshal dropbox block data: %v", err)
+	}
+	if want := "https://www.dropbox.com/s/abcd1234/photo.jpg?raw=1"; dropboxData["url"] != want {
+		t.Errorf("PutBlocks(image, dropbox share link) url = %v, want %q", dropboxData["url"], want)
+	}
+	if dropboxData["originalUrl"] != "https://www.dropbox.com/s/abcd1234/photo.jpg?dl=0" {
+		t.Errorf("PutBlocks(image, dropbox share link) originalUrl = %v, want original share URL", dropboxData["originalUrl"])
+	}
+
+	// The long-form OneDrive URL normalizes by pure string substitution (redir -> download); a
+	// short 1drv.ms link is left unchanged — resolving it would require following a redirect,
+	// i.e. a server-side fetch of an admin-supplied URL, which this arc never does.
+	onedriveBlocks, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "image", Position: 20, Data: json.RawMessage(
+			`{"url":"https://onedrive.live.com/redir?resid=ABC123&authkey=xyz","alt":"A photo"}`,
+		)},
+	})
+	if err != nil {
+		t.Fatalf("PutBlocks(image, onedrive long-form link): %v", err)
+	}
+	var onedriveData map[string]any
+	if err := json.Unmarshal(onedriveBlocks[0].Data, &onedriveData); err != nil {
+		t.Fatalf("unmarshal onedrive block data: %v", err)
+	}
+	if want := "https://onedrive.live.com/download?resid=ABC123&authkey=xyz"; onedriveData["url"] != want {
+		t.Errorf("PutBlocks(image, onedrive long-form link) url = %v, want %q", onedriveData["url"], want)
+	}
+
+	shortOnedriveBlocks, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "image", Position: 20, Data: json.RawMessage(
+			`{"url":"https://1drv.ms/i/s!AbCdEfG","alt":"A photo"}`,
+		)},
+	})
+	if err != nil {
+		t.Fatalf("PutBlocks(image, onedrive short link): %v", err)
+	}
+	var shortOnedriveData map[string]any
+	if err := json.Unmarshal(shortOnedriveBlocks[0].Data, &shortOnedriveData); err != nil {
+		t.Fatalf("unmarshal short onedrive block data: %v", err)
+	}
+	if shortOnedriveData["url"] != "https://1drv.ms/i/s!AbCdEfG" {
+		t.Errorf("PutBlocks(image, onedrive short link) url = %v, want unchanged", shortOnedriveData["url"])
+	}
+	if _, hasOriginal := shortOnedriveData["originalUrl"]; hasOriginal {
+		t.Errorf("PutBlocks(image, onedrive short link) originalUrl = %v, want absent (not normalized)", shortOnedriveData["originalUrl"])
+	}
+
+	// A plain, already-direct URL from an unrecognized host passes through unchanged, with no
+	// originalUrl set.
+	plainBlocks, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "image", Position: 20, Data: json.RawMessage(
+			`{"url":"https://example.org/photo.jpg","alt":"A photo"}`,
+		)},
+	})
+	if err != nil {
+		t.Fatalf("PutBlocks(image, plain url): %v", err)
+	}
+	var plainData map[string]any
+	if err := json.Unmarshal(plainBlocks[0].Data, &plainData); err != nil {
+		t.Fatalf("unmarshal plain block data: %v", err)
+	}
+	if _, hasOriginal := plainData["originalUrl"]; hasOriginal {
+		t.Errorf("PutBlocks(image, plain url) originalUrl = %v, want absent", plainData["originalUrl"])
+	}
+
+	// alt is now schema-required on image and each gallery image.
+	_, err = contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "image", Position: 20, Data: json.RawMessage(`{"url":"https://example.org/photo.jpg"}`)},
+	})
+	var noAltErr *contentdomain.BlockDataInvalidError
+	if !errors.As(err, &noAltErr) {
+		t.Errorf("PutBlocks(image, no alt) error = %v, want BlockDataInvalidError", err)
+	}
+
+	_, err = contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "gallery", Position: 20, Data: json.RawMessage(
+			`{"images":[{"url":"https://example.org/photo.jpg"}]}`,
+		)},
+	})
+	var noGalleryAltErr *contentdomain.BlockDataInvalidError
+	if !errors.As(err, &noGalleryAltErr) {
+		t.Errorf("PutBlocks(gallery, no alt) error = %v, want BlockDataInvalidError", err)
+	}
 }

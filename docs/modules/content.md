@@ -29,6 +29,16 @@ the one domain in OpenFaithMap with **no go-oikumenea equivalent** (D-ContentMod
   MVP seed: `heading`, `paragraph`, `image`, `gallery`, `youtube_embed`, `social_embed`, `button`,
   `contact_info`, `map_embed`, `divider`, `staff_card`, `quote`, `columns`, plus `list` (M14.2,
   added by `migrations/0022_content_richtext.sql`).
+- **Media normalizer** — a write-time rewrite (M14.3, `internal/content/application/medianormalize.go`,
+  called from `Service.PutBlocks` before validation) of `image.url`/`gallery.images[].url` for
+  known share-link hosts — a Google Drive or Dropbox share link, or the long-form OneDrive URL —
+  into its direct-content form. The pre-rewrite value is preserved in a new, optional
+  `originalUrl` field alongside the normalized `url`
+  ([D-ExternalMediaOnly](../architecture/decisions.md#d-externalmediaonly--congregations-host-their-own-media-no-first-party-uploads),
+  `DS-OFM-17`), so a future normalizer fix is a re-derivation, not a data-loss event. A host it
+  doesn't recognize (including OneDrive's short `1drv.ms` links, which only resolve via a
+  redirect this arc deliberately never fetches server-side) passes through unchanged. `alt` is now
+  schema-required on both block types.
 - **Rich text** — the shared `richText` node array (M14.2,
   [D-RichTextNodes](../architecture/decisions.md#d-richtextnodes--structured-inline-nodes-never-html-strings)),
   adopted by `paragraph.text`, `heading.text`, `quote.text`, `staff_card.bio` and `list.content`. An
@@ -329,4 +339,11 @@ exist first.
   `youtube_embed`/`social_embed` block types cover the embed case. **No first-party image storage
   either, as of M14 —** congregations host images externally
   ([D-ExternalMediaOnly](../architecture/decisions.md#d-externalmediaonly--congregations-host-their-own-media-no-first-party-uploads)).
-  A future `media` module is a designed-but-unbuilt seam, tracked as `DS-OFM-17`.
+  A future `media` module is a designed-but-unbuilt seam, tracked as `DS-OFM-17`. **Mitigated,
+  not eliminated, at M14.3 (2026-08-27):** a write-time normalizer rewrites known Google
+  Drive/Dropbox/OneDrive(long-form) share links to their direct-content form, preserving the
+  original URL. **Known limitation:** OneDrive's short `1drv.ms` links are not normalized — doing
+  so would require following a redirect server-side, i.e. fetching an admin-supplied URL, which
+  this arc's own SSRF discipline forbids; they pass through unchanged. The editor-side "did this
+  URL load" probe named in the milestone is deferred to M14.4, since the admin editor is still the
+  raw JSON-textarea UI and there is no per-field surface to attach a probe to yet.

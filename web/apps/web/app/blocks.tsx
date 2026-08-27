@@ -66,7 +66,13 @@ function BlockView({
       return (
         <figure>
           {/* eslint-disable-next-line @next/next/no-img-element -- external, unknown-dimension admin-authored URLs */}
-          <img src={src} alt={String(data.alt ?? "")} className="max-w-full rounded" />
+          <img
+            src={src}
+            alt={String(data.alt ?? "")}
+            className="max-w-full rounded"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
           {data.caption ? <figcaption className="text-sm text-gray-500">{String(data.caption)}</figcaption> : null}
         </figure>
       );
@@ -80,7 +86,14 @@ function BlockView({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {safeImages.map((img, i) => (
             // eslint-disable-next-line @next/next/no-img-element -- see "image" above
-            <img key={i} src={img.url} alt={img.alt ?? ""} className="w-full rounded" />
+            <img
+              key={i}
+              src={img.url}
+              alt={img.alt ?? ""}
+              className="w-full rounded"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
           ))}
         </div>
       );
@@ -154,7 +167,13 @@ function BlockView({
         <div className="flex items-center gap-3">
           {photoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- see "image" above
-            <img src={photoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
+            <img
+              src={photoUrl}
+              alt=""
+              className="h-16 w-16 rounded-full object-cover"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
           ) : null}
           <div>
             <p className="font-medium">{String(data.name ?? "")}</p>
