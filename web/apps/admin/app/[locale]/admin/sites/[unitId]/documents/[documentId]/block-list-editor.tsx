@@ -4,12 +4,18 @@
 // M14.5: replaces the server-rendered, uncontrolled-form block list (manually-typed `position`
 // numbers, one hardcoded "new block" row, no remove control) with a client-managed array supporting
 // drag-and-drop reorder, first-class keyboard move-up/move-down, a categorized inserter
-// (block-inserter.tsx), and per-block removal. The outer <form action={action}> and its
-// position/blockTypeCode/data field names are unchanged, so the existing saveBlocks server action in
-// page.tsx (formData.getAll("position"|"blockTypeCode"|"data")) needs no changes at all.
+// (block-inserter.tsx), and per-block removal.
+//
+// M14.6: the old single "Save" button that submitted a <form action={action}> and redirected is
+// replaced by useDebouncedAutosave (hooks/use-debounced-autosave.ts) — saves on a ~10s debounce
+// after the last edit, with a visible saved/unsaved indicator, plus a manual "Save now" trigger for
+// anyone who doesn't want to wait. This never navigates, so the pre-submit sessionStorage snapshot
+// M14.5 added (to survive a redirect-on-error round trip) is gone too — that failure mode no longer
+// exists once saving doesn't redirect, and the server now persists the draft on its own debounce,
+// which is what actually satisfies "survive a refresh mid-edit" per M14.6's acceptance criteria.
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   DndContext,
@@ -34,9 +40,18 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Block, BlockType } from "@/lib/content";
+import { useDebouncedAutosave, type AutosaveStatus } from "@/hooks/use-debounced-autosave";
 
 import { BlockDataForm } from "./block-data-form";
 import { BlockInserter } from "./block-inserter";
+
+export interface BlockSaveInput {
+  position: number;
+  blockTypeCode: string;
+  data: unknown;
+}
+
+export type BlockSaveResult = { ok: true } | { ok: false; position?: number; field?: string };
 
 interface ClientBlock {
   /** Client-only identity for React keys and drag-and-drop — never submitted; BlockInput has no id. */
@@ -45,69 +60,72 @@ interface ClientBlock {
   data: unknown;
 }
 
-function snapshotKey(documentId: string): string {
-  return `ofm:blocks:${documentId}`;
-}
-
 function newKey(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`;
 }
 
-/**
- * A failed save's `position` parameter indexes into the exact array that was just POSTed. A plain
- * server-action redirect re-fetches getBlocks(documentId), which — since the failed PUT changed
- * nothing — returns the last successfully saved list, not what the user had just reordered/edited in
- * the browser. Restoring from a pre-submit sessionStorage snapshot (written in handleSubmit below)
- * keeps `erroredPosition` pointing at the right row, and incidentally stops a reorder-in-progress
- * from being silently discarded on a failed save.
- */
-function restoreFromSnapshot(documentId: string): ClientBlock[] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(snapshotKey(documentId));
-    if (!raw) return null;
-    const restored = JSON.parse(raw) as { blockTypeCode: string; data: unknown }[];
-    return restored.map((b) => ({ key: newKey(), blockTypeCode: b.blockTypeCode, data: b.data }));
-  } catch {
-    return null;
+function statusLabel(t: ReturnType<typeof useTranslations>, status: AutosaveStatus): string {
+  switch (status) {
+    case "saving":
+      return t("autosaveSaving");
+    case "saved":
+      return t("autosaveSaved");
+    case "unsaved":
+      return t("autosaveUnsaved");
+    case "error":
+      return t("autosaveError");
+    default:
+      return "";
   }
 }
 
 export function BlockListEditor({
-  documentId,
   blocks,
   blockTypes,
-  erroredPosition,
-  erroredField,
-  action,
+  onAutosave,
 }: {
-  documentId: string;
   blocks: Block[];
   blockTypes: BlockType[];
-  erroredPosition?: number;
-  erroredField?: string;
-  action: (formData: FormData) => void;
+  onAutosave: (inputs: BlockSaveInput[]) => Promise<BlockSaveResult>;
 }) {
   const t = useTranslations("DocumentEditorPage");
-  const [items, setItems] = useState<ClientBlock[]>(() => {
-    const restored = erroredField !== undefined ? restoreFromSnapshot(documentId) : null;
-    return restored ?? blocks.map((b) => ({ key: b.id, blockTypeCode: b.blockTypeCode, data: b.data }));
-  });
+  const formRef = useRef<HTMLFormElement>(null);
+  const [items, setItems] = useState<ClientBlock[]>(() =>
+    blocks.map((b) => ({ key: b.id, blockTypeCode: b.blockTypeCode, data: b.data })),
+  );
   const [liveMessage, setLiveMessage] = useState("");
+  const [lastError, setLastError] = useState<{ position?: number; field?: string }>({});
 
-  // Consume the snapshot once, whether or not it was used, so a stale entry never contaminates a
-  // later, unrelated error.
-  useEffect(() => {
-    if (erroredField === undefined) return;
-    try {
-      window.sessionStorage.removeItem(snapshotKey(documentId));
-    } catch {
-      // sessionStorage unavailable — nothing to clean up.
-    }
-    // Only ever meant to run once, against the load that consumed the snapshot.
+  const getSnapshot = useCallback((): BlockSaveInput[] | null => {
+    const form = formRef.current;
+    if (!form) return null;
+    const formData = new FormData(form);
+    const positions = formData.getAll("position").map(String);
+    const blockTypeCodes = formData.getAll("blockTypeCode").map(String);
+    const dataJson = formData.getAll("data").map(String);
+    return positions.map((position, i) => ({
+      position: Number(position),
+      blockTypeCode: blockTypeCodes[i],
+      data: JSON.parse(dataJson[i] || "{}"),
+    }));
   }, []);
+
+  const save = useCallback(
+    async (inputs: BlockSaveInput[]): Promise<{ ok: boolean }> => {
+      const result = await onAutosave(inputs);
+      if (result.ok) {
+        setLastError({});
+        return { ok: true };
+      }
+      setLastError({ position: result.position, field: result.field });
+      return { ok: false };
+    },
+    [onAutosave],
+  );
+
+  const { status, flush } = useDebouncedAutosave(getSnapshot, save);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -156,26 +174,8 @@ export function BlockListEditor({
     });
   }
 
-  // Snapshots the exact position/blockTypeCode/data triplet about to be submitted — read from
-  // FormData rather than `items` state, since each block's `data` is owned by its own BlockDataForm
-  // instance, not lifted up here.
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    try {
-      const formData = new FormData(event.currentTarget);
-      const blockTypeCodes = formData.getAll("blockTypeCode").map(String);
-      const dataJson = formData.getAll("data").map(String);
-      const snapshot = blockTypeCodes.map((blockTypeCode, i) => ({
-        blockTypeCode,
-        data: JSON.parse(dataJson[i] || "{}"),
-      }));
-      window.sessionStorage.setItem(snapshotKey(documentId), JSON.stringify(snapshot));
-    } catch {
-      // sessionStorage unavailable — the redirect-recovery enhancement is best-effort only.
-    }
-  }
-
   return (
-    <form action={action} onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form ref={formRef} onSubmit={(e) => e.preventDefault()} className="flex flex-col gap-4">
       <div aria-live="polite" className="sr-only">
         {liveMessage}
       </div>
@@ -192,7 +192,7 @@ export function BlockListEditor({
                 total={items.length}
                 blockType={blockType}
                 blockTypes={blockTypes}
-                erroredField={index === erroredPosition ? erroredField : undefined}
+                erroredField={index === lastError.position ? lastError.field : undefined}
                 labels={{
                   moveUp: t("moveBlockUp"),
                   moveDown: t("moveBlockDown"),
@@ -213,9 +213,14 @@ export function BlockListEditor({
 
       <BlockInserter blockTypes={blockTypes} onInsert={insertBlock} />
 
-      <Button type="submit" className="self-start">
-        {t("saveBlocks")}
-      </Button>
+      <div className="flex items-center gap-3">
+        <Button type="button" variant="outline" className="self-start" onClick={flush}>
+          {t("saveNow")}
+        </Button>
+        <span role="status" className="text-sm text-muted-foreground">
+          {statusLabel(t, status)}
+        </span>
+      </div>
     </form>
   );
 }

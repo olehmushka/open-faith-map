@@ -169,12 +169,32 @@ func (s *Service) TransitionDocument(ctx context.Context, documentID string, act
 		return domain.Document{}, fmt.Errorf("%w: %s -> %s not allowed", domain.ErrInvalidTransition, doc.State, action)
 	}
 	firstPublish := next == domain.StatePublished && doc.PublishedAt == nil
+	// M14.6: transitioning into PUBLISHED also snapshots the current draft into a new immutable
+	// checkpoint revision and repoints published_revision_id — see PublishDocument's own comment.
+	// Every other transition (revert-to-draft, unlist) is a pure state flip, unchanged from before
+	// M14.6: published_revision_id keeps pointing at whatever was last published, which is exactly
+	// what an UNLISTED document's direct (not listed) reads should keep serving.
+	if next == domain.StatePublished {
+		return s.store.PublishDocument(ctx, documentID, *doc.DraftRevisionID, currentPersonID(ctx), firstPublish)
+	}
 	return s.store.UpdateDocumentState(ctx, documentID, next, firstPublish)
 }
 
 // ---- blocks ----
 
-// GetBlocks is the admin read (ContentService) — works regardless of document state.
+// currentPersonID returns the request's authenticated subject's person id, or nil if none is
+// attached to ctx. Only ever used for revision authorship metadata — never for an authorization
+// decision, which requireManage alone decides.
+func currentPersonID(ctx context.Context) *string {
+	subject, ok := authz.SubjectFromContext(ctx)
+	if !ok || subject.PersonID == "" {
+		return nil
+	}
+	return &subject.PersonID
+}
+
+// GetBlocks is the admin read (ContentService) — works regardless of document state. M14.6: reads
+// the draft revision's snapshot rather than live content_blocks rows.
 func (s *Service) GetBlocks(ctx context.Context, documentID string) ([]domain.Block, error) {
 	doc, err := s.store.GetDocument(ctx, documentID)
 	if err != nil {
@@ -187,22 +207,36 @@ func (s *Service) GetBlocks(ctx context.Context, documentID string) ([]domain.Bl
 	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return nil, err
 	}
-	return s.store.ListBlocks(ctx, documentID)
+	draft, err := s.store.GetRevision(ctx, *doc.DraftRevisionID)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalBlocksSnapshot(documentID, draft.CreatedAt, draft.Data)
 }
 
 // GetPublicBlocks is the public read (ContentPublicService) — Content:DocumentNotFound for a draft
-// document, never distinguishing "draft" from "doesn't exist" (content.md).
+// document or one that has never been published, never distinguishing either from "doesn't exist"
+// (content.md's invariant, unchanged by M14.6). Reads the published revision's snapshot, completely
+// decoupled from whatever the draft currently holds — the whole point of forward revisions.
 func (s *Service) GetPublicBlocks(ctx context.Context, documentID string) ([]domain.Block, error) {
 	doc, err := s.store.GetDocument(ctx, documentID)
 	if err != nil {
 		return nil, err
 	}
-	if doc.State == domain.StateDraft {
+	if doc.State == domain.StateDraft || doc.PublishedRevisionID == nil {
 		return nil, domain.ErrDocumentNotFound
 	}
-	return s.store.ListBlocks(ctx, documentID)
+	published, err := s.store.GetRevision(ctx, *doc.PublishedRevisionID)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalBlocksSnapshot(documentID, published.CreatedAt, published.Data)
 }
 
+// PutBlocks is every draft save — the manual "Save" action and the debounced autosave call alike
+// (web/apps/admin), both hitting this one endpoint. Validation is unchanged from before M14.6; only
+// the final persistence step moved from a delete-then-insert into content_blocks to an in-place
+// update of the draft revision's snapshot.
 func (s *Service) PutBlocks(ctx context.Context, documentID string, blocks []domain.BlockInput) ([]domain.Block, error) {
 	doc, err := s.store.GetDocument(ctx, documentID)
 	if err != nil {
@@ -244,7 +278,63 @@ func (s *Service) PutBlocks(ctx context.Context, documentID string, blocks []dom
 		}
 	}
 
-	return s.store.ReplaceBlocks(ctx, documentID, blocks)
+	snapshot, err := marshalBlocksSnapshot(blocks)
+	if err != nil {
+		return nil, err
+	}
+	draft, err := s.store.SaveDraftRevisionData(ctx, *doc.DraftRevisionID, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalBlocksSnapshot(documentID, draft.CreatedAt, draft.Data)
+}
+
+// ListRevisions is the history list (ContentService, M14.6) — every checkpoint but the draft
+// itself, newest first.
+func (s *Service) ListRevisions(ctx context.Context, documentID string) ([]domain.DocumentRevision, error) {
+	doc, err := s.store.GetDocument(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	site, err := s.store.GetSiteByID(ctx, doc.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
+		return nil, err
+	}
+	return s.store.ListCheckpointRevisions(ctx, documentID, *doc.DraftRevisionID)
+}
+
+// RestoreRevision copies a past checkpoint's snapshot into the draft — into the draft only, per the
+// owner's decision: it never touches published_revision_id, so the public site is unaffected until
+// an explicit Publish. revisionID is verified to belong to documentID before use: a client-supplied
+// id is never trusted to already be scoped correctly (content.md's own authorization-touchpoints
+// note on the same discipline elsewhere in this module).
+func (s *Service) RestoreRevision(ctx context.Context, documentID, revisionID string) ([]domain.Block, error) {
+	doc, err := s.store.GetDocument(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	site, err := s.store.GetSiteByID(ctx, doc.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
+		return nil, err
+	}
+	target, err := s.store.GetRevision(ctx, revisionID)
+	if err != nil {
+		return nil, err
+	}
+	if target.DocumentID != documentID {
+		return nil, domain.ErrRevisionNotFound
+	}
+	draft, err := s.store.SaveDraftRevisionData(ctx, *doc.DraftRevisionID, target.Data)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalBlocksSnapshot(documentID, draft.CreatedAt, draft.Data)
 }
 
 // ---- block-type catalog ----

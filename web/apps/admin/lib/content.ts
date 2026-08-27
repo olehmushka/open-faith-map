@@ -20,6 +20,7 @@ import type {
   ICreateDocumentRequest,
   ICreateSiteRequest,
   IDocument,
+  IDocumentRevision,
   ISite,
   IUpdateDocumentRequest,
 } from "./openfaithmap/generated/content";
@@ -33,6 +34,7 @@ export type CreateSiteInput = ICreateSiteRequest;
 export type CreateDocumentInput = ICreateDocumentRequest;
 export type UpdateDocumentInput = IUpdateDocumentRequest;
 export type BlockInput = IBlockInput;
+export type DocumentRevision = IDocumentRevision;
 export { DocumentTransitionAction };
 
 export class ContentApiError extends Error {
@@ -116,6 +118,18 @@ export async function getBlocks(documentId: string): Promise<Block[]> {
 
 export async function putBlocks(documentId: string, blocks: BlockInput[]): Promise<Block[]> {
   const list = await unwrap((await client()).content.putBlocks(documentId, { blocks }));
+  return list.blocks;
+}
+
+// M14.6: history list, newest first, excluding the in-progress draft — and restoring a past
+// checkpoint into the draft (never auto-publishing; Publish is still a separate, explicit step).
+export async function listRevisions(documentId: string): Promise<DocumentRevision[]> {
+  const page = await unwrap((await client()).content.listRevisions(documentId));
+  return page.revisions;
+}
+
+export async function restoreRevision(documentId: string, revisionId: string): Promise<Block[]> {
+  const list = await unwrap((await client()).content.restoreRevision(documentId, revisionId));
   return list.blocks;
 }
 

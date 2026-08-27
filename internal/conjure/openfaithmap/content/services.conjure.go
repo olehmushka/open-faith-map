@@ -114,8 +114,12 @@ type ContentServiceClient interface {
 	TransitionDocument(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, requestArg TransitionDocumentRequest) (Document, error)
 	// Admin read — works regardless of document state.
 	GetBlocks(ctx context.Context, authHeader bearertoken.Token, documentIdArg string) (BlockList, error)
-	// Full replace, validated against each referenced block type's json_schema.
+	// Full replace of the draft revision's blocks, validated against each referenced block type's json_schema (M14.6: this writes the draft only — never what's published — so this one endpoint serves both the editor's manual save and its debounced autosave).
 	PutBlocks(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, requestArg PutBlocksRequest) (BlockList, error)
+	// History list (M14.6) — every past checkpoint, newest first, excluding the draft itself.
+	ListRevisions(ctx context.Context, authHeader bearertoken.Token, documentIdArg string) (RevisionPage, error)
+	// Copies a past checkpoint's blocks into the draft — into the draft only, never auto-publishing (owner decision, 2026-08-28). Publish afterward to make it live.
+	RestoreRevision(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, revisionIdArg string) (BlockList, error)
 }
 
 type contentServiceClient struct {
@@ -279,6 +283,40 @@ func (c *contentServiceClient) PutBlocks(ctx context.Context, authHeader bearert
 	return *returnVal, nil
 }
 
+func (c *contentServiceClient) ListRevisions(ctx context.Context, authHeader bearertoken.Token, documentIdArg string) (RevisionPage, error) {
+	var returnVal *RevisionPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListRevisions"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/documents/%s/revisions", url.PathEscape(fmt.Sprint(documentIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(RevisionPage), werror.WrapWithContextParams(ctx, err, "listRevisions failed")
+	}
+	if returnVal == nil {
+		return *new(RevisionPage), werror.ErrorWithContextParams(ctx, "listRevisions response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentServiceClient) RestoreRevision(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, revisionIdArg string) (BlockList, error) {
+	var returnVal *BlockList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RestoreRevision"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/documents/%s/revisions/%s/restore", url.PathEscape(fmt.Sprint(documentIdArg)), url.PathEscape(fmt.Sprint(revisionIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(BlockList), werror.WrapWithContextParams(ctx, err, "restoreRevision failed")
+	}
+	if returnVal == nil {
+		return *new(BlockList), werror.ErrorWithContextParams(ctx, "restoreRevision response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // Congregation site authoring: sites, documents (pages), blocks. Every write, and every read that must see draft state, is content.manage-gated — a live, target-scoped Authorize call against the site's own congregation unit (see file header). See docs/modules/content.md.
 type ContentServiceClientWithAuth interface {
 	CreateSite(ctx context.Context, requestArg CreateSiteRequest) (Site, error)
@@ -290,8 +328,12 @@ type ContentServiceClientWithAuth interface {
 	TransitionDocument(ctx context.Context, documentIdArg string, requestArg TransitionDocumentRequest) (Document, error)
 	// Admin read — works regardless of document state.
 	GetBlocks(ctx context.Context, documentIdArg string) (BlockList, error)
-	// Full replace, validated against each referenced block type's json_schema.
+	// Full replace of the draft revision's blocks, validated against each referenced block type's json_schema (M14.6: this writes the draft only — never what's published — so this one endpoint serves both the editor's manual save and its debounced autosave).
 	PutBlocks(ctx context.Context, documentIdArg string, requestArg PutBlocksRequest) (BlockList, error)
+	// History list (M14.6) — every past checkpoint, newest first, excluding the draft itself.
+	ListRevisions(ctx context.Context, documentIdArg string) (RevisionPage, error)
+	// Copies a past checkpoint's blocks into the draft — into the draft only, never auto-publishing (owner decision, 2026-08-28). Publish afterward to make it live.
+	RestoreRevision(ctx context.Context, documentIdArg string, revisionIdArg string) (BlockList, error)
 }
 
 func NewContentServiceClientWithAuth(client ContentServiceClient, authHeader bearertoken.Token) ContentServiceClientWithAuth {
@@ -333,6 +375,14 @@ func (c *contentServiceClientWithAuth) GetBlocks(ctx context.Context, documentId
 
 func (c *contentServiceClientWithAuth) PutBlocks(ctx context.Context, documentIdArg string, requestArg PutBlocksRequest) (BlockList, error) {
 	return c.client.PutBlocks(ctx, c.authHeader, documentIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithAuth) ListRevisions(ctx context.Context, documentIdArg string) (RevisionPage, error) {
+	return c.client.ListRevisions(ctx, c.authHeader, documentIdArg)
+}
+
+func (c *contentServiceClientWithAuth) RestoreRevision(ctx context.Context, documentIdArg string, revisionIdArg string) (BlockList, error) {
+	return c.client.RestoreRevision(ctx, c.authHeader, documentIdArg, revisionIdArg)
 }
 
 func NewContentServiceClientWithTokenProvider(client ContentServiceClient, tokenProvider httpclient.TokenProvider) ContentServiceClientWithAuth {
@@ -406,4 +456,20 @@ func (c *contentServiceClientWithTokenProvider) PutBlocks(ctx context.Context, d
 		return *new(BlockList), err
 	}
 	return c.client.PutBlocks(ctx, bearertoken.Token(token), documentIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) ListRevisions(ctx context.Context, documentIdArg string) (RevisionPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(RevisionPage), err
+	}
+	return c.client.ListRevisions(ctx, bearertoken.Token(token), documentIdArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) RestoreRevision(ctx context.Context, documentIdArg string, revisionIdArg string) (BlockList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(BlockList), err
+	}
+	return c.client.RestoreRevision(ctx, bearertoken.Token(token), documentIdArg, revisionIdArg)
 }

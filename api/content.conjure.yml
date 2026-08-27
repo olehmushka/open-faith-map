@@ -133,6 +133,22 @@ types:
         fields:
           blocks: list<Block>
 
+      DocumentRevision:
+        docs: >
+          One entry in a document's revision history (M14.6, D-ContentRevisions) — always a past
+          checkpoint created at publish time, never the in-progress draft (listRevisions excludes
+          it). Carries no blocks data: history is a timestamped list to restore from, not a diff
+          viewer.
+        fields:
+          revisionId: string
+          revisionNo: integer
+          createdAt: datetime
+          authorPersonId: optional<string>
+          label: optional<string>
+      RevisionPage:
+        fields:
+          revisions: list<DocumentRevision>
+
       BlockType:
         fields:
           id: string
@@ -220,6 +236,14 @@ types:
           blockTypeCode: string
           position: integer
           field: string
+      RevisionNotFound:
+        docs: >
+          M14.6. The revision id either doesn't exist or belongs to a different document —
+          revisionId is never trusted to already be scoped to the documentId in the request path.
+        namespace: Content
+        code: NOT_FOUND
+        safe-args:
+          revisionId: string
 
 services:
   ContentService:
@@ -296,12 +320,36 @@ services:
         returns: BlockList
       putBlocks:
         http: PUT /documents/{documentId}/blocks
-        docs: Full replace, validated against each referenced block type's json_schema.
+        docs: >
+          Full replace of the draft revision's blocks, validated against each referenced block
+          type's json_schema (M14.6: this writes the draft only — never what's published — so this
+          one endpoint serves both the editor's manual save and its debounced autosave).
         args:
           documentId:
             type: string
             param-type: path
           request: PutBlocksRequest
+        returns: BlockList
+      listRevisions:
+        http: GET /documents/{documentId}/revisions
+        docs: History list (M14.6) — every past checkpoint, newest first, excluding the draft itself.
+        args:
+          documentId:
+            type: string
+            param-type: path
+        returns: RevisionPage
+      restoreRevision:
+        http: POST /documents/{documentId}/revisions/{revisionId}/restore
+        docs: >
+          Copies a past checkpoint's blocks into the draft — into the draft only, never
+          auto-publishing (owner decision, 2026-08-28). Publish afterward to make it live.
+        args:
+          documentId:
+            type: string
+            param-type: path
+          revisionId:
+            type: string
+            param-type: path
         returns: BlockList
 
   ContentPublicService:

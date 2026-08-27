@@ -162,6 +162,7 @@ type OpenfaithmapCongregationimportTaxonAlias struct {
 	UpdatedAt          time.Time
 }
 
+// Superseded by content_document_revisions as of M14.6 — no longer read or written. Left in place rather than dropped (data already migrated forward); a candidate for a future cleanup migration.
 type OpenfaithmapContentBlock struct {
 	ID          string
 	DocumentID  string
@@ -202,6 +203,18 @@ type OpenfaithmapContentDocument struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	DeletedAt            pgtype.Timestamptz
+	DraftRevisionID      pgtype.Text
+	PublishedRevisionID  pgtype.Text
+}
+
+type OpenfaithmapContentDocumentRevision struct {
+	ID             string
+	DocumentID     string
+	RevisionNo     int32
+	Data           json.RawMessage
+	AuthorPersonID pgtype.Text
+	CreatedAt      time.Time
+	Label          pgtype.Text
 }
 
 type OpenfaithmapContentSite struct {

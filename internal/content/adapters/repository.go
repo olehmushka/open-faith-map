@@ -9,6 +9,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -119,50 +120,24 @@ func (r *Repository) ListActiveBlockTypes(ctx context.Context) ([]domain.BlockTy
 	return out, nil
 }
 
-func (r *Repository) ListBlocks(ctx context.Context, documentID string) ([]domain.Block, error) {
-	rows, err := r.q.ListBlocks(ctx, documentID)
-	if err != nil {
-		return nil, fmt.Errorf("content: list blocks: %w", err)
-	}
-	out := make([]domain.Block, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, domain.Block{ID: row.ID, DocumentID: row.DocumentID, BlockTypeID: row.BlockTypeID, BlockTypeCode: row.BlockTypeCode, Position: int(row.Position), Data: row.Data, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt})
-	}
-	return out, nil
-}
-
-// ReplaceBlocks is a transactional delete-then-insert — application.Service has already validated
-// every block's data against its type's json_schema and rejected duplicate positions before this
-// is ever called, so this method trusts its input completely.
-func (r *Repository) ReplaceBlocks(ctx context.Context, documentID string, blocks []domain.BlockInput) ([]domain.Block, error) {
+// InsertDocument implements U5's resolution race-safely: INSERT, catch the unique-violation,
+// translate. A nil in.TranslationGroupID starts a new group (gen_random_uuid()); a non-nil value
+// joins an existing one as another locale variant.
+//
+// M14.6: also creates the document's one-and-only draft revision (an empty blocks snapshot) in the
+// same transaction and points draft_revision_id at it — content_document_revisions.document_id
+// can't exist before the document row does, so this can't be a single INSERT; see
+// migrations/0025_content_revisions.sql's own note on why draft_revision_id isn't a DB-level
+// NOT NULL (the two tables reference each other).
+func (r *Repository) InsertDocument(ctx context.Context, siteID string, in domain.CreateDocumentInput) (domain.Document, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("content: replace blocks: begin: %w", err)
+		return domain.Document{}, fmt.Errorf("content: insert document: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	txq := contentsql.New(tx)
-	if err := txq.DeleteBlocksForDocument(ctx, documentID); err != nil {
-		return nil, fmt.Errorf("content: replace blocks: delete: %w", err)
-	}
-	for _, b := range blocks {
-		if err := txq.InsertBlockByTypeCode(ctx, contentsql.InsertBlockByTypeCodeParams{
-			DocumentID: documentID, Position: int32(b.Position), Data: b.Data, BlockTypeCode: b.BlockTypeCode,
-		}); err != nil {
-			return nil, fmt.Errorf("content: replace blocks: insert position %d: %w", b.Position, err)
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("content: replace blocks: commit: %w", err)
-	}
-	return r.ListBlocks(ctx, documentID)
-}
-
-// InsertDocument implements U5's resolution race-safely: INSERT, catch the unique-violation,
-// translate. A nil in.TranslationGroupID starts a new group (gen_random_uuid()); a non-nil value
-// joins an existing one as another locale variant.
-func (r *Repository) InsertDocument(ctx context.Context, siteID string, in domain.CreateDocumentInput) (domain.Document, error) {
-	row, err := r.q.InsertDocument(ctx, contentsql.InsertDocumentParams{
+	row, err := txq.InsertDocument(ctx, contentsql.InsertDocumentParams{
 		SiteID:               siteID,
 		Kind:                 string(in.Kind),
 		TranslationGroupID:   nullableText(in.TranslationGroupID),
@@ -178,14 +153,29 @@ func (r *Repository) InsertDocument(ctx context.Context, siteID string, in domai
 		return domain.Document{}, &domain.SlugTakenError{Slug: in.Slug, Scope: "document"}
 	}
 	if err != nil {
-		return domain.Document{}, err
+		return domain.Document{}, fmt.Errorf("content: insert document: %w", err)
 	}
+
+	revision, err := txq.InsertRevision(ctx, contentsql.InsertRevisionParams{
+		DocumentID: row.ID, RevisionNo: 1, Data: json.RawMessage(`[]`),
+	})
+	if err != nil {
+		return domain.Document{}, fmt.Errorf("content: insert document: initial revision: %w", err)
+	}
+	if err := txq.SetDraftRevision(ctx, contentsql.SetDraftRevisionParams{ID: row.ID, DraftRevisionID: nullableText(&revision.ID)}); err != nil {
+		return domain.Document{}, fmt.Errorf("content: insert document: set draft revision: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Document{}, fmt.Errorf("content: insert document: commit: %w", err)
+	}
+
 	return domain.Document{
 		ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 		Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
 		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		DraftRevisionID: &revision.ID, PublishedRevisionID: nil,
 	}, nil
 }
 
@@ -203,6 +193,7 @@ func (r *Repository) GetDocument(ctx context.Context, id string) (domain.Documen
 		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
 	}, nil
 }
 
@@ -228,6 +219,7 @@ func (r *Repository) UpdateDocument(ctx context.Context, id string, in domain.Up
 		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
 	}, nil
 }
 
@@ -247,6 +239,7 @@ func (r *Repository) UpdateDocumentState(ctx context.Context, id string, next do
 		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
 	}, nil
 }
 
@@ -266,6 +259,7 @@ func (r *Repository) ListDocuments(ctx context.Context, siteID string, kind, loc
 			State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
 			EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 			EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
 		})
 	}
 	return out, nil
@@ -287,7 +281,118 @@ func (r *Repository) ListPublicDocuments(ctx context.Context, siteID string, kin
 			State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
 			EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 			EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
 		})
 	}
 	return out, nil
+}
+
+// ---- revisions (M14.6) ----
+
+// revisionKeepCount is the owner-decided retention cap (2026-08-28): the 50 most recent checkpoint
+// revisions per document. A config change, not new code, once a paid storage tier removes the need
+// for it.
+const revisionKeepCount = 50
+
+func revisionFromRow(row contentsql.OpenfaithmapContentDocumentRevision) domain.DocumentRevision {
+	return domain.DocumentRevision{
+		ID: row.ID, DocumentID: row.DocumentID, RevisionNo: int(row.RevisionNo), Data: row.Data,
+		AuthorPersonID: fromNullableText(row.AuthorPersonID), CreatedAt: row.CreatedAt, Label: fromNullableText(row.Label),
+	}
+}
+
+func (r *Repository) GetRevision(ctx context.Context, id string) (domain.DocumentRevision, error) {
+	row, err := r.q.GetRevision(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.DocumentRevision{}, domain.ErrRevisionNotFound
+	}
+	if err != nil {
+		return domain.DocumentRevision{}, fmt.Errorf("content: get revision: %w", err)
+	}
+	return revisionFromRow(row), nil
+}
+
+// SaveDraftRevisionData overwrites the draft revision's blocks snapshot in place — the store side
+// of every autosave/manual save and of RestoreRevision (which "restores into the draft" by calling
+// this with an older checkpoint's data, per the owner's decision that restore never auto-publishes).
+func (r *Repository) SaveDraftRevisionData(ctx context.Context, draftRevisionID string, data json.RawMessage) (domain.DocumentRevision, error) {
+	row, err := r.q.UpdateRevisionData(ctx, contentsql.UpdateRevisionDataParams{ID: draftRevisionID, Data: data})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.DocumentRevision{}, domain.ErrRevisionNotFound
+	}
+	if err != nil {
+		return domain.DocumentRevision{}, fmt.Errorf("content: save draft revision: %w", err)
+	}
+	return revisionFromRow(row), nil
+}
+
+// ListCheckpointRevisions is the history list — every revision except the one row draftRevisionID
+// points at (an in-progress draft isn't a "past" revision to restore into itself), newest first.
+func (r *Repository) ListCheckpointRevisions(ctx context.Context, documentID, draftRevisionID string) ([]domain.DocumentRevision, error) {
+	rows, err := r.q.ListCheckpointRevisions(ctx, contentsql.ListCheckpointRevisionsParams{DocumentID: documentID, ExcludeID: draftRevisionID})
+	if err != nil {
+		return nil, fmt.Errorf("content: list checkpoint revisions: %w", err)
+	}
+	out := make([]domain.DocumentRevision, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, revisionFromRow(row))
+	}
+	return out, nil
+}
+
+// PublishDocument is the M14.6 extension of the old pure-state-flip UpdateDocumentState, used only
+// for transitions into PUBLISHED: snapshots the current draft into a new immutable checkpoint
+// revision, repoints published_revision_id at it, flips document state, and prunes checkpoints
+// beyond revisionKeepCount — all in one transaction, so a caller can never observe a state flip
+// without its matching revision pointer (or vice versa). Other transitions (revert-to-draft,
+// unlist) never touch revisions and keep using the plain UpdateDocumentState below.
+func (r *Repository) PublishDocument(ctx context.Context, documentID, draftRevisionID string, authorPersonID *string, firstPublish bool) (domain.Document, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.Document{}, fmt.Errorf("content: publish document: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	txq := contentsql.New(tx)
+
+	draft, err := txq.GetRevision(ctx, draftRevisionID)
+	if err != nil {
+		return domain.Document{}, fmt.Errorf("content: publish document: get draft: %w", err)
+	}
+	nextNo, err := txq.NextRevisionNo(ctx, documentID)
+	if err != nil {
+		return domain.Document{}, fmt.Errorf("content: publish document: next revision no: %w", err)
+	}
+	checkpoint, err := txq.InsertRevision(ctx, contentsql.InsertRevisionParams{
+		DocumentID: documentID, RevisionNo: nextNo, Data: draft.Data, AuthorPersonID: nullableText(authorPersonID),
+	})
+	if err != nil {
+		return domain.Document{}, fmt.Errorf("content: publish document: insert checkpoint: %w", err)
+	}
+	if err := txq.SetPublishedRevision(ctx, contentsql.SetPublishedRevisionParams{ID: documentID, PublishedRevisionID: nullableText(&checkpoint.ID)}); err != nil {
+		return domain.Document{}, fmt.Errorf("content: publish document: set published revision: %w", err)
+	}
+	row, err := txq.UpdateDocumentState(ctx, contentsql.UpdateDocumentStateParams{ID: documentID, State: string(domain.StatePublished), FirstPublish: firstPublish})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Document{}, domain.ErrDocumentNotFound
+	}
+	if err != nil {
+		return domain.Document{}, fmt.Errorf("content: publish document: update state: %w", err)
+	}
+	if err := txq.PruneCheckpointRevisions(ctx, contentsql.PruneCheckpointRevisionsParams{
+		DocumentID: documentID, KeepDraftID: draftRevisionID, KeepPublishedID: checkpoint.ID, KeepCount: revisionKeepCount,
+	}); err != nil {
+		return domain.Document{}, fmt.Errorf("content: publish document: prune: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Document{}, fmt.Errorf("content: publish document: commit: %w", err)
+	}
+
+	return domain.Document{
+		ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
+		Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
+		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
+		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+	}, nil
 }

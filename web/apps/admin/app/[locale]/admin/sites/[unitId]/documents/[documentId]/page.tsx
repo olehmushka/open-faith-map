@@ -5,7 +5,9 @@ import {
   getSite,
   listBlockTypes,
   listDocuments,
+  listRevisions,
   putBlocks,
+  restoreRevision,
   transitionDocument,
   updateDocument,
 } from "@/lib/content";
@@ -24,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { BlockListEditor } from "./block-list-editor";
+import { BlockListEditor, type BlockSaveResult } from "./block-list-editor";
 
 const NO_PARENT = "__none__";
 
@@ -36,12 +38,11 @@ export default async function DocumentEditorPage({
   searchParams,
 }: {
   params: Promise<{ locale: string; unitId: string; documentId: string }>;
-  searchParams: Promise<{ error?: string; position?: string; field?: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { locale, unitId, documentId } = await params;
   const t = await getTranslations("DocumentEditorPage");
-  const { error, position: erroredPositionParam, field: erroredField } = await searchParams;
-  const erroredPosition = erroredPositionParam !== undefined ? Number(erroredPositionParam) : undefined;
+  const { error } = await searchParams;
   const site = await getSite(unitId).catch(() => null);
   if (!site) return redirect({ href: `/admin/sites/${unitId}`, locale });
 
@@ -49,7 +50,11 @@ export default async function DocumentEditorPage({
   const doc = documents.find((d) => d.id === documentId);
   if (!doc) return redirect({ href: `/admin/sites/${unitId}/documents`, locale });
 
-  const [blocks, blockTypes] = await Promise.all([getBlocks(documentId), listBlockTypes()]);
+  const [blocks, blockTypes, revisions] = await Promise.all([
+    getBlocks(documentId),
+    listBlockTypes(),
+    listRevisions(documentId),
+  ]);
   const otherPages = documents.filter((d) => d.kind === "PAGE" && d.id !== documentId);
 
   async function saveDetails(formData: FormData) {
@@ -74,36 +79,29 @@ export default async function DocumentEditorPage({
     redirect({ href: `/admin/sites/${unitId}/documents/${documentId}`, locale });
   }
 
-  async function saveBlocks(formData: FormData) {
+  // M14.6: the draft-save path (both the debounced autosave and the manual "Save now" trigger in
+  // BlockListEditor) never redirects — a full-page navigation every ~10s would be exactly the
+  // "silently over live content" disruption the milestone's own UX research warns against. Errors
+  // surface inline via the returned result instead of a query-param redirect.
+  async function autosaveBlocks(
+    inputs: { position: number; blockTypeCode: string; data: unknown }[],
+  ): Promise<BlockSaveResult> {
     "use server";
-    const positions = formData.getAll("position").map(String);
-    const blockTypeCodes = formData.getAll("blockTypeCode").map(String);
-    const dataJson = formData.getAll("data").map(String);
-
-    const inputs = positions.map((position, i) => ({
-      position: Number(position),
-      blockTypeCode: blockTypeCodes[i],
-      data: JSON.parse(dataJson[i] || "{}"),
-    }));
-
     try {
       await putBlocks(documentId, inputs);
+      return { ok: true };
     } catch (e) {
       if (e && typeof e === "object" && "errorName" in e) {
-        const errorName = String((e as { errorName: string }).errorName);
         const parameters =
           "parameters" in e ? (e as { parameters?: Record<string, unknown> }).parameters : undefined;
-        const params = new URLSearchParams({ error: errorName });
-        if (typeof parameters?.position === "number") params.set("position", String(parameters.position));
-        if (typeof parameters?.field === "string" && parameters.field) params.set("field", parameters.field);
-        redirect({
-          href: `/admin/sites/${unitId}/documents/${documentId}?${params.toString()}`,
-          locale,
-        });
+        return {
+          ok: false,
+          position: typeof parameters?.position === "number" ? parameters.position : undefined,
+          field: typeof parameters?.field === "string" ? parameters.field : undefined,
+        };
       }
       throw e;
     }
-    redirect({ href: `/admin/sites/${unitId}/documents/${documentId}`, locale });
   }
 
   async function transition(action: DocumentTransitionAction) {
@@ -124,6 +122,12 @@ export default async function DocumentEditorPage({
     await transition(DocumentTransitionAction.REVERT_TO_DRAFT);
   }
 
+  async function restore(revisionId: string) {
+    "use server";
+    await restoreRevision(documentId, revisionId);
+    redirect({ href: `/admin/sites/${unitId}/documents/${documentId}`, locale });
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
       <div className="flex items-center gap-3">
@@ -131,13 +135,9 @@ export default async function DocumentEditorPage({
         <Badge variant="outline">{doc.state}</Badge>
       </div>
 
-      {error && !((error === "Content:BlockDataInvalid" || error === "Content:BlockUrlNotAllowed") && erroredField) && (
+      {error && (
         <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {error === "Content:SlugTaken"
-            ? t("errorSlugTaken")
-            : error === "Content:BlockDataInvalid" || error === "Content:BlockUrlNotAllowed"
-              ? t("errorBlockDataInvalid")
-              : t("errorGeneric", { error })}
+          {error === "Content:SlugTaken" ? t("errorSlugTaken") : t("errorGeneric", { error })}
         </p>
       )}
 
@@ -198,14 +198,39 @@ export default async function DocumentEditorPage({
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">{t("blocksHint")}</p>
-          <BlockListEditor
-            documentId={documentId}
-            blocks={blocks}
-            blockTypes={blockTypes}
-            erroredPosition={erroredPosition}
-            erroredField={erroredField}
-            action={saveBlocks}
-          />
+          <BlockListEditor blocks={blocks} blockTypes={blockTypes} onAutosave={autosaveBlocks} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("historyHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {revisions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("historyEmpty")}</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {revisions.map((r) => (
+                <li
+                  key={r.revisionId}
+                  className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm"
+                >
+                  <span>
+                    {t("revisionLabel", {
+                      number: r.revisionNo,
+                      date: new Date(r.createdAt).toLocaleString(locale),
+                    })}
+                  </span>
+                  <form action={restore.bind(null, r.revisionId)}>
+                    <Button type="submit" variant="outline" size="sm">
+                      {t("restoreRevision")}
+                    </Button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
     </div>
