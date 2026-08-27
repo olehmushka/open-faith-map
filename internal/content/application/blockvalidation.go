@@ -92,6 +92,48 @@ func validateBlockURLs(blockType domain.BlockType, position int, instance any) e
 		return nil
 	}
 
+	// checkRichTextLinks walks a richText node array (D-RichTextNodes) and runs every "link" mark's
+	// href through checkScheme, recursing into "list" nodes' items — a link mark is the one URL
+	// value nested inside a tree rather than living directly on the block, so it needs its own walk
+	// instead of a single field lookup. Reports the top-level field name (e.g. "text"), matching the
+	// existing "as precise as it's cheap to be" precedent (images[%d].url) rather than a full node
+	// path.
+	var checkRichTextLinks func(field string, value any) error
+	checkRichTextLinks = func(field string, value any) error {
+		nodes, _ := value.([]any)
+		for _, rawNode := range nodes {
+			node, _ := rawNode.(map[string]any)
+			if node == nil {
+				continue
+			}
+			switch node["type"] {
+			case "text":
+				marks, _ := node["marks"].([]any)
+				for _, rawMark := range marks {
+					mark, _ := rawMark.(map[string]any)
+					if mark == nil || mark["type"] != "link" {
+						continue
+					}
+					if err := checkScheme(field, mark["href"]); err != nil {
+						return err
+					}
+				}
+			case "list":
+				items, _ := node["items"].([]any)
+				for _, rawItem := range items {
+					item, _ := rawItem.(map[string]any)
+					if item == nil {
+						continue
+					}
+					if err := checkRichTextLinks(field, item["content"]); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	}
+
 	switch blockType.Code {
 	case "image":
 		if err := checkScheme("url", data["url"]); err != nil {
@@ -109,8 +151,19 @@ func validateBlockURLs(blockType domain.BlockType, position int, instance any) e
 		if err := checkScheme("href", data["href"]); err != nil {
 			return err
 		}
+	case "paragraph", "heading", "quote":
+		if err := checkRichTextLinks("text", data["text"]); err != nil {
+			return err
+		}
+	case "list":
+		if err := checkRichTextLinks("content", data["content"]); err != nil {
+			return err
+		}
 	case "staff_card":
 		if err := checkScheme("photoUrl", data["photoUrl"]); err != nil {
+			return err
+		}
+		if err := checkRichTextLinks("bio", data["bio"]); err != nil {
 			return err
 		}
 	case "social_embed":

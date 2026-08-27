@@ -201,4 +201,61 @@ func TestContentIntegration(t *testing.T) {
 	} else if socialErr.Field != "url" {
 		t.Errorf("PutBlocks(social_embed, host mismatch) error field = %q, want %q", socialErr.Field, "url")
 	}
+
+	// --- M14.2: paragraph.text is now a richText node array (D-RichTextNodes). A bolded run with
+	// an inline link round-trips through PutBlocks/GetBlocks.
+	richParagraph, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 10, Data: json.RawMessage(`{"text":[
+			{"type":"text","text":"Hello "},
+			{"type":"text","text":"bold","marks":[{"type":"bold"}]},
+			{"type":"text","text":" and a "},
+			{"type":"text","text":"link","marks":[{"type":"link","href":"https://example.org"}]}
+		]}`)},
+	})
+	if err != nil {
+		t.Fatalf("PutBlocks(paragraph, richText): %v", err)
+	}
+	if len(richParagraph) != 1 {
+		t.Fatalf("PutBlocks(paragraph, richText) returned %d blocks, want 1", len(richParagraph))
+	}
+
+	// A link mark's href goes through the exact same URL-scheme allowlist as any other URL field.
+	_, err = contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 10, Data: json.RawMessage(`{"text":[
+			{"type":"text","text":"click","marks":[{"type":"link","href":"javascript:alert(1)"}]}
+		]}`)},
+	})
+	var richTextErr *contentdomain.BlockUrlNotAllowedError
+	if !errors.As(err, &richTextErr) {
+		t.Errorf("PutBlocks(paragraph, javascript: link) error = %v, want BlockUrlNotAllowedError", err)
+	} else if richTextErr.Field != "text" {
+		t.Errorf("PutBlocks(paragraph, javascript: link) error field = %q, want %q", richTextErr.Field, "text")
+	}
+
+	// A `list` block round-trips; a bad-scheme link nested inside a list item is rejected the same
+	// way, naming the block's own field ("content").
+	if _, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "list", Position: 10, Data: json.RawMessage(`{"content":[
+			{"type":"list","style":"bullet","items":[
+				{"type":"listItem","content":[{"type":"text","text":"First item"}]},
+				{"type":"listItem","content":[{"type":"text","text":"Second item"}]}
+			]}
+		]}`)},
+	}); err != nil {
+		t.Errorf("PutBlocks(list, valid): %v", err)
+	}
+
+	_, err = contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "list", Position: 10, Data: json.RawMessage(`{"content":[
+			{"type":"list","style":"bullet","items":[
+				{"type":"listItem","content":[{"type":"text","text":"bad","marks":[{"type":"link","href":"javascript:alert(1)"}]}]}
+			]}
+		]}`)},
+	})
+	var listErr *contentdomain.BlockUrlNotAllowedError
+	if !errors.As(err, &listErr) {
+		t.Errorf("PutBlocks(list, javascript: link nested in item) error = %v, want BlockUrlNotAllowedError", err)
+	} else if listErr.Field != "content" {
+		t.Errorf("PutBlocks(list, javascript: link nested in item) error field = %q, want %q", listErr.Field, "content")
+	}
 }

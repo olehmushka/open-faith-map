@@ -27,7 +27,17 @@ the one domain in OpenFaithMap with **no go-oikumenea equivalent** (D-ContentMod
   of blocks, never an HTML blob.
 - **Block type** — a catalog row (code, JSON Schema, display metadata) naming a valid block shape.
   MVP seed: `heading`, `paragraph`, `image`, `gallery`, `youtube_embed`, `social_embed`, `button`,
-  `contact_info`, `map_embed`, `divider`, `staff_card`, `quote`, `columns`.
+  `contact_info`, `map_embed`, `divider`, `staff_card`, `quote`, `columns`, plus `list` (M14.2,
+  added by `migrations/0022_content_richtext.sql`).
+- **Rich text** — the shared `richText` node array (M14.2,
+  [D-RichTextNodes](../architecture/decisions.md#d-richtextnodes--structured-inline-nodes-never-html-strings)),
+  adopted by `paragraph.text`, `heading.text`, `quote.text`, `staff_card.bio` and `list.content`. An
+  ordered array whose elements are either a **text node** (`{"type":"text","text":"…","marks":[…]}`,
+  each mark one of `bold`/`italic`/`link` — a `link` mark carries `href`, checked against the exact
+  same URL-scheme allowlist as every other URL field) or a **list node**
+  (`{"type":"list","style":"bullet"|"ordered","items":[…]}`, each item
+  `{"type":"listItem","content": richText}` — recursive, so nested lists work structurally for
+  free). Never an HTML string, at any point in the pipeline.
 - **Translation group** — a UUID shared across every locale variant of one conceptual page/post/
   event. Each variant is its own row with its own `locale`, edited independently.
 - **Document revision** — a snapshot of one document's blocks (M14.6,
