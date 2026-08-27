@@ -217,7 +217,8 @@ func (s *Service) PutBlocks(ctx context.Context, documentID string, blocks []dom
 	}
 
 	seen := make(map[int]bool, len(blocks))
-	for _, b := range blocks {
+	for i := range blocks {
+		b := &blocks[i]
 		if seen[b.Position] {
 			return nil, &domain.DuplicateBlockPositionError{Position: b.Position}
 		}
@@ -230,6 +231,14 @@ func (s *Service) PutBlocks(ctx context.Context, documentID string, blocks []dom
 		if blockType.Status != domain.BlockTypeActive {
 			return nil, domain.ErrBlockTypeNotFound
 		}
+		// M14.3: normalize known share-link hosts (Google Drive/Dropbox/OneDrive) before
+		// validation, so the stored url is the direct-content form and the schema's own
+		// "format":"uri" / scheme allowlist both see the normalized value.
+		normalized, err := normalizeBlockMediaURLs(b.BlockTypeCode, b.Data)
+		if err != nil {
+			return nil, err
+		}
+		b.Data = normalized
 		if err := validateBlockData(blockType, b.Position, b.Data); err != nil {
 			return nil, err
 		}

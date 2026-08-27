@@ -9,16 +9,17 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0, M14.1 and M14.2 (all 2026-08-27)
-are done**, no other sub-milestone is built yet. It is the second half of the product: M4/M13
-finished **discovery** (the map); M14 finishes **presence** (the per-congregation site builder),
-whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones, M14.0–M14.18.
-**M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the module-doc
-rewrites, and ruled on **U16** (tightened) and the M14.10 nav assumption (replaced with a
-hand-built menu); see [architecture/decisions.md](architecture/decisions.md) and the Unresolved
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0, M14.1, M14.2 and M14.3 (all
+2026-08-27) are done**, no other sub-milestone is built yet. It is the second half of the product:
+M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation site
+builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
+M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
+module-doc rewrites, and ruled on **U16** (tightened) and the M14.10 nav assumption (replaced with
+a hand-built menu); see [architecture/decisions.md](architecture/decisions.md) and the Unresolved
 unknowns table below. **M14.1 closed the live stored-XSS hole** that ran ahead of any other
 feature work in the arc. **M14.2 replaced plain-string block text with a structured richText node
-model** — see its own row below. Next up: M14.3.
+model.** **M14.3 normalizes known share-link hosts and requires `alt`** — see its own row below.
+Next up: M14.4.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -66,7 +67,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.0 · Decisions + designs for the arc | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Done (2026-08-27).** Writes the nine `D-` blocks (`D-TenantSubdomains`, `D-ExternalMediaOnly`, `D-RichTextNodes`, `D-ContentRevisions`, `D-CuratedTheme`, `D-SitePatterns`, `D-InAppInbox`, `D-PublishOnRead`, `D-PublicSiteCSP`), rewrites [content.md](modules/content.md) to the fixed template, updates [web-facade.md](modules/web-facade.md)/[web-admin.md](modules/web-admin.md)/[glossary.md](glossary.md), schedules `DS-OFM-7` to M14.14, opens `DS-OFM-17` (no first-party media storage), and rules explicitly on **U16**. Flips the first two columns for every row below. Docs-only — no code. |
 | M14.1 · Content security baseline | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-27), fixes the live stored XSS; nothing else in the arc ships first.** URL **scheme** allowlist (`https`/`http`/`mailto`/`tel`) on every URL-bearing block field, enforced at write in `blockvalidation.go` (new typed `Content:BlockUrlNotAllowed` error), plus an embed **host** allowlist keyed by platform/block type (`social_embed`, YouTube-only for `youtube_embed` — no Vimeo block type exists yet). Defensive re-validation in the renderer (`web/apps/web/lib/block-security.ts`) because pre-M14.1 rows already existed unvalidated. `sandbox` + `referrerpolicy` on the `youtube_embed` iframe. CSP and security headers in both `next.config.ts` files (previously three lines each, zero headers) — verified present on a real response from both apps against the running stack. New invariant: `dangerouslySetInnerHTML` appears in neither app, ever — enforced by a new ESLint `no-restricted-syntax` rule, not just a point-in-time grep. Verified against a real pre-existing row inserted directly via SQL (bypassing the API): the malicious block renders dropped, not executed. `Verified` awaits CI green on `main`. |
 | M14.2 · Rich-text node model | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** A shared `richText` JSON-Schema definition — inline `text` runs carrying `bold`/`italic`/`link` marks, plus `list`/`listItem` — adopted by `paragraph`, `heading`, `quote`, `staff_card.bio` and a new `list` block. The renderer maps nodes to elements, so there is **no HTML parser and no sanitizer**: Drupal's filter-on-output problem is designed out rather than mitigated. Expand-and-data migration (`migrations/0022_content_richtext.sql`) updating those block types' `json_schema`, plus a data migration lifting existing plain strings into single-run nodes, in the same file. `Verified` awaits CI green on `main`. |
-| M14.3 · External media URLs, made survivable | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Normalizer for known share-link hosts (Google Drive, Dropbox, OneDrive) → direct-content URL, applied at write with the original preserved (**U15**). `alt` becomes schema-**required** on `image`/`gallery`. `loading="lazy"` + `referrerpolicy` on every rendered image. Editor-side "this URL loaded / did not load" probe **from the browser**, never a server-side fetch — that would be an SSRF surface. Records the future first-party `media` module as a designed seam so adding it later is additive. |
+| M14.3 · External media URLs, made survivable | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** Normalizer for known share-link hosts (Google Drive, Dropbox, the long-form OneDrive URL) → direct-content URL, applied at write with the original preserved in a new `originalUrl` field (**U15**). `alt` is now schema-**required** on `image`/`gallery`. `loading="lazy"` + `referrerpolicy` on every rendered image (`image`, `gallery`, `staff_card`). **Scoped down from the original text, named and reasoned, not silently dropped:** OneDrive's short `1drv.ms` links are not normalized (would require a server-side redirect-follow — the exact SSRF surface this arc forbids); the editor-side load probe is deferred to M14.4, since the admin editor is still the raw JSON-textarea UI with no per-field surface to attach one to yet. Records the future first-party `media` module as a designed seam so adding it later is additive. |
 | M14.4 · Schema-driven block forms | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | **The milestone that kills the JSON textarea.** New `content_block_types.ui_schema JSONB` (widget hints, labels, help text, field order) — WordPress's `block.json` lesson: a block's data schema and its editor controls are declared together, so the form is *derived*, never hand-written per type. Generic form renderer over `json_schema` + `ui_schema`. Typed Conjure validation errors land on the offending field instead of the current `?error=` query-string round trip. |
 | M14.5 · Inserter + drag-and-drop reorder | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Categorized block inserter with a one-line description per type — curation over choice, the consistent finding in the editor-UX research (13+ undifferentiated types is already past where an editor picks well). Drag-and-drop replaces the integer `position` input, **with keyboard-accessible move-up/move-down as a first-class path**: drag-only reordering is an accessibility failure, not a polish gap. |
 | M14.6 · Forward revisions, history, autosave | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_document_revisions`; a document gains separate *published* and *draft* revision pointers, so **editing a live page never touches what visitors see** (Drupal's forward-revision model). Autosave writes into the draft on a debounce with a visible saved/unsaved indicator — never silently over live content. Publish promotes draft→published. History list with restore. `ContentPublicService` reads the published revision. |
@@ -316,28 +317,51 @@ M14.1 verified its own write-time gate.
 
 ### M14.3 · External media URLs, made survivable
 
-**Not started.** Depends on M14.1. Exists because of `D-ExternalMediaOnly` (**U15**).
+**Built (2026-08-27).** Depends on M14.1. Exists because of `D-ExternalMediaOnly` (**U15**).
 
-A share-link normalizer applied at write time for known hosts — Google Drive, Dropbox, OneDrive —
-mapping a viewer-page URL to its direct-content form. A Drive share link
-(`drive.google.com/file/d/<id>/view`) is an HTML page, not an image: pasted into an `image` block
-today it renders nothing, with no feedback anywhere. The original URL is stored alongside the
-normalized one, so a future normalizer fix is a re-derivation rather than data loss.
+A share-link normalizer (`internal/content/application/medianormalize.go`) applied at write time
+in `Service.PutBlocks`, before `validateBlockData`, for known hosts — Google Drive, Dropbox, and
+the long-form OneDrive URL — rewriting a viewer-page URL to its direct-content form. A Drive share
+link (`drive.google.com/file/d/<id>/view`) is an HTML page, not an image: pasted into an `image`
+block today it renders nothing, with no feedback anywhere. The original URL is stored in a new,
+optional `originalUrl` field alongside the normalized `url` (`migrations/0023_content_media_urls.sql`),
+so a future normalizer fix is a re-derivation rather than data loss. Pure string rewriting only —
+no host is ever resolved over the network. Only top-level `image`/`gallery` blocks are rewritten;
+nested blocks under a `columns` block already bypass `content_block_types.json_schema` entirely
+(`blockvalidation.go`'s own documented gap) and are left as-is, mirroring the same
+deliberately-accepted gap M14.2's migration recorded for richText.
 
-`alt` becomes schema-**required** on `image` and `gallery` — structurally enforced rather than
-requested, which is the only version of alt text that survives contact with real editors.
-`loading="lazy"` and `referrerpolicy` on every rendered image.
+**OneDrive scope, decided with the owner rather than assumed:** only the long-form
+`onedrive.live.com/redir?resid=...` URL is normalized, by a pure `redir`→`download` path
+substitution. The short `1drv.ms` links most people actually get from OneDrive's Share button
+resolve only via a redirect — following it server-side would be exactly the SSRF surface ("no
+server-side fetch of a user-supplied URL") this milestone's own acceptance criteria forbids, so
+short links pass through unchanged, with no `originalUrl` set.
 
-An editor-side load probe: the browser attempts the image and the editor reports loaded/not-loaded
-inline. **From the browser, never the server** — a server-side fetch of an admin-supplied URL is an
-SSRF surface, and this arc adds no such path.
+`alt` becomes schema-**required** on `image` and `gallery` (`migrations/0023_content_media_urls.sql`)
+— structurally enforced rather than requested, which is the only version of alt text that survives
+contact with real editors; the existing `content_blocks` are backfilled defensively (a no-op today
+— no live congregation content exists yet). `loading="lazy"` and `referrerPolicy="no-referrer"` on
+every rendered image (`image`, `gallery`, and `staff_card`'s `photoUrl` — the milestone text says
+"every rendered image," not just the two block types named in its title).
+
+**The editor-side load probe is deferred to M14.4, decided with the owner rather than assumed.**
+The admin editor is still the raw JSON-textarea UI (`web/apps/admin/app/[locale]/admin/sites/[unitId]/documents/[documentId]/page.tsx`)
+— M14.4 is what builds the real per-field forms — so there is no "image URL field" a probe could
+sensibly attach to yet. This is the one acceptance criterion M14.3 does not meet; named here rather
+than silently dropped, same as M14.1's YouTube-only embed-host narrowing.
 
 Records the future first-party `media` module as a designed seam (`DS-OFM-17`): what it would own,
 and why nothing in M14's schema forecloses it.
 
-**Acceptance criteria.** A pasted Drive share link renders as a real image on the public site. An
-unreachable URL is reported as such in the editor before publishing. Saving an `image` block with
-no `alt` is rejected. No server-side fetch of a user-supplied URL exists anywhere in the arc.
+**Acceptance criteria — mostly met, one explicitly deferred.** A pasted Drive or Dropbox share link
+normalizes to a direct-content URL at write time, original preserved — verified against real
+Postgres (`internal/content/content_integration_test.go`, `TestContentIntegration`'s M14.3
+section) and against the running stack. Saving an `image` block with no `alt`, or a `gallery` item
+with no `alt`, is rejected with `Content:BlockDataInvalid` — same test. No server-side fetch of a
+user-supplied URL exists anywhere in the arc (OneDrive short links are proof: normalizing them was
+explicitly declined for this reason, not overlooked). **Not met: "an unreachable URL is reported as
+such in the editor before publishing"** — deferred to M14.4 for the reason above.
 
 ### M14.4 · Schema-driven block forms
 
