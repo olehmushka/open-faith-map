@@ -183,6 +183,7 @@ type OpenfaithmapContentBlockType struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	DeletedAt  pgtype.Timestamptz
+	UiSchema   json.RawMessage
 }
 
 type OpenfaithmapContentDocument struct {

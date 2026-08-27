@@ -60,6 +60,7 @@ func (s *PublicService) ListBlockTypes(ctx context.Context) (gencontent.BlockTyp
 			Code:       bt.Code,
 			Name:       bt.Name,
 			JsonSchema: unmarshalAny(bt.JSONSchema),
+			UiSchema:   unmarshalAny(bt.UISchema),
 			Status:     gencontent.New_BlockTypeStatus(gencontent.BlockTypeStatus_Value(bt.Status)),
 			SortOrder:  bt.SortOrder,
 		})

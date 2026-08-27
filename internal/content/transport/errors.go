@@ -35,7 +35,7 @@ func mapErr(err error, c errCtx) error {
 	case errors.As(err, &slugTaken):
 		return gencontent.NewSlugTaken(slugTaken.Slug, slugTaken.Scope)
 	case errors.As(err, &blockInvalid):
-		return gencontent.NewBlockDataInvalid(blockInvalid.BlockTypeCode, blockInvalid.Position)
+		return gencontent.NewBlockDataInvalid(blockInvalid.BlockTypeCode, blockInvalid.Position, blockInvalid.Field)
 	case errors.As(err, &dupPosition):
 		return gencontent.NewDuplicateBlockPosition(dupPosition.Position)
 	case errors.As(err, &urlNotAllowed):

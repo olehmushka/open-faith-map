@@ -121,6 +121,7 @@ type BlockType struct {
 	Code       string
 	Name       string
 	JSONSchema json.RawMessage
+	UISchema   json.RawMessage
 	Status     BlockTypeStatus
 	SortOrder  int
 }
@@ -154,6 +155,7 @@ func (e *SlugTakenError) Error() string {
 type BlockDataInvalidError struct {
 	BlockTypeCode string
 	Position      int
+	Field         string
 }
 
 func (e *BlockDataInvalidError) Error() string {

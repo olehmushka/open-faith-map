@@ -102,7 +102,7 @@ func (r *Repository) GetBlockTypeByCode(ctx context.Context, code string) (domai
 	if err != nil {
 		return domain.BlockType{}, err
 	}
-	return domain.BlockType{ID: row.ID, Code: row.Code, Name: row.Name, JSONSchema: row.JsonSchema, Status: domain.BlockTypeStatus(row.Status), SortOrder: int(row.SortOrder)}, nil
+	return domain.BlockType{ID: row.ID, Code: row.Code, Name: row.Name, JSONSchema: row.JsonSchema, UISchema: row.UiSchema, Status: domain.BlockTypeStatus(row.Status), SortOrder: int(row.SortOrder)}, nil
 }
 
 // ListActiveBlockTypes is the public read (ContentPublicService) — active types only, ordered for
@@ -114,7 +114,7 @@ func (r *Repository) ListActiveBlockTypes(ctx context.Context) ([]domain.BlockTy
 	}
 	out := make([]domain.BlockType, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, domain.BlockType{ID: row.ID, Code: row.Code, Name: row.Name, JSONSchema: row.JsonSchema, Status: domain.BlockTypeStatus(row.Status), SortOrder: int(row.SortOrder)})
+		out = append(out, domain.BlockType{ID: row.ID, Code: row.Code, Name: row.Name, JSONSchema: row.JsonSchema, UISchema: row.UiSchema, Status: domain.BlockTypeStatus(row.Status), SortOrder: int(row.SortOrder)})
 	}
 	return out, nil
 }

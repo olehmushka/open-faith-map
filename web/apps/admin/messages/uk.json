@@ -198,7 +198,7 @@
     "parentPageNone": "None (top level)",
     "saveDetails": "Save details",
     "blocksHeading": "Blocks",
-    "blocksHint": "Full replace on save — reorder by editing the position numbers. Data is raw JSON, validated against the block type's schema.",
+    "blocksHint": "Full replace on save — reorder by editing the position numbers. Each block's fields are derived from its block type's schema.",
     "saveBlocks": "Save blocks"
   },
   "LocaleSwitcher": {

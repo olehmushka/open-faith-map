@@ -17,11 +17,11 @@ WHERE id = sqlc.arg('id') AND deleted_at IS NULL
 RETURNING id, congregation_unit_rid, slug, theme, created_at, updated_at;
 
 -- name: GetBlockTypeByCode :one
-SELECT id, code, name, json_schema, status, sort_order
+SELECT id, code, name, json_schema, ui_schema, status, sort_order
 FROM openfaithmap.content_block_types WHERE code = sqlc.arg('code') AND deleted_at IS NULL;
 
 -- name: ListActiveBlockTypes :many
-SELECT id, code, name, json_schema, status, sort_order
+SELECT id, code, name, json_schema, ui_schema, status, sort_order
 FROM openfaithmap.content_block_types
 WHERE status = 'ACTIVE' AND deleted_at IS NULL
 ORDER BY sort_order ASC;

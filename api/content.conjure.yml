@@ -139,6 +139,7 @@ types:
           code: string
           name: string
           jsonSchema: any
+          uiSchema: any
           status: BlockTypeStatus
           sortOrder: integer
       BlockTypePage:
@@ -193,12 +194,16 @@ types:
         safe-args:
           blockTypeCode: string
       BlockDataInvalid:
-        docs: block.data failed json_schema validation for its block type.
+        docs: >
+          block.data failed json_schema validation for its block type. field is the failing
+          top-level property name when it could be safely determined (never the raw validator
+          message or an arbitrary submitted key — see blockvalidation.go), otherwise empty.
         namespace: Content
         code: INVALID_ARGUMENT
         safe-args:
           blockTypeCode: string
           position: integer
+          field: string
       DuplicateBlockPosition:
         docs: Two blocks in the same putBlocks call shared a position — rejected up front, no re-derivation.
         namespace: Content

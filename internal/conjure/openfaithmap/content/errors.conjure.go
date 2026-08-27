@@ -18,6 +18,7 @@ import (
 type blockDataInvalid struct {
 	BlockTypeCode string `json:"blockTypeCode"`
 	Position      int    `json:"position"`
+	Field         string `json:"field"`
 }
 
 func (o blockDataInvalid) MarshalYAML() (interface{}, error) {
@@ -37,17 +38,17 @@ func (o *blockDataInvalid) UnmarshalYAML(unmarshal func(interface{}) error) erro
 }
 
 // NewBlockDataInvalid returns new instance of BlockDataInvalid error.
-func NewBlockDataInvalid(blockTypeCodeArg string, positionArg int) *BlockDataInvalid {
-	return &BlockDataInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), blockDataInvalid: blockDataInvalid{BlockTypeCode: blockTypeCodeArg, Position: positionArg}}
+func NewBlockDataInvalid(blockTypeCodeArg string, positionArg int, fieldArg string) *BlockDataInvalid {
+	return &BlockDataInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), blockDataInvalid: blockDataInvalid{BlockTypeCode: blockTypeCodeArg, Position: positionArg, Field: fieldArg}}
 }
 
 // WrapWithBlockDataInvalid returns new instance of BlockDataInvalid error wrapping an existing error.
-func WrapWithBlockDataInvalid(err error, blockTypeCodeArg string, positionArg int) *BlockDataInvalid {
-	return &BlockDataInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, blockDataInvalid: blockDataInvalid{BlockTypeCode: blockTypeCodeArg, Position: positionArg}}
+func WrapWithBlockDataInvalid(err error, blockTypeCodeArg string, positionArg int, fieldArg string) *BlockDataInvalid {
+	return &BlockDataInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, blockDataInvalid: blockDataInvalid{BlockTypeCode: blockTypeCodeArg, Position: positionArg, Field: fieldArg}}
 }
 
 // BlockDataInvalid is an error type.
-// block.data failed json_schema validation for its block type.
+// block.data failed json_schema validation for its block type. field is the failing top-level property name when it could be safely determined (never the raw validator message or an arbitrary submitted key — see blockvalidation.go), otherwise empty.
 type BlockDataInvalid struct {
 	errorInstanceID uuid.UUID
 	blockDataInvalid
@@ -107,12 +108,12 @@ func (e *BlockDataInvalid) InstanceID() uuid.UUID {
 
 // Parameters returns a set of named parameters detailing this particular error instance.
 func (e *BlockDataInvalid) Parameters() map[string]interface{} {
-	return map[string]interface{}{"blockTypeCode": e.BlockTypeCode, "position": e.Position}
+	return map[string]interface{}{"blockTypeCode": e.BlockTypeCode, "position": e.Position, "field": e.Field}
 }
 
 // safeParams returns a set of named safe parameters detailing this particular error instance.
 func (e *BlockDataInvalid) safeParams() map[string]interface{} {
-	return map[string]interface{}{"blockTypeCode": e.BlockTypeCode, "position": e.Position, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+	return map[string]interface{}{"blockTypeCode": e.BlockTypeCode, "position": e.Position, "field": e.Field, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
 }
 
 // SafeParams returns a set of named safe parameters detailing this particular error instance and
