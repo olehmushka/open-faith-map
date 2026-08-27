@@ -9,15 +9,16 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 (2026-08-27) and M14.1
-(2026-08-27) are done**, no other sub-milestone is built yet. It is the second half of the
-product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
-site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
-M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
-module-doc rewrites, and ruled on **U16** (tightened) and the M14.10 nav assumption (replaced with
-a hand-built menu); see [architecture/decisions.md](architecture/decisions.md) and the Unresolved
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0, M14.1 and M14.2 (all 2026-08-27)
+are done**, no other sub-milestone is built yet. It is the second half of the product: M4/M13
+finished **discovery** (the map); M14 finishes **presence** (the per-congregation site builder),
+whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones, M14.0–M14.18.
+**M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the module-doc
+rewrites, and ruled on **U16** (tightened) and the M14.10 nav assumption (replaced with a
+hand-built menu); see [architecture/decisions.md](architecture/decisions.md) and the Unresolved
 unknowns table below. **M14.1 closed the live stored-XSS hole** that ran ahead of any other
-feature work in the arc — see its own row below. Next up: M14.2.
+feature work in the arc. **M14.2 replaced plain-string block text with a structured richText node
+model** — see its own row below. Next up: M14.3.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -64,7 +65,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14 · The site-building arc | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Scoped jointly with the owner (2026-08-26); M14.0 (2026-08-27) writes the nine `D-` blocks and rules on both open questions below.** A codebase audit plus external research into WordPress and Drupal found the site builder has good bones (typed JSON-Schema-validated blocks, translation groups, draft/published states, an unused `theme` JSONB — M3/M4) and nothing built on them: admins author pages by typing **raw JSON into a textarea**, every published page is dumped onto **one route as a one-pager** keyed by a UUID, there is **no media path anywhere**, `content.catalog.manage` still has **no endpoint**, and `button.href`/`image.url`/`social_embed.url` render with **no scheme validation at all** — a live stored XSS. Twelve owner decisions fixed the shape: full-parity arc; **no media uploads** (external URLs only); **forward revisions**; **structured rich-text nodes, never HTML**; **subdomain per congregation**; **curated contrast-checked theme tokens**; platform subdomains only; all four optional surfaces in scope; one web app with Host middleware, extractable later; contact form to an **in-app inbox, no SMTP**; **publish-on-read** scheduling with no scheduler; wildcard TLS designed but gated. Nineteen sub-milestones below. |
 | M14.0 · Decisions + designs for the arc | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Done (2026-08-27).** Writes the nine `D-` blocks (`D-TenantSubdomains`, `D-ExternalMediaOnly`, `D-RichTextNodes`, `D-ContentRevisions`, `D-CuratedTheme`, `D-SitePatterns`, `D-InAppInbox`, `D-PublishOnRead`, `D-PublicSiteCSP`), rewrites [content.md](modules/content.md) to the fixed template, updates [web-facade.md](modules/web-facade.md)/[web-admin.md](modules/web-admin.md)/[glossary.md](glossary.md), schedules `DS-OFM-7` to M14.14, opens `DS-OFM-17` (no first-party media storage), and rules explicitly on **U16**. Flips the first two columns for every row below. Docs-only — no code. |
 | M14.1 · Content security baseline | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-27), fixes the live stored XSS; nothing else in the arc ships first.** URL **scheme** allowlist (`https`/`http`/`mailto`/`tel`) on every URL-bearing block field, enforced at write in `blockvalidation.go` (new typed `Content:BlockUrlNotAllowed` error), plus an embed **host** allowlist keyed by platform/block type (`social_embed`, YouTube-only for `youtube_embed` — no Vimeo block type exists yet). Defensive re-validation in the renderer (`web/apps/web/lib/block-security.ts`) because pre-M14.1 rows already existed unvalidated. `sandbox` + `referrerpolicy` on the `youtube_embed` iframe. CSP and security headers in both `next.config.ts` files (previously three lines each, zero headers) — verified present on a real response from both apps against the running stack. New invariant: `dangerouslySetInnerHTML` appears in neither app, ever — enforced by a new ESLint `no-restricted-syntax` rule, not just a point-in-time grep. Verified against a real pre-existing row inserted directly via SQL (bypassing the API): the malicious block renders dropped, not executed. `Verified` awaits CI green on `main`. |
-| M14.2 · Rich-text node model | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | A shared `richText` JSON-Schema definition — inline `text` runs carrying `bold`/`italic`/`link` marks, plus `list`/`listItem` — adopted by `paragraph`, `heading`, `quote`, `staff_card.bio` and a new `list` block. The renderer maps nodes to elements, so there is **no HTML parser and no sanitizer**: Drupal's filter-on-output problem is designed out rather than mitigated. Expand-only migration updating those block types' `json_schema`, plus a data migration lifting existing plain strings into single-run nodes. |
+| M14.2 · Rich-text node model | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** A shared `richText` JSON-Schema definition — inline `text` runs carrying `bold`/`italic`/`link` marks, plus `list`/`listItem` — adopted by `paragraph`, `heading`, `quote`, `staff_card.bio` and a new `list` block. The renderer maps nodes to elements, so there is **no HTML parser and no sanitizer**: Drupal's filter-on-output problem is designed out rather than mitigated. Expand-and-data migration (`migrations/0022_content_richtext.sql`) updating those block types' `json_schema`, plus a data migration lifting existing plain strings into single-run nodes, in the same file. `Verified` awaits CI green on `main`. |
 | M14.3 · External media URLs, made survivable | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Normalizer for known share-link hosts (Google Drive, Dropbox, OneDrive) → direct-content URL, applied at write with the original preserved (**U15**). `alt` becomes schema-**required** on `image`/`gallery`. `loading="lazy"` + `referrerpolicy` on every rendered image. Editor-side "this URL loaded / did not load" probe **from the browser**, never a server-side fetch — that would be an SSRF surface. Records the future first-party `media` module as a designed seam so adding it later is additive. |
 | M14.4 · Schema-driven block forms | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | **The milestone that kills the JSON textarea.** New `content_block_types.ui_schema JSONB` (widget hints, labels, help text, field order) — WordPress's `block.json` lesson: a block's data schema and its editor controls are declared together, so the form is *derived*, never hand-written per type. Generic form renderer over `json_schema` + `ui_schema`. Typed Conjure validation errors land on the offending field instead of the current `?error=` query-string round trip. |
 | M14.5 · Inserter + drag-and-drop reorder | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Categorized block inserter with a one-line description per type — curation over choice, the consistent finding in the editor-UX research (13+ undifferentiated types is already past where an editor picks well). Drag-and-drop replaces the integer `position` input, **with keyboard-accessible move-up/move-down as a first-class path**: drag-only reordering is an accessibility failure, not a polish gap. |
@@ -279,22 +280,39 @@ ESLint `no-restricted-syntax` rule enforcing it going forward.
 
 ### M14.2 · Rich-text node model
 
-**Not started.** Depends on M14.1 (the URL allowlist that `link` marks will be validated against).
+**Built (2026-08-27).** Depends on M14.1 (the URL allowlist that `link` marks are validated
+against).
 
-A shared `richText` definition in the block-type schema vocabulary: an ordered array of inline
-nodes — `text` runs carrying `bold`/`italic`/`link` marks, plus `list`/`listItem` — validated by
-the existing block validator with no new validation machinery. Adopted by `paragraph`, `heading`,
-`quote`, `staff_card.bio`, and a new `list` block type. The renderer maps node types to React
-elements directly; there is no HTML string anywhere in the pipeline, hence no parser and no
-sanitizer. A `link` mark's `href` goes through M14.1's allowlist like any other URL.
+A shared `richText` definition (`docs/modules/content.md`'s own Entities section spells out the
+node shapes) in the block-type schema vocabulary: an ordered array of inline nodes — `text` runs
+carrying `bold`/`italic`/`link` marks, plus `list`/`listItem` — validated by the existing block
+validator with no new validation machinery. `content_block_types.json_schema` has no cross-row
+`$ref`, so the same `$defs` block is repeated literally in each of the five adopting schemas.
+Adopted by `paragraph`, `heading`, `quote`, `staff_card.bio`, and a new `list` block type. The
+renderer (`web/apps/web/lib/rich-text.tsx`) maps node types to React elements directly; there is no
+HTML string anywhere in the pipeline, hence no parser and no sanitizer. A `link` mark's `href`
+goes through M14.1's allowlist like any other URL — extended in
+`internal/content/application/blockvalidation.go` with a `checkRichTextLinks` walk (recursing into
+`list` nodes' items) that calls the same `checkScheme` closure the flat URL fields already used.
 
-Expand-only migration updating those block types' `json_schema`, plus a data migration lifting
-existing plain strings into single-text-run nodes. Both are required in the same migration — a
-schema that rejects the rows already in the table is not expand-only in any useful sense.
+`migrations/0022_content_richtext.sql`: an expand-and-data migration in one file, per this repo's
+convention for a schema change that would otherwise reject rows already in the table — the same
+`UPDATE`s that loosen `json_schema` also lift every existing plain-string `text`/`bio` value into a
+single-text-run node. Nested blocks inside a `columns` block already bypass
+`content_block_types.json_schema` entirely (pre-existing, noted in `blockvalidation.go`'s own
+comment) and are not rewritten by this migration; no such nested fixture data exists today, and the
+renderer degrades a non-array legacy value to "render nothing" rather than crashing if that's ever
+hit in practice.
 
-**Acceptance criteria.** Existing pages render identically after the data migration. A paragraph
-with a bolded word and an inline link round-trips through save and public render. A `link` mark
-with a `javascript:` href is rejected at write.
+**Acceptance criteria — met.** A `paragraph` with a bolded run and an inline `link` round-trips
+through `PutBlocks` and renders as real `<strong>`/`<a>` elements on the public site (verified
+against the running stack: a site/document seeded directly via SQL, fetched with a real headless
+Chrome via Playwright). A `list` block round-trips and renders as a real `<ul>`/`<li>` list. A
+`link` mark with a `javascript:` href is rejected at write with `BlockUrlNotAllowedError{Field:
+"text"}` (Go integration test, `internal/content/content_integration_test.go`, run against real
+Postgres) — and a row carrying that value inserted directly via SQL (the pre-existing-data case)
+renders with the link dropped, not executed, confirmed against the running stack the same way
+M14.1 verified its own write-time gate.
 
 ### M14.3 · External media URLs, made survivable
 

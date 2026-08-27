@@ -1,14 +1,16 @@
 // Copyright 2026 Oleh Mushka
 // SPDX-License-Identifier: Apache-2.0
 
-// Renders the MVP block-type catalog (migrations/0004_content.sql's 13 seeded types) for the
-// public per-congregation page. A plain server component — no interactivity needed to read a
-// published page. Unknown block types (a future catalog addition this renderer hasn't caught up
-// with yet) fall through to a harmless no-op rather than crashing the page.
+// Renders the MVP block-type catalog (migrations/0002_content.sql's 13 seeded types, plus `list`
+// added by migrations/0022_content_richtext.sql/M14.2) for the public per-congregation page. A
+// plain server component — no interactivity needed to read a published page. Unknown block types
+// (a future catalog addition this renderer hasn't caught up with yet) fall through to a harmless
+// no-op rather than crashing the page.
 import { getTranslations } from "next-intl/server";
 
 import { isValidYoutubeVideoId, safeEmbedSrc, safeSocialEmbedUrl, safeUrl } from "@/lib/block-security";
 import type { Block } from "@/lib/content";
+import { RichText } from "@/lib/rich-text";
 
 type BlocksT = Awaited<ReturnType<typeof getTranslations>>;
 
@@ -44,10 +46,20 @@ function BlockView({
     case "heading": {
       const level = Math.min(6, Math.max(1, Number(data.level) || 2));
       const Tag = `h${level}` as keyof React.JSX.IntrinsicElements;
-      return <Tag className="font-semibold">{String(data.text ?? "")}</Tag>;
+      return (
+        <Tag className="font-semibold">
+          <RichText nodes={data.text} />
+        </Tag>
+      );
     }
     case "paragraph":
-      return <p>{String(data.text ?? "")}</p>;
+      return (
+        <p>
+          <RichText nodes={data.text} />
+        </p>
+      );
+    case "list":
+      return <RichText nodes={data.content} />;
     case "image": {
       const src = safeUrl(data.url);
       if (!src) return null;
@@ -147,7 +159,11 @@ function BlockView({
           <div>
             <p className="font-medium">{String(data.name ?? "")}</p>
             {data.title ? <p className="text-sm text-gray-500">{String(data.title)}</p> : null}
-            {data.bio ? <p className="text-sm">{String(data.bio)}</p> : null}
+            {Array.isArray(data.bio) && data.bio.length > 0 ? (
+              <p className="text-sm">
+                <RichText nodes={data.bio} />
+              </p>
+            ) : null}
           </div>
         </div>
       );
@@ -155,7 +171,9 @@ function BlockView({
     case "quote":
       return (
         <blockquote className="border-l-4 pl-4 italic">
-          <p>{String(data.text ?? "")}</p>
+          <p>
+            <RichText nodes={data.text} />
+          </p>
           {data.attribution ? <cite className="block text-sm not-italic text-gray-500">— {String(data.attribution)}</cite> : null}
         </blockquote>
       );
