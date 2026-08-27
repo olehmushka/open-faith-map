@@ -91,10 +91,13 @@ convention exactly — no case conversion anywhere across the transport/domain/a
 
 **`content_block_types`** (catalog)
 - `id` PK · `code TEXT UNIQUE` · `name TEXT` (translatable, OpenFaithMap's own admin-UI label
-  store) · `json_schema JSONB NOT NULL` · `ui_schema JSONB` (M14.4 — widget hints, labels, help
-  text, field order, sitting beside `json_schema`; a block type's data shape and its editing
-  affordances are declared together, so the admin form is derived, never hand-written per type) ·
-  `status TEXT CHECK (status IN ('ACTIVE','RETIRED'))` · `sort_order` · timestamps + soft-delete
+  store) · `json_schema JSONB NOT NULL` · `ui_schema JSONB NOT NULL DEFAULT '{}'` (M14.4, built
+  2026-08-27, `migrations/0024_content_ui_schema.sql` — widget hints, labels, help text, field
+  order, sitting beside `json_schema`; a block type's data shape and its editing affordances are
+  declared together, so the admin form is derived, never hand-written per type; `NOT NULL DEFAULT
+  '{}'` — matching `content_sites.theme`'s own precedent — so a block type inserted without one
+  still renders a degenerate but non-crashing form) · `status TEXT CHECK (status IN
+  ('ACTIVE','RETIRED'))` · `sort_order` · timestamps + soft-delete
 
 **`content_document_revisions`** (M14.6, new)
 - `id` PK (`uuid`) · `document_id` FK → `content_documents` · `revision_no INT NOT NULL` · a
@@ -345,5 +348,23 @@ exist first.
   original URL. **Known limitation:** OneDrive's short `1drv.ms` links are not normalized — doing
   so would require following a redirect server-side, i.e. fetching an admin-supplied URL, which
   this arc's own SSRF discipline forbids; they pass through unchanged. The editor-side "did this
-  URL load" probe named in the milestone is deferred to M14.4, since the admin editor is still the
-  raw JSON-textarea UI and there is no per-field surface to attach a probe to yet.
+  URL load" probe named in the milestone was not built at M14.3 (the admin editor was still the raw
+  JSON-textarea UI, with no per-field surface to attach a probe to) **and stays unbuilt at M14.4
+  too, decided with the owner rather than assumed** — M14.4 replaces the JSON-textarea UI the probe
+  would attach to, but building the probe itself would mean an admin-configured `fetch`/`<img>`
+  load of an external URL from the admin origin, which needs its own CSP/SSRF review; unscheduled.
+- **Schema-driven block forms, built 2026-08-27 (M14.4).** `content_block_types.ui_schema` (widget
+  hints, labels, help text, field order) plus a generic, recursive form renderer in
+  `web/apps/admin` (`block-data-form.tsx`) replaced the raw-JSON `<Textarea>` editor for block
+  `data` — the block list's own `position`/`blockTypeCode`/add-remove controls are unchanged,
+  reserved for M14.5. Two named, deliberately-accepted gaps: **richText fields** (`heading.text`,
+  `paragraph.text`, `quote.text`, `staff_card.bio`, `list.content`) stay a schema-aware JSON
+  textarea — no rich-text/WYSIWYG editor exists anywhere in this codebase yet, and building one is
+  out of scope for this milestone; and a **`columns` block's schema-shape validation failure**
+  highlights the whole `columns` field group rather than a specific nested block/field, since
+  `blockvalidation.go`'s structural pass never descends into nested block data (a pre-existing gap,
+  not new — see the `columns` design-call note above). `Content:BlockDataInvalid` gained a `field`
+  safe-arg (mirroring `Content:BlockUrlNotAllowed`'s existing one), populated by
+  `topLevelFieldFromValidationError` filtering a jsonschema/v6 validation error's instance-location
+  path through the block type's own declared top-level `properties` keys — never a raw,
+  potentially-attacker-chosen path segment.

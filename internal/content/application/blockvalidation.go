@@ -5,22 +5,25 @@ package application
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/olehmushka/open-faith-map/internal/content/domain"
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	jsonschemakind "github.com/santhosh-tekuri/jsonschema/v6/kind"
 )
 
 // validateBlockData resolves blockTypeCode to an active block-type row and validates data against
 // its json_schema — content.md's "blocks always schema-valid at write time" invariant. A retired or
 // unknown code is domain.ErrBlockTypeNotFound; a schema violation is
-// domain.BlockDataInvalidError{BlockTypeCode, Position} (never the raw validator message, which
-// could echo arbitrary submitted content into a safe-arg — see transport/errors.go). Once
-// structurally valid, D-PublicSiteCSP's URL-scheme/embed-host allowlist runs as a second pass
-// (validateBlockURLs) — json_schema's own "format":"uri" keyword accepts a "javascript:" URI just
-// fine, so it cannot be the enforcement point for this.
+// domain.BlockDataInvalidError{BlockTypeCode, Position, Field} (never the raw validator message,
+// which could echo arbitrary submitted content into a safe-arg — see transport/errors.go; Field is
+// filtered through topLevelFieldFromValidationError for the same reason). Once structurally valid,
+// D-PublicSiteCSP's URL-scheme/embed-host allowlist runs as a second pass (validateBlockURLs) —
+// json_schema's own "format":"uri" keyword accepts a "javascript:" URI just fine, so it cannot be
+// the enforcement point for this.
 func validateBlockData(blockType domain.BlockType, position int, data []byte) error {
 	schemaDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(blockType.JSONSchema))
 	if err != nil {
@@ -40,12 +43,69 @@ func validateBlockData(blockType domain.BlockType, position int, data []byte) er
 		return &domain.BlockDataInvalidError{BlockTypeCode: blockType.Code, Position: position}
 	}
 	if err := sch.Validate(instance); err != nil {
-		return &domain.BlockDataInvalidError{BlockTypeCode: blockType.Code, Position: position}
+		return &domain.BlockDataInvalidError{
+			BlockTypeCode: blockType.Code,
+			Position:      position,
+			Field:         topLevelFieldFromValidationError(schemaDoc, err),
+		}
 	}
 	if err := validateBlockURLs(blockType, position, instance); err != nil {
 		return err
 	}
 	return nil
+}
+
+// topLevelFieldFromValidationError walks a jsonschema/v6 validation error tree (a nest of Causes,
+// since a top-level "oneOf"/"required" failure groups its sub-failures) for the first
+// InstanceLocation whose first path segment names one of the block type's own declared top-level
+// "properties" keys — a small, fixed, developer-authored set known from schemaDoc itself, never
+// from untrusted instance data. This is the one place an attacker-influenced string (e.g. an
+// unexpected property name, on a schema with additionalProperties:false) could otherwise reach a
+// Conjure safe-arg, so any path segment not in that set is dropped rather than surfaced. Deeper
+// paths (array indices, nested object keys) are intentionally not resolved this way — a "columns"
+// block's nested failures land on the bare "columns" field, and array-item failures land on the
+// bare array field name (e.g. "images"); BlockUrlNotAllowedError already reports more precise
+// per-item field names for the separate URL-allowlist pass.
+func topLevelFieldFromValidationError(schemaDoc any, err error) string {
+	props := topLevelPropertyNames(schemaDoc)
+
+	var walk func(*jsonschema.ValidationError) string
+	walk = func(ve *jsonschema.ValidationError) string {
+		// A "required" failure's own InstanceLocation is the *parent* object (root, for a
+		// top-level required field like image.alt) — the missing property name lives in
+		// ErrorKind.Missing instead, so it has to be appended before taking the first segment.
+		loc := ve.InstanceLocation
+		if req, ok := ve.ErrorKind.(*jsonschemakind.Required); ok && len(req.Missing) > 0 {
+			loc = append(append([]string{}, loc...), req.Missing[0])
+		}
+		if len(loc) > 0 {
+			if seg := loc[0]; props[seg] {
+				return seg
+			}
+		}
+		for _, cause := range ve.Causes {
+			if f := walk(cause); f != "" {
+				return f
+			}
+		}
+		return ""
+	}
+
+	var ve *jsonschema.ValidationError
+	if errors.As(err, &ve) {
+		return walk(ve)
+	}
+	return ""
+}
+
+func topLevelPropertyNames(schemaDoc any) map[string]bool {
+	out := map[string]bool{}
+	obj, _ := schemaDoc.(map[string]any)
+	props, _ := obj["properties"].(map[string]any)
+	for k := range props {
+		out[k] = true
+	}
+	return out
 }
 
 // allowedURLSchemes is D-PublicSiteCSP's scheme allowlist, applied to every URL-bearing block

@@ -23,7 +23,7 @@ func (q *Queries) DeleteBlocksForDocument(ctx context.Context, documentID string
 }
 
 const getBlockTypeByCode = `-- name: GetBlockTypeByCode :one
-SELECT id, code, name, json_schema, status, sort_order
+SELECT id, code, name, json_schema, ui_schema, status, sort_order
 FROM openfaithmap.content_block_types WHERE code = $1 AND deleted_at IS NULL
 `
 
@@ -32,6 +32,7 @@ type GetBlockTypeByCodeRow struct {
 	Code       string
 	Name       string
 	JsonSchema json.RawMessage
+	UiSchema   json.RawMessage
 	Status     string
 	SortOrder  int32
 }
@@ -44,6 +45,7 @@ func (q *Queries) GetBlockTypeByCode(ctx context.Context, code string) (GetBlock
 		&i.Code,
 		&i.Name,
 		&i.JsonSchema,
+		&i.UiSchema,
 		&i.Status,
 		&i.SortOrder,
 	)
@@ -282,7 +284,7 @@ func (q *Queries) InsertSite(ctx context.Context, arg InsertSiteParams) (InsertS
 }
 
 const listActiveBlockTypes = `-- name: ListActiveBlockTypes :many
-SELECT id, code, name, json_schema, status, sort_order
+SELECT id, code, name, json_schema, ui_schema, status, sort_order
 FROM openfaithmap.content_block_types
 WHERE status = 'ACTIVE' AND deleted_at IS NULL
 ORDER BY sort_order ASC
@@ -293,6 +295,7 @@ type ListActiveBlockTypesRow struct {
 	Code       string
 	Name       string
 	JsonSchema json.RawMessage
+	UiSchema   json.RawMessage
 	Status     string
 	SortOrder  int32
 }
@@ -311,6 +314,7 @@ func (q *Queries) ListActiveBlockTypes(ctx context.Context) ([]ListActiveBlockTy
 			&i.Code,
 			&i.Name,
 			&i.JsonSchema,
+			&i.UiSchema,
 			&i.Status,
 			&i.SortOrder,
 		); err != nil {

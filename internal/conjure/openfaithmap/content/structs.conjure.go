@@ -102,6 +102,7 @@ type BlockType struct {
 	Code       string          `json:"code"`
 	Name       string          `json:"name"`
 	JsonSchema interface{}     `json:"jsonSchema"`
+	UiSchema   interface{}     `json:"uiSchema"`
 	Status     BlockTypeStatus `json:"status"`
 	SortOrder  int             `json:"sortOrder"`
 }

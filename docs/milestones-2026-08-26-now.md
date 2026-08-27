@@ -9,17 +9,18 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0, M14.1, M14.2 and M14.3 (all
-2026-08-27) are done**, no other sub-milestone is built yet. It is the second half of the product:
-M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation site
-builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
-M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
-module-doc rewrites, and ruled on **U16** (tightened) and the M14.10 nav assumption (replaced with
-a hand-built menu); see [architecture/decisions.md](architecture/decisions.md) and the Unresolved
-unknowns table below. **M14.1 closed the live stored-XSS hole** that ran ahead of any other
-feature work in the arc. **M14.2 replaced plain-string block text with a structured richText node
-model.** **M14.3 normalizes known share-link hosts and requires `alt`** — see its own row below.
-Next up: M14.4.
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.4 (all 2026-08-27) are
+done**, no other sub-milestone is built yet. It is the second half of the product: M4/M13 finished
+**discovery** (the map); M14 finishes **presence** (the per-congregation site builder), whose bones
+shipped at M3/M4 and were never built on. Nineteen sub-milestones, M14.0–M14.18. **M14.0 was the
+gate for the whole arc** — it wrote the nine `D-` blocks and the module-doc rewrites, and ruled on
+**U16** (tightened) and the M14.10 nav assumption (replaced with a hand-built menu); see
+[architecture/decisions.md](architecture/decisions.md) and the Unresolved unknowns table below.
+**M14.1 closed the live stored-XSS hole** that ran ahead of any other feature work in the arc.
+**M14.2 replaced plain-string block text with a structured richText node model.** **M14.3
+normalizes known share-link hosts and requires `alt`.** **M14.4 kills the JSON-textarea block
+editor**, replacing it with a generic form derived from `json_schema` + a new `ui_schema` — see its
+own row below. Next up: M14.5.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -68,7 +69,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.1 · Content security baseline | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-27), fixes the live stored XSS; nothing else in the arc ships first.** URL **scheme** allowlist (`https`/`http`/`mailto`/`tel`) on every URL-bearing block field, enforced at write in `blockvalidation.go` (new typed `Content:BlockUrlNotAllowed` error), plus an embed **host** allowlist keyed by platform/block type (`social_embed`, YouTube-only for `youtube_embed` — no Vimeo block type exists yet). Defensive re-validation in the renderer (`web/apps/web/lib/block-security.ts`) because pre-M14.1 rows already existed unvalidated. `sandbox` + `referrerpolicy` on the `youtube_embed` iframe. CSP and security headers in both `next.config.ts` files (previously three lines each, zero headers) — verified present on a real response from both apps against the running stack. New invariant: `dangerouslySetInnerHTML` appears in neither app, ever — enforced by a new ESLint `no-restricted-syntax` rule, not just a point-in-time grep. Verified against a real pre-existing row inserted directly via SQL (bypassing the API): the malicious block renders dropped, not executed. `Verified` awaits CI green on `main`. |
 | M14.2 · Rich-text node model | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** A shared `richText` JSON-Schema definition — inline `text` runs carrying `bold`/`italic`/`link` marks, plus `list`/`listItem` — adopted by `paragraph`, `heading`, `quote`, `staff_card.bio` and a new `list` block. The renderer maps nodes to elements, so there is **no HTML parser and no sanitizer**: Drupal's filter-on-output problem is designed out rather than mitigated. Expand-and-data migration (`migrations/0022_content_richtext.sql`) updating those block types' `json_schema`, plus a data migration lifting existing plain strings into single-run nodes, in the same file. `Verified` awaits CI green on `main`. |
 | M14.3 · External media URLs, made survivable | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** Normalizer for known share-link hosts (Google Drive, Dropbox, the long-form OneDrive URL) → direct-content URL, applied at write with the original preserved in a new `originalUrl` field (**U15**). `alt` is now schema-**required** on `image`/`gallery`. `loading="lazy"` + `referrerpolicy` on every rendered image (`image`, `gallery`, `staff_card`). **Scoped down from the original text, named and reasoned, not silently dropped:** OneDrive's short `1drv.ms` links are not normalized (would require a server-side redirect-follow — the exact SSRF surface this arc forbids); the editor-side load probe is deferred to M14.4, since the admin editor is still the raw JSON-textarea UI with no per-field surface to attach one to yet. Records the future first-party `media` module as a designed seam so adding it later is additive. |
-| M14.4 · Schema-driven block forms | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | **The milestone that kills the JSON textarea.** New `content_block_types.ui_schema JSONB` (widget hints, labels, help text, field order) — WordPress's `block.json` lesson: a block's data schema and its editor controls are declared together, so the form is *derived*, never hand-written per type. Generic form renderer over `json_schema` + `ui_schema`. Typed Conjure validation errors land on the offending field instead of the current `?error=` query-string round trip. |
+| M14.4 · Schema-driven block forms | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** New `content_block_types.ui_schema JSONB NOT NULL DEFAULT '{}'` (widget hints, labels, help text, field order) — WordPress's `block.json` lesson: a block's data schema and its editor controls are declared together, so the form is *derived*, never hand-written per type. A generic, recursive form renderer (`web/apps/admin/.../documents/[documentId]/block-data-form.tsx`) replaces the raw-JSON `<Textarea>` for block *data* only — the outer block list's `position`/`blockTypeCode`/add-remove controls are untouched, reserved for M14.5. `Content:BlockDataInvalid` gained a `field` safe-arg (mirroring `Content:BlockUrlNotAllowed`'s existing one), populated by filtering a jsonschema/v6 validation error's instance-location path through the block type's own declared top-level `properties` keys — never a raw, potentially-attacker-chosen path segment; the admin editor now highlights the offending field inline instead of one generic `?error=` banner. **Two named, deliberately-accepted gaps, decided with the owner:** richText fields (`heading.text`, `paragraph.text`, `quote.text`, `staff_card.bio`, `list.content`) stay a schema-aware JSON textarea — no WYSIWYG editor exists in this codebase, and building one is out of scope here; and M14.3's deferred editor-side URL-load probe stays unbuilt (would need its own CSP/SSRF review, unscheduled). A `columns` block's schema-shape failure highlights the whole `columns` field group rather than a specific nested block, since the structural validation pass never descended into nested block data (pre-existing, not new). Migration: `migrations/0024_content_ui_schema.sql`. `Verified` awaits CI green on `main`. |
 | M14.5 · Inserter + drag-and-drop reorder | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Categorized block inserter with a one-line description per type — curation over choice, the consistent finding in the editor-UX research (13+ undifferentiated types is already past where an editor picks well). Drag-and-drop replaces the integer `position` input, **with keyboard-accessible move-up/move-down as a first-class path**: drag-only reordering is an accessibility failure, not a polish gap. |
 | M14.6 · Forward revisions, history, autosave | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_document_revisions`; a document gains separate *published* and *draft* revision pointers, so **editing a live page never touches what visitors see** (Drupal's forward-revision model). Autosave writes into the draft on a debounce with a visible saved/unsaved indicator — never silently over live content. Publish promotes draft→published. History list with restore. `ContentPublicService` reads the published revision. |
 | M14.7 · Preview | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Renders the draft revision through the **real public renderer** — not a second, drifting preview renderer — reached on the tenant subdomain via a short-lived signed token. `X-Robots-Tag: noindex`, no caching. Device-width toggle. Carries the WordPress CVE lesson directly: untrusted congregation content must never render inside the admin origin, and here it is cross-origin by construction. Depends on M14.6 and M14.9. |
@@ -365,21 +366,64 @@ such in the editor before publishing"** — deferred to M14.4 for the reason abo
 
 ### M14.4 · Schema-driven block forms
 
-**Not started.** Depends on M14.2 (rich-text fields need a rich-text widget) and M14.3 (URL fields
-need the probe widget). **This is the milestone that removes the JSON textarea.**
+**Built (2026-08-27).** Depended on M14.2 (rich-text fields) and M14.3 (URL fields) only in the
+sense that both those milestones' schema shapes needed to exist first, not on either building a
+widget for this one to reuse. **This is the milestone that removes the JSON textarea** for block
+*data* — the outer block list's `position`/`blockTypeCode`/add-remove controls are unchanged,
+reserved for M14.5.
 
-New `content_block_types.ui_schema JSONB`: widget hints, field labels, help text, and field
-ordering, sitting beside the existing `json_schema` — WordPress's `block.json` lesson, that a
-block's data shape and its editing affordances belong in one declaration. A generic form renderer
-in `web/apps/admin` builds each block's form from the pair, so adding a block type in M14.13
-produces a working editor form with no admin-app code change at all.
+New `content_block_types.ui_schema JSONB NOT NULL DEFAULT '{}'` (`migrations/0024_content_ui_schema.sql`):
+widget hints, field labels, help text, and field ordering, sitting beside the existing
+`json_schema` — WordPress's `block.json` lesson, that a block's data shape and its editing
+affordances belong in one declaration. A generic, recursive form renderer in `web/apps/admin`
+(`.../documents/[documentId]/block-data-form.tsx`) builds each block's form from the pair, so
+adding a block type in a future M14.13 will produce a working editor form with no admin-app code
+change at all — verified locally by inserting a 15th block type row directly via SQL and confirming
+it served a correct `uiSchema` through `listBlockTypes` and validated writes per-field with no
+admin-app code change.
 
-Typed Conjure validation errors are surfaced on the field that caused them, replacing the current
-pattern of redirecting to `?error=Content:BlockDataInvalid` and rendering one generic banner.
+Typed Conjure validation errors are now surfaced on the field that caused them:
+`Content:BlockDataInvalid` gained a `field` safe-arg (mirroring `Content:BlockUrlNotAllowed`'s
+existing one), populated by `topLevelFieldFromValidationError`
+(`internal/content/application/blockvalidation.go`) filtering a jsonschema/v6 validation error's
+instance-location path through the block type's own declared top-level `properties` keys — a
+required-field violation's own `InstanceLocation` points at the *parent* object, not the missing
+property, so the `required` keyword's `Missing` list is consulted specially. Never a raw path
+segment, which on an `additionalProperties:false` schema could otherwise leak an attacker-chosen
+key into a safe-arg — covered by a dedicated unit test
+(`internal/content/application/blockvalidation_test.go`). The admin editor reads the redirect's new
+`position`/`field` query params and highlights the one field on the one block row that failed,
+replacing the old single generic `?error=Content:BlockDataInvalid` banner.
 
-**Acceptance criteria.** Every seeded block type is editable with no JSON visible anywhere in the
-admin UI. A block type added at runtime through M14.13's catalog endpoint renders a usable form
-without a redeploy. A validation failure highlights the offending field.
+**Two named, deliberately-accepted gaps, decided with the owner rather than assumed:**
+- **richText fields** (`heading.text`, `paragraph.text`, `quote.text`, `staff_card.bio`,
+  `list.content`) stay a schema-aware JSON textarea (label + help text from `ui_schema`, but still
+  raw JSON) — no rich-text/WYSIWYG editor exists anywhere in this codebase, and building one is a
+  substantially larger, separate piece of work than this milestone's scope.
+- **M14.3's deferred editor-side "is this URL reachable" probe stays unbuilt.** M14.4 replaces the
+  JSON-textarea UI the probe would have attached to, but the probe itself would mean the admin
+  origin fetching/rendering an admin-supplied external URL, which needs its own CSP/SSRF review
+  distinct from this milestone's form-rendering work — unscheduled.
+
+A `columns` block's schema-shape validation failure highlights the whole `columns` field group
+rather than a specific nested block/field, since `blockvalidation.go`'s structural pass never
+descends into nested block data (a pre-existing gap carried from M14.2/M14.3's own migrations, not
+new here). The `block-list` widget (`columns.columns[].blocks`) is the one recursive case: each
+nested item's own `blockTypeCode` is looked up against the full catalog and rendered with that
+type's own `json_schema`+`ui_schema`, which is how nested block data can be a real form at all
+despite never being schema-constrained itself.
+
+**Acceptance criteria — met, verified against the running dev stack over the real HTTP/Conjure
+boundary (curl/node, not a browser session — no headless path to a real Google OAuth login exists
+for this app, so the rendered React form itself was verified by build/typecheck/lint against the
+same widget-switch code, not by eye).** A missing-required-field write (`image` with no `alt`,
+`gallery` with an item missing `alt`) returns `Content:BlockDataInvalid` with `field` set to `alt`/
+`images` respectively; a disallowed-scheme write (`button.href = javascript:...`) returns
+`Content:BlockUrlNotAllowed` with `field: "href"`; a well-formed write across scalar/array/nested
+(`columns` with a nested `paragraph`) block types succeeds. A block type inserted directly via SQL
+(simulating a future M14.13 catalog write, which doesn't exist yet) immediately serves its
+`uiSchema` through `listBlockTypes` and accepts/rejects writes against its own `json_schema` with
+the same per-field error behavior — with zero admin-app code change.
 
 ### M14.5 · Inserter + drag-and-drop reorder
 

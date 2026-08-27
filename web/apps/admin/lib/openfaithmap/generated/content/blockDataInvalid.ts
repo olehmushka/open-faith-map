@@ -5,6 +5,7 @@ export interface IBlockDataInvalid {
     'parameters': {
         blockTypeCode: string;
         position: number;
+        field: string;
     };
 }
 

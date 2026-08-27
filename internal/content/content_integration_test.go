@@ -363,6 +363,8 @@ func TestContentIntegration(t *testing.T) {
 	var noAltErr *contentdomain.BlockDataInvalidError
 	if !errors.As(err, &noAltErr) {
 		t.Errorf("PutBlocks(image, no alt) error = %v, want BlockDataInvalidError", err)
+	} else if noAltErr.Field != "alt" {
+		t.Errorf("PutBlocks(image, no alt) Field = %q, want %q", noAltErr.Field, "alt")
 	}
 
 	_, err = contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
@@ -373,5 +375,7 @@ func TestContentIntegration(t *testing.T) {
 	var noGalleryAltErr *contentdomain.BlockDataInvalidError
 	if !errors.As(err, &noGalleryAltErr) {
 		t.Errorf("PutBlocks(gallery, no alt) error = %v, want BlockDataInvalidError", err)
+	} else if noGalleryAltErr.Field != "images" {
+		t.Errorf("PutBlocks(gallery, no alt) Field = %q, want %q", noGalleryAltErr.Field, "images")
 	}
 }

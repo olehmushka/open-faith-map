@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { BlockDataForm } from "./block-data-form";
+
 const NO_PARENT = "__none__";
 
 // The API has no single-document GET (content.md never lists one) — find it by filtering
@@ -35,11 +37,12 @@ export default async function DocumentEditorPage({
   searchParams,
 }: {
   params: Promise<{ locale: string; unitId: string; documentId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; position?: string; field?: string }>;
 }) {
   const { locale, unitId, documentId } = await params;
   const t = await getTranslations("DocumentEditorPage");
-  const { error } = await searchParams;
+  const { error, position: erroredPositionParam, field: erroredField } = await searchParams;
+  const erroredPosition = erroredPositionParam !== undefined ? Number(erroredPositionParam) : undefined;
   const site = await getSite(unitId).catch(() => null);
   if (!site) return redirect({ href: `/admin/sites/${unitId}`, locale });
 
@@ -89,8 +92,14 @@ export default async function DocumentEditorPage({
       await putBlocks(documentId, inputs);
     } catch (e) {
       if (e && typeof e === "object" && "errorName" in e) {
+        const errorName = String((e as { errorName: string }).errorName);
+        const parameters =
+          "parameters" in e ? (e as { parameters?: Record<string, unknown> }).parameters : undefined;
+        const params = new URLSearchParams({ error: errorName });
+        if (typeof parameters?.position === "number") params.set("position", String(parameters.position));
+        if (typeof parameters?.field === "string" && parameters.field) params.set("field", parameters.field);
         redirect({
-          href: `/admin/sites/${unitId}/documents/${documentId}?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`,
+          href: `/admin/sites/${unitId}/documents/${documentId}?${params.toString()}`,
           locale,
         });
       }
@@ -124,11 +133,11 @@ export default async function DocumentEditorPage({
         <Badge variant="outline">{doc.state}</Badge>
       </div>
 
-      {error && (
+      {error && !((error === "Content:BlockDataInvalid" || error === "Content:BlockUrlNotAllowed") && erroredField) && (
         <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
           {error === "Content:SlugTaken"
             ? t("errorSlugTaken")
-            : error === "Content:BlockDataInvalid"
+            : error === "Content:BlockDataInvalid" || error === "Content:BlockUrlNotAllowed"
               ? t("errorBlockDataInvalid")
               : t("errorGeneric", { error })}
         </p>
@@ -192,25 +201,42 @@ export default async function DocumentEditorPage({
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">{t("blocksHint")}</p>
           <form action={saveBlocks} className="flex flex-col gap-4">
-            {blocks.map((b) => (
-              <div key={b.id} className="grid grid-cols-[6rem_10rem_1fr] gap-2 rounded-md border p-3">
-                <Input name="position" type="number" defaultValue={b.position} className="h-8" />
-                <Select name="blockTypeCode" defaultValue={b.blockTypeCode}>
-                  <SelectTrigger size="sm" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {blockTypes.map((bt) => (
-                      <SelectItem key={bt.code} value={bt.code}>
-                        {bt.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Textarea name="data" defaultValue={JSON.stringify(b.data)} rows={3} className="font-mono text-xs" />
-              </div>
-            ))}
+            {blocks.map((b) => {
+              const blockType = blockTypes.find((bt) => bt.code === b.blockTypeCode);
+              return (
+                <div key={b.id} className="grid grid-cols-[6rem_10rem_1fr] gap-2 rounded-md border p-3">
+                  <Input name="position" type="number" defaultValue={b.position} className="h-8" />
+                  <Select name="blockTypeCode" defaultValue={b.blockTypeCode}>
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {blockTypes.map((bt) => (
+                        <SelectItem key={bt.code} value={bt.code}>
+                          {bt.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {blockType ? (
+                    <BlockDataForm
+                      blockType={blockType}
+                      blockTypes={blockTypes}
+                      initialData={b.data}
+                      erroredField={b.position === erroredPosition ? erroredField : undefined}
+                    />
+                  ) : (
+                    <Textarea name="data" defaultValue={JSON.stringify(b.data)} rows={3} className="font-mono text-xs" />
+                  )}
+                </div>
+              );
+            })}
 
+            {/* New-block row: the blockTypeCode Select is untouched per M14.5's scope boundary (it
+                owns the inserter), so it stays an uncontrolled native Select — meaning this row's
+                form always renders blockTypes[0]'s fields, not whichever type the dropdown is
+                switched to. Acceptable for M14.4: a real block always gets its own correct form
+                once saved and reloaded; only the not-yet-saved new-row preview can mismatch. */}
             <div className="grid grid-cols-[6rem_10rem_1fr] gap-2 rounded-md border border-dashed p-3">
               <Input name="position" type="number" defaultValue={nextPosition} className="h-8" />
               <Select name="blockTypeCode" defaultValue={blockTypes[0]?.code}>
@@ -225,7 +251,11 @@ export default async function DocumentEditorPage({
                   ))}
                 </SelectContent>
               </Select>
-              <Textarea name="data" defaultValue="{}" rows={3} className="font-mono text-xs" />
+              {blockTypes[0] ? (
+                <BlockDataForm blockType={blockTypes[0]} blockTypes={blockTypes} initialData={{}} />
+              ) : (
+                <Textarea name="data" defaultValue="{}" rows={3} className="font-mono text-xs" />
+              )}
             </div>
 
             <Button type="submit" className="self-start">
