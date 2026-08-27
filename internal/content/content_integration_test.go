@@ -378,4 +378,143 @@ func TestContentIntegration(t *testing.T) {
 	} else if noGalleryAltErr.Field != "images" {
 		t.Errorf("PutBlocks(gallery, no alt) Field = %q, want %q", noGalleryAltErr.Field, "images")
 	}
+
+	// paragraphText extracts a paragraph block's plain text, tolerating key-order/whitespace
+	// differences the richText validation pipeline introduces by re-marshaling (raw string equality
+	// against block.Data is too fragile for these assertions).
+	paragraphText := func(t *testing.T, data json.RawMessage) string {
+		t.Helper()
+		var v struct {
+			Text []struct {
+				Text string `json:"text"`
+			} `json:"text"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			t.Fatalf("unmarshal paragraph data: %v", err)
+		}
+		if len(v.Text) != 1 {
+			t.Fatalf("paragraph data = %s, want exactly one text run", data)
+		}
+		return v.Text[0].Text
+	}
+
+	// --- M14.6: forward revisions. doc is still DRAFT at this point (never transitioned above) —
+	// GetPublicBlocks must 404, same "draft is never public" invariant as before this milestone.
+	if _, err := contentSvc.GetPublicBlocks(context.Background(), doc.ID); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+		t.Errorf("GetPublicBlocks(draft doc) error = %v, want ErrDocumentNotFound", err)
+	}
+
+	// Reset to a known single-block draft so the assertions below aren't tangled up in every block
+	// type exercised above.
+	if _, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"Published text"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks(reset before publish): %v", err)
+	}
+
+	if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionPublish); err != nil {
+		t.Fatalf("TransitionDocument(PUBLISH): %v", err)
+	}
+	publishedFirst, err := contentSvc.GetPublicBlocks(context.Background(), doc.ID)
+	if err != nil {
+		t.Fatalf("GetPublicBlocks (after first publish): %v", err)
+	}
+	if len(publishedFirst) != 1 || paragraphText(t, publishedFirst[0].Data) != "Published text" {
+		t.Fatalf("GetPublicBlocks (after first publish) = %+v, want the just-published paragraph", publishedFirst)
+	}
+
+	// Editing the draft heavily after publish must never move what the public site serves — the
+	// milestone's core acceptance criterion.
+	if _, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"Changed after publish, not yet republished"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks(edit after publish): %v", err)
+	}
+	stillPublished, err := contentSvc.GetPublicBlocks(context.Background(), doc.ID)
+	if err != nil {
+		t.Fatalf("GetPublicBlocks (after draft edit, before republish): %v", err)
+	}
+	if got := paragraphText(t, stillPublished[0].Data); got != "Published text" {
+		t.Fatalf("GetPublicBlocks (after draft edit, before republish) = %q, want unchanged published text", got)
+	}
+	draftAfterEdit, err := contentSvc.GetBlocks(adminCtx, doc.ID)
+	if err != nil {
+		t.Fatalf("GetBlocks (draft after edit): %v", err)
+	}
+	if got := paragraphText(t, draftAfterEdit[0].Data); got != "Changed after publish, not yet republished" {
+		t.Fatalf("GetBlocks (draft after edit) = %q, want the new, unpublished text", got)
+	}
+
+	// --- ListRevisions/RestoreRevision are content.manage-gated like every other admin endpoint.
+	if _, err := contentSvc.ListRevisions(otherCtx, doc.ID); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("ListRevisions by non-manager error = %v, want ErrForbidden", err)
+	}
+	revisions, err := contentSvc.ListRevisions(adminCtx, doc.ID)
+	if err != nil {
+		t.Fatalf("ListRevisions: %v", err)
+	}
+	if len(revisions) != 1 {
+		t.Fatalf("ListRevisions after one publish = %d entries, want 1", len(revisions))
+	}
+	checkpointID := revisions[0].ID
+
+	if _, err := contentSvc.RestoreRevision(otherCtx, doc.ID, checkpointID); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("RestoreRevision by non-manager error = %v, want ErrForbidden", err)
+	}
+
+	// A revision id that belongs to a different document is never trusted just because it's a
+	// well-formed id — Content:RevisionNotFound, not silently accepted or leaked cross-document.
+	otherDoc, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-6-other-doc",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (other doc for cross-document revision check): %v", err)
+	}
+	documentIDs = append(documentIDs, otherDoc.ID)
+	if _, err := contentSvc.RestoreRevision(adminCtx, otherDoc.ID, checkpointID); !errors.Is(err, contentdomain.ErrRevisionNotFound) {
+		t.Errorf("RestoreRevision(otherDoc, doc's own revision) error = %v, want ErrRevisionNotFound", err)
+	}
+
+	// Restore loads the checkpoint into the draft ONLY (owner decision, 2026-08-28) — it must not
+	// touch what's published.
+	restored, err := contentSvc.RestoreRevision(adminCtx, doc.ID, checkpointID)
+	if err != nil {
+		t.Fatalf("RestoreRevision: %v", err)
+	}
+	if got := paragraphText(t, restored[0].Data); got != "Published text" {
+		t.Errorf("RestoreRevision result = %q, want the checkpoint's original text", got)
+	}
+	draftAfterRestore, err := contentSvc.GetBlocks(adminCtx, doc.ID)
+	if err != nil {
+		t.Fatalf("GetBlocks (draft after restore): %v", err)
+	}
+	if got := paragraphText(t, draftAfterRestore[0].Data); got != "Published text" {
+		t.Errorf("GetBlocks (draft after restore) = %q, want the restored text", got)
+	}
+	stillPublishedAfterRestore, err := contentSvc.GetPublicBlocks(context.Background(), doc.ID)
+	if err != nil {
+		t.Fatalf("GetPublicBlocks (after restore, no republish): %v", err)
+	}
+	if got := paragraphText(t, stillPublishedAfterRestore[0].Data); got != "Published text" {
+		t.Errorf("GetPublicBlocks (after restore, no republish) = %q, want unchanged (restore never auto-publishes)", got)
+	}
+
+	// --- Retention: the 50-most-recent cap prunes older checkpoints on every publish beyond it
+	// (owner decision, 2026-08-28). One checkpoint already exists from the publish above; 55 more
+	// republish cycles push the total to 56, so the cap must have trimmed it back to 50.
+	for i := 0; i < 55; i++ {
+		if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionUnlist); err != nil {
+			t.Fatalf("retention test: unlist iteration %d: %v", i, err)
+		}
+		if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionPublish); err != nil {
+			t.Fatalf("retention test: publish iteration %d: %v", i, err)
+		}
+	}
+	prunedRevisions, err := contentSvc.ListRevisions(adminCtx, doc.ID)
+	if err != nil {
+		t.Fatalf("ListRevisions (after 56 total publishes): %v", err)
+	}
+	if len(prunedRevisions) != 50 {
+		t.Errorf("ListRevisions (after 56 total publishes) = %d entries, want the 50-revision cap", len(prunedRevisions))
+	}
 }

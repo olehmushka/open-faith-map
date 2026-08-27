@@ -1363,6 +1363,156 @@ func (e *ParentTooDeep) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type revisionNotFound struct {
+	RevisionId string `json:"revisionId"`
+}
+
+func (o revisionNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *revisionNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewRevisionNotFound returns new instance of RevisionNotFound error.
+func NewRevisionNotFound(revisionIdArg string) *RevisionNotFound {
+	return &RevisionNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), revisionNotFound: revisionNotFound{RevisionId: revisionIdArg}}
+}
+
+// WrapWithRevisionNotFound returns new instance of RevisionNotFound error wrapping an existing error.
+func WrapWithRevisionNotFound(err error, revisionIdArg string) *RevisionNotFound {
+	return &RevisionNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, revisionNotFound: revisionNotFound{RevisionId: revisionIdArg}}
+}
+
+// RevisionNotFound is an error type.
+// M14.6. The revision id either doesn't exist or belongs to a different document — revisionId is never trusted to already be scoped to the documentId in the request path.
+type RevisionNotFound struct {
+	errorInstanceID uuid.UUID
+	revisionNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsRevisionNotFound returns true if err is an instance of RevisionNotFound.
+func IsRevisionNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*RevisionNotFound)
+	return ok
+}
+
+func (e *RevisionNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Content:RevisionNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *RevisionNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *RevisionNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *RevisionNotFound) Message() string {
+	return "NOT_FOUND Content:RevisionNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *RevisionNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *RevisionNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *RevisionNotFound) Name() string {
+	return "Content:RevisionNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *RevisionNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *RevisionNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"revisionId": e.RevisionId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *RevisionNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"revisionId": e.RevisionId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *RevisionNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *RevisionNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *RevisionNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e RevisionNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.revisionNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Content:RevisionNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *RevisionNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters revisionNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.revisionNotFound = parameters
+	return nil
+}
+
 type siteNotFound struct {
 	SiteId string `json:"siteId"`
 }
@@ -1673,6 +1823,7 @@ func init() {
 	conjureerrors.RegisterErrorType("Content:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("Content:InvalidTransition", reflect.TypeOf(InvalidTransition{}))
 	conjureerrors.RegisterErrorType("Content:ParentTooDeep", reflect.TypeOf(ParentTooDeep{}))
+	conjureerrors.RegisterErrorType("Content:RevisionNotFound", reflect.TypeOf(RevisionNotFound{}))
 	conjureerrors.RegisterErrorType("Content:SiteNotFound", reflect.TypeOf(SiteNotFound{}))
 	conjureerrors.RegisterErrorType("Content:SlugTaken", reflect.TypeOf(SlugTaken{}))
 }

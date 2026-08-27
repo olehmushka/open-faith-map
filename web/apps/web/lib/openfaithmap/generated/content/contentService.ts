@@ -4,6 +4,7 @@ import { ICreateSiteRequest } from "./createSiteRequest";
 import { IDocument } from "./document";
 import { IDocumentPage } from "./documentPage";
 import { IPutBlocksRequest } from "./putBlocksRequest";
+import { IRevisionPage } from "./revisionPage";
 import { ISite } from "./site";
 import { ITransitionDocumentRequest } from "./transitionDocumentRequest";
 import { IUpdateDocumentRequest } from "./updateDocumentRequest";
@@ -27,8 +28,18 @@ export interface IContentService {
     transitionDocument(documentId: string, request: ITransitionDocumentRequest): Promise<IDocument>;
     /** Admin read — works regardless of document state. */
     getBlocks(documentId: string): Promise<IBlockList>;
-    /** Full replace, validated against each referenced block type's json_schema. */
+    /**
+     * Full replace of the draft revision's blocks, validated against each referenced block type's json_schema (M14.6: this writes the draft only — never what's published — so this one endpoint serves both the editor's manual save and its debounced autosave).
+     *
+     */
     putBlocks(documentId: string, request: IPutBlocksRequest): Promise<IBlockList>;
+    /** History list (M14.6) — every past checkpoint, newest first, excluding the draft itself. */
+    listRevisions(documentId: string): Promise<IRevisionPage>;
+    /**
+     * Copies a past checkpoint's blocks into the draft — into the draft only, never auto-publishing (owner decision, 2026-08-28). Publish afterward to make it live.
+     *
+     */
+    restoreRevision(documentId: string, revisionId: string): Promise<IBlockList>;
 }
 
 export class ContentService implements IContentService {
@@ -158,7 +169,10 @@ export class ContentService implements IContentService {
         );
     }
 
-    /** Full replace, validated against each referenced block type's json_schema. */
+    /**
+     * Full replace of the draft revision's blocks, validated against each referenced block type's json_schema (M14.6: this writes the draft only — never what's published — so this one endpoint serves both the editor's manual save and its debounced autosave).
+     *
+     */
     public putBlocks(documentId: string, request: IPutBlocksRequest): Promise<IBlockList> {
         return this.bridge.call<IBlockList>(
             "ContentService",
@@ -170,6 +184,46 @@ export class ContentService implements IContentService {
             __undefined,
             [
                 documentId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** History list (M14.6) — every past checkpoint, newest first, excluding the draft itself. */
+    public listRevisions(documentId: string): Promise<IRevisionPage> {
+        return this.bridge.call<IRevisionPage>(
+            "ContentService",
+            "listRevisions",
+            "GET",
+            "/content/v1/documents/{documentId}/revisions",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                documentId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Copies a past checkpoint's blocks into the draft — into the draft only, never auto-publishing (owner decision, 2026-08-28). Publish afterward to make it live.
+     *
+     */
+    public restoreRevision(documentId: string, revisionId: string): Promise<IBlockList> {
+        return this.bridge.call<IBlockList>(
+            "ContentService",
+            "restoreRevision",
+            "POST",
+            "/content/v1/documents/{documentId}/revisions/{revisionId}/restore",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                documentId,
+                revisionId,
             ],
             __undefined,
             __undefined

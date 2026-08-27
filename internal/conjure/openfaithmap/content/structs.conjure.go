@@ -292,6 +292,31 @@ func (o *DocumentPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// One entry in a document's revision history (M14.6, D-ContentRevisions) — always a past checkpoint created at publish time, never the in-progress draft (listRevisions excludes it). Carries no blocks data: history is a timestamped list to restore from, not a diff viewer.
+type DocumentRevision struct {
+	RevisionId     string            `json:"revisionId"`
+	RevisionNo     int               `json:"revisionNo"`
+	CreatedAt      datetime.DateTime `json:"createdAt"`
+	AuthorPersonId *string           `json:"authorPersonId,omitempty"`
+	Label          *string           `json:"label,omitempty"`
+}
+
+func (o DocumentRevision) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *DocumentRevision) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type PutBlocksRequest struct {
 	Blocks []BlockInput `json:"blocks"`
 }
@@ -326,6 +351,47 @@ func (o PutBlocksRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *PutBlocksRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type RevisionPage struct {
+	Revisions []DocumentRevision `json:"revisions"`
+}
+
+func (o RevisionPage) MarshalJSON() ([]byte, error) {
+	if o.Revisions == nil {
+		o.Revisions = make([]DocumentRevision, 0)
+	}
+	type _tmpRevisionPage RevisionPage
+	return safejson.Marshal(_tmpRevisionPage(o))
+}
+
+func (o *RevisionPage) UnmarshalJSON(data []byte) error {
+	type _tmpRevisionPage RevisionPage
+	var rawRevisionPage _tmpRevisionPage
+	if err := safejson.Unmarshal(data, &rawRevisionPage); err != nil {
+		return err
+	}
+	if rawRevisionPage.Revisions == nil {
+		rawRevisionPage.Revisions = make([]DocumentRevision, 0)
+	}
+	*o = RevisionPage(rawRevisionPage)
+	return nil
+}
+
+func (o RevisionPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *RevisionPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

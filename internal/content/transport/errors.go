@@ -21,6 +21,7 @@ type errCtx struct {
 	FromState        string
 	Action           string
 	BlockTypeCode    string
+	RevisionID       string
 }
 
 // mapErr maps a domain/store error to this module's typed Conjure error. Any other error (a
@@ -54,6 +55,8 @@ func mapErr(err error, c errCtx) error {
 		return gencontent.NewInvalidTransition(c.DocumentID, c.FromState, c.Action)
 	case errors.Is(err, domain.ErrBlockTypeNotFound):
 		return gencontent.NewBlockTypeNotFound(c.BlockTypeCode)
+	case errors.Is(err, domain.ErrRevisionNotFound):
+		return gencontent.NewRevisionNotFound(c.RevisionID)
 	default:
 		return err
 	}

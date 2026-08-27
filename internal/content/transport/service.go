@@ -133,6 +133,22 @@ func (s *Service) PutBlocks(ctx context.Context, authHeader bearertoken.Token, d
 	return gencontent.BlockList{Blocks: toAPIBlocks(blocks)}, nil
 }
 
+func (s *Service) ListRevisions(ctx context.Context, authHeader bearertoken.Token, documentIdArg string) (gencontent.RevisionPage, error) {
+	revisions, err := s.appService.ListRevisions(ctx, documentIdArg)
+	if err != nil {
+		return gencontent.RevisionPage{}, mapErr(err, errCtx{DocumentID: documentIdArg})
+	}
+	return gencontent.RevisionPage{Revisions: toAPIRevisions(revisions)}, nil
+}
+
+func (s *Service) RestoreRevision(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, revisionIdArg string) (gencontent.BlockList, error) {
+	blocks, err := s.appService.RestoreRevision(ctx, documentIdArg, revisionIdArg)
+	if err != nil {
+		return gencontent.BlockList{}, mapErr(err, errCtx{DocumentID: documentIdArg, RevisionID: revisionIdArg})
+	}
+	return gencontent.BlockList{Blocks: toAPIBlocks(blocks)}, nil
+}
+
 func toAPISite(site domain.Site) gencontent.Site {
 	return gencontent.Site{
 		Id:                 site.ID,
@@ -195,6 +211,20 @@ func toAPIBlocks(blocks []domain.Block) []gencontent.Block {
 			Data:          unmarshalAny(b.Data),
 			CreatedAt:     datetime.DateTime(b.CreatedAt),
 			UpdatedAt:     datetime.DateTime(b.UpdatedAt),
+		})
+	}
+	return out
+}
+
+func toAPIRevisions(revisions []domain.DocumentRevision) []gencontent.DocumentRevision {
+	out := make([]gencontent.DocumentRevision, 0, len(revisions))
+	for _, r := range revisions {
+		out = append(out, gencontent.DocumentRevision{
+			RevisionId:     r.ID,
+			RevisionNo:     r.RevisionNo,
+			CreatedAt:      datetime.DateTime(r.CreatedAt),
+			AuthorPersonId: r.AuthorPersonID,
+			Label:          r.Label,
 		})
 	}
 	return out

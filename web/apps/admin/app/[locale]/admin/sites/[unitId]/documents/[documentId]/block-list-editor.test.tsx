@@ -35,10 +35,10 @@ const blockTypes: BlockType[] = [
 
 const blocks: Block[] = [makeBlock("b1", "heading", 0), makeBlock("b2", "paragraph", 1), makeBlock("b3", "quote", 2)];
 
-function renderEditor(action = vi.fn()) {
+function renderEditor(onAutosave = vi.fn().mockResolvedValue({ ok: true })) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <BlockListEditor documentId="doc-1" blocks={blocks} blockTypes={blockTypes} action={action} />
+      <BlockListEditor blocks={blocks} blockTypes={blockTypes} onAutosave={onAutosave} />
     </NextIntlClientProvider>,
   );
 }

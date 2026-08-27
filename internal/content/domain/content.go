@@ -78,6 +78,28 @@ type Document struct {
 	EventRecurrenceRRule *string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	// DraftRevisionID/PublishedRevisionID (M14.6, D-ContentRevisions) point into
+	// content_document_revisions. DraftRevisionID is set once, at document creation, and never
+	// changes — GetBlocks/PutBlocks always read/write that one row in place. PublishedRevisionID
+	// is nil until the document's first publish, then repointed at a fresh immutable checkpoint
+	// row on every subsequent publish.
+	DraftRevisionID     *string
+	PublishedRevisionID *string
+}
+
+// DocumentRevision is one row of a document's revision history (M14.6). Two roles share this
+// shape, distinguished only by which of Document's two pointers references a given row: the one
+// row a document's DraftRevisionID points at is mutated in place by every save; every other row is
+// an immutable checkpoint created at publish time. Data is a full ordered blocks snapshot — the
+// same shape Service.PutBlocks already validates — never a second copy of individual block rows.
+type DocumentRevision struct {
+	ID             string
+	DocumentID     string
+	RevisionNo     int
+	Data           json.RawMessage
+	AuthorPersonID *string
+	CreatedAt      time.Time
+	Label          *string
 }
 
 type CreateDocumentInput struct {
@@ -136,6 +158,7 @@ var (
 	ErrBlockTypeNotFound  = errors.New("block type not found or retired")
 	ErrBlockDataInvalid   = errors.New("block data failed json schema validation")
 	ErrBlockUrlNotAllowed = errors.New("block field failed URL scheme/embed host allowlist")
+	ErrRevisionNotFound   = errors.New("content document revision not found")
 )
 
 // SlugTakenError carries U5's resolution: an admin-chosen slug, probed for uniqueness at write

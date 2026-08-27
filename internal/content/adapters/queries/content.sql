@@ -26,22 +26,6 @@ FROM openfaithmap.content_block_types
 WHERE status = 'ACTIVE' AND deleted_at IS NULL
 ORDER BY sort_order ASC;
 
--- name: ListBlocks :many
-SELECT b.id, b.document_id, b.block_type_id, t.code AS block_type_code, b.position, b.data, b.created_at, b.updated_at
-FROM openfaithmap.content_blocks b
-JOIN openfaithmap.content_block_types t ON t.id = b.block_type_id
-WHERE b.document_id = sqlc.arg('document_id') AND b.deleted_at IS NULL
-ORDER BY b.position ASC;
-
--- name: DeleteBlocksForDocument :exec
-DELETE FROM openfaithmap.content_blocks WHERE document_id = sqlc.arg('document_id');
-
--- name: InsertBlockByTypeCode :exec
-INSERT INTO openfaithmap.content_blocks (document_id, block_type_id, position, data)
-SELECT sqlc.arg('document_id'), t.id, sqlc.arg('position'), sqlc.arg('data')
-FROM openfaithmap.content_block_types t
-WHERE t.code = sqlc.arg('block_type_code') AND t.deleted_at IS NULL;
-
 -- name: InsertDocument :one
 INSERT INTO openfaithmap.content_documents
 	(site_id, kind, translation_group_id, locale, parent_document_id, slug,
@@ -50,11 +34,11 @@ VALUES (sqlc.arg('site_id'), sqlc.arg('kind'), COALESCE(sqlc.narg('translation_g
 	sqlc.arg('locale'), sqlc.narg('parent_document_id'), sqlc.arg('slug'),
 	sqlc.narg('event_starts_at'), sqlc.narg('event_ends_at'), sqlc.narg('event_recurrence_rrule'))
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at;
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id;
 
 -- name: GetDocument :one
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
 FROM openfaithmap.content_documents WHERE id = sqlc.arg('id') AND deleted_at IS NULL;
 
 -- name: UpdateDocument :one
@@ -67,18 +51,18 @@ SET slug = COALESCE(sqlc.narg('slug'), slug),
     END
 WHERE id = sqlc.arg('id') AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at;
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id;
 
 -- name: UpdateDocumentState :one
 UPDATE openfaithmap.content_documents
 SET state = sqlc.arg('state'), published_at = CASE WHEN sqlc.arg('first_publish')::bool THEN now() ELSE published_at END
 WHERE id = sqlc.arg('id') AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at;
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id;
 
 -- name: ListDocuments :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
 FROM openfaithmap.content_documents
 WHERE site_id = sqlc.arg('site_id') AND deleted_at IS NULL
 	AND (sqlc.narg('kind')::text IS NULL OR kind = sqlc.narg('kind')::text)
@@ -88,9 +72,52 @@ ORDER BY created_at DESC;
 
 -- name: ListPublicDocuments :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
 FROM openfaithmap.content_documents
 WHERE site_id = sqlc.arg('site_id') AND deleted_at IS NULL AND state IN ('PUBLISHED', 'UNLISTED')
 	AND (sqlc.narg('kind')::text IS NULL OR kind = sqlc.narg('kind')::text)
 	AND (sqlc.narg('locale')::text IS NULL OR locale = sqlc.narg('locale')::text)
 ORDER BY CASE WHEN kind = 'EVENT' THEN event_starts_at END ASC NULLS LAST, created_at DESC;
+
+-- ---- revisions (M14.6) ----
+
+-- name: InsertRevision :one
+INSERT INTO openfaithmap.content_document_revisions (document_id, revision_no, data, author_person_id, label)
+VALUES (sqlc.arg('document_id'), sqlc.arg('revision_no'), sqlc.arg('data'), sqlc.narg('author_person_id'), sqlc.narg('label'))
+RETURNING id, document_id, revision_no, data, author_person_id, created_at, label;
+
+-- name: NextRevisionNo :one
+SELECT COALESCE(MAX(revision_no), 0) + 1 FROM openfaithmap.content_document_revisions WHERE document_id = sqlc.arg('document_id');
+
+-- name: GetRevision :one
+SELECT id, document_id, revision_no, data, author_person_id, created_at, label
+FROM openfaithmap.content_document_revisions WHERE id = sqlc.arg('id');
+
+-- name: UpdateRevisionData :one
+UPDATE openfaithmap.content_document_revisions SET data = sqlc.arg('data')
+WHERE id = sqlc.arg('id')
+RETURNING id, document_id, revision_no, data, author_person_id, created_at, label;
+
+-- name: SetDraftRevision :exec
+UPDATE openfaithmap.content_documents SET draft_revision_id = sqlc.arg('draft_revision_id') WHERE id = sqlc.arg('id');
+
+-- name: SetPublishedRevision :exec
+UPDATE openfaithmap.content_documents SET published_revision_id = sqlc.arg('published_revision_id') WHERE id = sqlc.arg('id');
+
+-- name: ListCheckpointRevisions :many
+SELECT id, document_id, revision_no, data, author_person_id, created_at, label
+FROM openfaithmap.content_document_revisions
+WHERE document_id = sqlc.arg('document_id') AND id != sqlc.arg('exclude_id')
+ORDER BY revision_no DESC;
+
+-- name: PruneCheckpointRevisions :exec
+DELETE FROM openfaithmap.content_document_revisions cdr
+WHERE cdr.document_id = sqlc.arg('document_id')
+  AND cdr.id != sqlc.arg('keep_draft_id')
+  AND cdr.id != sqlc.arg('keep_published_id')
+  AND cdr.revision_no <= (
+    SELECT r2.revision_no FROM openfaithmap.content_document_revisions r2
+    WHERE r2.document_id = sqlc.arg('document_id')
+    ORDER BY r2.revision_no DESC
+    OFFSET sqlc.arg('keep_count') LIMIT 1
+  );

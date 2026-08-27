@@ -132,8 +132,12 @@ type ContentService interface {
 	TransitionDocument(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, requestArg TransitionDocumentRequest) (Document, error)
 	// Admin read — works regardless of document state.
 	GetBlocks(ctx context.Context, authHeader bearertoken.Token, documentIdArg string) (BlockList, error)
-	// Full replace, validated against each referenced block type's json_schema.
+	// Full replace of the draft revision's blocks, validated against each referenced block type's json_schema (M14.6: this writes the draft only — never what's published — so this one endpoint serves both the editor's manual save and its debounced autosave).
 	PutBlocks(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, requestArg PutBlocksRequest) (BlockList, error)
+	// History list (M14.6) — every past checkpoint, newest first, excluding the draft itself.
+	ListRevisions(ctx context.Context, authHeader bearertoken.Token, documentIdArg string) (RevisionPage, error)
+	// Copies a past checkpoint's blocks into the draft — into the draft only, never auto-publishing (owner decision, 2026-08-28). Publish afterward to make it live.
+	RestoreRevision(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, revisionIdArg string) (BlockList, error)
 }
 
 // RegisterRoutesContentService registers handlers for the ContentService endpoints with a witchcraft wrouter.
@@ -166,6 +170,12 @@ func RegisterRoutesContentService(router wrouter.Router, impl ContentService, ro
 	}
 	if err := resource.Put("PutBlocks", "/content/v1/documents/{documentId}/blocks", httpserver.NewJSONHandler(handler.HandlePutBlocks, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add putBlocks route")
+	}
+	if err := resource.Get("ListRevisions", "/content/v1/documents/{documentId}/revisions", httpserver.NewJSONHandler(handler.HandleListRevisions, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listRevisions route")
+	}
+	if err := resource.Post("RestoreRevision", "/content/v1/documents/{documentId}/revisions/{revisionId}/restore", httpserver.NewJSONHandler(handler.HandleRestoreRevision, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add restoreRevision route")
 	}
 	return nil
 }
@@ -366,6 +376,52 @@ func (c *contentServiceHandler) HandlePutBlocks(rw http.ResponseWriter, req *htt
 		return errors.WrapWithInvalidArgument(err)
 	}
 	respArg, err := c.impl.PutBlocks(req.Context(), bearertoken.Token(authHeader), documentIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleListRevisions(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	documentIdArg, ok := pathParams["documentId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"documentId\" not present")
+	}
+	respArg, err := c.impl.ListRevisions(req.Context(), bearertoken.Token(authHeader), documentIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleRestoreRevision(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	documentIdArg, ok := pathParams["documentId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"documentId\" not present")
+	}
+	revisionIdArg, ok := pathParams["revisionId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"revisionId\" not present")
+	}
+	respArg, err := c.impl.RestoreRevision(req.Context(), bearertoken.Token(authHeader), documentIdArg, revisionIdArg)
 	if err != nil {
 		return err
 	}

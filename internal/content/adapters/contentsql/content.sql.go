@@ -13,15 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteBlocksForDocument = `-- name: DeleteBlocksForDocument :exec
-DELETE FROM openfaithmap.content_blocks WHERE document_id = $1
-`
-
-func (q *Queries) DeleteBlocksForDocument(ctx context.Context, documentID string) error {
-	_, err := q.db.Exec(ctx, deleteBlocksForDocument, documentID)
-	return err
-}
-
 const getBlockTypeByCode = `-- name: GetBlockTypeByCode :one
 SELECT id, code, name, json_schema, ui_schema, status, sort_order
 FROM openfaithmap.content_block_types WHERE code = $1 AND deleted_at IS NULL
@@ -54,7 +45,7 @@ func (q *Queries) GetBlockTypeByCode(ctx context.Context, code string) (GetBlock
 
 const getDocument = `-- name: GetDocument :one
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
 FROM openfaithmap.content_documents WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -73,6 +64,8 @@ type GetDocumentRow struct {
 	EventRecurrenceRrule pgtype.Text
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	DraftRevisionID      pgtype.Text
+	PublishedRevisionID  pgtype.Text
 }
 
 func (q *Queries) GetDocument(ctx context.Context, id string) (GetDocumentRow, error) {
@@ -93,6 +86,28 @@ func (q *Queries) GetDocument(ctx context.Context, id string) (GetDocumentRow, e
 		&i.EventRecurrenceRrule,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DraftRevisionID,
+		&i.PublishedRevisionID,
+	)
+	return i, err
+}
+
+const getRevision = `-- name: GetRevision :one
+SELECT id, document_id, revision_no, data, author_person_id, created_at, label
+FROM openfaithmap.content_document_revisions WHERE id = $1
+`
+
+func (q *Queries) GetRevision(ctx context.Context, id string) (OpenfaithmapContentDocumentRevision, error) {
+	row := q.db.QueryRow(ctx, getRevision, id)
+	var i OpenfaithmapContentDocumentRevision
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.RevisionNo,
+		&i.Data,
+		&i.AuthorPersonID,
+		&i.CreatedAt,
+		&i.Label,
 	)
 	return i, err
 }
@@ -153,30 +168,6 @@ func (q *Queries) GetSiteByUnit(ctx context.Context, congregationUnitRid string)
 	return i, err
 }
 
-const insertBlockByTypeCode = `-- name: InsertBlockByTypeCode :exec
-INSERT INTO openfaithmap.content_blocks (document_id, block_type_id, position, data)
-SELECT $1, t.id, $2, $3
-FROM openfaithmap.content_block_types t
-WHERE t.code = $4 AND t.deleted_at IS NULL
-`
-
-type InsertBlockByTypeCodeParams struct {
-	DocumentID    string
-	Position      int32
-	Data          json.RawMessage
-	BlockTypeCode string
-}
-
-func (q *Queries) InsertBlockByTypeCode(ctx context.Context, arg InsertBlockByTypeCodeParams) error {
-	_, err := q.db.Exec(ctx, insertBlockByTypeCode,
-		arg.DocumentID,
-		arg.Position,
-		arg.Data,
-		arg.BlockTypeCode,
-	)
-	return err
-}
-
 const insertDocument = `-- name: InsertDocument :one
 INSERT INTO openfaithmap.content_documents
 	(site_id, kind, translation_group_id, locale, parent_document_id, slug,
@@ -185,7 +176,7 @@ VALUES ($1, $2, COALESCE($3::uuid, gen_random_uuid()),
 	$4, $5, $6,
 	$7, $8, $9)
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
 `
 
 type InsertDocumentParams struct {
@@ -215,6 +206,8 @@ type InsertDocumentRow struct {
 	EventRecurrenceRrule pgtype.Text
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	DraftRevisionID      pgtype.Text
+	PublishedRevisionID  pgtype.Text
 }
 
 func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) (InsertDocumentRow, error) {
@@ -245,6 +238,45 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 		&i.EventRecurrenceRrule,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DraftRevisionID,
+		&i.PublishedRevisionID,
+	)
+	return i, err
+}
+
+const insertRevision = `-- name: InsertRevision :one
+
+INSERT INTO openfaithmap.content_document_revisions (document_id, revision_no, data, author_person_id, label)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, document_id, revision_no, data, author_person_id, created_at, label
+`
+
+type InsertRevisionParams struct {
+	DocumentID     string
+	RevisionNo     int32
+	Data           json.RawMessage
+	AuthorPersonID pgtype.Text
+	Label          pgtype.Text
+}
+
+// ---- revisions (M14.6) ----
+func (q *Queries) InsertRevision(ctx context.Context, arg InsertRevisionParams) (OpenfaithmapContentDocumentRevision, error) {
+	row := q.db.QueryRow(ctx, insertRevision,
+		arg.DocumentID,
+		arg.RevisionNo,
+		arg.Data,
+		arg.AuthorPersonID,
+		arg.Label,
+	)
+	var i OpenfaithmapContentDocumentRevision
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.RevisionNo,
+		&i.Data,
+		&i.AuthorPersonID,
+		&i.CreatedAt,
+		&i.Label,
 	)
 	return i, err
 }
@@ -328,43 +360,35 @@ func (q *Queries) ListActiveBlockTypes(ctx context.Context) ([]ListActiveBlockTy
 	return items, nil
 }
 
-const listBlocks = `-- name: ListBlocks :many
-SELECT b.id, b.document_id, b.block_type_id, t.code AS block_type_code, b.position, b.data, b.created_at, b.updated_at
-FROM openfaithmap.content_blocks b
-JOIN openfaithmap.content_block_types t ON t.id = b.block_type_id
-WHERE b.document_id = $1 AND b.deleted_at IS NULL
-ORDER BY b.position ASC
+const listCheckpointRevisions = `-- name: ListCheckpointRevisions :many
+SELECT id, document_id, revision_no, data, author_person_id, created_at, label
+FROM openfaithmap.content_document_revisions
+WHERE document_id = $1 AND id != $2
+ORDER BY revision_no DESC
 `
 
-type ListBlocksRow struct {
-	ID            string
-	DocumentID    string
-	BlockTypeID   string
-	BlockTypeCode string
-	Position      int32
-	Data          json.RawMessage
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+type ListCheckpointRevisionsParams struct {
+	DocumentID string
+	ExcludeID  string
 }
 
-func (q *Queries) ListBlocks(ctx context.Context, documentID string) ([]ListBlocksRow, error) {
-	rows, err := q.db.Query(ctx, listBlocks, documentID)
+func (q *Queries) ListCheckpointRevisions(ctx context.Context, arg ListCheckpointRevisionsParams) ([]OpenfaithmapContentDocumentRevision, error) {
+	rows, err := q.db.Query(ctx, listCheckpointRevisions, arg.DocumentID, arg.ExcludeID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListBlocksRow
+	var items []OpenfaithmapContentDocumentRevision
 	for rows.Next() {
-		var i ListBlocksRow
+		var i OpenfaithmapContentDocumentRevision
 		if err := rows.Scan(
 			&i.ID,
 			&i.DocumentID,
-			&i.BlockTypeID,
-			&i.BlockTypeCode,
-			&i.Position,
+			&i.RevisionNo,
 			&i.Data,
+			&i.AuthorPersonID,
 			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.Label,
 		); err != nil {
 			return nil, err
 		}
@@ -378,7 +402,7 @@ func (q *Queries) ListBlocks(ctx context.Context, documentID string) ([]ListBloc
 
 const listDocuments = `-- name: ListDocuments :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
 FROM openfaithmap.content_documents
 WHERE site_id = $1 AND deleted_at IS NULL
 	AND ($2::text IS NULL OR kind = $2::text)
@@ -409,6 +433,8 @@ type ListDocumentsRow struct {
 	EventRecurrenceRrule pgtype.Text
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	DraftRevisionID      pgtype.Text
+	PublishedRevisionID  pgtype.Text
 }
 
 func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([]ListDocumentsRow, error) {
@@ -440,6 +466,8 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 			&i.EventRecurrenceRrule,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DraftRevisionID,
+			&i.PublishedRevisionID,
 		); err != nil {
 			return nil, err
 		}
@@ -453,7 +481,7 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 
 const listPublicDocuments = `-- name: ListPublicDocuments :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
 FROM openfaithmap.content_documents
 WHERE site_id = $1 AND deleted_at IS NULL AND state IN ('PUBLISHED', 'UNLISTED')
 	AND ($2::text IS NULL OR kind = $2::text)
@@ -482,6 +510,8 @@ type ListPublicDocumentsRow struct {
 	EventRecurrenceRrule pgtype.Text
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	DraftRevisionID      pgtype.Text
+	PublishedRevisionID  pgtype.Text
 }
 
 func (q *Queries) ListPublicDocuments(ctx context.Context, arg ListPublicDocumentsParams) ([]ListPublicDocumentsRow, error) {
@@ -508,6 +538,8 @@ func (q *Queries) ListPublicDocuments(ctx context.Context, arg ListPublicDocumen
 			&i.EventRecurrenceRrule,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DraftRevisionID,
+			&i.PublishedRevisionID,
 		); err != nil {
 			return nil, err
 		}
@@ -517,6 +549,75 @@ func (q *Queries) ListPublicDocuments(ctx context.Context, arg ListPublicDocumen
 		return nil, err
 	}
 	return items, nil
+}
+
+const nextRevisionNo = `-- name: NextRevisionNo :one
+SELECT COALESCE(MAX(revision_no), 0) + 1 FROM openfaithmap.content_document_revisions WHERE document_id = $1
+`
+
+func (q *Queries) NextRevisionNo(ctx context.Context, documentID string) (int32, error) {
+	row := q.db.QueryRow(ctx, nextRevisionNo, documentID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const pruneCheckpointRevisions = `-- name: PruneCheckpointRevisions :exec
+DELETE FROM openfaithmap.content_document_revisions cdr
+WHERE cdr.document_id = $1
+  AND cdr.id != $2
+  AND cdr.id != $3
+  AND cdr.revision_no <= (
+    SELECT r2.revision_no FROM openfaithmap.content_document_revisions r2
+    WHERE r2.document_id = $1
+    ORDER BY r2.revision_no DESC
+    OFFSET $4 LIMIT 1
+  )
+`
+
+type PruneCheckpointRevisionsParams struct {
+	DocumentID      string
+	KeepDraftID     string
+	KeepPublishedID string
+	KeepCount       int32
+}
+
+func (q *Queries) PruneCheckpointRevisions(ctx context.Context, arg PruneCheckpointRevisionsParams) error {
+	_, err := q.db.Exec(ctx, pruneCheckpointRevisions,
+		arg.DocumentID,
+		arg.KeepDraftID,
+		arg.KeepPublishedID,
+		arg.KeepCount,
+	)
+	return err
+}
+
+const setDraftRevision = `-- name: SetDraftRevision :exec
+UPDATE openfaithmap.content_documents SET draft_revision_id = $1 WHERE id = $2
+`
+
+type SetDraftRevisionParams struct {
+	DraftRevisionID pgtype.Text
+	ID              string
+}
+
+func (q *Queries) SetDraftRevision(ctx context.Context, arg SetDraftRevisionParams) error {
+	_, err := q.db.Exec(ctx, setDraftRevision, arg.DraftRevisionID, arg.ID)
+	return err
+}
+
+const setPublishedRevision = `-- name: SetPublishedRevision :exec
+UPDATE openfaithmap.content_documents SET published_revision_id = $1 WHERE id = $2
+`
+
+type SetPublishedRevisionParams struct {
+	PublishedRevisionID pgtype.Text
+	ID                  string
+}
+
+func (q *Queries) SetPublishedRevision(ctx context.Context, arg SetPublishedRevisionParams) error {
+	_, err := q.db.Exec(ctx, setPublishedRevision, arg.PublishedRevisionID, arg.ID)
+	return err
 }
 
 const updateDocument = `-- name: UpdateDocument :one
@@ -529,7 +630,7 @@ SET slug = COALESCE($1, slug),
     END
 WHERE id = $4 AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
 `
 
 type UpdateDocumentParams struct {
@@ -554,6 +655,8 @@ type UpdateDocumentRow struct {
 	EventRecurrenceRrule pgtype.Text
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	DraftRevisionID      pgtype.Text
+	PublishedRevisionID  pgtype.Text
 }
 
 func (q *Queries) UpdateDocument(ctx context.Context, arg UpdateDocumentParams) (UpdateDocumentRow, error) {
@@ -579,6 +682,8 @@ func (q *Queries) UpdateDocument(ctx context.Context, arg UpdateDocumentParams) 
 		&i.EventRecurrenceRrule,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DraftRevisionID,
+		&i.PublishedRevisionID,
 	)
 	return i, err
 }
@@ -588,7 +693,7 @@ UPDATE openfaithmap.content_documents
 SET state = $1, published_at = CASE WHEN $2::bool THEN now() ELSE published_at END
 WHERE id = $3 AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
 `
 
 type UpdateDocumentStateParams struct {
@@ -612,6 +717,8 @@ type UpdateDocumentStateRow struct {
 	EventRecurrenceRrule pgtype.Text
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	DraftRevisionID      pgtype.Text
+	PublishedRevisionID  pgtype.Text
 }
 
 func (q *Queries) UpdateDocumentState(ctx context.Context, arg UpdateDocumentStateParams) (UpdateDocumentStateRow, error) {
@@ -632,6 +739,34 @@ func (q *Queries) UpdateDocumentState(ctx context.Context, arg UpdateDocumentSta
 		&i.EventRecurrenceRrule,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DraftRevisionID,
+		&i.PublishedRevisionID,
+	)
+	return i, err
+}
+
+const updateRevisionData = `-- name: UpdateRevisionData :one
+UPDATE openfaithmap.content_document_revisions SET data = $1
+WHERE id = $2
+RETURNING id, document_id, revision_no, data, author_person_id, created_at, label
+`
+
+type UpdateRevisionDataParams struct {
+	Data json.RawMessage
+	ID   string
+}
+
+func (q *Queries) UpdateRevisionData(ctx context.Context, arg UpdateRevisionDataParams) (OpenfaithmapContentDocumentRevision, error) {
+	row := q.db.QueryRow(ctx, updateRevisionData, arg.Data, arg.ID)
+	var i OpenfaithmapContentDocumentRevision
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.RevisionNo,
+		&i.Data,
+		&i.AuthorPersonID,
+		&i.CreatedAt,
+		&i.Label,
 	)
 	return i, err
 }
