@@ -205,6 +205,16 @@ types:
         code: INVALID_ARGUMENT
         safe-args:
           position: integer
+      BlockUrlNotAllowed:
+        docs: >
+          A URL-bearing block field failed D-PublicSiteCSP's scheme/host allowlist (schemes:
+          https, http, mailto, tel; embed hosts checked separately for social_embed).
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          blockTypeCode: string
+          position: integer
+          field: string
 
 services:
   ContentService:

@@ -7,6 +7,7 @@
 // with yet) fall through to a harmless no-op rather than crashing the page.
 import { getTranslations } from "next-intl/server";
 
+import { isValidYoutubeVideoId, safeEmbedSrc, safeSocialEmbedUrl, safeUrl } from "@/lib/block-security";
 import type { Block } from "@/lib/content";
 
 type BlocksT = Awaited<ReturnType<typeof getTranslations>>;
@@ -47,44 +48,62 @@ function BlockView({
     }
     case "paragraph":
       return <p>{String(data.text ?? "")}</p>;
-    case "image":
+    case "image": {
+      const src = safeUrl(data.url);
+      if (!src) return null;
       return (
         <figure>
           {/* eslint-disable-next-line @next/next/no-img-element -- external, unknown-dimension admin-authored URLs */}
-          <img src={String(data.url ?? "")} alt={String(data.alt ?? "")} className="max-w-full rounded" />
+          <img src={src} alt={String(data.alt ?? "")} className="max-w-full rounded" />
           {data.caption ? <figcaption className="text-sm text-gray-500">{String(data.caption)}</figcaption> : null}
         </figure>
       );
+    }
     case "gallery": {
       const images = Array.isArray(data.images) ? (data.images as { url: string; alt?: string }[]) : [];
+      const safeImages = images
+        .map((img) => ({ ...img, url: safeUrl(img.url) }))
+        .filter((img): img is { url: string; alt?: string } => Boolean(img.url));
       return (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {images.map((img, i) => (
+          {safeImages.map((img, i) => (
             // eslint-disable-next-line @next/next/no-img-element -- see "image" above
             <img key={i} src={img.url} alt={img.alt ?? ""} className="w-full rounded" />
           ))}
         </div>
       );
     }
-    case "youtube_embed":
+    case "youtube_embed": {
+      const videoId = data.videoId;
+      if (!isValidYoutubeVideoId(videoId)) return null;
+      const src = safeEmbedSrc("youtube_embed", `https://www.youtube.com/embed/${videoId}`);
+      if (!src) return null;
       return (
         <iframe
           className="aspect-video w-full rounded"
-          src={`https://www.youtube.com/embed/${String(data.videoId ?? "")}`}
+          src={src}
           title={String(data.title ?? t("youtubeVideoDefaultTitle"))}
           allowFullScreen
+          sandbox="allow-scripts allow-popups allow-presentation"
+          referrerPolicy="no-referrer"
         />
       );
-    case "social_embed":
+    }
+    case "social_embed": {
+      const href = safeSocialEmbedUrl(data.url, data.platform);
+      if (!href) return null;
       return (
-        <a href={String(data.url ?? "")} target="_blank" rel="noreferrer" className="underline">
+        <a href={href} target="_blank" rel="noreferrer" className="underline">
           {String(data.platform ?? t("socialFallback"))} {t("socialPost")}
         </a>
       );
-    case "button":
+    }
+    case "button": {
+      const href = safeUrl(data.href);
+      if (!href) return null;
       return (
         <a
-          href={String(data.href ?? "")}
+          href={href}
           className={
             data.style === "secondary"
               ? "inline-block rounded border px-4 py-2"
@@ -94,6 +113,7 @@ function BlockView({
           {String(data.label ?? "")}
         </a>
       );
+    }
     case "contact_info":
       return (
         <dl className="flex flex-col gap-1 text-sm">
@@ -116,12 +136,13 @@ function BlockView({
       );
     case "divider":
       return data.style === "space" ? <div className="h-8" /> : <hr />;
-    case "staff_card":
+    case "staff_card": {
+      const photoUrl = safeUrl(data.photoUrl);
       return (
         <div className="flex items-center gap-3">
-          {data.photoUrl ? (
+          {photoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- see "image" above
-            <img src={String(data.photoUrl)} alt="" className="h-16 w-16 rounded-full object-cover" />
+            <img src={photoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
           ) : null}
           <div>
             <p className="font-medium">{String(data.name ?? "")}</p>
@@ -130,6 +151,7 @@ function BlockView({
           </div>
         </div>
       );
+    }
     case "quote":
       return (
         <blockquote className="border-l-4 pl-4 italic">

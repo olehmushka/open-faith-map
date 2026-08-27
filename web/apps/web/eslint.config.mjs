@@ -19,6 +19,15 @@ export default tseslint.config(
     },
     rules: {
       ...nextPlugin.configs["core-web-vitals"].rules,
+      // D-PublicSiteCSP (M14.1): dangerouslySetInnerHTML is banned in this app, permanently —
+      // structured block data is rendered as elements, never as raw HTML strings.
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: "dangerouslySetInnerHTML is banned in this app (D-PublicSiteCSP) — render structured data, never raw HTML.",
+        },
+      ],
     },
   },
 );

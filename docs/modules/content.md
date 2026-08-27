@@ -304,9 +304,12 @@ exist first.
 - **go-oikumenea's `Authorize` appears to fail open on a nonexistent target unit under a subtree
   grant** — live-verified (see authorization-touchpoints), not exploitable through this module
   today, but worth a note to whoever next builds a target-scoped check against an unverified id.
-- **A live stored-XSS hole exists in `main` today — scheduled to M14.1, first in the M14 arc.**
-  `web/apps/web/app/blocks.tsx` renders `button.href`/`image.url`/`social_embed.url`/
-  `staff_card.photoUrl` with no scheme validation at any layer. See
+- **A live stored-XSS hole existed in `main` — resolved (2026-08-27, M14.1), first in the M14 arc.**
+  `web/apps/web/app/blocks.tsx` rendered `button.href`/`image.url`/`social_embed.url`/
+  `staff_card.photoUrl` with no scheme validation at any layer. Closed by a write-time scheme/
+  embed-host allowlist in `blockvalidation.go` (typed `Content:BlockUrlNotAllowed` error) plus
+  render-time re-validation in `blocks.tsx` — belt-and-braces, since rows written before this
+  landed were already unvalidated in the DB. See
   [D-PublicSiteCSP](../architecture/decisions.md#d-publicsitecsp--url-scheme-allowlist-embed-allowlist-and-security-headers).
 - **Full-text content search** (searching page/post bodies, not just location) has no owner yet —
   a candidate for a dedicated search index once content volume justifies one; not needed at MVP
