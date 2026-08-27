@@ -9,7 +9,7 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.4 (all 2026-08-27) are
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.5 (all 2026-08-27) are
 done**, no other sub-milestone is built yet. It is the second half of the product: M4/M13 finished
 **discovery** (the map); M14 finishes **presence** (the per-congregation site builder), whose bones
 shipped at M3/M4 and were never built on. Nineteen sub-milestones, M14.0–M14.18. **M14.0 was the
@@ -19,8 +19,9 @@ gate for the whole arc** — it wrote the nine `D-` blocks and the module-doc re
 **M14.1 closed the live stored-XSS hole** that ran ahead of any other feature work in the arc.
 **M14.2 replaced plain-string block text with a structured richText node model.** **M14.3
 normalizes known share-link hosts and requires `alt`.** **M14.4 kills the JSON-textarea block
-editor**, replacing it with a generic form derived from `json_schema` + a new `ui_schema` — see its
-own row below. Next up: M14.5.
+editor**, replacing it with a generic form derived from `json_schema` + a new `ui_schema`. **M14.5
+adds a categorized inserter and drag-and-drop/keyboard reorder**, retiring the manually-typed
+`position` field entirely — see its own row below. Next up: M14.6.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -70,7 +71,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.2 · Rich-text node model | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** A shared `richText` JSON-Schema definition — inline `text` runs carrying `bold`/`italic`/`link` marks, plus `list`/`listItem` — adopted by `paragraph`, `heading`, `quote`, `staff_card.bio` and a new `list` block. The renderer maps nodes to elements, so there is **no HTML parser and no sanitizer**: Drupal's filter-on-output problem is designed out rather than mitigated. Expand-and-data migration (`migrations/0022_content_richtext.sql`) updating those block types' `json_schema`, plus a data migration lifting existing plain strings into single-run nodes, in the same file. `Verified` awaits CI green on `main`. |
 | M14.3 · External media URLs, made survivable | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** Normalizer for known share-link hosts (Google Drive, Dropbox, the long-form OneDrive URL) → direct-content URL, applied at write with the original preserved in a new `originalUrl` field (**U15**). `alt` is now schema-**required** on `image`/`gallery`. `loading="lazy"` + `referrerpolicy` on every rendered image (`image`, `gallery`, `staff_card`). **Scoped down from the original text, named and reasoned, not silently dropped:** OneDrive's short `1drv.ms` links are not normalized (would require a server-side redirect-follow — the exact SSRF surface this arc forbids); the editor-side load probe is deferred to M14.4, since the admin editor is still the raw JSON-textarea UI with no per-field surface to attach one to yet. Records the future first-party `media` module as a designed seam so adding it later is additive. |
 | M14.4 · Schema-driven block forms | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** New `content_block_types.ui_schema JSONB NOT NULL DEFAULT '{}'` (widget hints, labels, help text, field order) — WordPress's `block.json` lesson: a block's data schema and its editor controls are declared together, so the form is *derived*, never hand-written per type. A generic, recursive form renderer (`web/apps/admin/.../documents/[documentId]/block-data-form.tsx`) replaces the raw-JSON `<Textarea>` for block *data* only — the outer block list's `position`/`blockTypeCode`/add-remove controls are untouched, reserved for M14.5. `Content:BlockDataInvalid` gained a `field` safe-arg (mirroring `Content:BlockUrlNotAllowed`'s existing one), populated by filtering a jsonschema/v6 validation error's instance-location path through the block type's own declared top-level `properties` keys — never a raw, potentially-attacker-chosen path segment; the admin editor now highlights the offending field inline instead of one generic `?error=` banner. **Two named, deliberately-accepted gaps, decided with the owner:** richText fields (`heading.text`, `paragraph.text`, `quote.text`, `staff_card.bio`, `list.content`) stay a schema-aware JSON textarea — no WYSIWYG editor exists in this codebase, and building one is out of scope here; and M14.3's deferred editor-side URL-load probe stays unbuilt (would need its own CSP/SSRF review, unscheduled). A `columns` block's schema-shape failure highlights the whole `columns` field group rather than a specific nested block, since the structural validation pass never descended into nested block data (pre-existing, not new). Migration: `migrations/0024_content_ui_schema.sql`. `Verified` awaits CI green on `main`. |
-| M14.5 · Inserter + drag-and-drop reorder | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Categorized block inserter with a one-line description per type — curation over choice, the consistent finding in the editor-UX research (13+ undifferentiated types is already past where an editor picks well). Drag-and-drop replaces the integer `position` input, **with keyboard-accessible move-up/move-down as a first-class path**: drag-only reordering is an accessibility failure, not a polish gap. |
+| M14.5 · Inserter + drag-and-drop reorder | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built (2026-08-27).** Categorized block inserter with a one-line description per type — curation over choice, the consistent finding in the editor-UX research (13+ undifferentiated types is already past where an editor picks well). Drag-and-drop replaces the integer `position` input, **with keyboard-accessible move-up/move-down as a first-class path**: drag-only reordering is an accessibility failure, not a polish gap. `Verified` awaits CI green on `main`. |
 | M14.6 · Forward revisions, history, autosave | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_document_revisions`; a document gains separate *published* and *draft* revision pointers, so **editing a live page never touches what visitors see** (Drupal's forward-revision model). Autosave writes into the draft on a debounce with a visible saved/unsaved indicator — never silently over live content. Publish promotes draft→published. History list with restore. `ContentPublicService` reads the published revision. |
 | M14.7 · Preview | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Renders the draft revision through the **real public renderer** — not a second, drifting preview renderer — reached on the tenant subdomain via a short-lived signed token. `X-Robots-Tag: noindex`, no caching. Device-width toggle. Carries the WordPress CVE lesson directly: untrusted congregation content must never render inside the admin origin, and here it is cross-origin by construction. Depends on M14.6 and M14.9. |
 | M14.8 · Editor polish | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Client-side undo/redo history stack. Real empty states ("Start from a template" → M14.13). Inline validation. A mobile-workable editor layout — the current one is a desktop form grid. |
@@ -427,19 +428,60 @@ the same per-field error behavior — with zero admin-app code change.
 
 ### M14.5 · Inserter + drag-and-drop reorder
 
-**Not started.** Depends on M14.4.
+**Built (2026-08-27).** Depends on M14.4 only in the sense that its schema-driven per-block form
+needed to exist first, not on reusing any of its widgets. **This is the milestone that removes the
+JSON textarea's last neighbors** — the block list's own `position` input and its single hardcoded
+"new block" row, both explicitly left in place by M14.4.
 
-A categorized block inserter with a one-line description per type. The editor-UX research is
-consistent that curation beats choice — an editor facing dozens of undifferentiated types will not
-pick the right one — and the catalog is already 13 types and about to grow.
+A categorized, searchable block inserter (`block-inserter.tsx`) replaces the old fixed "new block"
+row entirely: a shadcn `Command` palette (already installed, unused until now) grouped into **Text
+/ Media / Layout / Info & contact**, each item showing a one-line description alongside its name,
+filterable by either. The editor-UX research is consistent that curation beats choice — an editor
+facing 14 undifferentiated types will not pick the right one — and this also fixes, as a side
+effect, M14.4's documented "the new row can't preview the type you just picked" limitation: the
+inserted block's type is real controlled state from the moment it's added, not a native/uncontrolled
+`<Select>` pinned to `blockTypes[0]`.
 
-Drag-and-drop replaces the integer `position` input. **Keyboard-accessible move-up/move-down is
-built in the same milestone, as a first-class path, not a follow-up** — a drag-only reorder control
-is inaccessible to keyboard and screen-reader users, which for a platform whose public sites carry
-accessibility badges would be an unusually poor look.
+**The category/description mapping is a frontend-only static table**
+(`block-catalog.ts`), not a new `content_block_types` column — this milestone's own Backend/Migrated
+stage-board cells are `➖`, and a real schema column is M14.13's job once block types stop being
+migration-only. A block type absent from the map (e.g. one added at runtime before M14.13 ships)
+degrades to an "Other" group with just its name, never crashes or disappears.
 
-**Acceptance criteria.** Blocks reorder by drag and by keyboard alone, both persisting. The
-`position` integer never appears in the UI. The inserter is operable by keyboard.
+Drag-and-drop (`@dnd-kit/core` + `@dnd-kit/sortable`, new dependencies — nothing in this codebase
+did drag-and-drop before) replaces the integer `position` input, which is now computed from array
+order and rendered only as a `type="hidden"` field — never visible, never editable. **Keyboard-
+accessible move-up/move-down buttons are the first-class reorder path** (always visible, disabled at
+the list's boundaries), not dnd-kit's own keyboard-drag sensor, which is included as a secondary
+bonus but requires discovering a grab/arrow/drop gesture — materially worse-documented than a plain
+icon button. Both paths call the same `arrayMove` helper so they can't drift apart. A visually-hidden
+`aria-live` region announces every move/add/remove for screen-reader users. A remove button per row
+(never built before this milestone) rounds out the block list's own add-remove controls, matching
+what M14.4 left reserved.
+
+Converting the block list from a server-rendered, uncontrolled `<form>` to client-managed state
+surfaced a pre-existing bug, fixed in the same milestone: a failed save previously redirected back to
+a page that re-fetched the *last successfully saved* list, silently discarding whatever the user had
+just edited or reordered — harmless when position was a rarely-touched number, but a real
+data-loss risk now that reordering is a common, one-click action. Fixed with a `sessionStorage`
+snapshot taken on submit and restored on the error redirect, which also fixes the error-highlight
+mechanism itself: `Content:BlockDataInvalid`'s `position` parameter indexes into the exact array
+that was POSTed, which a stale server refetch can no longer be trusted to reproduce after any
+reorder/add/remove.
+
+`web/apps/admin` gained its first test runner (Vitest + React Testing Library, decided with the
+owner rather than assumed) to cover the new keyboard/drag interaction logic offline — this admin
+route has no headless Google OAuth login path for a real browser proof, the same constraint M14.4's
+own verification already ran into.
+
+**Acceptance criteria — met.** Blocks reorder by drag and by keyboard alone (move-up/move-down),
+both persisting through the unchanged `PutBlocks` full-replace endpoint — proved directly against the
+real HTTP/Conjure boundary (a site/document/blocks seeded via SQL, a dev-minted bearer token per
+M14.4's own technique, then PUT with a new order / one block removed / one block appended, GET back
+to confirm). The `position` integer never appears in the UI — the only `position`-named input in the
+DOM is `type="hidden"`, confirmed structurally and by a dedicated Vitest assertion. The inserter is
+fully keyboard-operable (Tab to open, type to filter, arrow keys, Enter to select), confirmed by a
+keyboard-only Vitest interaction test — no mouse click anywhere in that test.
 
 ### M14.6 · Forward revisions, history, autosave
 

@@ -198,8 +198,20 @@
     "parentPageNone": "None (top level)",
     "saveDetails": "Save details",
     "blocksHeading": "Blocks",
-    "blocksHint": "Full replace on save — reorder by editing the position numbers. Each block's fields are derived from its block type's schema.",
-    "saveBlocks": "Save blocks"
+    "blocksHint": "Full replace on save — drag to reorder, or use the move buttons for keyboard-only reordering. Each block's fields are derived from its block type's schema.",
+    "saveBlocks": "Save blocks",
+    "addBlock": "Add block",
+    "addBlockDialogTitle": "Add block",
+    "addBlockDialogDescription": "Search for a block type to add.",
+    "searchBlockTypesPlaceholder": "Search block types…",
+    "noMatchingBlockType": "No matching block type.",
+    "moveBlockUp": "Move block up",
+    "moveBlockDown": "Move block down",
+    "removeBlock": "Remove block",
+    "dragToReorder": "Drag to reorder {name}",
+    "blockMovedAnnouncement": "{name} moved to position {position} of {total}",
+    "blockRemovedAnnouncement": "{name} removed",
+    "blockAddedAnnouncement": "{name} added"
   },
   "LocaleSwitcher": {
     "label": "Language",

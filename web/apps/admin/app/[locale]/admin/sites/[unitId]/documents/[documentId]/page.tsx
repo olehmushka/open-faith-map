@@ -13,7 +13,6 @@ import { DocumentTransitionAction } from "@/lib/openfaithmap/generated/content";
 import { redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { BlockDataForm } from "./block-data-form";
+import { BlockListEditor } from "./block-list-editor";
 
 const NO_PARENT = "__none__";
 
@@ -52,7 +51,6 @@ export default async function DocumentEditorPage({
 
   const [blocks, blockTypes] = await Promise.all([getBlocks(documentId), listBlockTypes()]);
   const otherPages = documents.filter((d) => d.kind === "PAGE" && d.id !== documentId);
-  const nextPosition = blocks.reduce((max, b) => Math.max(max, b.position), 0) + 10;
 
   async function saveDetails(formData: FormData) {
     "use server";
@@ -200,68 +198,14 @@ export default async function DocumentEditorPage({
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">{t("blocksHint")}</p>
-          <form action={saveBlocks} className="flex flex-col gap-4">
-            {blocks.map((b) => {
-              const blockType = blockTypes.find((bt) => bt.code === b.blockTypeCode);
-              return (
-                <div key={b.id} className="grid grid-cols-[6rem_10rem_1fr] gap-2 rounded-md border p-3">
-                  <Input name="position" type="number" defaultValue={b.position} className="h-8" />
-                  <Select name="blockTypeCode" defaultValue={b.blockTypeCode}>
-                    <SelectTrigger size="sm" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {blockTypes.map((bt) => (
-                        <SelectItem key={bt.code} value={bt.code}>
-                          {bt.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {blockType ? (
-                    <BlockDataForm
-                      blockType={blockType}
-                      blockTypes={blockTypes}
-                      initialData={b.data}
-                      erroredField={b.position === erroredPosition ? erroredField : undefined}
-                    />
-                  ) : (
-                    <Textarea name="data" defaultValue={JSON.stringify(b.data)} rows={3} className="font-mono text-xs" />
-                  )}
-                </div>
-              );
-            })}
-
-            {/* New-block row: the blockTypeCode Select is untouched per M14.5's scope boundary (it
-                owns the inserter), so it stays an uncontrolled native Select — meaning this row's
-                form always renders blockTypes[0]'s fields, not whichever type the dropdown is
-                switched to. Acceptable for M14.4: a real block always gets its own correct form
-                once saved and reloaded; only the not-yet-saved new-row preview can mismatch. */}
-            <div className="grid grid-cols-[6rem_10rem_1fr] gap-2 rounded-md border border-dashed p-3">
-              <Input name="position" type="number" defaultValue={nextPosition} className="h-8" />
-              <Select name="blockTypeCode" defaultValue={blockTypes[0]?.code}>
-                <SelectTrigger size="sm" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {blockTypes.map((bt) => (
-                    <SelectItem key={bt.code} value={bt.code}>
-                      {bt.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {blockTypes[0] ? (
-                <BlockDataForm blockType={blockTypes[0]} blockTypes={blockTypes} initialData={{}} />
-              ) : (
-                <Textarea name="data" defaultValue="{}" rows={3} className="font-mono text-xs" />
-              )}
-            </div>
-
-            <Button type="submit" className="self-start">
-              {t("saveBlocks")}
-            </Button>
-          </form>
+          <BlockListEditor
+            documentId={documentId}
+            blocks={blocks}
+            blockTypes={blockTypes}
+            erroredPosition={erroredPosition}
+            erroredField={erroredField}
+            action={saveBlocks}
+          />
         </CardContent>
       </Card>
     </div>
