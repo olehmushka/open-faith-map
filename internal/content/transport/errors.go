@@ -60,6 +60,8 @@ func mapErr(err error, c errCtx) error {
 		return gencontent.NewBlockTypeNotFound(c.BlockTypeCode)
 	case errors.Is(err, domain.ErrRevisionNotFound):
 		return gencontent.NewRevisionNotFound(c.RevisionID)
+	case errors.Is(err, domain.ErrPreviewTokenInvalid):
+		return gencontent.NewPreviewTokenInvalid()
 	default:
 		return err
 	}

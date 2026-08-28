@@ -162,6 +162,14 @@ types:
         fields:
           blockTypes: list<BlockType>
 
+      PreviewLink:
+        docs: >
+          M14.7. token is a short-lived, stateless, site-scoped signed token — opaque to the
+          caller, verified by ContentPublicService's preview endpoints, never a session or a
+          revocable row (see D-ContentRevisions).
+        fields:
+          token: string
+
     errors:
       SiteNotFound:
         namespace: Content
@@ -253,6 +261,15 @@ types:
         code: NOT_FOUND
         safe-args:
           revisionId: string
+      PreviewTokenInvalid:
+        docs: >
+          M14.7. Covers missing, malformed, expired, and wrong-site tokens alike — deliberately one
+          error for all cases, mirroring Forbidden's empty safe-args, so a caller probing the
+          preview endpoints learns nothing about which check failed or whether the site/document
+          exists.
+        namespace: Content
+        code: PERMISSION_DENIED
+        safe-args: {}
 
 services:
   ContentService:
@@ -360,6 +377,17 @@ services:
             type: string
             param-type: path
         returns: BlockList
+      createPreviewLink:
+        http: POST /sites/{siteId}/preview-link
+        docs: >
+          M14.7. Mints a short-lived, site-scoped preview token — content.manage-gated, same as
+          every other write/draft-read on this service. The returned token is handed to
+          ContentPublicService's preview endpoints on the tenant subdomain, never used here again.
+        args:
+          siteId:
+            type: string
+            param-type: path
+        returns: PreviewLink
 
   ContentPublicService:
     name: Content Public Service
@@ -367,7 +395,10 @@ services:
     base-path: /content/v1/public
     docs: >
       Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to
-      published/unlisted; never discloses draft documents or their blocks.
+      published/unlisted; never discloses draft documents or their blocks — with exactly one
+      carve-out, M14.7's listPreviewDocuments/getPreviewBlocks, which require a valid site-scoped
+      preview token (minted by ContentService.createPreviewLink) in place of a session, since this
+      service's caller never holds one.
     endpoints:
       getSite:
         # Deliberately NOT /sites/{congregationUnitId} — that shares this service's /sites/{siteId}/...
@@ -412,6 +443,42 @@ services:
           documentId:
             type: string
             param-type: path
+        returns: BlockList
+      listPreviewDocuments:
+        http: GET /sites/{siteId}/preview-documents
+        docs: >
+          M14.7. Like listPublicDocuments, but returns documents in every state (draft included) —
+          gated by token (from createPreviewLink) instead of published/unlisted filtering.
+          Content:PreviewTokenInvalid if the token is missing, malformed, expired, or scoped to a
+          different site.
+        args:
+          siteId:
+            type: string
+            param-type: path
+          token:
+            type: string
+            param-type: query
+          kind:
+            type: optional<string>
+            param-type: query
+          locale:
+            type: optional<string>
+            param-type: query
+        returns: DocumentPage
+      getPreviewBlocks:
+        http: GET /documents/{documentId}/preview-blocks
+        docs: >
+          M14.7. Reads the document's draft revision regardless of its published state — gated by
+          token (from createPreviewLink) instead of a session. Content:PreviewTokenInvalid if the
+          token is missing, malformed, expired, or scoped to a different site than the document's
+          own.
+        args:
+          documentId:
+            type: string
+            param-type: path
+          token:
+            type: string
+            param-type: query
         returns: BlockList
       listBlockTypes:
         http: GET /block-types

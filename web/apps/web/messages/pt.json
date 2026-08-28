@@ -58,6 +58,14 @@
     "reportDetailPlaceholder": "Additional detail (optional)",
     "reportSubmit": "Submit report"
   },
+  "Preview": {
+    "banner": "Preview — draft content, not visible to visitors",
+    "deviceMobile": "Mobile",
+    "deviceTablet": "Tablet",
+    "deviceFull": "Full width",
+    "invalidHeading": "This preview link is invalid or has expired",
+    "invalidBody": "Ask the site editor for a new preview link."
+  },
   "Blocks": {
     "address": "Address:",
     "phone": "Phone:",

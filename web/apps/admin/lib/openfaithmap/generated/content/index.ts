@@ -23,6 +23,8 @@ export * from "./eventMissingStart";
 export * from "./forbidden";
 export * from "./invalidTransition";
 export * from "./parentTooDeep";
+export * from "./previewLink";
+export * from "./previewTokenInvalid";
 export * from "./putBlocksRequest";
 export * from "./revisionNotFound";
 export * from "./revisionPage";

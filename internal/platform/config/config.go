@@ -39,6 +39,13 @@ type Install struct {
 	// (registerIdentity). Not a secret — OAuth client IDs are public by design — but schema-
 	// validated like every other install setting rather than a bare requireEnv read.
 	GoogleOAuthClientID string `yaml:"google-oauth-client-id"`
+
+	// ContentPreviewHMACKey signs M14.7's short-lived content-preview tokens (internal/content/
+	// application/previewtoken.go) — a real secret, ECV-encrypt this field in any real deployment,
+	// same as DatabaseURL above. Unlike DEV_ISSUER_HMAC_KEY (dev/local-only, gated by
+	// GuardSymmetricIssuers), this key is needed in every environment, so it follows Environment's
+	// M10.2 precedent as a schema-validated Install field rather than a bare env var.
+	ContentPreviewHMACKey string `yaml:"content-preview-hmac-key"`
 }
 
 // Runtime is the hot-reloadable configuration (var/conf/runtime.yml).

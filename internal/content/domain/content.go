@@ -159,6 +159,10 @@ var (
 	ErrBlockDataInvalid   = errors.New("block data failed json schema validation")
 	ErrBlockUrlNotAllowed = errors.New("block field failed URL scheme/embed host allowlist")
 	ErrRevisionNotFound   = errors.New("content document revision not found")
+	// ErrPreviewTokenInvalid covers a missing, malformed, expired, or wrong-site preview token alike
+	// (M14.7) — deliberately one sentinel for every case, so a caller probing the preview endpoints
+	// learns nothing about which check failed.
+	ErrPreviewTokenInvalid = errors.New("preview token missing, invalid, expired, or scoped to a different site")
 )
 
 // SlugTakenError carries U5's resolution: an admin-chosen slug, probed for uniqueness at write

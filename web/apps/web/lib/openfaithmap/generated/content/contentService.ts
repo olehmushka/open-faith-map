@@ -3,6 +3,7 @@ import { ICreateDocumentRequest } from "./createDocumentRequest";
 import { ICreateSiteRequest } from "./createSiteRequest";
 import { IDocument } from "./document";
 import { IDocumentPage } from "./documentPage";
+import { IPreviewLink } from "./previewLink";
 import { IPutBlocksRequest } from "./putBlocksRequest";
 import { IRevisionPage } from "./revisionPage";
 import { ISite } from "./site";
@@ -40,6 +41,11 @@ export interface IContentService {
      *
      */
     restoreRevision(documentId: string, revisionId: string): Promise<IBlockList>;
+    /**
+     * M14.7. Mints a short-lived, site-scoped preview token — content.manage-gated, same as every other write/draft-read on this service. The returned token is handed to ContentPublicService's preview endpoints on the tenant subdomain, never used here again.
+     *
+     */
+    createPreviewLink(siteId: string): Promise<IPreviewLink>;
 }
 
 export class ContentService implements IContentService {
@@ -224,6 +230,27 @@ export class ContentService implements IContentService {
             [
                 documentId,
                 revisionId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.7. Mints a short-lived, site-scoped preview token — content.manage-gated, same as every other write/draft-read on this service. The returned token is handed to ContentPublicService's preview endpoints on the tenant subdomain, never used here again.
+     *
+     */
+    public createPreviewLink(siteId: string): Promise<IPreviewLink> {
+        return this.bridge.call<IPreviewLink>(
+            "ContentService",
+            "createPreviewLink",
+            "POST",
+            "/content/v1/sites/{siteId}/preview-link",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                siteId,
             ],
             __undefined,
             __undefined

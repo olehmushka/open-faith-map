@@ -1,6 +1,8 @@
 import { getTranslations } from "next-intl/server";
 
 import {
+  buildPreviewUrl,
+  createPreviewLink,
   getBlocks,
   getSite,
   listBlockTypes,
@@ -39,12 +41,14 @@ export default async function DocumentEditorPage({
   const doc = documents.find((d) => d.id === documentId);
   if (!doc) return redirect({ href: `/admin/sites/${unitId}/documents`, locale });
 
-  const [blocks, blockTypes, revisions] = await Promise.all([
+  const [blocks, blockTypes, revisions, previewToken] = await Promise.all([
     getBlocks(documentId),
     listBlockTypes(),
     listRevisions(documentId),
+    createPreviewLink(site.id),
   ]);
   const otherPages = documents.filter((d) => d.kind === "PAGE" && d.id !== documentId);
+  const previewUrl = buildPreviewUrl(site, locale, previewToken);
 
   // M14.8: returns state instead of redirecting with ?error=<name> — see document-details-form.tsx.
   async function saveDetails(_prevState: DetailsActionState, formData: FormData): Promise<DetailsActionState> {
@@ -141,6 +145,14 @@ export default async function DocumentEditorPage({
             {t("backToDraft")}
           </Button>
         </form>
+        {/* M14.7: opens on the tenant subdomain, never embedded here — no congregation content ever
+            renders inside this admin origin (the same cross-origin guarantee D-TenantSubdomains'
+            preview design relies on). */}
+        <Button variant="outline" size="sm" asChild>
+          <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+            {t("preview")}
+          </a>
+        </Button>
       </div>
 
       <Card>

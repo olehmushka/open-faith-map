@@ -23,12 +23,13 @@ import (
 )
 
 type Service struct {
-	store    *adapters.Repository
-	authzSvc *authz.Service
+	store          *adapters.Repository
+	authzSvc       *authz.Service
+	previewHMACKey string
 }
 
-func NewService(store *adapters.Repository, authzSvc *authz.Service) *Service {
-	return &Service{store: store, authzSvc: authzSvc}
+func NewService(store *adapters.Repository, authzSvc *authz.Service, previewHMACKey string) *Service {
+	return &Service{store: store, authzSvc: authzSvc, previewHMACKey: previewHMACKey}
 }
 
 // ---- sites ----
@@ -54,6 +55,21 @@ func (s *Service) UpdateSiteTheme(ctx context.Context, siteID string, theme json
 		return domain.Site{}, err
 	}
 	return s.store.UpdateSiteTheme(ctx, siteID, theme)
+}
+
+// CreatePreviewLink mints a short-lived, site-scoped preview token (M14.7) — content.manage-gated
+// like every other draft-adjacent read on this service. The token itself carries no document id: a
+// draft is content, not a special code path (D-ContentRevisions), so previewing means rendering the
+// whole site's current draft state, the same one-pager shape the real public renderer already uses.
+func (s *Service) CreatePreviewLink(ctx context.Context, siteID string) (string, error) {
+	site, err := s.store.GetSiteByID(ctx, siteID)
+	if err != nil {
+		return "", err
+	}
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
+		return "", err
+	}
+	return mintPreviewToken(site.ID, s.previewHMACKey)
 }
 
 // GetSite is the public read (ContentPublicService) — no auth, keyed by the congregation unit RID.
@@ -85,6 +101,18 @@ func (s *Service) ListDocuments(ctx context.Context, siteID string, kind, locale
 // no auth.
 func (s *Service) ListPublicDocuments(ctx context.Context, siteID string, kind, locale *string) ([]domain.Document, error) {
 	return s.store.ListPublicDocuments(ctx, siteID, kind, locale)
+}
+
+// ListPreviewDocuments is ContentPublicService's one token-gated exception (M14.7) to "always
+// published/unlisted only": every document in every state for the token's own site, reusing the
+// exact same store query the admin's ListDocuments already calls with an unset state filter — this
+// is a different caller (a token, not a session), not a different read.
+func (s *Service) ListPreviewDocuments(ctx context.Context, siteID, token string, kind, locale *string) ([]domain.Document, error) {
+	subjectSiteID, ok := verifyPreviewToken(token, s.previewHMACKey)
+	if !ok || subjectSiteID != siteID {
+		return nil, domain.ErrPreviewTokenInvalid
+	}
+	return s.store.ListDocuments(ctx, siteID, kind, locale, nil)
 }
 
 func (s *Service) CreateDocument(ctx context.Context, siteID string, in domain.CreateDocumentInput) (domain.Document, error) {
@@ -240,6 +268,26 @@ func (s *Service) GetPublicBlocks(ctx context.Context, documentID string) ([]dom
 		return nil, err
 	}
 	return unmarshalBlocksSnapshot(documentID, published.CreatedAt, published.Data)
+}
+
+// GetPreviewBlocks is ContentPublicService's other token-gated exception (M14.7): reads the draft
+// revision regardless of document state, exactly like the admin's GetBlocks, but authorized by a
+// site-scoped token instead of content.manage — the document's own site must match the token's
+// subject, checked here rather than trusted from the caller.
+func (s *Service) GetPreviewBlocks(ctx context.Context, documentID, token string) ([]domain.Block, error) {
+	doc, err := s.store.GetDocument(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	subjectSiteID, ok := verifyPreviewToken(token, s.previewHMACKey)
+	if !ok || subjectSiteID != doc.SiteID {
+		return nil, domain.ErrPreviewTokenInvalid
+	}
+	draft, err := s.store.GetRevision(ctx, *doc.DraftRevisionID)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalBlocksSnapshot(documentID, draft.CreatedAt, draft.Data)
 }
 
 // PutBlocks is every draft save — the manual "Save" action and the debounced autosave call alike

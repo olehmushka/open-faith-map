@@ -54,6 +54,14 @@ func (s *Service) UpdateSiteTheme(ctx context.Context, authHeader bearertoken.To
 	return toAPISite(site), nil
 }
 
+func (s *Service) CreatePreviewLink(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (gencontent.PreviewLink, error) {
+	token, err := s.appService.CreatePreviewLink(ctx, siteIdArg)
+	if err != nil {
+		return gencontent.PreviewLink{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	return gencontent.PreviewLink{Token: token}, nil
+}
+
 func (s *Service) ListDocuments(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, kindArg, localeArg, stateArg *string) (gencontent.DocumentPage, error) {
 	docs, err := s.appService.ListDocuments(ctx, siteIdArg, kindArg, localeArg, stateArg)
 	if err != nil {

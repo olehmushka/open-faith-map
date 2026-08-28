@@ -21,6 +21,9 @@ database-url: "postgres://<user>:<password>@<host>:5432/<database>?sslmode=disab
 # Sole accepted audience for the Google OIDC issuer (U12, resolved 2026-08-26 — was a bare
 # GOOGLE_OAUTH_CLIENT_ID env var). Not a secret — OAuth client IDs are public by design.
 google-oauth-client-id: "<your-oauth-client-id>.apps.googleusercontent.com"
+# Signs M14.7's short-lived content-preview tokens. A real secret — ECV-encrypt this field in any
+# real deployment, same as database-url above. Generate with e.g. `openssl rand -hex 32`.
+content-preview-hmac-key: "<random-hex-secret>"
 server:
   address: "0.0.0.0"
   # 3000/3001 — openfaithmap-api takes the 300x range that openfaithmap-web (3002) and

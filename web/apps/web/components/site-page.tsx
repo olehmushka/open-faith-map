@@ -6,7 +6,13 @@ import { getTranslations } from "next-intl/server";
 import { Blocks } from "@/app/blocks";
 import { Badge } from "@/components/ui/badge";
 import { ACCESSIBILITY_KEYS, ACCESSIBILITY_MESSAGE_KEYS } from "@/lib/accessibility";
-import { getPublicBlocks, listPublicDocuments, type Site } from "@/lib/content";
+import {
+  getPreviewBlocks,
+  getPublicBlocks,
+  listPreviewDocuments,
+  listPublicDocuments,
+  type Site,
+} from "@/lib/content";
 import { getSite as getDiscoverySite } from "@/lib/discovery";
 import { fileReport, type FileReportInput } from "@/lib/moderation";
 import { redirect } from "@/i18n/navigation";
@@ -33,13 +39,26 @@ export async function SitePage({
   site,
   locale,
   reported,
+  previewToken,
 }: {
   site: Site;
   locale: string;
   reported?: string;
+  // M14.7: when set, every document/blocks read below swaps to the token-gated preview source
+  // (draft revisions, every document state) instead of the public one — the render tree below is
+  // completely unchanged either way, per D-ContentRevisions ("a draft is content, not a special
+  // code path").
+  previewToken?: string;
 }) {
   const t = await getTranslations("CongregationPage");
   const tm = await getTranslations("DiscoveryMap");
+
+  const listDocuments = previewToken
+    ? (kind: string) => listPreviewDocuments(site.id, previewToken, kind)
+    : (kind: string) => listPublicDocuments(site.id, kind);
+  const getBlocks = previewToken
+    ? (documentId: string) => getPreviewBlocks(documentId, previewToken)
+    : (documentId: string) => getPublicBlocks(documentId);
 
   // M5, D-AdminSurface: this app never holds a session, so the report is filed anonymously — the
   // caller identity is never asked (ModerationPublicService.fileReport, docs/modules/moderation.md).
@@ -57,13 +76,13 @@ export async function SitePage({
   }
 
   const [pages, posts, events, discoverySite] = await Promise.all([
-    listPublicDocuments(site.id, "PAGE"),
-    listPublicDocuments(site.id, "POST"),
-    listPublicDocuments(site.id, "EVENT"),
+    listDocuments("PAGE"),
+    listDocuments("POST"),
+    listDocuments("EVENT"),
     getDiscoverySite(site.congregationUnitId).catch(() => null),
   ]);
 
-  const pageBlocks = await Promise.all(pages.map((p) => getPublicBlocks(p.id)));
+  const pageBlocks = await Promise.all(pages.map((p) => getBlocks(p.id)));
 
   const hasCoords =
     typeof discoverySite?.latitude === "number" && typeof discoverySite?.longitude === "number";
@@ -125,7 +144,7 @@ export async function SitePage({
               <p className="text-sm text-gray-500">
                 {e.eventStartsAt ? new Date(e.eventStartsAt).toLocaleString() : t("dateTbd")}
               </p>
-              <EventBlocks documentId={e.id} />
+              <EventBlocks documentId={e.id} previewToken={previewToken} />
             </div>
           ))}
         </section>
@@ -136,7 +155,7 @@ export async function SitePage({
           <h2 className="text-xl font-semibold">{t("news")}</h2>
           {posts.map((p) => (
             <article key={p.id} className="rounded border p-4">
-              <PostBlocks documentId={p.id} />
+              <PostBlocks documentId={p.id} previewToken={previewToken} />
             </article>
           ))}
         </section>
@@ -173,12 +192,12 @@ export async function SitePage({
   );
 }
 
-async function EventBlocks({ documentId }: { documentId: string }) {
-  const blocks = await getPublicBlocks(documentId);
+async function EventBlocks({ documentId, previewToken }: { documentId: string; previewToken?: string }) {
+  const blocks = previewToken ? await getPreviewBlocks(documentId, previewToken) : await getPublicBlocks(documentId);
   return <Blocks blocks={blocks} />;
 }
 
-async function PostBlocks({ documentId }: { documentId: string }) {
-  const blocks = await getPublicBlocks(documentId);
+async function PostBlocks({ documentId, previewToken }: { documentId: string; previewToken?: string }) {
+  const blocks = previewToken ? await getPreviewBlocks(documentId, previewToken) : await getPublicBlocks(documentId);
   return <Blocks blocks={blocks} />;
 }

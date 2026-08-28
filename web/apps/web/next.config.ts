@@ -41,6 +41,29 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         ],
       },
+      // M14.7: the preview route renders unpublished draft content behind a short-lived token — it
+      // must never be indexed or cached, additive to the baseline headers above rather than a
+      // second header mechanism. A visitor on the tenant host requests plain "/{locale}/preview"
+      // (proxy.ts's existing Host-based rewrite injects "_sites/{slug}" internally, invisible in
+      // the address bar — same as every other tenant page); next.config.js headers() are matched
+      // before that middleware rewrite runs, so the browser-facing pattern is the one that matters.
+      // The second entry covers the internal post-rewrite path too, in case that assumption about
+      // matching order is ever wrong for a given Next version — cheap to keep both, verified
+      // against the running dev stack either way.
+      {
+        source: "/:locale/preview",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
+      {
+        source: "/:locale/_sites/:slug/preview",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
     ];
   },
 };

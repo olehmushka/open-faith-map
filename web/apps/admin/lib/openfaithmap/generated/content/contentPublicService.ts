@@ -8,7 +8,7 @@ import type { IHttpApiBridge } from "conjure-client";
 const __undefined: undefined = undefined;
 
 /**
- * Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to published/unlisted; never discloses draft documents or their blocks.
+ * Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to published/unlisted; never discloses draft documents or their blocks — with exactly one carve-out, M14.7's listPreviewDocuments/getPreviewBlocks, which require a valid site-scoped preview token (minted by ContentService.createPreviewLink) in place of a session, since this service's caller never holds one.
  *
  */
 export interface IContentPublicService {
@@ -21,6 +21,16 @@ export interface IContentPublicService {
     listPublicDocuments(siteId: string, kind?: string | null, locale?: string | null): Promise<IDocumentPage>;
     /** Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two. */
     getPublicBlocks(documentId: string): Promise<IBlockList>;
+    /**
+     * M14.7. Like listPublicDocuments, but returns documents in every state (draft included) — gated by token (from createPreviewLink) instead of published/unlisted filtering. Content:PreviewTokenInvalid if the token is missing, malformed, expired, or scoped to a different site.
+     *
+     */
+    listPreviewDocuments(siteId: string, token: string, kind?: string | null, locale?: string | null): Promise<IDocumentPage>;
+    /**
+     * M14.7. Reads the document's draft revision regardless of its published state — gated by token (from createPreviewLink) instead of a session. Content:PreviewTokenInvalid if the token is missing, malformed, expired, or scoped to a different site than the document's own.
+     *
+     */
+    getPreviewBlocks(documentId: string, token: string): Promise<IBlockList>;
     /** Active block types only. */
     listBlockTypes(): Promise<IBlockTypePage>;
 }
@@ -97,6 +107,54 @@ export class ContentPublicService implements IContentPublicService {
             __undefined,
             __undefined,
             __undefined,
+            [
+                documentId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.7. Like listPublicDocuments, but returns documents in every state (draft included) — gated by token (from createPreviewLink) instead of published/unlisted filtering. Content:PreviewTokenInvalid if the token is missing, malformed, expired, or scoped to a different site.
+     *
+     */
+    public listPreviewDocuments(siteId: string, token: string, kind?: string | null, locale?: string | null): Promise<IDocumentPage> {
+        return this.bridge.call<IDocumentPage>(
+            "ContentPublicService",
+            "listPreviewDocuments",
+            "GET",
+            "/content/v1/public/sites/{siteId}/preview-documents",
+            __undefined,
+            __undefined,
+            {
+                "token": token,
+                "kind": kind,
+                "locale": locale,
+            },
+            [
+                siteId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.7. Reads the document's draft revision regardless of its published state — gated by token (from createPreviewLink) instead of a session. Content:PreviewTokenInvalid if the token is missing, malformed, expired, or scoped to a different site than the document's own.
+     *
+     */
+    public getPreviewBlocks(documentId: string, token: string): Promise<IBlockList> {
+        return this.bridge.call<IBlockList>(
+            "ContentPublicService",
+            "getPreviewBlocks",
+            "GET",
+            "/content/v1/public/documents/{documentId}/preview-blocks",
+            __undefined,
+            __undefined,
+            {
+                "token": token,
+            },
             [
                 documentId,
             ],
