@@ -13,20 +13,12 @@ import {
 } from "@/lib/content";
 import { DocumentTransitionAction } from "@/lib/openfaithmap/generated/content";
 import { redirect } from "@/i18n/navigation";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { BlockListEditor, type BlockSaveResult } from "./block-list-editor";
+import { DocumentDetailsForm, type DetailsActionState } from "./document-details-form";
 
 const NO_PARENT = "__none__";
 
@@ -35,14 +27,11 @@ const NO_PARENT = "__none__";
 // listRegistrations.
 export default async function DocumentEditorPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ locale: string; unitId: string; documentId: string }>;
-  searchParams: Promise<{ error?: string }>;
 }) {
   const { locale, unitId, documentId } = await params;
   const t = await getTranslations("DocumentEditorPage");
-  const { error } = await searchParams;
   const site = await getSite(unitId).catch(() => null);
   if (!site) return redirect({ href: `/admin/sites/${unitId}`, locale });
 
@@ -57,7 +46,8 @@ export default async function DocumentEditorPage({
   ]);
   const otherPages = documents.filter((d) => d.kind === "PAGE" && d.id !== documentId);
 
-  async function saveDetails(formData: FormData) {
+  // M14.8: returns state instead of redirecting with ?error=<name> — see document-details-form.tsx.
+  async function saveDetails(_prevState: DetailsActionState, formData: FormData): Promise<DetailsActionState> {
     "use server";
     const slug = String(formData.get("slug") ?? "");
     const parentDocumentId = String(formData.get("parentDocumentId") ?? "");
@@ -67,16 +57,16 @@ export default async function DocumentEditorPage({
         parentDocumentId: parentDocumentId && parentDocumentId !== NO_PARENT ? parentDocumentId : undefined,
         clearParent: !parentDocumentId || parentDocumentId === NO_PARENT,
       });
+      return { ok: true };
     } catch (e) {
       if (e && typeof e === "object" && "errorName" in e) {
-        redirect({
-          href: `/admin/sites/${unitId}/documents/${documentId}?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`,
-          locale,
-        });
+        const errorName = String((e as { errorName: string }).errorName);
+        return errorName === "Content:SlugTaken"
+          ? { error: "errorSlugTaken", field: "slug" }
+          : { error: "errorGeneric", raw: errorName };
       }
       throw e;
     }
-    redirect({ href: `/admin/sites/${unitId}/documents/${documentId}`, locale });
   }
 
   // M14.6: the draft-save path (both the debounced autosave and the manual "Save now" trigger in
@@ -135,12 +125,6 @@ export default async function DocumentEditorPage({
         <Badge variant="outline">{doc.state}</Badge>
       </div>
 
-      {error && (
-        <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {error === "Content:SlugTaken" ? t("errorSlugTaken") : t("errorGeneric", { error })}
-        </p>
-      )}
-
       <div className="flex gap-3">
         <form action={publish}>
           <Button type="submit" variant="outline" size="sm" disabled={doc.state === "PUBLISHED"}>
@@ -164,31 +148,7 @@ export default async function DocumentEditorPage({
           <CardTitle className="text-base">{t("detailsHeading")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form action={saveDetails} className="flex flex-col gap-4">
-            <Label className="flex flex-col items-start gap-1">
-              {t("slugLabel")}
-              <Input name="slug" defaultValue={doc.slug} required pattern="[a-z0-9-]+" />
-            </Label>
-            <Label className="flex flex-col items-start gap-1">
-              {t("parentPageLabel")}
-              <Select name="parentDocumentId" defaultValue={doc.parentDocumentId ?? NO_PARENT}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_PARENT}>{t("parentPageNone")}</SelectItem>
-                  {otherPages.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.slug} ({p.locale})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Label>
-            <Button type="submit" className="self-start">
-              {t("saveDetails")}
-            </Button>
-          </form>
+          <DocumentDetailsForm action={saveDetails} doc={doc} otherPages={otherPages} />
         </CardContent>
       </Card>
 

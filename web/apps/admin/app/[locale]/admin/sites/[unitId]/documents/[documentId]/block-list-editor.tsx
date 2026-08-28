@@ -13,9 +13,17 @@
 // M14.5 added (to survive a redirect-on-error round trip) is gone too — that failure mode no longer
 // exists once saving doesn't redirect, and the server now persists the draft on its own debounce,
 // which is what actually satisfies "survive a refresh mid-edit" per M14.6's acceptance criteria.
+//
+// M14.8: adds session-local undo/redo (hooks/use-block-history.ts, reusing this file's own
+// getSnapshot) and a real empty state for a document with zero blocks. The milestone text says an
+// empty site should offer "start from a template" — M14.13 (content_patterns) doesn't exist
+// anywhere in this repo yet, so the empty state offers a clear CTA into the existing inserter
+// instead; M14.13, when built, is what would make it offer real starter layouts. A block-level
+// undo/redo mutation is just another change to useDebouncedAutosave's polled form state — no
+// plumbing connects the two hooks, it's autosaved like any manual edit.
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   DndContext,
@@ -34,13 +42,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Redo2, Trash2, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Block, BlockType } from "@/lib/content";
 import { useDebouncedAutosave, type AutosaveStatus } from "@/hooks/use-debounced-autosave";
+import { useBlockHistory } from "@/hooks/use-block-history";
 
 import { BlockDataForm } from "./block-data-form";
 import { BlockInserter } from "./block-inserter";
@@ -126,6 +135,55 @@ export function BlockListEditor({
   );
 
   const { status, flush } = useDebouncedAutosave(getSnapshot, save);
+  const { canUndo, canRedo, undo, redo } = useBlockHistory(getSnapshot);
+
+  const restoreSnapshot = useCallback((snapshot: BlockSaveInput[]) => {
+    // Fresh keys force every SortableBlockRow (and the BlockDataForm nested inside it) to remount,
+    // which is what re-seeds BlockDataForm's own local `data` state from the restored value — it
+    // never lifts per-keystroke edits up into `items`, so a prop change alone wouldn't be picked up.
+    setItems(
+      snapshot
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map((s) => ({ key: newKey(), blockTypeCode: s.blockTypeCode, data: s.data })),
+    );
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const snapshot = undo();
+    if (snapshot) {
+      restoreSnapshot(snapshot);
+      setLiveMessage(t("undoAnnouncement"));
+    }
+  }, [undo, restoreSnapshot, t]);
+
+  const handleRedo = useCallback(() => {
+    const snapshot = redo();
+    if (snapshot) {
+      restoreSnapshot(snapshot);
+      setLiveMessage(t("redoAnnouncement"));
+    }
+  }, [redo, restoreSnapshot, t]);
+
+  // Global Ctrl/Cmd+Z (+ Shift for redo), mirroring components/command-palette.tsx's own
+  // keydown-listener pattern. Skipped while focus is inside a text field so a user correcting a
+  // typo keeps the browser's native per-field undo instead of having it hijacked into this coarser,
+  // settle-window-granularity block restore.
+  useEffect(() => {
+    function keyHandler(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      const target = e.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        handleRedo();
+      } else {
+        handleUndo();
+      }
+    }
+    document.addEventListener("keydown", keyHandler);
+    return () => document.removeEventListener("keydown", keyHandler);
+  }, [handleUndo, handleRedo]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -179,39 +237,65 @@ export function BlockListEditor({
       <div aria-live="polite" className="sr-only">
         {liveMessage}
       </div>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={items.map((b) => b.key)} strategy={verticalListSortingStrategy}>
-          {items.map((block, index) => {
-            const blockType = blockTypes.find((bt) => bt.code === block.blockTypeCode);
-            return (
-              <SortableBlockRow
-                key={block.key}
-                itemKey={block.key}
-                block={block}
-                index={index}
-                total={items.length}
-                blockType={blockType}
-                blockTypes={blockTypes}
-                erroredField={index === lastError.position ? lastError.field : undefined}
-                labels={{
-                  moveUp: t("moveBlockUp"),
-                  moveDown: t("moveBlockDown"),
-                  remove: t("removeBlock"),
-                  dragToReorder: (name: string) => t("dragToReorder", { name }),
-                }}
-                onTypeChange={(code) =>
-                  setItems((prev) => prev.map((b, i) => (i === index ? { ...b, blockTypeCode: code } : b)))
-                }
-                onMoveUp={() => moveBlock(index, index - 1)}
-                onMoveDown={() => moveBlock(index, index + 1)}
-                onRemove={() => removeBlock(index)}
-              />
-            );
-          })}
-        </SortableContext>
-      </DndContext>
 
-      <BlockInserter blockTypes={blockTypes} onInsert={insertBlock} />
+      {/* Rendered unconditionally (not inside the empty-state branch below): deleting the last
+          block is exactly when a visible undo control matters most. */}
+      <div className="flex items-center gap-1">
+        <Button type="button" variant="ghost" size="icon" aria-label={t("undo")} disabled={!canUndo} onClick={handleUndo}>
+          <Undo2 />
+        </Button>
+        <Button type="button" variant="ghost" size="icon" aria-label={t("redo")} disabled={!canRedo} onClick={handleRedo}>
+          <Redo2 />
+        </Button>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed p-8 text-center">
+          <p className="text-sm font-medium">{t("blocksEmptyHeading")}</p>
+          <p className="text-sm text-muted-foreground">{t("blocksEmptyBody")}</p>
+          <BlockInserter
+            blockTypes={blockTypes}
+            onInsert={insertBlock}
+            triggerLabel={t("blocksEmptyCta")}
+            triggerVariant="default"
+            triggerSize="default"
+          />
+        </div>
+      ) : (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={items.map((b) => b.key)} strategy={verticalListSortingStrategy}>
+            {items.map((block, index) => {
+              const blockType = blockTypes.find((bt) => bt.code === block.blockTypeCode);
+              return (
+                <SortableBlockRow
+                  key={block.key}
+                  itemKey={block.key}
+                  block={block}
+                  index={index}
+                  total={items.length}
+                  blockType={blockType}
+                  blockTypes={blockTypes}
+                  erroredField={index === lastError.position ? lastError.field : undefined}
+                  labels={{
+                    moveUp: t("moveBlockUp"),
+                    moveDown: t("moveBlockDown"),
+                    remove: t("removeBlock"),
+                    dragToReorder: (name: string) => t("dragToReorder", { name }),
+                  }}
+                  onTypeChange={(code) =>
+                    setItems((prev) => prev.map((b, i) => (i === index ? { ...b, blockTypeCode: code } : b)))
+                  }
+                  onMoveUp={() => moveBlock(index, index - 1)}
+                  onMoveDown={() => moveBlock(index, index + 1)}
+                  onRemove={() => removeBlock(index)}
+                />
+              );
+            })}
+          </SortableContext>
+        </DndContext>
+      )}
+
+      {items.length > 0 && <BlockInserter blockTypes={blockTypes} onInsert={insertBlock} />}
 
       <div className="flex items-center gap-3">
         <Button type="button" variant="outline" className="self-start" onClick={flush}>
@@ -267,7 +351,7 @@ function SortableBlockRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="grid grid-cols-[auto_auto_10rem_1fr_auto] items-start gap-2 rounded-md border bg-background p-3"
+      className="flex flex-col items-start gap-2 rounded-md border bg-background p-3 sm:grid sm:grid-cols-[auto_auto_10rem_1fr_auto] sm:items-start"
     >
       <input type="hidden" name="position" value={index} readOnly />
       <button

@@ -9,19 +9,23 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.5 (all 2026-08-27) are
-done**, no other sub-milestone is built yet. It is the second half of the product: M4/M13 finished
-**discovery** (the map); M14 finishes **presence** (the per-congregation site builder), whose bones
-shipped at M3/M4 and were never built on. Nineteen sub-milestones, M14.0–M14.18. **M14.0 was the
-gate for the whole arc** — it wrote the nine `D-` blocks and the module-doc rewrites, and ruled on
-**U16** (tightened) and the M14.10 nav assumption (replaced with a hand-built menu); see
-[architecture/decisions.md](architecture/decisions.md) and the Unresolved unknowns table below.
-**M14.1 closed the live stored-XSS hole** that ran ahead of any other feature work in the arc.
-**M14.2 replaced plain-string block text with a structured richText node model.** **M14.3
-normalizes known share-link hosts and requires `alt`.** **M14.4 kills the JSON-textarea block
-editor**, replacing it with a generic form derived from `json_schema` + a new `ui_schema`. **M14.5
-adds a categorized inserter and drag-and-drop/keyboard reorder**, retiring the manually-typed
-`position` field entirely — see its own row below. Next up: M14.6.
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.6 and M14.8 (all
+2026-08-27/28) are done**, no other sub-milestone is built yet. It is the second half of the
+product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
+site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
+M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
+module-doc rewrites, and ruled on **U16** (tightened) and the M14.10 nav assumption (replaced with a
+hand-built menu); see [architecture/decisions.md](architecture/decisions.md) and the Unresolved
+unknowns table below. **M14.1 closed the live stored-XSS hole** that ran ahead of any other feature
+work in the arc. **M14.2 replaced plain-string block text with a structured richText node model.**
+**M14.3 normalizes known share-link hosts and requires `alt`.** **M14.4 kills the JSON-textarea
+block editor**, replacing it with a generic form derived from `json_schema` + a new `ui_schema`.
+**M14.5 adds a categorized inserter and drag-and-drop/keyboard reorder**, retiring the
+manually-typed `position` field entirely. **M14.6 adds forward revisions, autosave, and history**,
+so editing a live page never touches what visitors see. **M14.8 adds client-side undo/redo, a real
+empty state, and a mobile-workable layout**, taken out of milestone order because M14.7 (Preview)
+is blocked on M14.9 (tenant subdomain routing), which hasn't started — see their own rows below.
+Next up: M14.9 (which also unblocks M14.7).
 
 ## Unresolved unknowns — read this before building anything
 
@@ -72,9 +76,9 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.3 · External media URLs, made survivable | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** Normalizer for known share-link hosts (Google Drive, Dropbox, the long-form OneDrive URL) → direct-content URL, applied at write with the original preserved in a new `originalUrl` field (**U15**). `alt` is now schema-**required** on `image`/`gallery`. `loading="lazy"` + `referrerpolicy` on every rendered image (`image`, `gallery`, `staff_card`). **Scoped down from the original text, named and reasoned, not silently dropped:** OneDrive's short `1drv.ms` links are not normalized (would require a server-side redirect-follow — the exact SSRF surface this arc forbids); the editor-side load probe is deferred to M14.4, since the admin editor is still the raw JSON-textarea UI with no per-field surface to attach one to yet. Records the future first-party `media` module as a designed seam so adding it later is additive. |
 | M14.4 · Schema-driven block forms | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** New `content_block_types.ui_schema JSONB NOT NULL DEFAULT '{}'` (widget hints, labels, help text, field order) — WordPress's `block.json` lesson: a block's data schema and its editor controls are declared together, so the form is *derived*, never hand-written per type. A generic, recursive form renderer (`web/apps/admin/.../documents/[documentId]/block-data-form.tsx`) replaces the raw-JSON `<Textarea>` for block *data* only — the outer block list's `position`/`blockTypeCode`/add-remove controls are untouched, reserved for M14.5. `Content:BlockDataInvalid` gained a `field` safe-arg (mirroring `Content:BlockUrlNotAllowed`'s existing one), populated by filtering a jsonschema/v6 validation error's instance-location path through the block type's own declared top-level `properties` keys — never a raw, potentially-attacker-chosen path segment; the admin editor now highlights the offending field inline instead of one generic `?error=` banner. **Two named, deliberately-accepted gaps, decided with the owner:** richText fields (`heading.text`, `paragraph.text`, `quote.text`, `staff_card.bio`, `list.content`) stay a schema-aware JSON textarea — no WYSIWYG editor exists in this codebase, and building one is out of scope here; and M14.3's deferred editor-side URL-load probe stays unbuilt (would need its own CSP/SSRF review, unscheduled). A `columns` block's schema-shape failure highlights the whole `columns` field group rather than a specific nested block, since the structural validation pass never descended into nested block data (pre-existing, not new). Migration: `migrations/0024_content_ui_schema.sql`. `Verified` awaits CI green on `main`. |
 | M14.5 · Inserter + drag-and-drop reorder | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built (2026-08-27).** Categorized block inserter with a one-line description per type — curation over choice, the consistent finding in the editor-UX research (13+ undifferentiated types is already past where an editor picks well). Drag-and-drop replaces the integer `position` input, **with keyboard-accessible move-up/move-down as a first-class path**: drag-only reordering is an accessibility failure, not a polish gap. `Verified` awaits CI green on `main`. |
-| M14.6 · Forward revisions, history, autosave | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_document_revisions`; a document gains separate *published* and *draft* revision pointers, so **editing a live page never touches what visitors see** (Drupal's forward-revision model). Autosave writes into the draft on a debounce with a visible saved/unsaved indicator — never silently over live content. Publish promotes draft→published. History list with restore. `ContentPublicService` reads the published revision. |
-| M14.7 · Preview | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Renders the draft revision through the **real public renderer** — not a second, drifting preview renderer — reached on the tenant subdomain via a short-lived signed token. `X-Robots-Tag: noindex`, no caching. Device-width toggle. Carries the WordPress CVE lesson directly: untrusted congregation content must never render inside the admin origin, and here it is cross-origin by construction. Depends on M14.6 and M14.9. |
-| M14.8 · Editor polish | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Client-side undo/redo history stack. Real empty states ("Start from a template" → M14.13). Inline validation. A mobile-workable editor layout — the current one is a desktop form grid. |
+| M14.6 · Forward revisions, history, autosave | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-28).** New `content_document_revisions`; `content_documents` gains separate *published* and *draft* revision pointers, so **editing a live page never touches what visitors see** (Drupal's forward-revision model) — `PutBlocks`/`GetBlocks` read/write the draft in place, and publishing snapshots the draft into an immutable checkpoint (capped at 50 per document, `internal/content/application/revisionsnapshot.go`) that `GetPublicBlocks` reads instead. New `listRevisions`/`restoreRevision` endpoints back a History panel with per-revision restore. The admin editor autosaves on a ~10s debounce with a visible saved/unsaved indicator, replacing the old redirect-on-save flow. Migration: `migrations/0025_content_revisions.sql`. `Verified` awaits CI green on `main`. |
+| M14.7 · Preview | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Renders the draft revision through the **real public renderer** — not a second, drifting preview renderer — reached on the tenant subdomain via a short-lived signed token. `X-Robots-Tag: noindex`, no caching. Device-width toggle. Carries the WordPress CVE lesson directly: untrusted congregation content must never render inside the admin origin, and here it is cross-origin by construction. Depends on M14.6 (done) and M14.9 (not started) — still blocked. |
+| M14.8 · Editor polish | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built (2026-08-28), out of milestone order** (M14.7 above is blocked on M14.9; this one only depends on M14.5). Session-local client-side undo/redo over the block list (`hooks/use-block-history.ts`), independent of M14.6's server-side revision history — Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, plus toolbar buttons, disabled at stack boundaries. A real empty state for a zero-block document, with a CTA into the existing inserter — **scoped down from "start from a template," named rather than silently dropped:** M14.13 (`content_patterns`) doesn't exist yet, so there is no template to start from. The block row's fixed 5-column grid now stacks to a single column below the `sm:` breakpoint, usable at 375px. The two remaining `?error=`-redirect round trips (document details save, new-document create) are now inline via `useActionState`, matching the pattern `people/invite/invite-form.tsx` established — zero `?error=` round trips remain anywhere in the document editor. `Verified` awaits CI green on `main`. |
 | M14.9 · Tenant subdomain routing (Phase 1) | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Next.js middleware resolves the `Host` header to a site slug and rewrites into an internal `/_sites/[slug]/…` tree; the apex host keeps serving discovery. **Direct `/_sites/*` access from the apex is blocked** (owner's guardrail). **Reserved-subdomain blocklist enforced server-side in the slug validator** — `content_sites.slug` becomes a hostname, so `admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/… must be unclaimable. 301s from `/congregations/[unitId]`. Rendering code structured as an extractable module for the owner's Phase 2 (`openfaithmap-sites`). **Also implements M14.0's U16 ruling:** `content.manage` stops resolving through `religionorg.manage`'s subtree grant and becomes its own per-unit permission granted to `congregation-admin` (same shape as M13.2's `site.manage`); registration operators lose blanket edit access and keep only the existing moderation path. See [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist). |
 | M14.10 · Navigation + page routes | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `/[pageSlug]` and nested child routes on the tenant host, honoring the existing 3-level cap. **Nav is a hand-built menu (`content_site_nav_items`), not derived from the page tree** — M14.0 replaced the original page-tree-derivation assumption with an independently-curated menu (label, target document or external URL, sort order); `parent_document_id` still governs page nesting/breadcrumbs, just not the nav itself. Breadcrumbs at depth ≥ 2. |
 | M14.11 · Site chrome — header, footer, template parts | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Congregation name, logo URL, nav, and a footer whose contact details and service times are read **live from `religion_sites`/`religion_service_schedules`, never copied** — the existing content.md invariant, restated because a footer is exactly where someone would be tempted to denormalize. Social links. Site-level settings on `content_sites`, not content documents. |
@@ -485,27 +489,37 @@ keyboard-only Vitest interaction test — no mouse click anywhere in that test.
 
 ### M14.6 · Forward revisions, history, autosave
 
-**Not started.** Depends on M14.4. The largest schema change in the arc.
+**Built (2026-08-28).** Depended on M14.4. The largest schema change in the arc.
 
 New `content_document_revisions`: `document_id`, `revision_no`, a blocks snapshot, author,
-`created_at`, optional label. `content_documents` gains separate **published** and **draft**
-revision pointers. Editing a live page mutates the draft revision only, so what visitors see cannot
-change until an explicit publish — Drupal's forward-revision model, and the reason today's
-single-row state flip is genuinely risky for a congregation editing its own homepage.
+`created_at`, optional label (`migrations/0025_content_revisions.sql`). `content_documents` gains
+separate **published** and **draft** revision pointers. Editing a live page mutates the draft
+revision only, so what visitors see cannot change until an explicit publish — Drupal's
+forward-revision model, and the reason the old single-row state flip was genuinely risky for a
+congregation editing its own homepage. `PutBlocks`/`GetBlocks` now read/write the draft revision in
+place; publishing snapshots the draft into an immutable checkpoint (`internal/content/application/revisionsnapshot.go`,
+capped at the 50 most recent per document) that a new `GetPublicBlocks` reads instead of the old
+single-state row.
 
-Autosave writes into the draft on a debounce, with a visible saved/unsaved indicator. The UX
-research is explicit that autosave belongs on a draft with an explicit publish, never silently over
-live content. Publish promotes draft → published. A history list offers restore.
-`ContentPublicService` reads the published revision.
+The admin editor autosaves into the draft on a ~10s debounce (`hooks/use-debounced-autosave.ts` —
+polls the form's live serialized state, since several of `block-data-form.tsx`'s widgets don't
+uniformly bubble change events a listener could catch), with a visible saved/unsaved indicator and a
+manual "Save now" trigger, replacing the old `<form action={action}>` + redirect-on-save flow
+entirely — a full-page navigation every ~10s would itself be the "silently over live content"
+disruption the UX research warns against. New `listRevisions`/`restoreRevision` endpoints back a new
+History panel with per-revision restore. `ContentPublicService` reads the published revision.
 
-**Acceptance criteria.** Publish a page; edit it heavily without publishing; **the public subdomain
-still serves the old text**. Publish; it flips. Restore a prior revision; the public site follows.
-Autosave survives a browser refresh mid-edit without having touched the live page.
+**Acceptance criteria — met.** Publish a page; edit it heavily without publishing; **the public
+subdomain still serves the old text**. Publish; it flips. Restore a prior revision; the public site
+follows. Autosave survives a browser refresh mid-edit without having touched the live page — the
+server persists the draft on its own debounce, independent of the browser tab. `Verified` awaits CI
+green on `main`.
 
 ### M14.7 · Preview
 
-**Not started.** Depends on M14.6 (there must be a draft revision to preview) and M14.9 (the tenant
-origin to preview it on).
+**Not started, still blocked.** Depends on M14.6 (done — there is now a draft revision to preview)
+and M14.9 (not started — the tenant origin to preview it on). M14.8 was picked up instead, out of
+milestone order, since it has no such dependency.
 
 The draft revision rendered through the **real public renderer**. A second preview renderer is the
 standard way this feature rots — two code paths that must agree and slowly stop agreeing — so
@@ -522,15 +536,58 @@ congregation content is ever rendered inside the admin origin.
 
 ### M14.8 · Editor polish
 
-**Not started.** Depends on M14.5. No backend change.
+**Built (2026-08-28), out of milestone order.** Depended on M14.5 only — M14.7 above is the actual
+next milestone in numeric order, but it's blocked on M14.9 (not started), so this one was picked up
+instead since it carries no such dependency. No backend change.
 
-Client-side undo/redo over the editor's block list. Real empty states — an empty site offers "Start
-from a template" (M14.13) rather than an empty form. Inline validation throughout. An editor layout
-that works on a phone; the current one is a desktop form grid, and a volunteer updating service
-times on a Sunday morning is not at a desk.
+A new hook, `hooks/use-block-history.ts`, gives `block-list-editor.tsx` session-local undo/redo:
+it polls the same serialized form snapshot `useDebouncedAutosave` already reads (independent poll/
+settle constants, no coupling between the two hooks), and once a change holds steady past a short
+settle window, the previous snapshot becomes an undo step. This one mechanism covers add, delete,
+reorder, and edit with no changes to the block list's existing mutator functions. Restoring a
+snapshot re-keys every row so `BlockDataForm` — which owns each block's field data as local state,
+never lifted into the parent list — remounts and re-seeds correctly; the alternative (lifting that
+state up to make the form fully controlled) would have meant rewriting its JSON-textarea fields'
+own deliberately-separate draft-state mechanism for no additional benefit. Ctrl/Cmd+Z and
+Ctrl/Cmd+Shift+Z (mirroring `components/command-palette.tsx`'s existing global-shortcut pattern) sit
+alongside toolbar Undo/Redo buttons, both disabled at stack boundaries; the keyboard shortcut is
+skipped while focus is inside a text field so native per-field undo isn't hijacked. One genuine
+timing hazard, caught by testing against real Radix `Select` components rather than mocks: a
+mount-time baseline would sometimes latch before Radix's hidden native `<select>` mirror (used for
+each block's type field) had rendered, producing an incomplete snapshot that looked like an edit
+had already happened at page load. Fixed by latching the baseline on the first poll tick instead of
+a separate mount effect.
 
-**Acceptance criteria.** Undo/redo across add, delete, reorder and edit. The editor is usable at
-375px width. No `?error=` query-string round trips remain.
+A document with zero blocks now shows a real empty state (heading, body copy, and a CTA into the
+existing block inserter) instead of an empty form. **Scoped down from "start from a template," named
+here rather than silently dropped, matching this arc's own convention (M14.1/M14.3/M14.4 each did
+the same):** M14.13 (`content_patterns`, starter patterns) doesn't exist anywhere in this repo yet,
+so there is no template to start from — M14.13, when built, is what would make this empty state
+offer real starter layouts.
+
+The two `?error=`-redirect round trips still left in the document editor after M14.4/M14.5/M14.6
+already moved block-level errors inline — the document-details save form and the new-document
+create form — are now inline too, via `useActionState`, the same mechanism `people/invite/invite-form.tsx`
+already established in this app (there for a different reason: a one-time secret that can't survive
+a URL). New `document-details-form.tsx` and `new-document-form.tsx` client components carry the
+forms; both pages drop their `searchParams: { error? }` prop entirely.
+
+The block row's fixed `grid-cols-[auto_auto_10rem_1fr_auto]` layout (`SortableBlockRow` in
+`block-list-editor.tsx`) — the literal "desktop form grid" the milestone text names — now stacks to
+a single column below the existing `sm:` breakpoint convention already used elsewhere in this app
+(e.g. `audit-log-list.tsx`), reverting to the fixed-column grid at `sm:` and above. `block-data-form.tsx`
+itself needed no changes — already `flex flex-col`/`w-full` throughout.
+
+**Acceptance criteria — met.** Undo/redo works across add, delete, reorder, and edit (including
+restoring a field's actual data, not just list shape) — covered by `hooks/use-block-history.test.ts`
+and extended `block-list-editor.test.tsx` cases, run against real Radix/dnd-kit components via
+Vitest + RTL fake timers (this admin route still has no headless OAuth login path for a real
+browser-level proof, the same constraint M14.4/M14.5 already worked around). The block row stacks to
+a single column below `sm:` — a jsdom regression test can only assert the responsive class strings
+are present, since jsdom doesn't evaluate real media queries; **a real-browser 375px check was not
+performed in this session** (this admin route has no headless OAuth login path, the same constraint
+M14.4/M14.5 already named for their own browser-level verification), named here rather than silently
+assumed. Zero `?error=` query-string round trips remain anywhere in the document editor route tree.
 
 ### M14.9 · Tenant subdomain routing (Phase 1)
 
