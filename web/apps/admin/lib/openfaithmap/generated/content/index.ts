@@ -28,6 +28,7 @@ export * from "./revisionNotFound";
 export * from "./revisionPage";
 export * from "./site";
 export * from "./siteNotFound";
+export * from "./slugReserved";
 export * from "./slugTaken";
 export * from "./transitionDocumentRequest";
 export * from "./updateDocumentRequest";

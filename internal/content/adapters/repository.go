@@ -84,6 +84,17 @@ func (r *Repository) GetSiteByUnit(ctx context.Context, congregationUnitRID stri
 	return domain.Site{ID: row.ID, CongregationUnitRID: row.CongregationUnitRid, Slug: row.Slug, Theme: row.Theme, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
 }
 
+func (r *Repository) GetSiteBySlug(ctx context.Context, slug string) (domain.Site, error) {
+	row, err := r.q.GetSiteBySlug(ctx, slug)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Site{}, domain.ErrSiteNotFound
+	}
+	if err != nil {
+		return domain.Site{}, err
+	}
+	return domain.Site{ID: row.ID, CongregationUnitRID: row.CongregationUnitRid, Slug: row.Slug, Theme: row.Theme, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
+}
+
 func (r *Repository) UpdateSiteTheme(ctx context.Context, id string, theme []byte) (domain.Site, error) {
 	row, err := r.q.UpdateSiteTheme(ctx, contentsql.UpdateSiteThemeParams{ID: id, Theme: theme})
 	if errors.Is(err, pgx.ErrNoRows) {

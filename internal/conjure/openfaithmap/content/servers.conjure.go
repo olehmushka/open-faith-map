@@ -18,6 +18,8 @@ import (
 // Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to published/unlisted; never discloses draft documents or their blocks.
 type ContentPublicService interface {
 	GetSite(ctx context.Context, congregationUnitIdArg string) (Site, error)
+	// M14.9: the tenant-subdomain proxy resolves a Host header's slug through this endpoint. A distinct top-level path (not nested under /sites/{siteId}/...) — same httprouter wildcard-slot conflict getSite's own comment above documents.
+	GetSiteBySlug(ctx context.Context, slugArg string) (Site, error)
 	ListPublicDocuments(ctx context.Context, siteIdArg string, kindArg *string, localeArg *string) (DocumentPage, error)
 	// Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two.
 	GetPublicBlocks(ctx context.Context, documentIdArg string) (BlockList, error)
@@ -34,6 +36,9 @@ func RegisterRoutesContentPublicService(router wrouter.Router, impl ContentPubli
 	resource := wresource.New("contentpublicservice", router)
 	if err := resource.Get("GetSite", "/content/v1/public/units/{congregationUnitId}/site", httpserver.NewJSONHandler(handler.HandleGetSite, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getSite route")
+	}
+	if err := resource.Get("GetSiteBySlug", "/content/v1/public/site-by-slug/{slug}", httpserver.NewJSONHandler(handler.HandleGetSiteBySlug, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getSiteBySlug route")
 	}
 	if err := resource.Get("ListPublicDocuments", "/content/v1/public/sites/{siteId}/documents", httpserver.NewJSONHandler(handler.HandleListPublicDocuments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPublicDocuments route")
@@ -61,6 +66,23 @@ func (c *contentPublicServiceHandler) HandleGetSite(rw http.ResponseWriter, req 
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"congregationUnitId\" not present")
 	}
 	respArg, err := c.impl.GetSite(req.Context(), congregationUnitIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentPublicServiceHandler) HandleGetSiteBySlug(rw http.ResponseWriter, req *http.Request) error {
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	slugArg, ok := pathParams["slug"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"slug\" not present")
+	}
+	respArg, err := c.impl.GetSiteBySlug(req.Context(), slugArg)
 	if err != nil {
 		return err
 	}

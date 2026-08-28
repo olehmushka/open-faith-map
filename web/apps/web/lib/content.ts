@@ -53,6 +53,11 @@ export async function getSite(congregationUnitId: string): Promise<Site> {
   return unwrap(client().contentPublic.getSite(congregationUnitId));
 }
 
+// M14.9: what the tenant-subdomain route resolves a Host header's slug through.
+export async function getSiteBySlug(slug: string): Promise<Site> {
+  return unwrap(client().contentPublic.getSiteBySlug(slug));
+}
+
 export async function listPublicDocuments(siteId: string, kind?: string): Promise<Document[]> {
   const page = await unwrap(client().contentPublic.listPublicDocuments(siteId, kind));
   return page.documents;

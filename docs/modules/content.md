@@ -240,29 +240,32 @@ to that answer. That distinction matters for the same reason it does in
 OpenFaithMap's own, the local check is the *entire* access-control decision, with no PDP behind it
 to catch a wrong answer. Get the target and the verb right.
 
-**`content.manage` = `religionorg.manage` through M13 — tightened by M14.0/M14.9.** Through M13,
-the target-scoped check (`internal/content/application/authorize.go`'s `requireManage`) called
+**`content.manage` = `religionorg.manage` through M14.8 — tightened at M14.9.** Through M14.8, the
+target-scoped check (`internal/content/application/authorize.go`'s `requireManage`) called
 go-oikumenea's `Authorize` with `Action: "religionorg.manage"` and `UnitId` set to the *specific
 site's* congregation unit — same call shape as `registration`'s `IsOperator`, live-verified: a
 `congregation-admin`-held grant on its own unit passes, and (as a byproduct of reusing the exact
 permission `registration-operator`'s subtree grant already carries on the shared root) a
 registration operator also passed `content.manage` for *any* unit within that subtree — every
-congregation, not just ones they submitted or approved. Accepted through M13 (operators are a
+congregation, not just ones they submitted or approved. Accepted through M14.8 (operators are a
 small, trusted set — D-PlatformModerator — and a site was still "an unlinked blob of blocks").
 
-**Ruled on explicitly at M14.0 (U16): tightened, not restated, because M14.9 makes a site a real
-public website on its own subdomain.**
-[D-TenantSubdomains](../architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist)
-decides the target state: `content.manage` stops resolving through `religionorg.manage`'s subtree
-grant and becomes its own permission, checked per-unit and granted explicitly to
-`congregation-admin` on their own unit — the same shape M13.2 already used for `site.manage`
-(`PermSiteManage`) rather than reusing a broader existing grant. A registration operator's
-platform-wide subtree authority no longer implies content-write authority; operators keep only the
-existing moderation path (`moderation.act`, target-scoped, D-PlatformModerator-shaped) to hide or
-unpublish problematic content — an audited, narrower intervention than direct editing.
-**Implementation lands at M14.9**, not M14.0, which is docs-only. Until M14.9 ships, the
-subtree-reuse behavior described above remains the actual runtime behavior — this section
-describes the target state, not (yet) the live one.
+**Ruled on at M14.0 (U16), built at M14.9 (2026-08-28): tightened, not restated, because a site is
+now a real public website on its own subdomain.**
+[D-TenantSubdomains](../architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist)'s
+U16 ruling is now live: `content.manage` (`internal/authz/domain.PermContentManage`) is its own
+permission, checked per-unit and granted explicitly to `congregation-admin` on their own unit
+(`migrations/0026_content_manage_permission.sql`) — the same shape M13.2 already used for
+`site.manage` (`PermSiteManage`) rather than reusing a broader existing grant.
+`internal/content/application/authorize.go`'s `managePermission` now points at `PermContentManage`,
+not `PermReligionOrgManage`. A registration operator's platform-wide subtree authority no longer
+implies content-write authority — confirmed with the owner, deliberately left with **no** replacement
+edit path for now: operators simply lose `content.manage`, and granting them a moderation permission
+is a separate future decision, not part of this milestone. `CreateSite` over a real HTTP call against
+a running docker-compose stack, by a real `congregation-admin` session, was live-verified to succeed
+(and to reject a reserved slug — see the open-seams entry below); the cross-tenant-denial and
+registration-operator-denial cases are covered by
+`internal/content/content_integration_test.go`'s M14.9 section, run against real Postgres.
 
 **Also live-verified, and worth recording as a go-oikumenea characteristic rather than an
 OpenFaithMap bug:** a `subtree`-scoped `Authorize` grant on a real unit returns `{"allow":true}` for
@@ -316,14 +319,18 @@ exist first.
   M14.13 builds it.** The block-type catalog is migration-seeded only (13 MVP types,
   `migrations/0004_content.sql`) until then; see
   [D-SitePatterns](../architecture/decisions.md#d-sitepatterns--unsynced-starter-patterns-and-a-real-block-type-catalog).
-- **A cross-tenant `content.manage` denial is untested, and one real consequence of the
-  `religionorg.manage` reuse decision is unverified in practice — resolved by schedule
-  (2026-08-27, M14.0): the reuse itself is removed at M14.9, not just tested.** See the
-  authorization-touchpoints section and
-  [D-TenantSubdomains](../architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist)'s
-  U16 ruling — `content.manage` becomes its own per-unit permission rather than a byproduct of the
-  operator's subtree grant, so the untested cross-tenant-denial question stops being the load-bearing
-  concern; the new permission's own denial path needs test coverage once M14.9 builds it.
+- **A cross-tenant `content.manage` denial was untested — resolved at M14.9 (2026-08-28).** The
+  `religionorg.manage` reuse this row used to describe is gone (see the authorization-touchpoints
+  section); `internal/content/content_integration_test.go`'s M14.9 section now proves both that a
+  `congregation-admin` granted on one unit is denied on an unrelated one, and that a
+  `registration-operator` granted the same unit-scoped shape is denied too — `content.manage` itself
+  gates the write, not incidental scope.
+- **A reserved-subdomain slug is rejected server-side — added at M14.9 (2026-08-28).**
+  `content_sites.slug` is a hostname component (`<slug>.<apex>`) as of this milestone;
+  `internal/content/application/slugvalidation.go`'s blocklist is checked in `CreateSite` before the
+  reserved-slug scenario ever hits M3's own `Content:SlugTaken` uniqueness check, and returns the
+  new typed `Content:SlugReserved` error. Live-verified over a real HTTP call against a running
+  docker-compose stack (bypassing the admin form entirely, not just declining to submit it).
 - **go-oikumenea's `Authorize` appears to fail open on a nonexistent target unit under a subtree
   grant** — live-verified (see authorization-touchpoints), not exploitable through this module
   today, but worth a note to whoever next builds a target-scoped check against an unverified id.

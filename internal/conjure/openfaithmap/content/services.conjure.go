@@ -16,6 +16,8 @@ import (
 // Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to published/unlisted; never discloses draft documents or their blocks.
 type ContentPublicServiceClient interface {
 	GetSite(ctx context.Context, congregationUnitIdArg string) (Site, error)
+	// M14.9: the tenant-subdomain proxy resolves a Host header's slug through this endpoint. A distinct top-level path (not nested under /sites/{siteId}/...) — same httprouter wildcard-slot conflict getSite's own comment above documents.
+	GetSiteBySlug(ctx context.Context, slugArg string) (Site, error)
 	ListPublicDocuments(ctx context.Context, siteIdArg string, kindArg *string, localeArg *string) (DocumentPage, error)
 	// Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two.
 	GetPublicBlocks(ctx context.Context, documentIdArg string) (BlockList, error)
@@ -43,6 +45,22 @@ func (c *contentPublicServiceClient) GetSite(ctx context.Context, congregationUn
 	}
 	if returnVal == nil {
 		return *new(Site), werror.ErrorWithContextParams(ctx, "getSite response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentPublicServiceClient) GetSiteBySlug(ctx context.Context, slugArg string) (Site, error) {
+	var returnVal *Site
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetSiteBySlug"))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/public/site-by-slug/%s", url.PathEscape(fmt.Sprint(slugArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(Site), werror.WrapWithContextParams(ctx, err, "getSiteBySlug failed")
+	}
+	if returnVal == nil {
+		return *new(Site), werror.ErrorWithContextParams(ctx, "getSiteBySlug response cannot be nil")
 	}
 	return *returnVal, nil
 }

@@ -28,6 +28,7 @@ type errCtx struct {
 // go-oikumenea call failure, an unexpected store error) passes through unchanged.
 func mapErr(err error, c errCtx) error {
 	var slugTaken *domain.SlugTakenError
+	var slugReserved *domain.SlugReservedError
 	var blockInvalid *domain.BlockDataInvalidError
 	var dupPosition *domain.DuplicateBlockPositionError
 	var urlNotAllowed *domain.BlockUrlNotAllowedError
@@ -35,6 +36,8 @@ func mapErr(err error, c errCtx) error {
 	switch {
 	case errors.As(err, &slugTaken):
 		return gencontent.NewSlugTaken(slugTaken.Slug, slugTaken.Scope)
+	case errors.As(err, &slugReserved):
+		return gencontent.NewSlugReserved(slugReserved.Slug)
 	case errors.As(err, &blockInvalid):
 		return gencontent.NewBlockDataInvalid(blockInvalid.BlockTypeCode, blockInvalid.Position, blockInvalid.Field)
 	case errors.As(err, &dupPosition):
