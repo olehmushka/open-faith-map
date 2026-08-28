@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { ACCESSIBILITY_KEYS } from "@/lib/accessibility";
 import type { SiteAttributes } from "@/lib/religion";
 
 // Client component, not a plain <form action={...}> like the Theme card next to it: shadcn's
@@ -18,15 +19,6 @@ import type { SiteAttributes } from "@/lib/religion";
 // controlled Radix control with a hidden native input mirroring its checked state, so the
 // surrounding <form>'s Server Action still receives every value the plain-<Input> forms elsewhere
 // in this app get for free.
-export const ACCESSIBILITY_KEYS = [
-  "stepFreeEntrance",
-  "accessibleRestroom",
-  "hearingLoop",
-  "signLanguageInterpretation",
-  "accessibleParking",
-  "wheelchairSeating",
-  "brailleOrLargePrint",
-] as const;
 
 export function AttributesForm({
   initial,
