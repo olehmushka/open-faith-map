@@ -9,8 +9,8 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.6, M14.8, and M14.9
-(all 2026-08-27/28) are done**, no other sub-milestone is built yet. It is the second half of the
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.9 (all 2026-08-27/28)
+are done**, no other sub-milestone is built yet. It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -26,7 +26,9 @@ so editing a live page never touches what visitors see. **M14.8 adds client-side
 empty state, and a mobile-workable layout**, taken out of milestone order because M14.7 (Preview)
 was blocked on M14.9. **M14.9 serves each congregation's site on its own subdomain** (`Host`-header
 routing, a reserved-slug blocklist, a real 301 from the old path, and U16's `content.manage`
-tightening) — see its own row below. Next up: M14.7 (now unblocked) or M14.10, in either order.
+tightening) — see its own row below. **M14.7 renders a draft revision through the real public
+renderer** on the tenant subdomain, behind a short-lived signed token, once M14.9 unblocked it — see
+its own row below. Next up: M14.10.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -79,7 +81,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.4 · Schema-driven block forms | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** New `content_block_types.ui_schema JSONB NOT NULL DEFAULT '{}'` (widget hints, labels, help text, field order) — WordPress's `block.json` lesson: a block's data schema and its editor controls are declared together, so the form is *derived*, never hand-written per type. A generic, recursive form renderer (`web/apps/admin/.../documents/[documentId]/block-data-form.tsx`) replaces the raw-JSON `<Textarea>` for block *data* only — the outer block list's `position`/`blockTypeCode`/add-remove controls are untouched, reserved for M14.5. `Content:BlockDataInvalid` gained a `field` safe-arg (mirroring `Content:BlockUrlNotAllowed`'s existing one), populated by filtering a jsonschema/v6 validation error's instance-location path through the block type's own declared top-level `properties` keys — never a raw, potentially-attacker-chosen path segment; the admin editor now highlights the offending field inline instead of one generic `?error=` banner. **Two named, deliberately-accepted gaps, decided with the owner:** richText fields (`heading.text`, `paragraph.text`, `quote.text`, `staff_card.bio`, `list.content`) stay a schema-aware JSON textarea — no WYSIWYG editor exists in this codebase, and building one is out of scope here; and M14.3's deferred editor-side URL-load probe stays unbuilt (would need its own CSP/SSRF review, unscheduled). A `columns` block's schema-shape failure highlights the whole `columns` field group rather than a specific nested block, since the structural validation pass never descended into nested block data (pre-existing, not new). Migration: `migrations/0024_content_ui_schema.sql`. `Verified` awaits CI green on `main`. |
 | M14.5 · Inserter + drag-and-drop reorder | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built (2026-08-27).** Categorized block inserter with a one-line description per type — curation over choice, the consistent finding in the editor-UX research (13+ undifferentiated types is already past where an editor picks well). Drag-and-drop replaces the integer `position` input, **with keyboard-accessible move-up/move-down as a first-class path**: drag-only reordering is an accessibility failure, not a polish gap. `Verified` awaits CI green on `main`. |
 | M14.6 · Forward revisions, history, autosave | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-28).** New `content_document_revisions`; `content_documents` gains separate *published* and *draft* revision pointers, so **editing a live page never touches what visitors see** (Drupal's forward-revision model) — `PutBlocks`/`GetBlocks` read/write the draft in place, and publishing snapshots the draft into an immutable checkpoint (capped at 50 per document, `internal/content/application/revisionsnapshot.go`) that `GetPublicBlocks` reads instead. New `listRevisions`/`restoreRevision` endpoints back a History panel with per-revision restore. The admin editor autosaves on a ~10s debounce with a visible saved/unsaved indicator, replacing the old redirect-on-save flow. Migration: `migrations/0025_content_revisions.sql`. `Verified` awaits CI green on `main`. |
-| M14.7 · Preview | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Renders the draft revision through the **real public renderer** — not a second, drifting preview renderer — reached on the tenant subdomain via a short-lived signed token. `X-Robots-Tag: noindex`, no caching. Device-width toggle. Carries the WordPress CVE lesson directly: untrusted congregation content must never render inside the admin origin, and here it is cross-origin by construction. Depends on M14.6 (done) and M14.9 (done, 2026-08-28) — no longer blocked. |
+| M14.7 · Preview | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-28).** Renders the draft revision through the **real public renderer** (`components/site-page.tsx`) — an optional `previewToken` prop swaps its two data-fetch calls to token-gated preview reads; the render tree itself never forks. A new `ContentService.createPreviewLink` (content.manage-gated) mints a short-lived (20 min), stateless, site-scoped HS256 token (`internal/content/application/previewtoken.go`, no DB row — a draft is content, not a special code path); `ContentPublicService.listPreviewDocuments`/`getPreviewBlocks` accept it in place of a session, the one deliberate exception to "published/unlisted only," returning a single `Content:PreviewTokenInvalid` for every failure mode (missing/malformed/expired/wrong-site) so a probing caller learns nothing. Reached on the tenant subdomain at plain `/{locale}/preview?token=…` — no `proxy.ts`/`lib/tenant-host.ts` change needed, since that's the same browser-facing shape every tenant page already has; `injectSitesSegment` rewrites it into `app/[locale]/%5Fsites/[slug]/preview/page.tsx` exactly like every other tenant route. `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store`, added as a second path-scoped entry in the existing `next.config.ts` `headers()` array (M14.1's baseline headers untouched). A new `components/preview-frame.tsx` client component gives the device-width toggle (mobile/tablet/full) by constraining a wrapping div's `max-width` — no iframe, so there is exactly one render pipeline to keep pixel-identical to publishing. The admin editor's document page mints a link and opens it in a new tab (`target="_blank"`, never embedded) next to Publish/Unlist/Revert-to-draft — no congregation content ever renders inside the admin origin, cross-origin by construction. Verified against a real running docker-compose stack: a document created and left in `DRAFT` (never published) renders through `/en/preview?token=…` on `grace.localhost:3002` while the public root and a tokenless/garbage-token preview request both show nothing of it; a token minted for a different site is rejected on this one. `internal/content/content_integration_test.go` covers the same shapes against real Postgres, plus a dedicated `previewtoken_test.go` for expiry/tampering/malformed-token/alg-confusion cases a live clock can't easily exercise. `Verified` awaits CI green on `main`. |
 | M14.8 · Editor polish | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built (2026-08-28), out of milestone order** (M14.7 above is blocked on M14.9; this one only depends on M14.5). Session-local client-side undo/redo over the block list (`hooks/use-block-history.ts`), independent of M14.6's server-side revision history — Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, plus toolbar buttons, disabled at stack boundaries. A real empty state for a zero-block document, with a CTA into the existing inserter — **scoped down from "start from a template," named rather than silently dropped:** M14.13 (`content_patterns`) doesn't exist yet, so there is no template to start from. The block row's fixed 5-column grid now stacks to a single column below the `sm:` breakpoint, usable at 375px. The two remaining `?error=`-redirect round trips (document details save, new-document create) are now inline via `useActionState`, matching the pattern `people/invite/invite-form.tsx` established — zero `?error=` round trips remain anywhere in the document editor. `Verified` awaits CI green on `main`. |
 | M14.9 · Tenant subdomain routing (Phase 1) | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-28).** `web/apps/web/proxy.ts` (Next 16 renamed `middleware.ts` to `proxy.ts` — extended in place, composed with the existing next-intl locale middleware, rather than a second file) resolves the `Host` header to a site slug (`lib/tenant-host.ts`, unit-tested) and rewrites into an internal `/[locale]/_sites/[slug]/…` tree; the apex host keeps serving discovery unchanged. **Direct `/_sites/*` access from the apex 404s** — checked first, before next-intl even runs. **Reserved-subdomain blocklist enforced server-side** (`internal/content/application/slugvalidation.go`, checked in `CreateSite` before the existing `Content:SlugTaken` uniqueness probe) — `content_sites.slug` is now a hostname, so `admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/`help`/`status` and 25 more are unclaimable, rejected with a new typed `Content:SlugReserved` error. A real 301 (not Next's 307/308 `redirect()`) from the old `/congregations/[unitId]` route, now a Route Handler, to the tenant root. Rendering logic extracted into `components/site-page.tsx`, an "extractable module" reused by the new thin `[locale]/%5Fsites/[slug]/page.tsx` wrapper (the actual directory is `%5Fsites` — Next.js's private-folder convention would otherwise exclude a literal `_sites` folder from routing; `%5F` is the documented URL-encoded-underscore escape) — set up for the owner's Phase 2 (`openfaithmap-sites`) to be a move, not a rewrite. **Also implements M14.0's U16 ruling:** `content.manage` (`PermContentManage`) stops resolving through `religionorg.manage`'s subtree grant and becomes its own per-unit permission granted to `congregation-admin` only (`migrations/0026_content_manage_permission.sql`, same shape as M13.2's `site.manage`); registration operators lose that edit access, confirmed with the owner as leaving them with **no** replacement edit path for now — granting a moderation permission is a separate, later decision. Cross-tenant-denial and operator-denial cases (`docs/modules/content.md`'s previously-named test-coverage gap) covered by new `internal/content/content_integration_test.go` cases against real Postgres. Verified against a real running docker-compose stack: `grace.localhost:3002/` resolves through a real `content_sites` row created over HTTP by a real `congregation-admin` session (307 to `/en` with `NEXT_LOCALE` preserved, then 200); `localhost:3002/_sites/grace` and `/en/_sites/grace` both 404 from the apex; `CreateSite` with `slug: "admin"` returns `400 Content:SlugReserved` over a direct HTTP call (bypassing the admin form entirely); the old `/en/congregations/[unitId]` route returns a real `301` to `http://grace.localhost:3002/`. See [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist). `Verified` awaits CI green on `main`. |
 | M14.10 · Navigation + page routes | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `/[pageSlug]` and nested child routes on the tenant host, honoring the existing 3-level cap. **Nav is a hand-built menu (`content_site_nav_items`), not derived from the page tree** — M14.0 replaced the original page-tree-derivation assumption with an independently-curated menu (label, target document or external URL, sort order); `parent_document_id` still governs page nesting/breadcrumbs, just not the nav itself. Breadcrumbs at depth ≥ 2. |
@@ -519,22 +521,81 @@ green on `main`.
 
 ### M14.7 · Preview
 
-**Not started, no longer blocked.** Depends on M14.6 (done — there is now a draft revision to
-preview) and M14.9 (done, 2026-08-28 — the tenant origin to preview it on now exists). M14.8 was
-picked up first, out of milestone order, while this was still blocked.
+**Built (2026-08-28).** Depended on M14.6 (the draft/published split to preview) and M14.9 (the
+tenant origin to preview it on). M14.8 was picked up first, out of milestone order, while this was
+still blocked; both are now done.
 
-The draft revision rendered through the **real public renderer**. A second preview renderer is the
-standard way this feature rots — two code paths that must agree and slowly stop agreeing — so
-there is exactly one. Reached on the tenant subdomain with a short-lived signed preview token.
-`X-Robots-Tag: noindex` and no caching on preview responses. Device-width toggle.
+**Design call made at build time, not spelled out in the original scoping text:** the preview token
+is scoped to a **site**, not a single document. `components/site-page.tsx` is already a one-pager
+that renders every document on the site together — per-page routing doesn't exist yet (M14.10) — so
+there is no isolated single-document view to preview separately. "Preview the draft" means
+rendering that same one-pager with every document's draft revision substituted for its published
+one, which also means a document that has never been published becomes visible in preview, the
+whole point of the feature. `D-ContentRevisions`'s own consequence already anticipated this: "a
+draft is content, not a special code path."
 
-The security shape is the point, not incidental: the WordPress CVE pattern is a low-privileged user
-injecting content that executes when a higher-privileged user views it **in the admin origin**.
-Previewing on the tenant origin makes that cross-origin by construction.
+The draft revision rendered through the **real public renderer** — no second, drifting preview
+renderer. `components/site-page.tsx` gained an optional `previewToken` prop; when set, its two
+existing data-fetch call sites (the document list, each document's blocks) swap to token-gated
+reads instead of the public ones. The render tree (`app/blocks.tsx` and everything under it) is
+completely unaware which source it came from.
 
-**Acceptance criteria.** A draft renders pixel-identically to how it will publish. The preview URL
-is unusable once expired, and unusable by someone without the token. `noindex` present. No
-congregation content is ever rendered inside the admin origin.
+Backend: `ContentService.createPreviewLink` (`POST /content/v1/sites/{siteId}/preview-link`,
+content.manage-gated like every other draft-adjacent read) mints a stateless HS256 token
+(`internal/content/application/previewtoken.go`, `golang-jwt/jwt/v5` — the same library
+`internal/platform/devtoken` already uses, applied to a different problem) carrying only a site id
+and a 20-minute expiry — no DB row, no revocation path, deliberately simpler than invite links'
+DB-backed random-token scheme (`internal/identity/application/service.go`), since a leaked preview
+link is only a problem until it expires. `ContentPublicService.listPreviewDocuments`/
+`getPreviewBlocks` accept the token in place of a session — this service's caller
+(`openfaithmap-web`) never holds one (D-AdminSurface) — checking the token's site against the
+site/document actually being read, never trusting it just because it verifies. Every failure mode
+(missing, malformed, expired, wrong-site) collapses to one `Content:PreviewTokenInvalid`, mirroring
+`Forbidden`'s empty safe-args, so a caller probing the endpoints learns nothing about what exists.
+`ContentPreviewHMACKey` joins `config.Install` (`var/conf/install.yml`) following `DatabaseURL`'s
+ECV-encrypt-in-real-deployment precedent — unlike `DEV_ISSUER_HMAC_KEY` (dev/local-only, gated by
+`GuardSymmetricIssuers`), this key is needed in every environment.
+
+Routing needed **no change to `proxy.ts`/`lib/tenant-host.ts`**: a visitor requests plain
+`/{locale}/preview?token=…` on the tenant host — the same browser-facing shape every other tenant
+page already has, with `_sites/{slug}` injected invisibly by the existing `injectSitesSegment`
+rewrite. The new route lives at `app/[locale]/%5Fsites/[slug]/preview/page.tsx`, calling
+`SitePage(...)` as a plain awaited function rather than JSX specifically so a thrown
+`Content:PreviewTokenInvalid` can be caught here and turned into a clear "this preview link is
+invalid or has expired" message — never the app's generic error boundary, and never a silent
+fall-back to published content. `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store` are
+a second, path-scoped entry in the `next.config.ts` `headers()` array M14.1 already established
+(matched on both the pre-rewrite and post-rewrite path shapes, to be safe regardless of exactly
+when Next resolves `headers()` relative to a middleware rewrite — verified against the real running
+stack either way). A new `components/preview-frame.tsx` client component supplies the device-width
+toggle (mobile/tablet/full) by constraining a wrapping `<div>`'s `max-width` — deliberately not an
+iframe, so there remains exactly one render pipeline, not two that could drift.
+
+The admin editor's document page (`sites/[unitId]/documents/[documentId]/page.tsx`) mints a link
+via `createPreviewLink` on every render and opens it in a new tab (`target="_blank"`, never
+embedded) next to the existing Publish/Unlist/Revert-to-draft buttons — the WordPress CVE pattern
+this milestone exists to avoid is untrusted content rendering **inside the admin origin**, and a
+new-tab link on the tenant origin makes that impossible by construction rather than by convention.
+`buildPreviewUrl` (`lib/content.ts`) points at a new `TENANT_APEX_HOST` env var
+(`openfaithmap-web`'s own published host:port in local dev, "localhost:3002" — the real apex once
+**U14** resolves), since this admin app had no prior reason to know that host.
+
+**Acceptance criteria — met, verified against a real running docker-compose stack.** A document
+created and left in `DRAFT` (never published) — via a direct authenticated HTTP call, no admin UI in
+the loop — renders through `http://grace.localhost:3002/en/preview?token=…` with its draft text
+visible, while the same site's public root (`/en`) shows nothing of it. The identical request with
+no token, or with a garbage token, renders the "invalid or expired" message instead — confirmed by
+grep that the draft text appears zero times in either response. A token minted for a different site
+is rejected (`403 Content:PreviewTokenInvalid`) when used against this site's document. The response
+carries `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store`. `internal/content/content_integration_test.go`
+covers the same shapes against real Postgres (never-published doc visible via `GetPreviewBlocks`,
+excluded from `ListPublicDocuments`, rejected for missing/garbage/wrong-site tokens); a dedicated
+`internal/content/application/previewtoken_test.go` covers expiry, HMAC-key mismatch, wrong
+`purpose` claim, malformed input, and `alg: none` confusion — cases a real clock in an integration
+test can't cleanly exercise. No congregation content is ever rendered inside the admin origin: the
+preview link is a plain external anchor, not embedded. `go test ./internal/content/... -run TestContentIntegration`,
+`make verify`, and `make sdk-verify` all pass; `web/apps/web` and `web/apps/admin`'s
+`npm run lint && npm run test && npm run build` all pass. `Verified` awaits CI green on `main`.
 
 ### M14.8 · Editor polish
 

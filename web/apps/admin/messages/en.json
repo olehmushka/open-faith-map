@@ -226,7 +226,8 @@
     "redoAnnouncement": "Change redone",
     "blocksEmptyHeading": "This page has no content yet.",
     "blocksEmptyBody": "Add your first block to start building this page.",
-    "blocksEmptyCta": "Add your first block"
+    "blocksEmptyCta": "Add your first block",
+    "preview": "Preview"
   },
   "LocaleSwitcher": {
     "label": "Language",

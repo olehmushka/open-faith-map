@@ -52,7 +52,7 @@ func TestContentIntegration(t *testing.T) {
 	authzStore := authzadapters.NewRepository(pool)
 	authzSvc := authz.NewService(pdp, authzStore, pool)
 	contentStore := contentadapters.NewRepository(pool)
-	contentSvc := application.NewService(contentStore, authzSvc)
+	contentSvc := application.NewService(contentStore, authzSvc, "m14-7-test-preview-hmac-key")
 
 	var personIDs, unitIDs, siteIDs, assignmentIDs, documentIDs []string
 	t.Cleanup(func() {
@@ -568,5 +568,115 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if len(prunedRevisions) != 50 {
 		t.Errorf("ListRevisions (after 56 total publishes) = %d entries, want the 50-revision cap", len(prunedRevisions))
+	}
+
+	// --- M14.7: Preview. CreatePreviewLink is content.manage-gated like every other draft-adjacent
+	// read on this service.
+	if _, err := contentSvc.CreatePreviewLink(otherCtx, site.ID); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("CreatePreviewLink by non-manager error = %v, want ErrForbidden", err)
+	}
+	previewToken, err := contentSvc.CreatePreviewLink(adminCtx, site.ID)
+	if err != nil {
+		t.Fatalf("CreatePreviewLink: %v", err)
+	}
+	if previewToken == "" {
+		t.Fatalf("CreatePreviewLink returned an empty token")
+	}
+
+	// A document that has never been published — GetPublicBlocks/ListPublicDocuments would never
+	// show this to an anonymous caller (the whole "draft is never public" invariant); preview is the
+	// one deliberate, token-gated exception (D-ContentRevisions: "a draft is content, not a special
+	// code path").
+	previewDoc, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-7-preview-only",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (preview-only doc): %v", err)
+	}
+	documentIDs = append(documentIDs, previewDoc.ID)
+	if _, err := contentSvc.PutBlocks(adminCtx, previewDoc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"Preview only, never published"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks (preview-only doc): %v", err)
+	}
+
+	previewBlocks, err := contentSvc.GetPreviewBlocks(context.Background(), previewDoc.ID, previewToken)
+	if err != nil {
+		t.Fatalf("GetPreviewBlocks (valid token, never-published doc): %v", err)
+	}
+	if len(previewBlocks) != 1 || paragraphText(t, previewBlocks[0].Data) != "Preview only, never published" {
+		t.Fatalf("GetPreviewBlocks = %+v, want the draft paragraph", previewBlocks)
+	}
+	// Confirm the ordinary public read still 404s the same never-published document — the preview
+	// carve-out changes nothing about GetPublicBlocks itself.
+	if _, err := contentSvc.GetPublicBlocks(context.Background(), previewDoc.ID); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+		t.Errorf("GetPublicBlocks (preview-only doc, no token) error = %v, want ErrDocumentNotFound", err)
+	}
+
+	previewDocs, err := contentSvc.ListPreviewDocuments(context.Background(), site.ID, previewToken, nil, nil)
+	if err != nil {
+		t.Fatalf("ListPreviewDocuments: %v", err)
+	}
+	foundPreviewOnly := false
+	for _, d := range previewDocs {
+		if d.ID == previewDoc.ID {
+			foundPreviewOnly = true
+		}
+	}
+	if !foundPreviewOnly {
+		t.Errorf("ListPreviewDocuments = %+v, want it to include the never-published doc %s", previewDocs, previewDoc.ID)
+	}
+	publicDocsOnly, err := contentSvc.ListPublicDocuments(context.Background(), site.ID, nil, nil)
+	if err != nil {
+		t.Fatalf("ListPublicDocuments: %v", err)
+	}
+	for _, d := range publicDocsOnly {
+		if d.ID == previewDoc.ID {
+			t.Errorf("ListPublicDocuments unexpectedly included the never-published doc %s", previewDoc.ID)
+		}
+	}
+
+	// Missing/malformed/garbage tokens are rejected, never treated as "no token = fall back to
+	// public" or as a lookup failure that leaks whether the document/site exists.
+	if _, err := contentSvc.GetPreviewBlocks(context.Background(), previewDoc.ID, ""); !errors.Is(err, contentdomain.ErrPreviewTokenInvalid) {
+		t.Errorf("GetPreviewBlocks (empty token) error = %v, want ErrPreviewTokenInvalid", err)
+	}
+	if _, err := contentSvc.GetPreviewBlocks(context.Background(), previewDoc.ID, "not-a-real-token"); !errors.Is(err, contentdomain.ErrPreviewTokenInvalid) {
+		t.Errorf("GetPreviewBlocks (garbage token) error = %v, want ErrPreviewTokenInvalid", err)
+	}
+	if _, err := contentSvc.ListPreviewDocuments(context.Background(), site.ID, "not-a-real-token", nil, nil); !errors.Is(err, contentdomain.ErrPreviewTokenInvalid) {
+		t.Errorf("ListPreviewDocuments (garbage token) error = %v, want ErrPreviewTokenInvalid", err)
+	}
+
+	// A token minted for a different site is rejected — the token's own scope is checked against the
+	// document/site actually being read, never trusted just because it verifies.
+	unitC, err := directorySvc.CreateUnitWithEdge(ctx, directorydomain.Unit{Name: "M14.7 Other Preview Congregation"}, seed.RootUnitID, directorydomain.CanonicalGraphCode)
+	if err != nil {
+		t.Fatalf("CreateUnitWithEdge (unitC): %v", err)
+	}
+	unitIDs = append(unitIDs, unitC.ID)
+	var otherSiteAssignmentID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope)
+		VALUES ($1, $2, $3, 'unit') RETURNING id`,
+		adminID, seed.CongregationAdminRoleID, unitC.ID,
+	).Scan(&otherSiteAssignmentID); err != nil {
+		t.Fatalf("grant congregation-admin on unitC: %v", err)
+	}
+	assignmentIDs = append(assignmentIDs, otherSiteAssignmentID)
+	otherSite, err := contentSvc.CreateSite(adminCtx, contentdomain.CreateSiteInput{CongregationUnitRID: unitC.ID, Slug: "m14-7-other-site"})
+	if err != nil {
+		t.Fatalf("CreateSite (unitC): %v", err)
+	}
+	siteIDs = append(siteIDs, otherSite.ID)
+	otherSiteToken, err := contentSvc.CreatePreviewLink(adminCtx, otherSite.ID)
+	if err != nil {
+		t.Fatalf("CreatePreviewLink (unitC): %v", err)
+	}
+	if _, err := contentSvc.GetPreviewBlocks(context.Background(), previewDoc.ID, otherSiteToken); !errors.Is(err, contentdomain.ErrPreviewTokenInvalid) {
+		t.Errorf("GetPreviewBlocks (token scoped to a different site) error = %v, want ErrPreviewTokenInvalid", err)
+	}
+	if _, err := contentSvc.ListPreviewDocuments(context.Background(), site.ID, otherSiteToken, nil, nil); !errors.Is(err, contentdomain.ErrPreviewTokenInvalid) {
+		t.Errorf("ListPreviewDocuments (token scoped to a different site) error = %v, want ErrPreviewTokenInvalid", err)
 	}
 }

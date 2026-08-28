@@ -67,3 +67,17 @@ export async function getPublicBlocks(documentId: string): Promise<Block[]> {
   const list = await unwrap(client().contentPublic.getPublicBlocks(documentId));
   return list.blocks;
 }
+
+// M14.7: the one deliberate exception to "published/unlisted only" — gated by a site-scoped preview
+// token (minted by openfaithmap-admin via ContentService.createPreviewLink) instead of a session,
+// since this app never holds one. Throws ContentApiError with errorName "Content:PreviewTokenInvalid"
+// for a missing/malformed/expired/wrong-site token.
+export async function listPreviewDocuments(siteId: string, token: string, kind?: string): Promise<Document[]> {
+  const page = await unwrap(client().contentPublic.listPreviewDocuments(siteId, token, kind));
+  return page.documents;
+}
+
+export async function getPreviewBlocks(documentId: string, token: string): Promise<Block[]> {
+  const list = await unwrap(client().contentPublic.getPreviewBlocks(documentId, token));
+  return list.blocks;
+}

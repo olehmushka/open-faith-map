@@ -179,6 +179,7 @@ split into two services instead, sharing one `types:` block in `api/content.conj
 | `PUT /documents/{documentId}` | Update slug/parent | `content.manage` (on the unit) |
 | `POST /documents/{documentId}/transition` | `DRAFT → PUBLISHED → UNLISTED` and back | `content.manage` (on the unit) |
 | `GET·PUT /documents/{documentId}/blocks` | Read / replace the ordered block list, any document state | `content.manage` (on the unit) |
+| `POST /sites/{siteId}/preview-link` | M14.7: mint a short-lived, site-scoped preview token, handed to `ContentPublicService`'s preview endpoints in place of a session | `content.manage` (on the unit) |
 
 **`ContentPublicService`** (`/content/v1/public`, no auth at all — `openfaithmap-web`'s only path in):
 
@@ -188,13 +189,25 @@ split into two services instead, sharing one `types:` block in `api/content.conj
 | `GET /sites/{siteId}/documents?kind=&locale=` | List a site's `PUBLISHED`/`UNLISTED` documents only |
 | `GET /documents/{documentId}/blocks` | Read a document's blocks — `Content:DocumentNotFound` if it's `DRAFT`, never distinguishing "draft" from "doesn't exist" |
 | `GET /block-types` | Active block types only |
+| `GET /sites/{siteId}/preview-documents?token=&kind=&locale=` | M14.7: every document in every state for the token's own site — the one deliberate exception below, gated by a token from `createPreviewLink` instead of published/unlisted filtering |
+| `GET /documents/{documentId}/preview-blocks?token=` | M14.7: the document's draft revision regardless of state, gated the same way. Both preview endpoints return `Content:PreviewTokenInvalid` (never `DocumentNotFound`/`Forbidden`) for a missing, malformed, expired, or wrong-site token — one error for every case, so a caller probing them learns nothing about what exists |
 
 `content.catalog.manage` (platform-wide block-type catalog writes) has **no endpoint as of M13** —
 the catalog is migration-seeded only (13 MVP types). **Scheduled to M14.13**
 ([D-SitePatterns](../architecture/decisions.md#d-sitepatterns--unsynced-starter-patterns-and-a-real-block-type-catalog)):
 block-type and pattern CRUD, gated on platform-moderator authority.
 
-Public reads never expose `draft` documents or blocks belonging to them. `content.manage` is
+Public reads never expose `draft` documents or blocks belonging to them — with exactly one
+deliberate, token-gated exception (M14.7, `D-ContentRevisions`): `listPreviewDocuments`/
+`getPreviewBlocks`, reached from the tenant subdomain with a short-lived, stateless, site-scoped
+signed token (`internal/content/application/previewtoken.go`, HS256 via `golang-jwt/jwt/v5`, no DB
+row — a draft is content, not a special code path) minted by `ContentService.createPreviewLink`.
+The token carries no document id, only a site id: previewing renders the same one-pager the real
+public renderer already produces, with every document's draft substituted for its published
+revision, rather than a single isolated page (there is no per-page route to isolate one at — that's
+M14.10).
+
+`content.manage` is
 **not a go-oikumenea permission code** — it is OpenFaithMap's name for a **target-scoped capability
 check** against go-oikumenea's PDP: "does this caller hold write authority over *this specific*
 congregation unit?" See [D-PlatformModerator](../architecture/decisions.md) for the pattern, which

@@ -133,6 +133,28 @@ export async function restoreRevision(documentId: string, revisionId: string): P
   return list.blocks;
 }
 
+// M14.7: mints a short-lived, site-scoped token for openfaithmap-web's preview route to accept
+// instead of a session (that app never holds one). Handed to the visitor as a URL query param, never
+// used again here.
+export async function createPreviewLink(siteId: string): Promise<string> {
+  const link = await unwrap((await client()).content.createPreviewLink(siteId));
+  return link.token;
+}
+
+// buildPreviewUrl points at the SAME tenant host every other tenant page uses (D-TenantSubdomains) —
+// "{slug}.{apex}", never a path under this admin app's own origin, so the WordPress-CVE-style
+// cross-origin guarantee holds by construction. TENANT_APEX_HOST is openfaithmap-web's own published
+// host:port in local dev ("localhost:3002") and the real apex once U14 resolves; this app has no
+// other reason to know that host today, so it isn't folded into OPENFAITHMAP_API_BASE_URL.
+export function buildPreviewUrl(site: Site, locale: string, token: string): string {
+  const apexHost = process.env.TENANT_APEX_HOST?.trim();
+  if (!apexHost) {
+    throw new Error("TENANT_APEX_HOST is not set.");
+  }
+  const protocol = apexHost.startsWith("localhost") ? "http" : "https";
+  return `${protocol}://${site.slug}.${apexHost}/${locale}/preview?token=${encodeURIComponent(token)}`;
+}
+
 // ---- public (no content.manage required — published/unlisted only) ----
 
 export async function getSite(congregationUnitId: string): Promise<Site> {

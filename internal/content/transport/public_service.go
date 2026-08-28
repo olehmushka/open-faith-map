@@ -59,6 +59,25 @@ func (s *PublicService) GetPublicBlocks(ctx context.Context, documentIdArg strin
 	return gencontent.BlockList{Blocks: toAPIBlocks(blocks)}, nil
 }
 
+// ListPreviewDocuments and GetPreviewBlocks (M14.7) are this service's one deliberate exception to
+// "always published/unlisted only" — gated by a site-scoped token instead of a session, since this
+// service's caller never holds one. See ContentPublicService's own doc comment above.
+func (s *PublicService) ListPreviewDocuments(ctx context.Context, siteIdArg string, tokenArg string, kindArg, localeArg *string) (gencontent.DocumentPage, error) {
+	docs, err := s.appService.ListPreviewDocuments(ctx, siteIdArg, tokenArg, kindArg, localeArg)
+	if err != nil {
+		return gencontent.DocumentPage{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	return gencontent.DocumentPage{Documents: toAPIDocuments(docs)}, nil
+}
+
+func (s *PublicService) GetPreviewBlocks(ctx context.Context, documentIdArg string, tokenArg string) (gencontent.BlockList, error) {
+	blocks, err := s.appService.GetPreviewBlocks(ctx, documentIdArg, tokenArg)
+	if err != nil {
+		return gencontent.BlockList{}, mapErr(err, errCtx{DocumentID: documentIdArg})
+	}
+	return gencontent.BlockList{Blocks: toAPIBlocks(blocks)}, nil
+}
+
 func (s *PublicService) ListBlockTypes(ctx context.Context) (gencontent.BlockTypePage, error) {
 	blockTypes, err := s.appService.ListBlockTypes(ctx)
 	if err != nil {

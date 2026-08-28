@@ -13,7 +13,7 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
-// Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to published/unlisted; never discloses draft documents or their blocks.
+// Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to published/unlisted; never discloses draft documents or their blocks — with exactly one carve-out, M14.7's listPreviewDocuments/getPreviewBlocks, which require a valid site-scoped preview token (minted by ContentService.createPreviewLink) in place of a session, since this service's caller never holds one.
 type ContentPublicServiceClient interface {
 	GetSite(ctx context.Context, congregationUnitIdArg string) (Site, error)
 	// M14.9: the tenant-subdomain proxy resolves a Host header's slug through this endpoint. A distinct top-level path (not nested under /sites/{siteId}/...) — same httprouter wildcard-slot conflict getSite's own comment above documents.
@@ -21,6 +21,10 @@ type ContentPublicServiceClient interface {
 	ListPublicDocuments(ctx context.Context, siteIdArg string, kindArg *string, localeArg *string) (DocumentPage, error)
 	// Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two.
 	GetPublicBlocks(ctx context.Context, documentIdArg string) (BlockList, error)
+	// M14.7. Like listPublicDocuments, but returns documents in every state (draft included) — gated by token (from createPreviewLink) instead of published/unlisted filtering. Content:PreviewTokenInvalid if the token is missing, malformed, expired, or scoped to a different site.
+	ListPreviewDocuments(ctx context.Context, siteIdArg string, tokenArg string, kindArg *string, localeArg *string) (DocumentPage, error)
+	// M14.7. Reads the document's draft revision regardless of its published state — gated by token (from createPreviewLink) instead of a session. Content:PreviewTokenInvalid if the token is missing, malformed, expired, or scoped to a different site than the document's own.
+	GetPreviewBlocks(ctx context.Context, documentIdArg string, tokenArg string) (BlockList, error)
 	// Active block types only.
 	ListBlockTypes(ctx context.Context) (BlockTypePage, error)
 }
@@ -105,6 +109,50 @@ func (c *contentPublicServiceClient) GetPublicBlocks(ctx context.Context, docume
 	return *returnVal, nil
 }
 
+func (c *contentPublicServiceClient) ListPreviewDocuments(ctx context.Context, siteIdArg string, tokenArg string, kindArg *string, localeArg *string) (DocumentPage, error) {
+	var returnVal *DocumentPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPreviewDocuments"))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/public/sites/%s/preview-documents", url.PathEscape(fmt.Sprint(siteIdArg))))
+	queryParams := make(url.Values)
+	queryParams.Set("token", fmt.Sprint(tokenArg))
+	if kindArg != nil {
+		queryParams.Set("kind", fmt.Sprint(*kindArg))
+	}
+	if localeArg != nil {
+		queryParams.Set("locale", fmt.Sprint(*localeArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(DocumentPage), werror.WrapWithContextParams(ctx, err, "listPreviewDocuments failed")
+	}
+	if returnVal == nil {
+		return *new(DocumentPage), werror.ErrorWithContextParams(ctx, "listPreviewDocuments response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentPublicServiceClient) GetPreviewBlocks(ctx context.Context, documentIdArg string, tokenArg string) (BlockList, error) {
+	var returnVal *BlockList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetPreviewBlocks"))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/public/documents/%s/preview-blocks", url.PathEscape(fmt.Sprint(documentIdArg))))
+	queryParams := make(url.Values)
+	queryParams.Set("token", fmt.Sprint(tokenArg))
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(BlockList), werror.WrapWithContextParams(ctx, err, "getPreviewBlocks failed")
+	}
+	if returnVal == nil {
+		return *new(BlockList), werror.ErrorWithContextParams(ctx, "getPreviewBlocks response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 func (c *contentPublicServiceClient) ListBlockTypes(ctx context.Context) (BlockTypePage, error) {
 	var returnVal *BlockTypePage
 	var requestParams []httpclient.RequestParam
@@ -138,6 +186,8 @@ type ContentServiceClient interface {
 	ListRevisions(ctx context.Context, authHeader bearertoken.Token, documentIdArg string) (RevisionPage, error)
 	// Copies a past checkpoint's blocks into the draft — into the draft only, never auto-publishing (owner decision, 2026-08-28). Publish afterward to make it live.
 	RestoreRevision(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, revisionIdArg string) (BlockList, error)
+	// M14.7. Mints a short-lived, site-scoped preview token — content.manage-gated, same as every other write/draft-read on this service. The returned token is handed to ContentPublicService's preview endpoints on the tenant subdomain, never used here again.
+	CreatePreviewLink(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (PreviewLink, error)
 }
 
 type contentServiceClient struct {
@@ -335,6 +385,23 @@ func (c *contentServiceClient) RestoreRevision(ctx context.Context, authHeader b
 	return *returnVal, nil
 }
 
+func (c *contentServiceClient) CreatePreviewLink(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (PreviewLink, error) {
+	var returnVal *PreviewLink
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreatePreviewLink"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/sites/%s/preview-link", url.PathEscape(fmt.Sprint(siteIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(PreviewLink), werror.WrapWithContextParams(ctx, err, "createPreviewLink failed")
+	}
+	if returnVal == nil {
+		return *new(PreviewLink), werror.ErrorWithContextParams(ctx, "createPreviewLink response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // Congregation site authoring: sites, documents (pages), blocks. Every write, and every read that must see draft state, is content.manage-gated — a live, target-scoped Authorize call against the site's own congregation unit (see file header). See docs/modules/content.md.
 type ContentServiceClientWithAuth interface {
 	CreateSite(ctx context.Context, requestArg CreateSiteRequest) (Site, error)
@@ -352,6 +419,8 @@ type ContentServiceClientWithAuth interface {
 	ListRevisions(ctx context.Context, documentIdArg string) (RevisionPage, error)
 	// Copies a past checkpoint's blocks into the draft — into the draft only, never auto-publishing (owner decision, 2026-08-28). Publish afterward to make it live.
 	RestoreRevision(ctx context.Context, documentIdArg string, revisionIdArg string) (BlockList, error)
+	// M14.7. Mints a short-lived, site-scoped preview token — content.manage-gated, same as every other write/draft-read on this service. The returned token is handed to ContentPublicService's preview endpoints on the tenant subdomain, never used here again.
+	CreatePreviewLink(ctx context.Context, siteIdArg string) (PreviewLink, error)
 }
 
 func NewContentServiceClientWithAuth(client ContentServiceClient, authHeader bearertoken.Token) ContentServiceClientWithAuth {
@@ -401,6 +470,10 @@ func (c *contentServiceClientWithAuth) ListRevisions(ctx context.Context, docume
 
 func (c *contentServiceClientWithAuth) RestoreRevision(ctx context.Context, documentIdArg string, revisionIdArg string) (BlockList, error) {
 	return c.client.RestoreRevision(ctx, c.authHeader, documentIdArg, revisionIdArg)
+}
+
+func (c *contentServiceClientWithAuth) CreatePreviewLink(ctx context.Context, siteIdArg string) (PreviewLink, error) {
+	return c.client.CreatePreviewLink(ctx, c.authHeader, siteIdArg)
 }
 
 func NewContentServiceClientWithTokenProvider(client ContentServiceClient, tokenProvider httpclient.TokenProvider) ContentServiceClientWithAuth {
@@ -490,4 +563,12 @@ func (c *contentServiceClientWithTokenProvider) RestoreRevision(ctx context.Cont
 		return *new(BlockList), err
 	}
 	return c.client.RestoreRevision(ctx, bearertoken.Token(token), documentIdArg, revisionIdArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) CreatePreviewLink(ctx context.Context, siteIdArg string) (PreviewLink, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PreviewLink), err
+	}
+	return c.client.CreatePreviewLink(ctx, bearertoken.Token(token), siteIdArg)
 }

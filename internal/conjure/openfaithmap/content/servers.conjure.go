@@ -15,7 +15,7 @@ import (
 	"github.com/palantir/witchcraft-go-server/v2/wrouter"
 )
 
-// Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to published/unlisted; never discloses draft documents or their blocks.
+// Anonymous reads only (openfaithmap-web holds no session — D-AdminSurface). Always filters to published/unlisted; never discloses draft documents or their blocks — with exactly one carve-out, M14.7's listPreviewDocuments/getPreviewBlocks, which require a valid site-scoped preview token (minted by ContentService.createPreviewLink) in place of a session, since this service's caller never holds one.
 type ContentPublicService interface {
 	GetSite(ctx context.Context, congregationUnitIdArg string) (Site, error)
 	// M14.9: the tenant-subdomain proxy resolves a Host header's slug through this endpoint. A distinct top-level path (not nested under /sites/{siteId}/...) — same httprouter wildcard-slot conflict getSite's own comment above documents.
@@ -23,6 +23,10 @@ type ContentPublicService interface {
 	ListPublicDocuments(ctx context.Context, siteIdArg string, kindArg *string, localeArg *string) (DocumentPage, error)
 	// Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two.
 	GetPublicBlocks(ctx context.Context, documentIdArg string) (BlockList, error)
+	// M14.7. Like listPublicDocuments, but returns documents in every state (draft included) — gated by token (from createPreviewLink) instead of published/unlisted filtering. Content:PreviewTokenInvalid if the token is missing, malformed, expired, or scoped to a different site.
+	ListPreviewDocuments(ctx context.Context, siteIdArg string, tokenArg string, kindArg *string, localeArg *string) (DocumentPage, error)
+	// M14.7. Reads the document's draft revision regardless of its published state — gated by token (from createPreviewLink) instead of a session. Content:PreviewTokenInvalid if the token is missing, malformed, expired, or scoped to a different site than the document's own.
+	GetPreviewBlocks(ctx context.Context, documentIdArg string, tokenArg string) (BlockList, error)
 	// Active block types only.
 	ListBlockTypes(ctx context.Context) (BlockTypePage, error)
 }
@@ -45,6 +49,12 @@ func RegisterRoutesContentPublicService(router wrouter.Router, impl ContentPubli
 	}
 	if err := resource.Get("GetPublicBlocks", "/content/v1/public/documents/{documentId}/blocks", httpserver.NewJSONHandler(handler.HandleGetPublicBlocks, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getPublicBlocks route")
+	}
+	if err := resource.Get("ListPreviewDocuments", "/content/v1/public/sites/{siteId}/preview-documents", httpserver.NewJSONHandler(handler.HandleListPreviewDocuments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPreviewDocuments route")
+	}
+	if err := resource.Get("GetPreviewBlocks", "/content/v1/public/documents/{documentId}/preview-blocks", httpserver.NewJSONHandler(handler.HandleGetPreviewBlocks, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getPreviewBlocks route")
 	}
 	if err := resource.Get("ListBlockTypes", "/content/v1/public/block-types", httpserver.NewJSONHandler(handler.HandleListBlockTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listBlockTypes route")
@@ -134,6 +144,52 @@ func (c *contentPublicServiceHandler) HandleGetPublicBlocks(rw http.ResponseWrit
 	return codecs.JSON.Encode(rw, respArg)
 }
 
+func (c *contentPublicServiceHandler) HandleListPreviewDocuments(rw http.ResponseWriter, req *http.Request) error {
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	tokenArg := req.URL.Query().Get("token")
+	var kindArg *string
+	if kindArgStr := req.URL.Query().Get("kind"); kindArgStr != "" {
+		kindArgInternal := kindArgStr
+		kindArg = &kindArgInternal
+	}
+	var localeArg *string
+	if localeArgStr := req.URL.Query().Get("locale"); localeArgStr != "" {
+		localeArgInternal := localeArgStr
+		localeArg = &localeArgInternal
+	}
+	respArg, err := c.impl.ListPreviewDocuments(req.Context(), siteIdArg, tokenArg, kindArg, localeArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentPublicServiceHandler) HandleGetPreviewBlocks(rw http.ResponseWriter, req *http.Request) error {
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	documentIdArg, ok := pathParams["documentId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"documentId\" not present")
+	}
+	tokenArg := req.URL.Query().Get("token")
+	respArg, err := c.impl.GetPreviewBlocks(req.Context(), documentIdArg, tokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
 func (c *contentPublicServiceHandler) HandleListBlockTypes(rw http.ResponseWriter, req *http.Request) error {
 	respArg, err := c.impl.ListBlockTypes(req.Context())
 	if err != nil {
@@ -160,6 +216,8 @@ type ContentService interface {
 	ListRevisions(ctx context.Context, authHeader bearertoken.Token, documentIdArg string) (RevisionPage, error)
 	// Copies a past checkpoint's blocks into the draft — into the draft only, never auto-publishing (owner decision, 2026-08-28). Publish afterward to make it live.
 	RestoreRevision(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, revisionIdArg string) (BlockList, error)
+	// M14.7. Mints a short-lived, site-scoped preview token — content.manage-gated, same as every other write/draft-read on this service. The returned token is handed to ContentPublicService's preview endpoints on the tenant subdomain, never used here again.
+	CreatePreviewLink(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (PreviewLink, error)
 }
 
 // RegisterRoutesContentService registers handlers for the ContentService endpoints with a witchcraft wrouter.
@@ -198,6 +256,9 @@ func RegisterRoutesContentService(router wrouter.Router, impl ContentService, ro
 	}
 	if err := resource.Post("RestoreRevision", "/content/v1/documents/{documentId}/revisions/{revisionId}/restore", httpserver.NewJSONHandler(handler.HandleRestoreRevision, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add restoreRevision route")
+	}
+	if err := resource.Post("CreatePreviewLink", "/content/v1/sites/{siteId}/preview-link", httpserver.NewJSONHandler(handler.HandleCreatePreviewLink, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createPreviewLink route")
 	}
 	return nil
 }
@@ -444,6 +505,27 @@ func (c *contentServiceHandler) HandleRestoreRevision(rw http.ResponseWriter, re
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"revisionId\" not present")
 	}
 	respArg, err := c.impl.RestoreRevision(req.Context(), bearertoken.Token(authHeader), documentIdArg, revisionIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleCreatePreviewLink(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	respArg, err := c.impl.CreatePreviewLink(req.Context(), bearertoken.Token(authHeader), siteIdArg)
 	if err != nil {
 		return err
 	}

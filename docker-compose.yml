@@ -173,6 +173,10 @@ services:
       # cut the API side over; M10.7 confirmed the frontend still needs its own copy since there's
       # no config-echo endpoint and adding one for a single id isn't worth new API surface).
       REGISTRATION_ROOT_UNIT_ID: "${REGISTRATION_ROOT_UNIT_ID}"
+      # M14.7: the tenant host this admin app's Preview button links out to — openfaithmap-web's own
+      # published host:port in local dev, matching the "grace.localhost:3002" shape M14.9 verified
+      # against. A real deployment sets this to the real apex domain once U14 resolves.
+      TENANT_APEX_HOST: "localhost:3002"
 
 volumes:
   postgres-data:

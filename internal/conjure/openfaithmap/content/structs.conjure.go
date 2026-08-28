@@ -317,6 +317,27 @@ func (o *DocumentRevision) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M14.7. token is a short-lived, stateless, site-scoped signed token — opaque to the caller, verified by ContentPublicService's preview endpoints, never a session or a revocable row (see D-ContentRevisions).
+type PreviewLink struct {
+	Token string `json:"token"`
+}
+
+func (o PreviewLink) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PreviewLink) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type PutBlocksRequest struct {
 	Blocks []BlockInput `json:"blocks"`
 }
