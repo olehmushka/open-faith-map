@@ -219,7 +219,14 @@
     "historyHeading": "History",
     "historyEmpty": "No published revisions yet — publish once to start building history.",
     "revisionLabel": "Revision {number} · {date}",
-    "restoreRevision": "Restore"
+    "restoreRevision": "Restore",
+    "undo": "Undo",
+    "redo": "Redo",
+    "undoAnnouncement": "Change undone",
+    "redoAnnouncement": "Change redone",
+    "blocksEmptyHeading": "This page has no content yet.",
+    "blocksEmptyBody": "Add your first block to start building this page.",
+    "blocksEmptyCta": "Add your first block"
   },
   "LocaleSwitcher": {
     "label": "Language",

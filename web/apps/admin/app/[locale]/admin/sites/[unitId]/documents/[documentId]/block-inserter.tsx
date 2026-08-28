@@ -8,7 +8,7 @@
 // that primitive for free, so this component adds none of its own keyboard handling.
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { useTranslations } from "next-intl";
 import { Plus } from "lucide-react";
 
@@ -29,9 +29,17 @@ import { BLOCK_CATEGORY_LABELS, BLOCK_CATEGORY_ORDER, blockCatalogEntry } from "
 export function BlockInserter({
   blockTypes,
   onInsert,
+  triggerLabel,
+  triggerVariant = "outline",
+  triggerSize = "sm",
 }: {
   blockTypes: BlockType[];
   onInsert: (blockType: BlockType) => void;
+  /** M14.8: lets the empty-state CTA (block-list-editor.tsx) reuse this same dialog with its own
+   * wording/prominence instead of duplicating the Command/category logic for a second trigger. */
+  triggerLabel?: string;
+  triggerVariant?: ComponentProps<typeof Button>["variant"];
+  triggerSize?: ComponentProps<typeof Button>["size"];
 }) {
   const [open, setOpen] = useState(false);
   const t = useTranslations("DocumentEditorPage");
@@ -45,8 +53,8 @@ export function BlockInserter({
 
   return (
     <>
-      <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setOpen(true)}>
-        <Plus /> {t("addBlock")}
+      <Button type="button" variant={triggerVariant} size={triggerSize} className="self-start" onClick={() => setOpen(true)}>
+        <Plus /> {triggerLabel ?? t("addBlock")}
       </Button>
       <CommandDialog
         open={open}

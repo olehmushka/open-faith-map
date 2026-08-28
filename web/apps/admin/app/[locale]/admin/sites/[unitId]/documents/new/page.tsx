@@ -3,40 +3,34 @@ import { getTranslations } from "next-intl/server";
 import { createDocument, getSite, listDocuments } from "@/lib/content";
 import { DocumentKind } from "@/lib/openfaithmap/generated/content";
 import { redirect } from "@/i18n/navigation";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+
+import { NewDocumentForm, type CreateActionState } from "./new-document-form";
 
 const NO_PARENT = "__none__";
 
 export default async function NewDocumentPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ locale: string; unitId: string }>;
-  searchParams: Promise<{ error?: string }>;
 }) {
   const { locale, unitId } = await params;
   const t = await getTranslations("NewDocumentPage");
-  const { error } = await searchParams;
   const site = await getSite(unitId).catch(() => null);
   if (!site) return redirect({ href: `/admin/sites/${unitId}`, locale });
 
   // Parent nesting is PAGE-only (content_documents_parent_pages_only) — options are existing pages.
   const existingPages = (await listDocuments(site.id)).filter((d) => d.kind === "PAGE");
 
-  async function create(formData: FormData) {
+  // M14.8: returns state instead of redirecting with ?error=<name> on failure — see
+  // new-document-form.tsx. The success path still redirects, same as before.
+  async function create(_prevState: CreateActionState, formData: FormData): Promise<CreateActionState> {
     "use server";
     const kind = (String(formData.get("kind") ?? "PAGE") as DocumentKind) || DocumentKind.PAGE;
-    const locale = String(formData.get("locale") ?? "");
+    // Renamed from the original's `locale` to avoid shadowing the outer routing `locale` (en/uk/es/
+    // pt) with the document's own content locale (e.g. "eng") — the original shadow meant the
+    // success-path redirect below was passing the wrong value as next-intl's routing locale.
+    const docLocale = String(formData.get("locale") ?? "");
     const slug = String(formData.get("slug") ?? "");
     const translationGroupId = String(formData.get("translationGroupId") ?? "") || undefined;
     // Parent nesting only applies to PAGE — never send one for POST/EVENT (DB CHECK would reject it).
@@ -49,7 +43,7 @@ export default async function NewDocumentPage({
     try {
       const doc = await createDocument(site!.id, {
         kind,
-        locale,
+        locale: docLocale,
         slug,
         parentDocumentId,
         translationGroupId,
@@ -58,12 +52,15 @@ export default async function NewDocumentPage({
         eventRecurrenceRrule,
       });
       redirect({ href: `/admin/sites/${unitId}/documents/${doc.id}`, locale });
+      return null; // unreachable — redirect() always throws; satisfies the function's return type.
     } catch (e) {
       if (e && typeof e === "object" && "errorName" in e) {
-        redirect({
-          href: `/admin/sites/${unitId}/documents/new?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`,
-          locale,
-        });
+        const errorName = String((e as { errorName: string }).errorName);
+        if (errorName === "Content:SlugTaken") return { error: "errorSlugTaken", field: "slug" };
+        if (errorName === "Content:EventMissingStart") {
+          return { error: "errorEventMissingStart", field: "eventStartsAt" };
+        }
+        return { error: "errorGeneric", raw: errorName };
       }
       throw e;
     }
@@ -72,86 +69,9 @@ export default async function NewDocumentPage({
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <h1 className="text-2xl font-semibold">{t("heading")}</h1>
-
-      {error && (
-        <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {error === "Content:SlugTaken"
-            ? t("errorSlugTaken")
-            : error === "Content:EventMissingStart"
-              ? t("errorEventMissingStart")
-              : t("errorGeneric", { error })}
-        </p>
-      )}
-
       <Card>
         <CardContent className="pt-6">
-          <form action={create} className="flex flex-col gap-4">
-            <Label className="flex flex-col items-start gap-1">
-              {t("kindLabel")}
-              <Select name="kind" defaultValue={DocumentKind.PAGE}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={DocumentKind.PAGE}>{t("kindPage")}</SelectItem>
-                  <SelectItem value={DocumentKind.POST}>{t("kindPost")}</SelectItem>
-                  <SelectItem value={DocumentKind.EVENT}>{t("kindEvent")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </Label>
-
-            <Label className="flex flex-col items-start gap-1">
-              {t("localeLabel")}
-              <Input name="locale" required placeholder="eng" />
-            </Label>
-
-            <Label className="flex flex-col items-start gap-1">
-              {t("slugLabel")}
-              <Input name="slug" required pattern="[a-z0-9-]+" />
-            </Label>
-
-            <Label className="flex flex-col items-start gap-1">
-              {t("parentPageLabel")}
-              <Select name="parentDocumentId" defaultValue={NO_PARENT}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_PARENT}>{t("parentPageNone")}</SelectItem>
-                  {existingPages.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.slug} ({p.locale})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Label>
-
-            <fieldset className="flex flex-col gap-4 rounded-md border p-3">
-              <legend className="px-1 text-sm font-medium">{t("eventFieldsLegend")}</legend>
-              <Label className="flex flex-col items-start gap-1">
-                {t("eventStartsAtLabel")}
-                <Input type="datetime-local" name="eventStartsAt" />
-              </Label>
-              <Label className="flex flex-col items-start gap-1">
-                {t("eventEndsAtLabel")}
-                <Input type="datetime-local" name="eventEndsAt" />
-              </Label>
-              <Label className="flex flex-col items-start gap-1">
-                {t("eventRecurrenceLabel")}
-                <Input name="eventRecurrenceRrule" placeholder="FREQ=WEEKLY;BYDAY=SU" />
-              </Label>
-            </fieldset>
-
-            <Label className="flex flex-col items-start gap-1">
-              {t("translationGroupLabel")}
-              <Input name="translationGroupId" placeholder={t("translationGroupPlaceholder")} />
-            </Label>
-
-            <Button type="submit" className="self-start">
-              {t("submit")}
-            </Button>
-          </form>
+          <NewDocumentForm action={create} existingPages={existingPages} />
         </CardContent>
       </Card>
     </div>
