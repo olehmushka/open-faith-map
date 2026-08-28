@@ -1,13 +1,12 @@
 // Copyright 2026 Oleh Mushka
 // SPDX-License-Identifier: Apache-2.0
 
-import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import { Blocks } from "@/app/blocks";
 import { Badge } from "@/components/ui/badge";
 import { ACCESSIBILITY_KEYS, ACCESSIBILITY_MESSAGE_KEYS } from "@/lib/accessibility";
-import { getPublicBlocks, getSite, listPublicDocuments } from "@/lib/content";
+import { getPublicBlocks, listPublicDocuments, type Site } from "@/lib/content";
 import { getSite as getDiscoverySite } from "@/lib/discovery";
 import { fileReport, type FileReportInput } from "@/lib/moderation";
 import { redirect } from "@/i18n/navigation";
@@ -24,28 +23,23 @@ const REPORT_REASON_CODES: FileReportInput["reasonCode"][] = [
 // precedent as app/discovery/more-filters-sheet.tsx's own DAY_KEYS.
 const DAY_KEYS = ["day0", "day1", "day2", "day3", "day4", "day5", "day6"] as const;
 
-// Same force-dynamic reasoning as app/page.tsx — content changes independently of any build.
-export const dynamic = "force-dynamic";
-
-// Public per-congregation page (M4, docs/modules/web-facade.md's "Discovery map/search" surface).
-// Keyed by the go-oikumenea congregation unit RID (not content_sites.id) — the only key
-// ContentPublicService.getSite accepts. Renders every published PAGE inline (an MVP one-pager;
-// content.md's parent/child page nesting isn't surfaced as separate routes yet — an open seam,
-// not a regression, since M3 shipped no public rendering at all), plus a Posts feed and an
-// Upcoming events list.
-export default async function CongregationPage({
-  params,
-  searchParams,
+// The real public-site renderer (M14.9, D-TenantSubdomains) — the "extractable module" the
+// milestone names: everything a congregation's site needs to render, keyed by an already-resolved
+// Site rather than fetching one itself, so this component has no opinion about which route or host
+// reached it. Rendered today from app/[locale]/%5Fsites/[slug]/page.tsx (the tenant-subdomain
+// route the proxy rewrites into); Phase 2 (openfaithmap-sites, out of scope here) can move this
+// file into its own deployment without a rewrite.
+export async function SitePage({
+  site,
+  locale,
+  reported,
 }: {
-  params: Promise<{ locale: string; unitId: string }>;
-  searchParams: Promise<{ reported?: string }>;
+  site: Site;
+  locale: string;
+  reported?: string;
 }) {
-  const { locale, unitId } = await params;
-  const { reported } = await searchParams;
   const t = await getTranslations("CongregationPage");
   const tm = await getTranslations("DiscoveryMap");
-  const site = await getSite(unitId).catch(() => null);
-  if (!site) notFound();
 
   // M5, D-AdminSurface: this app never holds a session, so the report is filed anonymously — the
   // caller identity is never asked (ModerationPublicService.fileReport, docs/modules/moderation.md).
@@ -53,15 +47,20 @@ export default async function CongregationPage({
     "use server";
     const reasonCode = String(formData.get("reasonCode")) as FileReportInput["reasonCode"];
     const detail = String(formData.get("detail") ?? "").trim() || undefined;
-    await fileReport({ targetKind: "CONGREGATION", targetRef: unitId, reasonCode, detail });
-    redirect({ href: `/congregations/${unitId}?reported=1`, locale });
+    await fileReport({
+      targetKind: "CONGREGATION",
+      targetRef: site.congregationUnitId,
+      reasonCode,
+      detail,
+    });
+    redirect({ href: `/_sites/${site.slug}?reported=1`, locale });
   }
 
   const [pages, posts, events, discoverySite] = await Promise.all([
     listPublicDocuments(site.id, "PAGE"),
     listPublicDocuments(site.id, "POST"),
     listPublicDocuments(site.id, "EVENT"),
-    getDiscoverySite(unitId).catch(() => null),
+    getDiscoverySite(site.congregationUnitId).catch(() => null),
   ]);
 
   const pageBlocks = await Promise.all(pages.map((p) => getPublicBlocks(p.id)));

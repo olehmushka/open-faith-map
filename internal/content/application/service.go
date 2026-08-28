@@ -39,6 +39,9 @@ func (s *Service) CreateSite(ctx context.Context, in domain.CreateSiteInput) (do
 	if err := s.requireManage(ctx, in.CongregationUnitRID); err != nil {
 		return domain.Site{}, err
 	}
+	if isReservedSlug(in.Slug) {
+		return domain.Site{}, &domain.SlugReservedError{Slug: in.Slug}
+	}
 	return s.store.InsertSite(ctx, in)
 }
 
@@ -56,6 +59,12 @@ func (s *Service) UpdateSiteTheme(ctx context.Context, siteID string, theme json
 // GetSite is the public read (ContentPublicService) — no auth, keyed by the congregation unit RID.
 func (s *Service) GetSite(ctx context.Context, congregationUnitRID string) (domain.Site, error) {
 	return s.store.GetSiteByUnit(ctx, congregationUnitRID)
+}
+
+// GetSiteBySlug is the public read (ContentPublicService) the tenant-subdomain proxy resolves a
+// Host header's slug through (M14.9) — no auth, same anonymous shape as GetSite.
+func (s *Service) GetSiteBySlug(ctx context.Context, slug string) (domain.Site, error) {
+	return s.store.GetSiteBySlug(ctx, slug)
 }
 
 // ---- documents ----

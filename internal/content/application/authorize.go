@@ -11,12 +11,13 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/content/domain"
 )
 
-// managePermission is content.manage's underlying internal/authz permission (M3, D-PlatformModerator's
-// pattern applied to content). Reused, not newly minted: congregation-admin already holds
-// religionorg.manage on its own unit (migrations/0022_core_seed.sql), the same permission
-// registration's own operator gate reuses — just checked against a different unit (a specific
-// site's congregation unit, never the shared root).
-const managePermission = authzdomain.PermReligionOrgManage
+// managePermission is content.manage's underlying internal/authz permission. As of M14.9
+// (D-TenantSubdomains' U16 ruling), it is its own grantable code — migrations/0026_content_manage_permission.sql
+// grants it to congregation-admin only — rather than a byproduct of registration-operator's
+// religionorg.manage subtree grant on the shared root, which is what let any operator edit any
+// congregation's site through M14.8. Same shape as internal/religion/application/authorize.go's
+// own site.manage check (M13.2).
+const managePermission = authzdomain.PermContentManage
 
 // requireManage asks internal/authz's PDP whether the request's subject (from ctx) holds
 // managePermission specifically on unitRID — never an untargeted "holds it anywhere" check

@@ -3,9 +3,9 @@
 # blocks.
 #
 # content.manage is a target-scoped capability check (internal/authz.Require with
-# PermReligionOrgManage, unitID: the SITE's own congregation unit — never a shared root), not a
-# permission code of its own — see D-PlatformModerator and content.md's authorization-touchpoints
-# section.
+# PermContentManage, unitID: the SITE's own congregation unit — never a shared root). As of M14.9
+# (D-TenantSubdomains' U16 ruling) it is its own grantable permission code, not a byproduct of
+# religionorg.manage's subtree grant — see content.md's authorization-touchpoints section.
 #
 # TWO services share this file's types because Conjure's auth is a fixed per-service choice
 # (header/cookie), not a runtime-conditional one — there is no way for one endpoint to require a
@@ -177,13 +177,22 @@ types:
         safe-args:
           slug: string
           scope: string
+      SlugReserved:
+        docs: >
+          D-TenantSubdomains' reserved-subdomain blocklist (M14.9) — content_sites.slug is a
+          hostname component (<slug>.<apex>), so a fixed set of names can never be claimed,
+          enforced server-side regardless of caller.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          slug: string
       DocumentNotFound:
         namespace: Content
         code: NOT_FOUND
         safe-args:
           documentId: string
       Forbidden:
-        docs: The caller does not hold religionorg.manage on this site's congregation unit.
+        docs: The caller does not hold content.manage on this site's congregation unit.
         namespace: Content
         code: PERMISSION_DENIED
         safe-args: {}
@@ -369,6 +378,17 @@ services:
         http: GET /units/{congregationUnitId}/site
         args:
           congregationUnitId:
+            type: string
+            param-type: path
+        returns: Site
+      getSiteBySlug:
+        docs: >
+          M14.9: the tenant-subdomain proxy resolves a Host header's slug through this endpoint. A
+          distinct top-level path (not nested under /sites/{siteId}/...) — same httprouter
+          wildcard-slot conflict getSite's own comment above documents.
+        http: GET /site-by-slug/{slug}
+        args:
+          slug:
             type: string
             param-type: path
         returns: Site

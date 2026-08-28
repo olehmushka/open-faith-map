@@ -166,6 +166,58 @@ func TestContentIntegration(t *testing.T) {
 		t.Errorf("GetSite (public) = %+v, want id %s", publicSite, site.ID)
 	}
 
+	// --- M14.9: GetSiteBySlug is the public read the tenant-subdomain proxy resolves a Host header
+	// through — same anonymous shape as GetSite, keyed by slug instead of unit RID.
+	siteBySlug, err := contentSvc.GetSiteBySlug(context.Background(), site.Slug)
+	if err != nil {
+		t.Fatalf("GetSiteBySlug (public): %v", err)
+	}
+	if siteBySlug.ID != site.ID {
+		t.Errorf("GetSiteBySlug (public) = %+v, want id %s", siteBySlug, site.ID)
+	}
+	if _, err := contentSvc.GetSiteBySlug(context.Background(), "no-such-slug-m149"); !errors.Is(err, contentdomain.ErrSiteNotFound) {
+		t.Errorf("GetSiteBySlug (unknown slug) error = %v, want ErrSiteNotFound", err)
+	}
+
+	// --- M14.9/D-TenantSubdomains: a reserved slug is rejected at CreateSite, server-side —
+	// content_sites.slug is a hostname component as of this milestone.
+	if _, err := contentSvc.CreateSite(adminCtx, contentdomain.CreateSiteInput{CongregationUnitRID: unit.ID, Slug: "admin"}); !errors.As(err, new(*contentdomain.SlugReservedError)) {
+		t.Errorf("CreateSite(slug=admin) error = %v, want *SlugReservedError", err)
+	}
+
+	// --- M14.9/U16: content.manage is now its own permission (migrations/0026_content_manage_permission.sql),
+	// not a byproduct of registration-operator's religionorg.manage subtree grant on root. Two
+	// things to prove:
+	//   1. A congregation-admin granted on unit is denied on an unrelated unit B — genuine
+	//      cross-tenant isolation (docs/modules/content.md's named "denial path needs test
+	//      coverage" gap).
+	//   2. A registration-operator granted the exact same *unit-scoped* shape congregation-admin
+	//      holds (not their real subtree grant) is still denied — proving content.manage itself
+	//      gates this, not incidental scope.
+	unitB, err := directorySvc.CreateUnitWithEdge(ctx, directorydomain.Unit{Name: "M14.9 Unrelated Congregation"}, seed.RootUnitID, directorydomain.CanonicalGraphCode)
+	if err != nil {
+		t.Fatalf("CreateUnitWithEdge (unitB): %v", err)
+	}
+	unitIDs = append(unitIDs, unitB.ID)
+	if _, err := contentSvc.CreateSite(adminCtx, contentdomain.CreateSiteInput{CongregationUnitRID: unitB.ID, Slug: "m149-cross-tenant"}); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("CreateSite by unit-A congregation-admin on unrelated unit B error = %v, want ErrForbidden", err)
+	}
+
+	operatorID := insertPerson("M14.9 Registration Operator")
+	var operatorAssignmentID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope)
+		VALUES ($1, $2, $3, 'unit') RETURNING id`,
+		operatorID, seed.RegistrationOperatorRoleID, unit.ID,
+	).Scan(&operatorAssignmentID); err != nil {
+		t.Fatalf("grant registration-operator (unit-scoped, M14.9 test): %v", err)
+	}
+	assignmentIDs = append(assignmentIDs, operatorAssignmentID)
+	operatorCtx := authz.NewContext(ctx, authz.Subject{PersonID: operatorID})
+	if _, err := contentSvc.UpdateSiteTheme(operatorCtx, site.ID, []byte(`{"color":"green"}`)); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("UpdateSiteTheme by registration-operator (no content.manage grant) error = %v, want ErrForbidden", err)
+	}
+
 	// --- M14.1: PutBlocks enforces D-PublicSiteCSP's URL scheme/embed-host allowlist at write
 	// time, with a typed BlockUrlNotAllowedError naming the offending field.
 	doc, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{

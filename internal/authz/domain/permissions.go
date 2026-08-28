@@ -21,24 +21,29 @@ const (
 	// Unit-scoped — grantable via a role assignment (migrations/0022_core_seed.sql).
 	PermReligionOrgManage Permission = "religionorg.manage"
 	PermSiteManage        Permission = "site.manage"
-	PermScheduleManage    Permission = "schedule.manage"
-	PermAssignmentGrant   Permission = "assignment.grant"
-	PermAssignmentRevoke  Permission = "assignment.revoke"
-	PermPersonCreate      Permission = "person.create"
-	PermPersonUpdate      Permission = "person.update"
-	PermPersonRead        Permission = "person.read"
-	PermMembershipCreate  Permission = "membership.create"
-	PermMembershipUpdate  Permission = "membership.update"
-	PermMembershipRead    Permission = "membership.read"
-	PermPositionCreate    Permission = "position.create"
-	PermPositionUpdate    Permission = "position.update"
-	PermPositionRead      Permission = "position.read"
-	PermUnitRead          Permission = "unit.read"
-	PermUnitLifecycle     Permission = "unit.lifecycle"
-	PermUnitEdgesManage   Permission = "unit.edges.manage"
-	PermReligionRead      Permission = "religion.read"
-	PermLocationCreate    Permission = "location.create"
-	PermRoleRead          Permission = "role.read"
+	// PermContentManage is content.manage (M14.9, D-TenantSubdomains' U16 ruling): split out of
+	// religionorg.manage so a congregation's site-content write access is its own grantable code,
+	// not a byproduct of registration-operator's subtree grant on the shared root — see
+	// internal/content/application/authorize.go.
+	PermContentManage    Permission = "content.manage"
+	PermScheduleManage   Permission = "schedule.manage"
+	PermAssignmentGrant  Permission = "assignment.grant"
+	PermAssignmentRevoke Permission = "assignment.revoke"
+	PermPersonCreate     Permission = "person.create"
+	PermPersonUpdate     Permission = "person.update"
+	PermPersonRead       Permission = "person.read"
+	PermMembershipCreate Permission = "membership.create"
+	PermMembershipUpdate Permission = "membership.update"
+	PermMembershipRead   Permission = "membership.read"
+	PermPositionCreate   Permission = "position.create"
+	PermPositionUpdate   Permission = "position.update"
+	PermPositionRead     Permission = "position.read"
+	PermUnitRead         Permission = "unit.read"
+	PermUnitLifecycle    Permission = "unit.lifecycle"
+	PermUnitEdgesManage  Permission = "unit.edges.manage"
+	PermReligionRead     Permission = "religion.read"
+	PermLocationCreate   Permission = "location.create"
+	PermRoleRead         Permission = "role.read"
 	// PermModerationStanding is platform-moderator's own identity marker (M12.0), split out of
 	// unit.lifecycle: that code was reused for this purpose only because go-oikumenea's permission
 	// catalog was closed pre-port (D-PlatformModerator's M5 addendum) — a constraint that no longer
@@ -68,7 +73,7 @@ var instanceScope = map[Permission]struct{}{
 
 // catalog is the full closed vocabulary.
 var catalog = map[Permission]struct{}{
-	PermReligionOrgManage: {}, PermSiteManage: {}, PermScheduleManage: {},
+	PermReligionOrgManage: {}, PermSiteManage: {}, PermContentManage: {}, PermScheduleManage: {},
 	PermAssignmentGrant: {}, PermAssignmentRevoke: {},
 	PermPersonCreate: {}, PermPersonUpdate: {}, PermPersonRead: {},
 	PermMembershipCreate: {}, PermMembershipUpdate: {}, PermMembershipRead: {},

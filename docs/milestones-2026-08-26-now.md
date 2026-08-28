@@ -9,8 +9,8 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.6 and M14.8 (all
-2026-08-27/28) are done**, no other sub-milestone is built yet. It is the second half of the
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.6, M14.8, and M14.9
+(all 2026-08-27/28) are done**, no other sub-milestone is built yet. It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -24,22 +24,24 @@ block editor**, replacing it with a generic form derived from `json_schema` + a 
 manually-typed `position` field entirely. **M14.6 adds forward revisions, autosave, and history**,
 so editing a live page never touches what visitors see. **M14.8 adds client-side undo/redo, a real
 empty state, and a mobile-workable layout**, taken out of milestone order because M14.7 (Preview)
-is blocked on M14.9 (tenant subdomain routing), which hasn't started — see their own rows below.
-Next up: M14.9 (which also unblocks M14.7).
+was blocked on M14.9. **M14.9 serves each congregation's site on its own subdomain** (`Host`-header
+routing, a reserved-slug blocklist, a real 301 from the old path, and U16's `content.manage`
+tightening) — see its own row below. Next up: M14.7 (now unblocked) or M14.10, in either order.
 
 ## Unresolved unknowns — read this before building anything
 
 Every place the doc set currently says "we don't actually know." Detail lives where the third
 column points; this table exists so nothing is hidden, not to duplicate it.
 
-Everything carried in from the archive has been resolved (see the note below the table). The three
-items below are **new, opened by M14's scoping pass on 2026-08-26**, and are open now:
+Everything carried in from the archive has been resolved (see the note below the table). Of the
+three items opened by M14's scoping pass on 2026-08-26, **U16 is now resolved (M14.9, 2026-08-28)**;
+**U14** and **U15** remain open:
 
 | # | The unknown | Where it bites | Who resolves it |
 |---|---|---|---|
 | **U14** | **No apex domain is registered and no DNS-provider API token exists.** A wildcard certificate for `*.<apex>` can only be issued over the ACME **DNS-01** challenge — HTTP-01 cannot issue wildcards. D-ProductionDeployment deliberately left the VM/DNS provider undecided; `D-TenantSubdomains` now constrains that choice for the first time (the provider must expose a DNS API Caddy has a module for). | M14.18 only. Every other M14 milestone is verifiable locally against `*.localhost`, which browsers resolve to loopback with no DNS at all. | The owner, by registering a domain and picking a DNS provider. M14.18 carries `🔶` until then — the same honest gate M1.2/M2 already use for the Google OAuth redirect URI. |
 | **U15** | **Google Drive hotlink reliability at volume is unmeasured.** `D-ExternalMediaOnly` makes congregations host their own images on Drive/Dropbox/OneDrive. Direct-content URLs for these hosts are undocumented, have been changed by their vendors before, and are throttled under load — none of which we can measure before real congregations use it. | M14.3's normalizer, and every `image`/`gallery` block on every public site thereafter. A vendor-side change breaks images platform-wide at once. | Only real traffic. M14.3 mitigates rather than resolves: the original URL is preserved alongside the normalized one, so a normalizer fix is a re-derivation, not a data-loss event. Escalation path is the first-party `media` module (`DS-OFM-17`). |
-| **U16** | ~~**A registration operator can edit any congregation's website.** Not new — [content.md](modules/content.md#authorization-touchpoints) has recorded it since M3, as a consequence of `content.manage` reusing `religionorg.manage`, which `registration-operator` holds as a subtree grant on the shared root. What is new is the **stakes**: after M14.9 a "site" is a real website on its own subdomain, not an unlinked blob of blocks.~~ **Ruled on (2026-08-27, M14.0): tightened, not restated.** [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist) decides `content.manage` becomes its own per-unit permission, granted to `congregation-admin` only; operators keep just the existing moderation path. Still 🔶 in practice — the decision is written, but the code isn't: implementation is scheduled to M14.9, which is when the stakes this row named actually go live. | Every `content.manage`-gated write in the arc — which is most of it. | **Decided by the owner (tighten), designed by M14.0.** Code lands at M14.9; a second real identity is still needed to test the new per-unit denial path once it exists (M2.3's own known limitation, unresolved by this ruling). |
+| **U16** | ~~**A registration operator can edit any congregation's website.** Not new — [content.md](modules/content.md#authorization-touchpoints) has recorded it since M3, as a consequence of `content.manage` reusing `religionorg.manage`, which `registration-operator` holds as a subtree grant on the shared root. What is new is the **stakes**: after M14.9 a "site" is a real website on its own subdomain, not an unlinked blob of blocks.~~ **Resolved (2026-08-28, M14.9).** `content.manage` (`PermContentManage`) is now its own per-unit permission, granted to `congregation-admin` only (`migrations/0026_content_manage_permission.sql`); `internal/content/application/authorize.go` checks it instead of `religionorg.manage`. Operators no longer pass this check via their subtree grant — live-verified against `internal/content/content_integration_test.go`'s new M14.9 cases (real Postgres): a `registration-operator` granted the same unit-scoped shape `congregation-admin` holds is denied. See [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist). | Every `content.manage`-gated write in the arc — which is most of it. | **Decided by the owner (tighten), designed by M14.0, built at M14.9.** Confirmed with the owner: operators are left with no replacement edit path for now — granting a moderation permission instead is a separate, later decision. |
 
 **Carried in from the archive, all resolved — empty as of 2026-08-26:**
 
@@ -77,9 +79,9 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.4 · Schema-driven block forms | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-27).** New `content_block_types.ui_schema JSONB NOT NULL DEFAULT '{}'` (widget hints, labels, help text, field order) — WordPress's `block.json` lesson: a block's data schema and its editor controls are declared together, so the form is *derived*, never hand-written per type. A generic, recursive form renderer (`web/apps/admin/.../documents/[documentId]/block-data-form.tsx`) replaces the raw-JSON `<Textarea>` for block *data* only — the outer block list's `position`/`blockTypeCode`/add-remove controls are untouched, reserved for M14.5. `Content:BlockDataInvalid` gained a `field` safe-arg (mirroring `Content:BlockUrlNotAllowed`'s existing one), populated by filtering a jsonschema/v6 validation error's instance-location path through the block type's own declared top-level `properties` keys — never a raw, potentially-attacker-chosen path segment; the admin editor now highlights the offending field inline instead of one generic `?error=` banner. **Two named, deliberately-accepted gaps, decided with the owner:** richText fields (`heading.text`, `paragraph.text`, `quote.text`, `staff_card.bio`, `list.content`) stay a schema-aware JSON textarea — no WYSIWYG editor exists in this codebase, and building one is out of scope here; and M14.3's deferred editor-side URL-load probe stays unbuilt (would need its own CSP/SSRF review, unscheduled). A `columns` block's schema-shape failure highlights the whole `columns` field group rather than a specific nested block, since the structural validation pass never descended into nested block data (pre-existing, not new). Migration: `migrations/0024_content_ui_schema.sql`. `Verified` awaits CI green on `main`. |
 | M14.5 · Inserter + drag-and-drop reorder | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built (2026-08-27).** Categorized block inserter with a one-line description per type — curation over choice, the consistent finding in the editor-UX research (13+ undifferentiated types is already past where an editor picks well). Drag-and-drop replaces the integer `position` input, **with keyboard-accessible move-up/move-down as a first-class path**: drag-only reordering is an accessibility failure, not a polish gap. `Verified` awaits CI green on `main`. |
 | M14.6 · Forward revisions, history, autosave | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-28).** New `content_document_revisions`; `content_documents` gains separate *published* and *draft* revision pointers, so **editing a live page never touches what visitors see** (Drupal's forward-revision model) — `PutBlocks`/`GetBlocks` read/write the draft in place, and publishing snapshots the draft into an immutable checkpoint (capped at 50 per document, `internal/content/application/revisionsnapshot.go`) that `GetPublicBlocks` reads instead. New `listRevisions`/`restoreRevision` endpoints back a History panel with per-revision restore. The admin editor autosaves on a ~10s debounce with a visible saved/unsaved indicator, replacing the old redirect-on-save flow. Migration: `migrations/0025_content_revisions.sql`. `Verified` awaits CI green on `main`. |
-| M14.7 · Preview | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Renders the draft revision through the **real public renderer** — not a second, drifting preview renderer — reached on the tenant subdomain via a short-lived signed token. `X-Robots-Tag: noindex`, no caching. Device-width toggle. Carries the WordPress CVE lesson directly: untrusted congregation content must never render inside the admin origin, and here it is cross-origin by construction. Depends on M14.6 (done) and M14.9 (not started) — still blocked. |
+| M14.7 · Preview | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Renders the draft revision through the **real public renderer** — not a second, drifting preview renderer — reached on the tenant subdomain via a short-lived signed token. `X-Robots-Tag: noindex`, no caching. Device-width toggle. Carries the WordPress CVE lesson directly: untrusted congregation content must never render inside the admin origin, and here it is cross-origin by construction. Depends on M14.6 (done) and M14.9 (done, 2026-08-28) — no longer blocked. |
 | M14.8 · Editor polish | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built (2026-08-28), out of milestone order** (M14.7 above is blocked on M14.9; this one only depends on M14.5). Session-local client-side undo/redo over the block list (`hooks/use-block-history.ts`), independent of M14.6's server-side revision history — Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, plus toolbar buttons, disabled at stack boundaries. A real empty state for a zero-block document, with a CTA into the existing inserter — **scoped down from "start from a template," named rather than silently dropped:** M14.13 (`content_patterns`) doesn't exist yet, so there is no template to start from. The block row's fixed 5-column grid now stacks to a single column below the `sm:` breakpoint, usable at 375px. The two remaining `?error=`-redirect round trips (document details save, new-document create) are now inline via `useActionState`, matching the pattern `people/invite/invite-form.tsx` established — zero `?error=` round trips remain anywhere in the document editor. `Verified` awaits CI green on `main`. |
-| M14.9 · Tenant subdomain routing (Phase 1) | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Next.js middleware resolves the `Host` header to a site slug and rewrites into an internal `/_sites/[slug]/…` tree; the apex host keeps serving discovery. **Direct `/_sites/*` access from the apex is blocked** (owner's guardrail). **Reserved-subdomain blocklist enforced server-side in the slug validator** — `content_sites.slug` becomes a hostname, so `admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/… must be unclaimable. 301s from `/congregations/[unitId]`. Rendering code structured as an extractable module for the owner's Phase 2 (`openfaithmap-sites`). **Also implements M14.0's U16 ruling:** `content.manage` stops resolving through `religionorg.manage`'s subtree grant and becomes its own per-unit permission granted to `congregation-admin` (same shape as M13.2's `site.manage`); registration operators lose blanket edit access and keep only the existing moderation path. See [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist). |
+| M14.9 · Tenant subdomain routing (Phase 1) | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-28).** `web/apps/web/proxy.ts` (Next 16 renamed `middleware.ts` to `proxy.ts` — extended in place, composed with the existing next-intl locale middleware, rather than a second file) resolves the `Host` header to a site slug (`lib/tenant-host.ts`, unit-tested) and rewrites into an internal `/[locale]/_sites/[slug]/…` tree; the apex host keeps serving discovery unchanged. **Direct `/_sites/*` access from the apex 404s** — checked first, before next-intl even runs. **Reserved-subdomain blocklist enforced server-side** (`internal/content/application/slugvalidation.go`, checked in `CreateSite` before the existing `Content:SlugTaken` uniqueness probe) — `content_sites.slug` is now a hostname, so `admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/`help`/`status` and 25 more are unclaimable, rejected with a new typed `Content:SlugReserved` error. A real 301 (not Next's 307/308 `redirect()`) from the old `/congregations/[unitId]` route, now a Route Handler, to the tenant root. Rendering logic extracted into `components/site-page.tsx`, an "extractable module" reused by the new thin `[locale]/%5Fsites/[slug]/page.tsx` wrapper (the actual directory is `%5Fsites` — Next.js's private-folder convention would otherwise exclude a literal `_sites` folder from routing; `%5F` is the documented URL-encoded-underscore escape) — set up for the owner's Phase 2 (`openfaithmap-sites`) to be a move, not a rewrite. **Also implements M14.0's U16 ruling:** `content.manage` (`PermContentManage`) stops resolving through `religionorg.manage`'s subtree grant and becomes its own per-unit permission granted to `congregation-admin` only (`migrations/0026_content_manage_permission.sql`, same shape as M13.2's `site.manage`); registration operators lose that edit access, confirmed with the owner as leaving them with **no** replacement edit path for now — granting a moderation permission is a separate, later decision. Cross-tenant-denial and operator-denial cases (`docs/modules/content.md`'s previously-named test-coverage gap) covered by new `internal/content/content_integration_test.go` cases against real Postgres. Verified against a real running docker-compose stack: `grace.localhost:3002/` resolves through a real `content_sites` row created over HTTP by a real `congregation-admin` session (307 to `/en` with `NEXT_LOCALE` preserved, then 200); `localhost:3002/_sites/grace` and `/en/_sites/grace` both 404 from the apex; `CreateSite` with `slug: "admin"` returns `400 Content:SlugReserved` over a direct HTTP call (bypassing the admin form entirely); the old `/en/congregations/[unitId]` route returns a real `301` to `http://grace.localhost:3002/`. See [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist). `Verified` awaits CI green on `main`. |
 | M14.10 · Navigation + page routes | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `/[pageSlug]` and nested child routes on the tenant host, honoring the existing 3-level cap. **Nav is a hand-built menu (`content_site_nav_items`), not derived from the page tree** — M14.0 replaced the original page-tree-derivation assumption with an independently-curated menu (label, target document or external URL, sort order); `parent_document_id` still governs page nesting/breadcrumbs, just not the nav itself. Breadcrumbs at depth ≥ 2. |
 | M14.11 · Site chrome — header, footer, template parts | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Congregation name, logo URL, nav, and a footer whose contact details and service times are read **live from `religion_sites`/`religion_service_schedules`, never copied** — the existing content.md invariant, restated because a footer is exactly where someone would be tempted to denormalize. Social links. Site-level settings on `content_sites`, not content documents. |
 | M14.12 · Curated theme tokens | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Gives the entirely-unused `content_sites.theme` a real schema: accent color from a vetted palette, one of a few font pairings, a spacing scale, header layout, light/dark — WordPress's `theme.json` lesson, a fixed vocabulary rather than CSS. Emitted as CSS custom properties. **A WCAG contrast check rejects a failing combination at write time**, so no congregation can ship an unreadable site. Live theme preview in the admin. |
@@ -517,9 +519,9 @@ green on `main`.
 
 ### M14.7 · Preview
 
-**Not started, still blocked.** Depends on M14.6 (done — there is now a draft revision to preview)
-and M14.9 (not started — the tenant origin to preview it on). M14.8 was picked up instead, out of
-milestone order, since it has no such dependency.
+**Not started, no longer blocked.** Depends on M14.6 (done — there is now a draft revision to
+preview) and M14.9 (done, 2026-08-28 — the tenant origin to preview it on now exists). M14.8 was
+picked up first, out of milestone order, while this was still blocked.
 
 The draft revision rendered through the **real public renderer**. A second preview renderer is the
 standard way this feature rots — two code paths that must agree and slowly stop agreeing — so
@@ -591,28 +593,98 @@ assumed. Zero `?error=` query-string round trips remain anywhere in the document
 
 ### M14.9 · Tenant subdomain routing (Phase 1)
 
-**Not started.** Depends on M14.0 (`D-TenantSubdomains`). Implements the owner's routing design.
+**Built (2026-08-28).** Depends on M14.0 (`D-TenantSubdomains`). Implements the owner's routing
+design and U16's `content.manage` tightening.
 
-A `web/apps/web/middleware.ts` resolving the `Host` header to a site slug and rewriting into an
-internal `/_sites/[slug]/…` tree; the apex host continues to serve discovery, search and the
-registration entry point. **Direct `/_sites/*` access from the apex host must 404** — the owner's
-guardrail against internal-route leakage, and the thing that keeps the two host shapes from
-collapsing into one.
+**Filename correction, found at build time, not scoping time.** The milestone's own text (and
+`D-TenantSubdomains`, since corrected) named `web/apps/web/middleware.ts` — that file never existed
+under that name in this codebase: Next.js 16 renamed the middleware entrypoint to `proxy.ts` before
+this decision was written, and `web/apps/web/proxy.ts` already existed, running `next-intl`'s own
+locale middleware. Host-based tenant resolution is composed into that existing file rather than
+added as a second one — confirmed with the owner rather than assumed.
 
-A **reserved-subdomain blocklist enforced server-side in the slug validator**, because
-`content_sites.slug` stops being a path segment and becomes a hostname the moment this ships:
-`admin`, `api`, `auth`, `login`, `www`, `app`, `mail`, `static`, `support`, `billing`, `help`,
-`status` and the rest. Enforced in `internal/content`, not in the UI — a client-side check on a
-phishing-relevant control is not a check.
+`proxy.ts` resolves the `Host` header to a site slug (`lib/tenant-host.ts`, pure functions,
+vitest-covered in isolation — a mistake here is either "the apex stops serving discovery" or "a
+tenant site leaks onto the apex," not something to get right only by eyeballing the proxy) and
+rewrites into an internal `/[locale]/_sites/[slug]/…` tree; the apex host continues to serve
+discovery, search, and the registration entry point unchanged. **Direct `/_sites/*` access from the
+apex host 404s** — checked first, before `next-intl` even runs, so it is a hard boundary rather
+than something the app-router tree could accidentally bypass. Composing with `next-intl`'s own
+`localePrefix: "always"` middleware needed one real subtlety worked out: injecting `/_sites/{slug}`
+must be a rewrite (invisible in the address bar), but it can only happen once the locale prefix is
+already settled, or the redirect that adds it would itself leak the un-prefixed tenant path into
+the browser. `proxy.ts` runs `next-intl`'s middleware on the original request first; if it wants to
+redirect (adding the prefix), that redirect goes out as-is and the browser lands back here already
+prefixed on the next pass; only then is the rewrite built, copying over any headers `next-intl` had
+already set (notably the `NEXT_LOCALE` cookie) onto the response actually returned — verified with
+a real `curl -v` against the running stack that the cookie survives.
 
-301s from `/congregations/[unitId]` so discovery links and any indexed URLs survive. The rendering
-code is structured as an extractable module, so the owner's Phase 2 (`openfaithmap-sites` as its
-own container, for process-level blast-radius isolation) is a move rather than a rewrite.
+**The actual route directory is named `%5Fsites`, not `_sites`.** Next.js treats a folder prefixed
+with `_` as a private, unroutable implementation-detail folder — `app/[locale]/_sites/[slug]/`
+would silently never register as a route at all. `%5F` (the URL-encoded form of an underscore) is
+Next's own documented escape for a URL segment that starts with an underscore while the folder
+itself stays routable — confirmed against the Next.js docs before building, not discovered by a
+failing request. The real rendering logic was extracted out of the old
+`congregations/[unitId]/page.tsx` into `components/site-page.tsx`, taking an already-resolved
+`Site` rather than fetching one itself — "an extractable module," so the owner's Phase 2
+(`openfaithmap-sites` as its own container) is a move, not a rewrite. The new
+`app/[locale]/%5Fsites/[slug]/page.tsx` is a thin wrapper: `getSiteBySlug` (new
+`ContentPublicService` endpoint, `GET /site-by-slug/{slug}` — its own top-level path, not nested
+under `/sites/{id}/...`, for the same static-vs-wildcard httprouter conflict `getSite`'s own
+existing comment documents) then render.
 
-**Acceptance criteria.** `http://grace.localhost:3002/` serves that congregation's site — browsers
-resolve `*.localhost` to loopback, so this exercises the real middleware with no DNS change.
-`http://localhost:3002/_sites/grace` **404s**. A reserved slug is rejected at the API, not just in
-the form. An old `/congregations/[unitId]` URL 301s to the tenant root.
+A **reserved-subdomain blocklist enforced server-side**
+(`internal/content/application/slugvalidation.go`), because `content_sites.slug` stops being a path
+segment and becomes a hostname the moment this ships: the milestone-named
+`admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/`help`/`status`, plus
+25 more spanning this repo's own other surfaces, mail/DNS hygiene, auth-adjacent phishing-lookalike
+names, generic ops/infra, and environment/lifecycle names (`dev`/`staging`/`preview`/…) — decided
+concretely rather than left at the milestone's own "and more." Checked in `CreateSite`, before the
+existing `Content:SlugTaken` uniqueness probe, returning a new typed `Content:SlugReserved` error —
+enforced in `internal/content`, not the UI (the admin form's `pattern="[a-z0-9-]+"` stays
+format-only). Live-verified with a direct HTTP call against the running stack, bypassing the admin
+form entirely: `POST /content/v1/sites {"slug":"admin"}` from a real `congregation-admin` session
+returns `400 Content:SlugReserved`.
+
+**301s from `/congregations/[unitId]`.** The milestone spec says a real 301; Next's own
+`redirect()`/`permanentRedirect()` send 307/308, not 301 (RFC 7538). `app/[locale]/congregations/[unitId]/page.tsx`
+became a Route Handler (`route.ts`) instead, since a real 301 needs one — looks up the site by unit
+RID (`getSite`, unchanged), builds a same-port URL on `{slug}.{host}`, and redirects to the tenant
+root with `NextResponse.redirect(target, 301)`. Deliberately targets the root rather than trying to
+preserve the caller's original locale/path in one hop — `next-intl`'s own redirect re-adds the
+locale prefix on the next hop, simpler and correct in every case since the old route was never
+itself locale-aware beyond the prefix.
+
+**U16 (D-TenantSubdomains' ruling): `content.manage` is now its own permission.**
+`internal/authz/domain/permissions.go` gained `PermContentManage` ("content.manage");
+`migrations/0026_content_manage_permission.sql` grants it to `congregation-admin` only — the same
+unit-scoped shape M13.2 already used for `site.manage`, not a subtree grant, and
+`registration-operator`'s existing grants (including `religionorg.manage`, still needed for
+approving registrations) are untouched. `internal/content/application/authorize.go`'s
+`requireManage` now checks `PermContentManage` instead of `PermReligionOrgManage` — the entire fix
+is in which permission code gets checked, not in revoking anything from the operator role.
+**Confirmed with the owner: registration operators are left with no replacement edit path for
+now** — granting them a moderation permission instead is a separate, later decision, not part of
+this milestone. `docs/modules/content.md`'s previously-named test-coverage gap (a cross-tenant
+`content.manage` denial was untested) is closed: new cases in
+`internal/content/content_integration_test.go`, run against real Postgres, prove both that a
+`congregation-admin` granted on one unit is denied on an unrelated one, and that a
+`registration-operator` granted the exact same unit-scoped shape is denied too — proving
+`content.manage` itself gates the write, not incidental scope.
+
+**Acceptance criteria — met, verified against a real running docker-compose stack.**
+`http://grace.localhost:3002/` serves that congregation's site — a real `content_sites` row with
+`slug: "grace"` created over HTTP by a real `congregation-admin` session (`*.localhost` needs no DNS
+change; browsers resolve it to loopback), then `curl -H "Host: grace.localhost:3002"` returns a 307
+to `/en` with `Set-Cookie: NEXT_LOCALE=en` preserved, then a 200 rendering the tenant page.
+`http://localhost:3002/_sites/grace` and `http://localhost:3002/en/_sites/grace` both **404**, from
+the apex host, while the apex root still serves discovery unchanged. A reserved slug is rejected at
+the API, not just in the form — a direct `POST /content/v1/sites {"slug":"admin"}` (no admin UI in
+the loop at all) returns `400 Content:SlugReserved`. An old `/en/congregations/[unitId]` URL returns
+a real `301` to `http://grace.localhost:3002/`, which then 307s to `/en` and renders 200.
+`go test ./internal/content/... -run TestContentIntegration`, `make verify`, `make sdk-verify`, and
+`web/apps/web`'s `npm run lint && npm run test && npm run build` all pass. `Verified` awaits CI
+green on `main`.
 
 ### M14.10 · Navigation + page routes
 

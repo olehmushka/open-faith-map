@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { FileText } from "lucide-react";
 
+import { ACCESSIBILITY_KEYS } from "@/lib/accessibility";
 import { createSite, getSite, updateSiteTheme } from "@/lib/content";
 import { getSite as getReligionSite, isSiteNotFound, updateSiteAttributes } from "@/lib/religion";
 import { Link, redirect } from "@/i18n/navigation";
@@ -9,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { ACCESSIBILITY_KEYS, AttributesForm } from "./attributes-form";
+import { AttributesForm } from "./attributes-form";
 
 // Site creation + theme editor for one congregation's unit (M3, docs/modules/content.md). getSite
 // is a public-read call (ContentPublicService) — no site yet is a normal, expected state (a

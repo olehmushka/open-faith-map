@@ -2509,10 +2509,13 @@ unnamed pin on a city-wide map) without buying any real privacy back.
 ### D-TenantSubdomains — subdomain per congregation, wildcard TLS, and a reserved-slug blocklist
 
 **Decision.** M14.9 serves each congregation's public site on its own subdomain (`<slug>.<apex>`),
-resolved via `Host`-header routing in `web/apps/web/middleware.ts` rather than a path segment.
-`content_sites.slug` becomes a hostname component, validated server-side (in `internal/content`,
-never client-side only) against a reserved blocklist — `admin`, `api`, `auth`, `login`, `www`,
-`app`, `mail`, `static`, `support`, `billing`, `help`, `status`, and more. Certificates are a
+resolved via `Host`-header routing in `web/apps/web/proxy.ts` rather than a path segment — Next.js
+16 renamed the middleware entrypoint from `middleware.ts` to `proxy.ts` before this decision was
+written; the app already had one running `next-intl`'s own locale middleware, so tenant resolution
+is composed into it rather than added as a second file. `content_sites.slug` becomes a hostname
+component, validated server-side (in `internal/content`, never client-side only) against a reserved
+blocklist — `admin`, `api`, `auth`, `login`, `www`, `app`, `mail`, `static`, `support`, `billing`,
+`help`, `status`, and more. Certificates are a
 single wildcard (`*.<apex>`) issued over ACME's DNS-01 challenge, the only challenge type that can
 issue a wildcard. Cookies are never issued with a wildcard `Domain` attribute (belt-and-braces —
 `openfaithmap-web` holds no session at all per D-AdminSurface). HSTS with `includeSubDomains`.
@@ -2547,8 +2550,12 @@ subtree grant** and becomes its own permission, checked per-unit and granted exp
 subtree authority no longer implies content-write authority; operators keep only the existing
 moderation path (`moderation.act`, target-scoped, [D-PlatformModerator](#d-platformmoderator--moderator-authority-is-a-go-oikumenea-role-on-the-root-unit)-shaped)
 for hiding or unpublishing problematic content — an audited, narrower intervention than direct
-editing. **Implementation is scheduled to M14.9** (this decision's own milestone), not built by
-M14.0, which stays docs-only.
+editing, though granting that path to registration-operator is itself a separate future decision,
+not part of M14.9. **Built at M14.9 (2026-08-28)**: `PermContentManage` ("content.manage") added to
+`internal/authz/domain`'s catalog, granted to `congregation-admin` only
+(`migrations/0026_content_manage_permission.sql`), and
+`internal/content/application/authorize.go`'s `requireManage` switched to check it instead of
+`religionorg.manage`.
 
 **Consequences.**
 - Constrains [D-ProductionDeployment](#d-productiondeployment--single-cheap-vm-docker-compose-caddy-for-tls--provider-agnostic)'s
@@ -2556,12 +2563,16 @@ M14.0, which stays docs-only.
   module supports (DNS-01 wildcard issuance) — recorded as **U14** in
   [milestones-2026-08-26-now.md](../milestones-2026-08-26-now.md), blocking only M14.18; every
   other M14 milestone verifies against `*.localhost` with no DNS at all.
-- `content.md`'s Authorization touchpoints and Open seams sections describe the tightened
-  `content.manage` grant as the target state, with the pre-M14.9 subtree-reuse behavior marked
-  resolved-by-schedule rather than deleted outright.
-- 301s from the old `/congregations/[unitId]` path preserve any indexed or shared URLs (M14.9).
-- Direct `/_sites/*` access from the apex host must 404 — the boundary that keeps Phase 1's
-  single-app shape from collapsing into one undifferentiated route tree.
+- `content.md`'s Authorization touchpoints and Open seams sections now describe the tightened
+  `content.manage` grant as the live behavior, not a target state.
+- 301s from the old `/congregations/[unitId]` path preserve any indexed or shared URLs — built as a
+  Route Handler (`app/[locale]/congregations/[unitId]/route.ts`), since Next's own `redirect()`
+  helpers send 307/308, not a real 301.
+- Direct `/_sites/*` access from the apex host 404s — the boundary that keeps Phase 1's single-app
+  shape from collapsing into one undifferentiated route tree. The actual route directory is named
+  `%5Fsites` (the URL-encoded form of an underscore): Next.js treats a literal `_sites` folder as a
+  private, unroutable implementation-detail folder, so the escape is required for `/_sites/[slug]`
+  to be a real route at all.
 
 ### D-ExternalMediaOnly — congregations host their own media, no first-party uploads
 

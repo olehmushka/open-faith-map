@@ -11,6 +11,10 @@ FROM openfaithmap.content_sites WHERE id = sqlc.arg('id') AND deleted_at IS NULL
 SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
 FROM openfaithmap.content_sites WHERE congregation_unit_rid = sqlc.arg('congregation_unit_rid') AND deleted_at IS NULL;
 
+-- name: GetSiteBySlug :one
+SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
+FROM openfaithmap.content_sites WHERE slug = sqlc.arg('slug') AND deleted_at IS NULL;
+
 -- name: UpdateSiteTheme :one
 UPDATE openfaithmap.content_sites SET theme = sqlc.arg('theme')
 WHERE id = sqlc.arg('id') AND deleted_at IS NULL

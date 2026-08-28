@@ -151,7 +151,7 @@ type BlockType struct {
 var (
 	ErrSiteNotFound       = errors.New("content site not found")
 	ErrDocumentNotFound   = errors.New("content document not found")
-	ErrForbidden          = errors.New("caller does not hold religionorg.manage on this site's congregation unit")
+	ErrForbidden          = errors.New("caller does not hold content.manage on this site's congregation unit")
 	ErrEventMissingStart  = errors.New("kind=EVENT requires eventStartsAt to be set")
 	ErrParentTooDeep      = errors.New("parent document chain exceeds 3 levels")
 	ErrInvalidTransition  = errors.New("invalid document state transition")
@@ -170,6 +170,18 @@ type SlugTakenError struct {
 
 func (e *SlugTakenError) Error() string {
 	return fmt.Sprintf("slug %q already taken (scope: %s)", e.Slug, e.Scope)
+}
+
+// SlugReservedError carries D-TenantSubdomains' reserved-subdomain blocklist rejection (M14.9):
+// content_sites.slug is a hostname component as of this milestone, so a fixed set of names can
+// never be claimed by any congregation, checked server-side (internal/content/application/
+// slugvalidation.go) — never only in the admin form's client-side format pattern.
+type SlugReservedError struct {
+	Slug string
+}
+
+func (e *SlugReservedError) Error() string {
+	return fmt.Sprintf("slug %q is reserved and cannot be claimed", e.Slug)
 }
 
 // BlockDataInvalidError carries the block type/position a json-schema validation failure was found

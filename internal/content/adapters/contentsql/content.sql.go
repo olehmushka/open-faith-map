@@ -140,6 +140,34 @@ func (q *Queries) GetSiteByID(ctx context.Context, id string) (GetSiteByIDRow, e
 	return i, err
 }
 
+const getSiteBySlug = `-- name: GetSiteBySlug :one
+SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
+FROM openfaithmap.content_sites WHERE slug = $1 AND deleted_at IS NULL
+`
+
+type GetSiteBySlugRow struct {
+	ID                  string
+	CongregationUnitRid string
+	Slug                string
+	Theme               json.RawMessage
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+func (q *Queries) GetSiteBySlug(ctx context.Context, slug string) (GetSiteBySlugRow, error) {
+	row := q.db.QueryRow(ctx, getSiteBySlug, slug)
+	var i GetSiteBySlugRow
+	err := row.Scan(
+		&i.ID,
+		&i.CongregationUnitRid,
+		&i.Slug,
+		&i.Theme,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getSiteByUnit = `-- name: GetSiteByUnit :one
 SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
 FROM openfaithmap.content_sites WHERE congregation_unit_rid = $1 AND deleted_at IS NULL

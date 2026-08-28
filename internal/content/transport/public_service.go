@@ -32,6 +32,17 @@ func (s *PublicService) GetSite(ctx context.Context, congregationUnitIdArg strin
 	return toAPISite(site), nil
 }
 
+// GetSiteBySlug is what the tenant-subdomain proxy resolves a Host header's slug through (M14.9).
+// Same SiteNotFound-reuse precedent as GetSite: the safe-arg slot is whatever the lookup key
+// actually was, not necessarily content_sites.id.
+func (s *PublicService) GetSiteBySlug(ctx context.Context, slugArg string) (gencontent.Site, error) {
+	site, err := s.appService.GetSiteBySlug(ctx, slugArg)
+	if err != nil {
+		return gencontent.Site{}, mapErr(err, errCtx{SiteID: slugArg})
+	}
+	return toAPISite(site), nil
+}
+
 func (s *PublicService) ListPublicDocuments(ctx context.Context, siteIdArg string, kindArg, localeArg *string) (gencontent.DocumentPage, error) {
 	docs, err := s.appService.ListPublicDocuments(ctx, siteIdArg, kindArg, localeArg)
 	if err != nil {

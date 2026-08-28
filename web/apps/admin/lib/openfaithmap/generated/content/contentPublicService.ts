@@ -13,6 +13,11 @@ const __undefined: undefined = undefined;
  */
 export interface IContentPublicService {
     getSite(congregationUnitId: string): Promise<ISite>;
+    /**
+     * M14.9: the tenant-subdomain proxy resolves a Host header's slug through this endpoint. A distinct top-level path (not nested under /sites/{siteId}/...) — same httprouter wildcard-slot conflict getSite's own comment above documents.
+     *
+     */
+    getSiteBySlug(slug: string): Promise<ISite>;
     listPublicDocuments(siteId: string, kind?: string | null, locale?: string | null): Promise<IDocumentPage>;
     /** Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two. */
     getPublicBlocks(documentId: string): Promise<IBlockList>;
@@ -35,6 +40,27 @@ export class ContentPublicService implements IContentPublicService {
             __undefined,
             [
                 congregationUnitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.9: the tenant-subdomain proxy resolves a Host header's slug through this endpoint. A distinct top-level path (not nested under /sites/{siteId}/...) — same httprouter wildcard-slot conflict getSite's own comment above documents.
+     *
+     */
+    public getSiteBySlug(slug: string): Promise<ISite> {
+        return this.bridge.call<ISite>(
+            "ContentPublicService",
+            "getSiteBySlug",
+            "GET",
+            "/content/v1/public/site-by-slug/{slug}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                slug,
             ],
             __undefined,
             __undefined
