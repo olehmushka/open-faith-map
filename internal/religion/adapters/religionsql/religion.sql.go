@@ -264,6 +264,67 @@ func (q *Queries) ListOrgKinds(ctx context.Context) ([]ListOrgKindsRow, error) {
 	return items, nil
 }
 
+const listServiceSchedulesBySite = `-- name: ListServiceSchedulesBySite :many
+SELECT id, day_of_week, rrule, COALESCE(to_char(start_time, 'HH24:MI'), '')::text AS start_time,
+	COALESCE(to_char(end_time, 'HH24:MI'), '')::text AS end_time, timezone, language, mode, meeting_url, description
+FROM openfaithmap.religion_service_schedules
+WHERE site_id = $1 AND deleted_at IS NULL
+ORDER BY day_of_week NULLS LAST, start_time NULLS LAST
+`
+
+type ListServiceSchedulesBySiteRow struct {
+	ID          string
+	DayOfWeek   pgtype.Int2
+	Rrule       pgtype.Text
+	StartTime   string
+	EndTime     string
+	Timezone    string
+	Language    pgtype.Text
+	Mode        string
+	MeetingUrl  pgtype.Text
+	Description pgtype.Text
+}
+
+// M14.11: the first place this table's individual rows (not just SearchSites'/SearchFacets'
+// aggregated language/day facets) are read back out — a congregation's site-chrome footer showing
+// real service times. start_time/end_time cast to "HH24:MI" text at the query layer so the Go side
+// never needs pgtype.Time (unused anywhere else in this codebase); COALESCE'd to ” rather than left
+// NULL because sqlc infers to_char(...)'s result as NOT NULL (it doesn't propagate the source
+// column's own nullability through the function call), which would otherwise fail to scan into a
+// plain Go string for an rrule-only schedule with no start_time — the repository layer treats ”
+// as unset. ORDER BY sorts on the same zero-padded text, chronologically equivalent to sorting the
+// underlying time value.
+func (q *Queries) ListServiceSchedulesBySite(ctx context.Context, siteID string) ([]ListServiceSchedulesBySiteRow, error) {
+	rows, err := q.db.Query(ctx, listServiceSchedulesBySite, siteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListServiceSchedulesBySiteRow
+	for rows.Next() {
+		var i ListServiceSchedulesBySiteRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DayOfWeek,
+			&i.Rrule,
+			&i.StartTime,
+			&i.EndTime,
+			&i.Timezone,
+			&i.Language,
+			&i.Mode,
+			&i.MeetingUrl,
+			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSiteTypes = `-- name: ListSiteTypes :many
 SELECT id, code, name FROM openfaithmap.religion_site_types
 WHERE deleted_at IS NULL ORDER BY sort_order NULLS LAST, code

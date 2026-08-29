@@ -11,6 +11,7 @@ import { IRevisionPage } from "./revisionPage";
 import { ISite } from "./site";
 import { ITransitionDocumentRequest } from "./transitionDocumentRequest";
 import { IUpdateDocumentRequest } from "./updateDocumentRequest";
+import { IUpdateSiteChromeRequest } from "./updateSiteChromeRequest";
 import { IUpdateSiteThemeRequest } from "./updateSiteThemeRequest";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -24,6 +25,8 @@ const __undefined: undefined = undefined;
 export interface IContentService {
     createSite(request: ICreateSiteRequest): Promise<ISite>;
     updateSiteTheme(siteId: string, request: IUpdateSiteThemeRequest): Promise<ISite>;
+    /** M14.11. Full replace, same shape as updateSiteTheme — the admin form always submits the complete logoUrl/socialLinks pair. */
+    updateSiteChrome(siteId: string, request: IUpdateSiteChromeRequest): Promise<ISite>;
     /** Admin read — returns documents in every state. */
     listDocuments(siteId: string, kind?: string | null, locale?: string | null, state?: string | null): Promise<IDocumentPage>;
     createDocument(siteId: string, request: ICreateDocumentRequest): Promise<IDocument>;
@@ -82,6 +85,24 @@ export class ContentService implements IContentService {
             "updateSiteTheme",
             "PUT",
             "/content/v1/sites/{siteId}/theme",
+            request,
+            __undefined,
+            __undefined,
+            [
+                siteId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M14.11. Full replace, same shape as updateSiteTheme — the admin form always submits the complete logoUrl/socialLinks pair. */
+    public updateSiteChrome(siteId: string, request: IUpdateSiteChromeRequest): Promise<ISite> {
+        return this.bridge.call<ISite>(
+            "ContentService",
+            "updateSiteChrome",
+            "PUT",
+            "/content/v1/sites/{siteId}/chrome",
             request,
             __undefined,
             __undefined,

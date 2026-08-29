@@ -54,6 +54,14 @@ func (s *Service) UpdateSiteTheme(ctx context.Context, authHeader bearertoken.To
 	return toAPISite(site), nil
 }
 
+func (s *Service) UpdateSiteChrome(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg gencontent.UpdateSiteChromeRequest) (gencontent.Site, error) {
+	site, err := s.appService.UpdateSiteChrome(ctx, siteIdArg, requestArg.LogoUrl, fromAPISocialLinks(requestArg.SocialLinks))
+	if err != nil {
+		return gencontent.Site{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	return toAPISite(site), nil
+}
+
 func (s *Service) CreatePreviewLink(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (gencontent.PreviewLink, error) {
 	token, err := s.appService.CreatePreviewLink(ctx, siteIdArg)
 	if err != nil {
@@ -196,8 +204,39 @@ func toAPISite(site domain.Site) gencontent.Site {
 		CongregationUnitId: site.CongregationUnitRID,
 		Slug:               site.Slug,
 		Theme:              unmarshalAny(site.Theme),
+		LogoUrl:            site.LogoURL,
+		SocialLinks:        toAPISocialLinks(site.SocialLinks),
 		CreatedAt:          datetime.DateTime(site.CreatedAt),
 		UpdatedAt:          datetime.DateTime(site.UpdatedAt),
+	}
+}
+
+func toAPISocialLinks(l domain.SocialLinks) gencontent.SocialLinks {
+	return gencontent.SocialLinks{
+		Facebook: l.Facebook, Instagram: l.Instagram, Youtube: l.YouTube, Twitter: l.Twitter, Website: l.Website,
+	}
+}
+
+func fromAPISocialLinks(l gencontent.SocialLinks) domain.SocialLinks {
+	return domain.SocialLinks{
+		Facebook: l.Facebook, Instagram: l.Instagram, YouTube: l.Youtube, Twitter: l.Twitter, Website: l.Website,
+	}
+}
+
+func toAPISiteChrome(c domain.SiteChrome) gencontent.SiteChrome {
+	schedules := make([]gencontent.ServiceSchedule, len(c.Schedules))
+	for i, sch := range c.Schedules {
+		schedules[i] = gencontent.ServiceSchedule{
+			DayOfWeek: sch.DayOfWeek, Rrule: sch.RRule, StartTime: sch.StartTime, EndTime: sch.EndTime,
+			Timezone: sch.Timezone, Language: sch.Language, Mode: sch.Mode, MeetingUrl: sch.MeetingURL, Description: sch.Description,
+		}
+	}
+	return gencontent.SiteChrome{
+		CongregationName: c.CongregationName,
+		Address:          c.Address,
+		LogoUrl:          c.LogoURL,
+		SocialLinks:      toAPISocialLinks(c.SocialLinks),
+		Schedules:        schedules,
 	}
 }
 

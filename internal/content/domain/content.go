@@ -53,8 +53,48 @@ type Site struct {
 	CongregationUnitRID string
 	Slug                string
 	Theme               json.RawMessage
+	LogoURL             *string
+	SocialLinks         SocialLinks
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+}
+
+// SocialLinks (M14.11) is content_sites.social_links' Go shape — a small, named field set rather
+// than a free-form map, so the site-chrome renderer can show a known icon per field deterministically.
+type SocialLinks struct {
+	Facebook  *string `json:"facebook,omitempty"`
+	Instagram *string `json:"instagram,omitempty"`
+	YouTube   *string `json:"youtube,omitempty"`
+	Twitter   *string `json:"twitter,omitempty"`
+	Website   *string `json:"website,omitempty"`
+}
+
+// SiteChrome (M14.11) is a site's header/footer data, composed at read time — congregationName/
+// address/schedules come live from religion_sites/religion_service_schedules (never copied into
+// content's own tables, docs/modules/content.md's own invariant); logoUrl/socialLinks are
+// content_sites' own persisted columns. Address is nil if the unit has no religion site, or if its
+// PublicPrecision coarsens it away entirely (religiondomain.CoarsenAddress's own "hidden" case).
+type SiteChrome struct {
+	CongregationName string
+	Address          *string
+	LogoURL          *string
+	SocialLinks      SocialLinks
+	Schedules        []ServiceSchedule
+}
+
+// ServiceSchedule (M14.11) mirrors religion's own domain.ServiceSchedule shape — content's
+// application layer composes GetSiteChrome from religion's live data without content importing
+// religion's domain package into its own public API surface.
+type ServiceSchedule struct {
+	DayOfWeek   *int
+	RRule       *string
+	StartTime   *string
+	EndTime     *string
+	Timezone    string
+	Language    *string
+	Mode        string
+	MeetingURL  *string
+	Description *string
 }
 
 type CreateSiteInput struct {

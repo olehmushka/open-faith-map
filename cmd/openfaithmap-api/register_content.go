@@ -19,9 +19,13 @@ import (
 //
 // M10.6: depends on deps.AuthzSvc (populated by registerCore, which runs before every consumer
 // module) instead of the go-oikumenea SDK config.
+//
+// M14.11: also depends on deps.ReligionSvc (populated by registerCore too) — content's own
+// GetSiteChrome composes a site-chrome header/footer from religion's live data, the same
+// direct-interface-call cross-module shape registerDiscovery already uses one line below.
 func registerContent(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	contentStore := contentadapters.NewRepository(deps.Pool)
-	contentAppSvc := contentapplication.NewService(contentStore, deps.AuthzSvc, deps.Install.ContentPreviewHMACKey)
+	contentAppSvc := contentapplication.NewService(contentStore, deps.AuthzSvc, deps.ReligionSvc, deps.Install.ContentPreviewHMACKey)
 	contentTransportSvc := contenttransport.NewService(contentAppSvc)
 	contentPublicTransportSvc := contenttransport.NewPublicService(contentAppSvc)
 

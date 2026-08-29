@@ -20,6 +20,8 @@ type ContentPublicService interface {
 	GetSite(ctx context.Context, congregationUnitIdArg string) (Site, error)
 	// M14.9: the tenant-subdomain proxy resolves a Host header's slug through this endpoint. A distinct top-level path (not nested under /sites/{siteId}/...) — same httprouter wildcard-slot conflict getSite's own comment above documents.
 	GetSiteBySlug(ctx context.Context, slugArg string) (Site, error)
+	// M14.11. The tenant layout's one call for header/footer data — logoUrl/socialLinks from content_sites, congregationName/address/schedules composed live from religion at read time. No auth, same anonymous shape as getSite/getSiteBySlug.
+	GetSiteChrome(ctx context.Context, siteIdArg string) (SiteChrome, error)
 	ListPublicDocuments(ctx context.Context, siteIdArg string, kindArg *string, localeArg *string) (DocumentPage, error)
 	// Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two.
 	GetPublicBlocks(ctx context.Context, documentIdArg string) (BlockList, error)
@@ -47,6 +49,9 @@ func RegisterRoutesContentPublicService(router wrouter.Router, impl ContentPubli
 	}
 	if err := resource.Get("GetSiteBySlug", "/content/v1/public/site-by-slug/{slug}", httpserver.NewJSONHandler(handler.HandleGetSiteBySlug, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getSiteBySlug route")
+	}
+	if err := resource.Get("GetSiteChrome", "/content/v1/public/sites/{siteId}/chrome", httpserver.NewJSONHandler(handler.HandleGetSiteChrome, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getSiteChrome route")
 	}
 	if err := resource.Get("ListPublicDocuments", "/content/v1/public/sites/{siteId}/documents", httpserver.NewJSONHandler(handler.HandleListPublicDocuments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPublicDocuments route")
@@ -103,6 +108,23 @@ func (c *contentPublicServiceHandler) HandleGetSiteBySlug(rw http.ResponseWriter
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"slug\" not present")
 	}
 	respArg, err := c.impl.GetSiteBySlug(req.Context(), slugArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentPublicServiceHandler) HandleGetSiteChrome(rw http.ResponseWriter, req *http.Request) error {
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	respArg, err := c.impl.GetSiteChrome(req.Context(), siteIdArg)
 	if err != nil {
 		return err
 	}
@@ -249,6 +271,8 @@ func (c *contentPublicServiceHandler) HandleGetPublicDocumentByPath(rw http.Resp
 type ContentService interface {
 	CreateSite(ctx context.Context, authHeader bearertoken.Token, requestArg CreateSiteRequest) (Site, error)
 	UpdateSiteTheme(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg UpdateSiteThemeRequest) (Site, error)
+	// M14.11. Full replace, same shape as updateSiteTheme — the admin form always submits the complete logoUrl/socialLinks pair.
+	UpdateSiteChrome(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg UpdateSiteChromeRequest) (Site, error)
 	// Admin read — returns documents in every state.
 	ListDocuments(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, kindArg *string, localeArg *string, stateArg *string) (DocumentPage, error)
 	CreateDocument(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg CreateDocumentRequest) (Document, error)
@@ -282,6 +306,9 @@ func RegisterRoutesContentService(router wrouter.Router, impl ContentService, ro
 	}
 	if err := resource.Put("UpdateSiteTheme", "/content/v1/sites/{siteId}/theme", httpserver.NewJSONHandler(handler.HandleUpdateSiteTheme, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateSiteTheme route")
+	}
+	if err := resource.Put("UpdateSiteChrome", "/content/v1/sites/{siteId}/chrome", httpserver.NewJSONHandler(handler.HandleUpdateSiteChrome, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateSiteChrome route")
 	}
 	if err := resource.Get("ListDocuments", "/content/v1/sites/{siteId}/documents", httpserver.NewJSONHandler(handler.HandleListDocuments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listDocuments route")
@@ -358,6 +385,31 @@ func (c *contentServiceHandler) HandleUpdateSiteTheme(rw http.ResponseWriter, re
 		return errors.WrapWithInvalidArgument(err)
 	}
 	respArg, err := c.impl.UpdateSiteTheme(req.Context(), bearertoken.Token(authHeader), siteIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleUpdateSiteChrome(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	var requestArg UpdateSiteChromeRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.UpdateSiteChrome(req.Context(), bearertoken.Token(authHeader), siteIdArg, requestArg)
 	if err != nil {
 		return err
 	}

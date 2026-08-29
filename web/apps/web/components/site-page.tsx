@@ -20,8 +20,9 @@ const REPORT_REASON_CODES: FileReportInput["reasonCode"][] = [
 ];
 
 // Sunday..Saturday, matching DiscoverySite.serviceDays' own 0-6 convention — same const-array
-// precedent as app/discovery/more-filters-sheet.tsx's own DAY_KEYS.
-const DAY_KEYS = ["day0", "day1", "day2", "day3", "day4", "day5", "day6"] as const;
+// precedent as app/discovery/more-filters-sheet.tsx's own DAY_KEYS. Exported for site-footer.tsx's
+// own day-of-week labels (ServiceSchedule.dayOfWeek uses the identical 0-6 convention).
+export const DAY_KEYS = ["day0", "day1", "day2", "day3", "day4", "day5", "day6"] as const;
 
 // The real public-site renderer (M14.9, D-TenantSubdomains) — the "extractable module" the
 // milestone names: the site's discovery-derived header, its Posts/Events feed, and the report

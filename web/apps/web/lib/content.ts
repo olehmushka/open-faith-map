@@ -9,7 +9,7 @@ import { isConjureError } from "conjure-client";
 import { cache } from "react";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
-import type { IBlock, IBlockType, IDocument, IDocumentWithAncestors, IPublicNavItem, ISite } from "./openfaithmap/generated/content";
+import type { IBlock, IBlockType, IDocument, IDocumentWithAncestors, IPublicNavItem, ISite, ISiteChrome } from "./openfaithmap/generated/content";
 
 export type Site = ISite;
 export type Document = IDocument;
@@ -17,6 +17,7 @@ export type Block = IBlock;
 export type BlockType = IBlockType;
 export type PublicNavItem = IPublicNavItem;
 export type DocumentWithAncestors = IDocumentWithAncestors;
+export type SiteChrome = ISiteChrome;
 
 export class ContentApiError extends Error {
   constructor(
@@ -63,6 +64,12 @@ export async function getSite(congregationUnitId: string): Promise<Site> {
 // layout/page boundary (which doesn't support that natively).
 export const getSiteBySlug = cache(async (slug: string): Promise<Site> => {
   return unwrap(client().contentPublic.getSiteBySlug(slug));
+});
+
+// M14.11: the tenant layout's one call for header/footer data — logoUrl/socialLinks from
+// content_sites, congregationName/address/schedules composed live from religion at read time.
+export const getSiteChrome = cache(async (siteId: string): Promise<SiteChrome> => {
+  return unwrap(client().contentPublic.getSiteChrome(siteId));
 });
 
 export async function listPublicDocuments(siteId: string, kind?: string): Promise<Document[]> {

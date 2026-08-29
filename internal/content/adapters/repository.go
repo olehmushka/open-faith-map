@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -45,6 +46,26 @@ func fromNullableText(t pgtype.Text) *string {
 	return &t.String
 }
 
+// socialLinksFromJSON unmarshals content_sites.social_links — an empty/absent object (the column's
+// own NOT NULL DEFAULT '{}') decodes to the zero SocialLinks value (every field nil), same
+// degrade-gracefully shape attributesFromJSON already uses on religion's side.
+func socialLinksFromJSON(b json.RawMessage) domain.SocialLinks {
+	var s domain.SocialLinks
+	if len(b) == 0 {
+		return s
+	}
+	_ = json.Unmarshal(b, &s)
+	return s
+}
+
+func toSite(id, congregationUnitRID, slug string, theme json.RawMessage, logoURL pgtype.Text, socialLinks json.RawMessage, createdAt, updatedAt time.Time) domain.Site {
+	return domain.Site{
+		ID: id, CongregationUnitRID: congregationUnitRID, Slug: slug, Theme: theme,
+		LogoURL: fromNullableText(logoURL), SocialLinks: socialLinksFromJSON(socialLinks),
+		CreatedAt: createdAt, UpdatedAt: updatedAt,
+	}
+}
+
 // InsertSite implements U5's resolution race-safely: INSERT, catch the unique-violation, translate
 // — never check-then-insert (TOCTOU).
 func (r *Repository) InsertSite(ctx context.Context, in domain.CreateSiteInput) (domain.Site, error) {
@@ -59,7 +80,7 @@ func (r *Repository) InsertSite(ctx context.Context, in domain.CreateSiteInput) 
 	if err != nil {
 		return domain.Site{}, err
 	}
-	return domain.Site{ID: row.ID, CongregationUnitRID: row.CongregationUnitRid, Slug: row.Slug, Theme: row.Theme, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
+	return toSite(row.ID, row.CongregationUnitRid, row.Slug, row.Theme, row.LogoUrl, row.SocialLinks, row.CreatedAt, row.UpdatedAt), nil
 }
 
 func (r *Repository) GetSiteByID(ctx context.Context, id string) (domain.Site, error) {
@@ -70,7 +91,7 @@ func (r *Repository) GetSiteByID(ctx context.Context, id string) (domain.Site, e
 	if err != nil {
 		return domain.Site{}, err
 	}
-	return domain.Site{ID: row.ID, CongregationUnitRID: row.CongregationUnitRid, Slug: row.Slug, Theme: row.Theme, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
+	return toSite(row.ID, row.CongregationUnitRid, row.Slug, row.Theme, row.LogoUrl, row.SocialLinks, row.CreatedAt, row.UpdatedAt), nil
 }
 
 func (r *Repository) GetSiteByUnit(ctx context.Context, congregationUnitRID string) (domain.Site, error) {
@@ -81,7 +102,7 @@ func (r *Repository) GetSiteByUnit(ctx context.Context, congregationUnitRID stri
 	if err != nil {
 		return domain.Site{}, err
 	}
-	return domain.Site{ID: row.ID, CongregationUnitRID: row.CongregationUnitRid, Slug: row.Slug, Theme: row.Theme, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
+	return toSite(row.ID, row.CongregationUnitRid, row.Slug, row.Theme, row.LogoUrl, row.SocialLinks, row.CreatedAt, row.UpdatedAt), nil
 }
 
 func (r *Repository) GetSiteBySlug(ctx context.Context, slug string) (domain.Site, error) {
@@ -92,7 +113,7 @@ func (r *Repository) GetSiteBySlug(ctx context.Context, slug string) (domain.Sit
 	if err != nil {
 		return domain.Site{}, err
 	}
-	return domain.Site{ID: row.ID, CongregationUnitRID: row.CongregationUnitRid, Slug: row.Slug, Theme: row.Theme, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
+	return toSite(row.ID, row.CongregationUnitRid, row.Slug, row.Theme, row.LogoUrl, row.SocialLinks, row.CreatedAt, row.UpdatedAt), nil
 }
 
 func (r *Repository) UpdateSiteTheme(ctx context.Context, id string, theme []byte) (domain.Site, error) {
@@ -103,7 +124,25 @@ func (r *Repository) UpdateSiteTheme(ctx context.Context, id string, theme []byt
 	if err != nil {
 		return domain.Site{}, err
 	}
-	return domain.Site{ID: row.ID, CongregationUnitRID: row.CongregationUnitRid, Slug: row.Slug, Theme: row.Theme, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
+	return toSite(row.ID, row.CongregationUnitRid, row.Slug, row.Theme, row.LogoUrl, row.SocialLinks, row.CreatedAt, row.UpdatedAt), nil
+}
+
+// UpdateSiteChrome overwrites logoUrl/socialLinks wholesale (M14.11) — the admin form always
+// submits the complete shape, same "full replace, never a partial patch" convention
+// UpdateSiteAttributesByID (religion, M13.2) already established.
+func (r *Repository) UpdateSiteChrome(ctx context.Context, id string, logoURL *string, socialLinks domain.SocialLinks) (domain.Site, error) {
+	b, err := json.Marshal(socialLinks)
+	if err != nil {
+		return domain.Site{}, err
+	}
+	row, err := r.q.UpdateSiteChrome(ctx, contentsql.UpdateSiteChromeParams{ID: id, LogoUrl: nullableText(logoURL), SocialLinks: b})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Site{}, domain.ErrSiteNotFound
+	}
+	if err != nil {
+		return domain.Site{}, err
+	}
+	return toSite(row.ID, row.CongregationUnitRid, row.Slug, row.Theme, row.LogoUrl, row.SocialLinks, row.CreatedAt, row.UpdatedAt), nil
 }
 
 func (r *Repository) GetBlockTypeByCode(ctx context.Context, code string) (domain.BlockType, error) {

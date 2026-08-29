@@ -81,6 +81,22 @@ JOIN openfaithmap.religion_site_types st ON st.id = s.site_type_id
 JOIN openfaithmap.location_locations l ON l.id = s.location_id
 WHERE s.id = sqlc.arg('id');
 
+-- name: ListServiceSchedulesBySite :many
+-- M14.11: the first place this table's individual rows (not just SearchSites'/SearchFacets'
+-- aggregated language/day facets) are read back out — a congregation's site-chrome footer showing
+-- real service times. start_time/end_time cast to "HH24:MI" text at the query layer so the Go side
+-- never needs pgtype.Time (unused anywhere else in this codebase); COALESCE'd to '' rather than left
+-- NULL because sqlc infers to_char(...)'s result as NOT NULL (it doesn't propagate the source
+-- column's own nullability through the function call), which would otherwise fail to scan into a
+-- plain Go string for an rrule-only schedule with no start_time — the repository layer treats ''
+-- as unset. ORDER BY sorts on the same zero-padded text, chronologically equivalent to sorting the
+-- underlying time value.
+SELECT id, day_of_week, rrule, COALESCE(to_char(start_time, 'HH24:MI'), '')::text AS start_time,
+	COALESCE(to_char(end_time, 'HH24:MI'), '')::text AS end_time, timezone, language, mode, meeting_url, description
+FROM openfaithmap.religion_service_schedules
+WHERE site_id = sqlc.arg('site_id') AND deleted_at IS NULL
+ORDER BY day_of_week NULLS LAST, start_time NULLS LAST;
+
 -- SearchSites is deliberately NOT ported here: its WHERE/ORDER BY shape is genuinely dynamic
 -- (radius search XOR bbox search XOR neither; four independently-optional EXISTS predicates), not a
 -- fixed set of "narg IS NULL OR" branches — forcing it into one static statement would either lose

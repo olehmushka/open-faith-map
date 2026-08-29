@@ -9,8 +9,8 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.10 (M14.0–M14.9
-2026-08-27/28, M14.10 2026-08-29) are done**, no other sub-milestone is built yet. It is the second half of the
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.11 (M14.0–M14.9
+2026-08-27/28, M14.10–M14.11 2026-08-29) are done**, no other sub-milestone is built yet. It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -30,7 +30,11 @@ tightening) — see its own row below. **M14.7 renders a draft revision through 
 renderer** on the tenant subdomain, behind a short-lived signed token, once M14.9 unblocked it — see
 its own row below. **M14.10 gives each Page its own hierarchical URL** on the tenant host and adds a
 hand-built nav menu (`content_site_nav_items`), replacing the one-pager's inline Pages section — see
-its own row below. Next up: M14.11.
+its own row below. **M14.11 gives every tenant site a real header and footer** — congregation
+name/logo/nav in the header, address/service-schedule/social-links in the footer, the address and
+schedule composed live from religion's data at request time (content's application layer now
+depends on religion's, the same direct-interface-call shape discovery already established) — see its
+own row below. Next up: M14.12.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -87,7 +91,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.8 · Editor polish | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built (2026-08-28), out of milestone order** (M14.7 above is blocked on M14.9; this one only depends on M14.5). Session-local client-side undo/redo over the block list (`hooks/use-block-history.ts`), independent of M14.6's server-side revision history — Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, plus toolbar buttons, disabled at stack boundaries. A real empty state for a zero-block document, with a CTA into the existing inserter — **scoped down from "start from a template," named rather than silently dropped:** M14.13 (`content_patterns`) doesn't exist yet, so there is no template to start from. The block row's fixed 5-column grid now stacks to a single column below the `sm:` breakpoint, usable at 375px. The two remaining `?error=`-redirect round trips (document details save, new-document create) are now inline via `useActionState`, matching the pattern `people/invite/invite-form.tsx` established — zero `?error=` round trips remain anywhere in the document editor. `Verified` awaits CI green on `main`. |
 | M14.9 · Tenant subdomain routing (Phase 1) | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-28).** `web/apps/web/proxy.ts` (Next 16 renamed `middleware.ts` to `proxy.ts` — extended in place, composed with the existing next-intl locale middleware, rather than a second file) resolves the `Host` header to a site slug (`lib/tenant-host.ts`, unit-tested) and rewrites into an internal `/[locale]/_sites/[slug]/…` tree; the apex host keeps serving discovery unchanged. **Direct `/_sites/*` access from the apex 404s** — checked first, before next-intl even runs. **Reserved-subdomain blocklist enforced server-side** (`internal/content/application/slugvalidation.go`, checked in `CreateSite` before the existing `Content:SlugTaken` uniqueness probe) — `content_sites.slug` is now a hostname, so `admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/`help`/`status` and 25 more are unclaimable, rejected with a new typed `Content:SlugReserved` error. A real 301 (not Next's 307/308 `redirect()`) from the old `/congregations/[unitId]` route, now a Route Handler, to the tenant root. Rendering logic extracted into `components/site-page.tsx`, an "extractable module" reused by the new thin `[locale]/%5Fsites/[slug]/page.tsx` wrapper (the actual directory is `%5Fsites` — Next.js's private-folder convention would otherwise exclude a literal `_sites` folder from routing; `%5F` is the documented URL-encoded-underscore escape) — set up for the owner's Phase 2 (`openfaithmap-sites`) to be a move, not a rewrite. **Also implements M14.0's U16 ruling:** `content.manage` (`PermContentManage`) stops resolving through `religionorg.manage`'s subtree grant and becomes its own per-unit permission granted to `congregation-admin` only (`migrations/0026_content_manage_permission.sql`, same shape as M13.2's `site.manage`); registration operators lose that edit access, confirmed with the owner as leaving them with **no** replacement edit path for now — granting a moderation permission is a separate, later decision. Cross-tenant-denial and operator-denial cases (`docs/modules/content.md`'s previously-named test-coverage gap) covered by new `internal/content/content_integration_test.go` cases against real Postgres. Verified against a real running docker-compose stack: `grace.localhost:3002/` resolves through a real `content_sites` row created over HTTP by a real `congregation-admin` session (307 to `/en` with `NEXT_LOCALE` preserved, then 200); `localhost:3002/_sites/grace` and `/en/_sites/grace` both 404 from the apex; `CreateSite` with `slug: "admin"` returns `400 Content:SlugReserved` over a direct HTTP call (bypassing the admin form entirely); the old `/en/congregations/[unitId]` route returns a real `301` to `http://grace.localhost:3002/`. See [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist). `Verified` awaits CI green on `main`. |
 | M14.10 · Navigation + page routes | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-29).** `/[pageSlug]` and hierarchical nested child routes on the tenant host, honoring the existing 3-level cap — a wrong ancestor segment 404s, never resolved by the last segment alone. **Nav is a hand-built menu (`content_site_nav_items`), not derived from the page tree** — M14.0 replaced the original page-tree-derivation assumption with an independently-curated menu (label, target document or external URL, sort order); `parent_document_id` still governs page nesting/breadcrumbs, just not the nav itself. Breadcrumbs at depth ≥ 2. The site root drops its old inline "every Page rendered inline" section (owner decision) — Pages are reachable only via their own route or the nav menu; Posts/Events feeds are unchanged. `Verified` awaits CI green on `main`. |
-| M14.11 · Site chrome — header, footer, template parts | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Congregation name, logo URL, nav, and a footer whose contact details and service times are read **live from `religion_sites`/`religion_service_schedules`, never copied** — the existing content.md invariant, restated because a footer is exactly where someone would be tempted to denormalize. Social links. Site-level settings on `content_sites`, not content documents. |
+| M14.11 · Site chrome — header, footer, template parts | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-29).** Congregation name, logo URL, nav, and a footer whose contact details and service times are read **live from `religion_sites`/`religion_service_schedules`, never copied** — the existing content.md invariant, restated because a footer is exactly where someone would be tempted to denormalize. Social links. Site-level settings on `content_sites`, not content documents. |
 | M14.12 · Curated theme tokens | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Gives the entirely-unused `content_sites.theme` a real schema: accent color from a vetted palette, one of a few font pairings, a spacing scale, header layout, light/dark — WordPress's `theme.json` lesson, a fixed vocabulary rather than CSS. Emitted as CSS custom properties. **A WCAG contrast check rejects a failing combination at write time**, so no congregation can ship an unreadable site. Live theme preview in the admin. |
 | M14.13 · Starter patterns + block-type catalog admin | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_patterns` with WordPress's **unsynced** semantics: an inserted pattern detaches into ordinary blocks and is freely edited. Seeded church-specific starters — Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement. Finally builds the `content.catalog.manage` endpoints M3 left unbuilt (moderator-gated per D-PlatformModerator), so block types and patterns stop being migration-only. The single biggest onboarding lever in the arc. |
 | M14.14 · Locale switching — closes `DS-OFM-7` | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Visitor-facing locale picker offering **only locales that actually have a published variant**, plus `hreflang` alternates. Editor-side translation panel per document showing which locales exist and their state, with "create translation" seeding a variant into the same translation group. Translation groups have worked structurally since M3 with no UI on either side. |
@@ -830,18 +834,70 @@ green on `main`.
 
 ### M14.11 · Site chrome — header, footer, template parts
 
-**Not started.** Depends on M14.10.
+**Built (2026-08-29).** Depends on M14.10 only in the sense that the header renders the same nav
+menu M14.10 built (`listPublicNavItems`) — no code from that milestone was reused otherwise.
 
-Site-level chrome as settings on `content_sites`, not as content documents: congregation name, logo
-URL, navigation, social links, and a footer whose contact details and service times are read **live
-from `religion_sites` and `religion_service_schedules`, never copied into `content`**. That
-invariant already exists in [content.md](modules/content.md) and [discovery.md](modules/discovery.md);
-it is restated here because a footer is precisely where someone would be tempted to denormalize
-service times for one fewer query.
+**Two scoping calls made with the owner before building, since the milestone text left both open:**
+"contact details" turned out to have no backing field at all — `religion_sites` has no phone/email
+column anywhere in the schema — so the footer's contact details are the site's address only for
+now; adding phone/email is a separate future milestone, not silently substituted with something
+else. And the live religion-data path (address + service-schedule *times*, which no endpoint
+exposed before this milestone — only bare day-of-week ints via `DiscoverySite`) is composed
+**server-side, inside `content`**: `internal/religion/application.Service` is now injected into
+`internal/content/application.Service`'s constructor, the same direct-interface-call shape
+`internal/discovery` already established against `religion` (`docs/architecture/conventions.md`) —
+this is the first time `content` itself, not just `discovery`, reads religion's live data. The
+alternative (a second public endpoint on religion or discovery, fetched separately by the frontend)
+was rejected in favor of one bundled call the tenant layout makes once.
 
-**Acceptance criteria.** Header and footer render on every tenant route. Changing a service time in
-the religion module changes the footer with no content edit and no cache staleness beyond M14.17's
-declared revalidation window.
+**Backend.** `content_sites` gains `logo_url text` and `social_links jsonb NOT NULL DEFAULT '{}'`
+(`migrations/0028_content_site_chrome.sql`) — a small named-field `SocialLinks` struct
+(facebook/instagram/youtube/twitter/website), not a free-form map, so the renderer can show a known
+icon per field deterministically. New `ContentService.updateSiteChrome` (`PUT
+/sites/{siteId}/chrome`, content.manage-gated, full replace — same shape as `updateSiteTheme`). New
+`religionapplication.Service.GetPrimarySiteByUnit` (a hand-written query reusing `SearchSites`' own
+`siteCols`/`siteFrom` projection for the `directory_units` name join, deliberately **not**
+`SearchSites`' own `visibility='public'`/non-hidden filtering — a congregation's own site must show
+its own name regardless of discovery visibility, only the *address* is precision-gated) and
+`ListServiceSchedulesByUnit` (a new query against `religion_service_schedules` — the first place
+this table's individual rows, not just `SearchFacets`' aggregated day/language facets, are read
+back out), both left ungated like `ListSitesByUnit` — public-safe data, not owner-only like
+`GetSiteByUnit`/`site.manage`. New `ContentPublicService.getSiteChrome` (`GET
+/sites/{siteId}/chrome`, anonymous) composes `content_sites`' own logoUrl/socialLinks with
+religion's live congregationName/address (address run through the existing
+`CoarsenAddress`/`PublicPrecision` gate — a `hidden`-precision site shows no address, but its name
+still shows, since a site's own name on its own subdomain isn't the discovery-search leak
+`D-DiscoveryAddressPrecision` guards against) and schedules; degrades to
+`{congregationName: <slug>, address: nil, schedules: []}` rather than erroring if the unit has no
+religion site yet at all.
+
+**`web/apps/web`.** New `components/site-header.tsx` (logo/name, and the nav list extracted out of
+`layout.tsx`'s old bare `<nav>`) and `components/site-footer.tsx` (address, service schedule
+grouped by day using the same `DiscoveryMap.day0`–`day6` labels `site-page.tsx` already uses,
+social links) — both fed by one new `getSiteChrome` call the tenant layout makes alongside its
+existing `getSiteBySlug`/`listPublicNavItems` fetches. `SiteFooter` renders nothing at all if the
+chrome has no address, no schedules, and no social links, rather than an empty shell.
+
+**`web/apps/admin`.** No new route: `logoUrl`/`socialLinks` are a handful of fixed optional fields
+— structurally identical to the existing `theme` settings, not a dynamic list like the nav menu —
+so a new "Site chrome" card joins the existing Theme/Accessibility cards directly on
+`sites/[unitId]/page.tsx`, reusing that same plain `<form action={...}>` server-action shape rather
+than reaching for `nav-item-list-editor.tsx`'s client-state machinery, which exists specifically for
+add/remove/reorder that this form doesn't need.
+
+**Acceptance criteria — met, verified two ways.** `internal/content/content_integration_test.go`
+(run against real Postgres) covers: `GetSiteChrome` degrading gracefully before any religion site
+exists; `UpdateSiteChrome` content.manage-gated the same way `UpdateSiteTheme` is, persisting
+logoUrl/socialLinks; `GetSiteChrome` composing a real `congregationName`/coarsened `address`/one
+`ServiceSchedule` row (day, start/end time, language) once a real `religion_sites` +
+`religion_service_schedules` fixture exists for the unit; and a `hidden`-precision religion site
+hiding the address while the congregation's own name still renders. `go test ./internal/content/...
+./internal/religion/...`, `./godelw verify`, and `make sdk-verify` all pass; `web/apps/web` and
+`web/apps/admin`'s `npm run lint && npm run test && npm run build` all pass. **Not verified this
+session:** a live browser check against the running docker-compose stack — this session ran
+alongside other active sessions sharing the same stack, and rebuilding the shared `openfaithmap-api`
+image to hot-swap in this branch's code risked disrupting their work, so that check is left for a
+dedicated verification pass rather than silently skipped. `Verified` awaits CI green on `main`.
 
 ### M14.12 · Curated theme tokens
 

@@ -24,6 +24,7 @@ import type {
   INavItem,
   INavItemInput,
   ISite,
+  ISocialLinks,
   IUpdateDocumentRequest,
 } from "./openfaithmap/generated/content";
 import { DocumentTransitionAction } from "./openfaithmap/generated/content";
@@ -39,6 +40,7 @@ export type BlockInput = IBlockInput;
 export type DocumentRevision = IDocumentRevision;
 export type NavItem = INavItem;
 export type NavItemInput = INavItemInput;
+export type SocialLinks = ISocialLinks;
 export { DocumentTransitionAction };
 
 export class ContentApiError extends Error {
@@ -96,6 +98,11 @@ export async function createSite(input: CreateSiteInput): Promise<Site> {
 
 export async function updateSiteTheme(siteId: string, theme: unknown): Promise<Site> {
   return unwrap((await client()).content.updateSiteTheme(siteId, { theme }));
+}
+
+// M14.11: logoUrl/socialLinks are content_sites' own settings, full-replace like updateSiteTheme.
+export async function updateSiteChrome(siteId: string, logoUrl: string | null, socialLinks: SocialLinks): Promise<Site> {
+  return unwrap((await client()).content.updateSiteChrome(siteId, { logoUrl, socialLinks }));
 }
 
 export async function listDocuments(siteId: string): Promise<Document[]> {

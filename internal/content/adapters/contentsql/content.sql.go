@@ -187,7 +187,7 @@ func (q *Queries) GetRevision(ctx context.Context, id string) (OpenfaithmapConte
 }
 
 const getSiteByID = `-- name: GetSiteByID :one
-SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
+SELECT id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at
 FROM openfaithmap.content_sites WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -196,6 +196,8 @@ type GetSiteByIDRow struct {
 	CongregationUnitRid string
 	Slug                string
 	Theme               json.RawMessage
+	LogoUrl             pgtype.Text
+	SocialLinks         json.RawMessage
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
@@ -208,6 +210,8 @@ func (q *Queries) GetSiteByID(ctx context.Context, id string) (GetSiteByIDRow, e
 		&i.CongregationUnitRid,
 		&i.Slug,
 		&i.Theme,
+		&i.LogoUrl,
+		&i.SocialLinks,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -215,7 +219,7 @@ func (q *Queries) GetSiteByID(ctx context.Context, id string) (GetSiteByIDRow, e
 }
 
 const getSiteBySlug = `-- name: GetSiteBySlug :one
-SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
+SELECT id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at
 FROM openfaithmap.content_sites WHERE slug = $1 AND deleted_at IS NULL
 `
 
@@ -224,6 +228,8 @@ type GetSiteBySlugRow struct {
 	CongregationUnitRid string
 	Slug                string
 	Theme               json.RawMessage
+	LogoUrl             pgtype.Text
+	SocialLinks         json.RawMessage
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
@@ -236,6 +242,8 @@ func (q *Queries) GetSiteBySlug(ctx context.Context, slug string) (GetSiteBySlug
 		&i.CongregationUnitRid,
 		&i.Slug,
 		&i.Theme,
+		&i.LogoUrl,
+		&i.SocialLinks,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -243,7 +251,7 @@ func (q *Queries) GetSiteBySlug(ctx context.Context, slug string) (GetSiteBySlug
 }
 
 const getSiteByUnit = `-- name: GetSiteByUnit :one
-SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
+SELECT id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at
 FROM openfaithmap.content_sites WHERE congregation_unit_rid = $1 AND deleted_at IS NULL
 `
 
@@ -252,6 +260,8 @@ type GetSiteByUnitRow struct {
 	CongregationUnitRid string
 	Slug                string
 	Theme               json.RawMessage
+	LogoUrl             pgtype.Text
+	SocialLinks         json.RawMessage
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
@@ -264,6 +274,8 @@ func (q *Queries) GetSiteByUnit(ctx context.Context, congregationUnitRid string)
 		&i.CongregationUnitRid,
 		&i.Slug,
 		&i.Theme,
+		&i.LogoUrl,
+		&i.SocialLinks,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -429,7 +441,7 @@ func (q *Queries) InsertRevision(ctx context.Context, arg InsertRevisionParams) 
 const insertSite = `-- name: InsertSite :one
 INSERT INTO openfaithmap.content_sites (congregation_unit_rid, slug)
 VALUES ($1, $2)
-RETURNING id, congregation_unit_rid, slug, theme, created_at, updated_at
+RETURNING id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at
 `
 
 type InsertSiteParams struct {
@@ -442,6 +454,8 @@ type InsertSiteRow struct {
 	CongregationUnitRid string
 	Slug                string
 	Theme               json.RawMessage
+	LogoUrl             pgtype.Text
+	SocialLinks         json.RawMessage
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
@@ -454,6 +468,8 @@ func (q *Queries) InsertSite(ctx context.Context, arg InsertSiteParams) (InsertS
 		&i.CongregationUnitRid,
 		&i.Slug,
 		&i.Theme,
+		&i.LogoUrl,
+		&i.SocialLinks,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -959,10 +975,53 @@ func (q *Queries) UpdateRevisionData(ctx context.Context, arg UpdateRevisionData
 	return i, err
 }
 
+const updateSiteChrome = `-- name: UpdateSiteChrome :one
+UPDATE openfaithmap.content_sites SET logo_url = $1, social_links = $2
+WHERE id = $3 AND deleted_at IS NULL
+RETURNING id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at
+`
+
+type UpdateSiteChromeParams struct {
+	LogoUrl     pgtype.Text
+	SocialLinks json.RawMessage
+	ID          string
+}
+
+type UpdateSiteChromeRow struct {
+	ID                  string
+	CongregationUnitRid string
+	Slug                string
+	Theme               json.RawMessage
+	LogoUrl             pgtype.Text
+	SocialLinks         json.RawMessage
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+// M14.11: logo_url/social_links are content_sites' own site-level settings (never a content
+// document) — everything else the header/footer needs (congregation name, address, service
+// schedule) is composed at read time from religion_sites/religion_service_schedules, never stored
+// here.
+func (q *Queries) UpdateSiteChrome(ctx context.Context, arg UpdateSiteChromeParams) (UpdateSiteChromeRow, error) {
+	row := q.db.QueryRow(ctx, updateSiteChrome, arg.LogoUrl, arg.SocialLinks, arg.ID)
+	var i UpdateSiteChromeRow
+	err := row.Scan(
+		&i.ID,
+		&i.CongregationUnitRid,
+		&i.Slug,
+		&i.Theme,
+		&i.LogoUrl,
+		&i.SocialLinks,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateSiteTheme = `-- name: UpdateSiteTheme :one
 UPDATE openfaithmap.content_sites SET theme = $1
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, congregation_unit_rid, slug, theme, created_at, updated_at
+RETURNING id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at
 `
 
 type UpdateSiteThemeParams struct {
@@ -975,6 +1034,8 @@ type UpdateSiteThemeRow struct {
 	CongregationUnitRid string
 	Slug                string
 	Theme               json.RawMessage
+	LogoUrl             pgtype.Text
+	SocialLinks         json.RawMessage
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
@@ -987,6 +1048,8 @@ func (q *Queries) UpdateSiteTheme(ctx context.Context, arg UpdateSiteThemeParams
 		&i.CongregationUnitRid,
 		&i.Slug,
 		&i.Theme,
+		&i.LogoUrl,
+		&i.SocialLinks,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

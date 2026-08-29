@@ -31,7 +31,11 @@ import (
 	directoryadapters "github.com/olehmushka/open-faith-map/internal/directory/adapters"
 	directoryapplication "github.com/olehmushka/open-faith-map/internal/directory/application"
 	directorydomain "github.com/olehmushka/open-faith-map/internal/directory/domain"
+	locationapplication "github.com/olehmushka/open-faith-map/internal/location/application"
+	locationdomain "github.com/olehmushka/open-faith-map/internal/location/domain"
 	"github.com/olehmushka/open-faith-map/internal/platform/seed"
+	religionadapters "github.com/olehmushka/open-faith-map/internal/religion/adapters"
+	religionapplication "github.com/olehmushka/open-faith-map/internal/religion/application"
 )
 
 func TestContentIntegration(t *testing.T) {
@@ -51,10 +55,11 @@ func TestContentIntegration(t *testing.T) {
 	pdp := authzdomain.NewPDP(closurePort)
 	authzStore := authzadapters.NewRepository(pool)
 	authzSvc := authz.NewService(pdp, authzStore, pool)
+	religionSvc := religionapplication.NewService(pool, directorySvc, authzSvc)
 	contentStore := contentadapters.NewRepository(pool)
-	contentSvc := application.NewService(contentStore, authzSvc, "m14-7-test-preview-hmac-key")
+	contentSvc := application.NewService(contentStore, authzSvc, religionSvc, "m14-7-test-preview-hmac-key")
 
-	var personIDs, unitIDs, siteIDs, assignmentIDs, documentIDs []string
+	var personIDs, unitIDs, siteIDs, assignmentIDs, documentIDs, religionSiteIDs, locationIDs []string
 	t.Cleanup(func() {
 		bg := context.Background()
 		// Reverse creation order: content_documents.parent_document_id has no ON DELETE CASCADE
@@ -78,6 +83,18 @@ func TestContentIntegration(t *testing.T) {
 		for _, id := range assignmentIDs {
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.authz_role_assignments WHERE id = $1`, id); err != nil {
 				t.Errorf("cleanup: delete role assignment %s: %v", id, err)
+			}
+		}
+		// M14.11: religion_sites before location_locations (FK), both before directory_units below —
+		// same ordering internal/religion/religion_integration_test.go's own cleanup already uses.
+		for _, id := range religionSiteIDs {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.religion_sites WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete religion site %s: %v", id, err)
+			}
+		}
+		for _, id := range locationIDs {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.location_locations WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete location %s: %v", id, err)
 			}
 		}
 		for _, id := range unitIDs {
@@ -183,6 +200,104 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if _, err := contentSvc.GetSiteBySlug(context.Background(), "no-such-slug-m149"); !errors.Is(err, contentdomain.ErrSiteNotFound) {
 		t.Errorf("GetSiteBySlug (unknown slug) error = %v, want ErrSiteNotFound", err)
+	}
+
+	// --- M14.11: GetSiteChrome degrades gracefully before unit has any religion_sites row —
+	// congregationName falls back to the site's own slug, address/schedules empty, no error.
+	chromeBeforeReligionSite, err := contentSvc.GetSiteChrome(context.Background(), site.ID)
+	if err != nil {
+		t.Fatalf("GetSiteChrome (no religion site): %v", err)
+	}
+	if chromeBeforeReligionSite.CongregationName != site.Slug || chromeBeforeReligionSite.Address != nil || len(chromeBeforeReligionSite.Schedules) != 0 {
+		t.Errorf("GetSiteChrome (no religion site) = %+v, want CongregationName=%s, Address=nil, no schedules", chromeBeforeReligionSite, site.Slug)
+	}
+
+	// --- M14.11: UpdateSiteChrome is content.manage-gated the same way UpdateSiteTheme is, and
+	// persists logoUrl/socialLinks wholesale.
+	if _, err := contentSvc.UpdateSiteChrome(otherCtx, site.ID, nil, contentdomain.SocialLinks{}); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("UpdateSiteChrome by non-manager error = %v, want ErrForbidden", err)
+	}
+	logoURL := "https://example.org/logo.png"
+	fbURL := "https://facebook.com/example"
+	chromedSite, err := contentSvc.UpdateSiteChrome(adminCtx, site.ID, &logoURL, contentdomain.SocialLinks{Facebook: &fbURL})
+	if err != nil {
+		t.Fatalf("UpdateSiteChrome by congregation-admin: %v", err)
+	}
+	if chromedSite.LogoURL == nil || *chromedSite.LogoURL != logoURL || chromedSite.SocialLinks.Facebook == nil || *chromedSite.SocialLinks.Facebook != fbURL {
+		t.Errorf("UpdateSiteChrome result = %+v, want LogoURL=%s Facebook=%s", chromedSite, logoURL, fbURL)
+	}
+
+	// --- M14.11: GetSiteChrome composes live name/address/schedules from religion_sites/
+	// religion_service_schedules once the unit has a real religion site — proving content never
+	// copies that data, it reads it live at request time (docs/modules/content.md's invariant).
+	loc := locationapplication.NewService(pool)
+	var countryID string
+	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.refdata_countries WHERE code = 'UA'`).Scan(&countryID); err != nil {
+		t.Fatalf("lookup UA country: %v", err)
+	}
+	var churchSiteTypeID string
+	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.religion_site_types WHERE code = 'church' LIMIT 1`).Scan(&churchSiteTypeID); err != nil {
+		t.Fatalf("lookup church site type: %v", err)
+	}
+	chromeLoc, err := loc.CreateLocation(ctx, locationdomain.LocationInput{Latitude: 50.4501, Longitude: 30.5234, CountryID: countryID})
+	if err != nil {
+		t.Fatalf("CreateLocation (m14.11 chrome test): %v", err)
+	}
+	locationIDs = append(locationIDs, chromeLoc.ID)
+	if _, err := pool.Exec(ctx, `UPDATE openfaithmap.location_locations SET locality = 'Kyiv', admin_area_1 = 'Kyiv City', street = 'Khreshchatyk St', house_number = '1' WHERE id = $1`, chromeLoc.ID); err != nil {
+		t.Fatalf("set location address: %v", err)
+	}
+	religionSite, err := religionSvc.CreateSite(ctx, religionadapters.CreateSiteInput{OrgUnitID: unit.ID, LocationID: chromeLoc.ID, SiteTypeID: churchSiteTypeID, IsPrimary: true})
+	if err != nil {
+		t.Fatalf("religion CreateSite (m14.11 chrome test): %v", err)
+	}
+	religionSiteIDs = append(religionSiteIDs, religionSite.ID)
+	var mainServiceTypeID string
+	if err := pool.QueryRow(ctx, `SELECT id FROM openfaithmap.religion_service_types WHERE code = 'main' AND tradition_taxon_id IS NULL`).Scan(&mainServiceTypeID); err != nil {
+		t.Fatalf("lookup main service type: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO openfaithmap.religion_service_schedules (site_id, service_type_id, day_of_week, start_time, end_time, timezone, language)
+		VALUES ($1, $2, 0, '10:00', '11:30', 'Europe/Kyiv', 'uk')`, religionSite.ID, mainServiceTypeID); err != nil {
+		t.Fatalf("insert service schedule (m14.11 chrome test): %v", err)
+	}
+
+	chromeWithReligionSite, err := contentSvc.GetSiteChrome(context.Background(), site.ID)
+	if err != nil {
+		t.Fatalf("GetSiteChrome (with religion site): %v", err)
+	}
+	if chromeWithReligionSite.CongregationName != unit.Name {
+		t.Errorf("GetSiteChrome.CongregationName = %q, want %q", chromeWithReligionSite.CongregationName, unit.Name)
+	}
+	if chromeWithReligionSite.Address == nil || *chromeWithReligionSite.Address == "" {
+		t.Errorf("GetSiteChrome.Address = %v, want a non-empty coarsened address", chromeWithReligionSite.Address)
+	}
+	if len(chromeWithReligionSite.Schedules) != 1 {
+		t.Fatalf("GetSiteChrome.Schedules = %+v, want exactly one row", chromeWithReligionSite.Schedules)
+	}
+	sch := chromeWithReligionSite.Schedules[0]
+	if sch.DayOfWeek == nil || *sch.DayOfWeek != 0 || sch.StartTime == nil || *sch.StartTime != "10:00" || sch.EndTime == nil || *sch.EndTime != "11:30" || sch.Language == nil || *sch.Language != "uk" {
+		t.Errorf("GetSiteChrome.Schedules[0] = %+v, want DayOfWeek=0 StartTime=10:00 EndTime=11:30 Language=uk", sch)
+	}
+	if chromeWithReligionSite.LogoURL == nil || *chromeWithReligionSite.LogoURL != logoURL {
+		t.Errorf("GetSiteChrome.LogoURL = %v, want %s (content_sites' own column, unaffected by the religion read)", chromeWithReligionSite.LogoURL, logoURL)
+	}
+
+	// --- M14.11: a `hidden`-precision religion site hides the address (CoarsenAddress's own
+	// ok=false case) but NOT the congregation's own name — a site showing its own name on its own
+	// subdomain is not the discovery-search leak D-DiscoveryAddressPrecision guards against.
+	if _, err := pool.Exec(ctx, `UPDATE openfaithmap.religion_sites SET public_precision = 'hidden' WHERE id = $1`, religionSite.ID); err != nil {
+		t.Fatalf("mark religion site hidden: %v", err)
+	}
+	chromeHidden, err := contentSvc.GetSiteChrome(context.Background(), site.ID)
+	if err != nil {
+		t.Fatalf("GetSiteChrome (hidden precision): %v", err)
+	}
+	if chromeHidden.Address != nil {
+		t.Errorf("GetSiteChrome (hidden precision).Address = %v, want nil", chromeHidden.Address)
+	}
+	if chromeHidden.CongregationName != unit.Name {
+		t.Errorf("GetSiteChrome (hidden precision).CongregationName = %q, want %q (name still shown)", chromeHidden.CongregationName, unit.Name)
 	}
 
 	// --- M14.9/D-TenantSubdomains: a reserved slug is rejected at CreateSite, server-side —

@@ -18,6 +18,8 @@ type ContentPublicServiceClient interface {
 	GetSite(ctx context.Context, congregationUnitIdArg string) (Site, error)
 	// M14.9: the tenant-subdomain proxy resolves a Host header's slug through this endpoint. A distinct top-level path (not nested under /sites/{siteId}/...) — same httprouter wildcard-slot conflict getSite's own comment above documents.
 	GetSiteBySlug(ctx context.Context, slugArg string) (Site, error)
+	// M14.11. The tenant layout's one call for header/footer data — logoUrl/socialLinks from content_sites, congregationName/address/schedules composed live from religion at read time. No auth, same anonymous shape as getSite/getSiteBySlug.
+	GetSiteChrome(ctx context.Context, siteIdArg string) (SiteChrome, error)
 	ListPublicDocuments(ctx context.Context, siteIdArg string, kindArg *string, localeArg *string) (DocumentPage, error)
 	// Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two.
 	GetPublicBlocks(ctx context.Context, documentIdArg string) (BlockList, error)
@@ -69,6 +71,22 @@ func (c *contentPublicServiceClient) GetSiteBySlug(ctx context.Context, slugArg 
 	}
 	if returnVal == nil {
 		return *new(Site), werror.ErrorWithContextParams(ctx, "getSiteBySlug response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentPublicServiceClient) GetSiteChrome(ctx context.Context, siteIdArg string) (SiteChrome, error) {
+	var returnVal *SiteChrome
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetSiteChrome"))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/public/sites/%s/chrome", url.PathEscape(fmt.Sprint(siteIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(SiteChrome), werror.WrapWithContextParams(ctx, err, "getSiteChrome failed")
+	}
+	if returnVal == nil {
+		return *new(SiteChrome), werror.ErrorWithContextParams(ctx, "getSiteChrome response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -213,6 +231,8 @@ func (c *contentPublicServiceClient) GetPublicDocumentByPath(ctx context.Context
 type ContentServiceClient interface {
 	CreateSite(ctx context.Context, authHeader bearertoken.Token, requestArg CreateSiteRequest) (Site, error)
 	UpdateSiteTheme(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg UpdateSiteThemeRequest) (Site, error)
+	// M14.11. Full replace, same shape as updateSiteTheme — the admin form always submits the complete logoUrl/socialLinks pair.
+	UpdateSiteChrome(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg UpdateSiteChromeRequest) (Site, error)
 	// Admin read — returns documents in every state.
 	ListDocuments(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, kindArg *string, localeArg *string, stateArg *string) (DocumentPage, error)
 	CreateDocument(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg CreateDocumentRequest) (Document, error)
@@ -274,6 +294,24 @@ func (c *contentServiceClient) UpdateSiteTheme(ctx context.Context, authHeader b
 	}
 	if returnVal == nil {
 		return *new(Site), werror.ErrorWithContextParams(ctx, "updateSiteTheme response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentServiceClient) UpdateSiteChrome(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg UpdateSiteChromeRequest) (Site, error) {
+	var returnVal *Site
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateSiteChrome"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/sites/%s/chrome", url.PathEscape(fmt.Sprint(siteIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Site), werror.WrapWithContextParams(ctx, err, "updateSiteChrome failed")
+	}
+	if returnVal == nil {
+		return *new(Site), werror.ErrorWithContextParams(ctx, "updateSiteChrome response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -485,6 +523,8 @@ func (c *contentServiceClient) PutNavItems(ctx context.Context, authHeader beare
 type ContentServiceClientWithAuth interface {
 	CreateSite(ctx context.Context, requestArg CreateSiteRequest) (Site, error)
 	UpdateSiteTheme(ctx context.Context, siteIdArg string, requestArg UpdateSiteThemeRequest) (Site, error)
+	// M14.11. Full replace, same shape as updateSiteTheme — the admin form always submits the complete logoUrl/socialLinks pair.
+	UpdateSiteChrome(ctx context.Context, siteIdArg string, requestArg UpdateSiteChromeRequest) (Site, error)
 	// Admin read — returns documents in every state.
 	ListDocuments(ctx context.Context, siteIdArg string, kindArg *string, localeArg *string, stateArg *string) (DocumentPage, error)
 	CreateDocument(ctx context.Context, siteIdArg string, requestArg CreateDocumentRequest) (Document, error)
@@ -521,6 +561,10 @@ func (c *contentServiceClientWithAuth) CreateSite(ctx context.Context, requestAr
 
 func (c *contentServiceClientWithAuth) UpdateSiteTheme(ctx context.Context, siteIdArg string, requestArg UpdateSiteThemeRequest) (Site, error) {
 	return c.client.UpdateSiteTheme(ctx, c.authHeader, siteIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithAuth) UpdateSiteChrome(ctx context.Context, siteIdArg string, requestArg UpdateSiteChromeRequest) (Site, error) {
+	return c.client.UpdateSiteChrome(ctx, c.authHeader, siteIdArg, requestArg)
 }
 
 func (c *contentServiceClientWithAuth) ListDocuments(ctx context.Context, siteIdArg string, kindArg *string, localeArg *string, stateArg *string) (DocumentPage, error) {
@@ -590,6 +634,14 @@ func (c *contentServiceClientWithTokenProvider) UpdateSiteTheme(ctx context.Cont
 		return *new(Site), err
 	}
 	return c.client.UpdateSiteTheme(ctx, bearertoken.Token(token), siteIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) UpdateSiteChrome(ctx context.Context, siteIdArg string, requestArg UpdateSiteChromeRequest) (Site, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Site), err
+	}
+	return c.client.UpdateSiteChrome(ctx, bearertoken.Token(token), siteIdArg, requestArg)
 }
 
 func (c *contentServiceClientWithTokenProvider) ListDocuments(ctx context.Context, siteIdArg string, kindArg *string, localeArg *string, stateArg *string) (DocumentPage, error) {

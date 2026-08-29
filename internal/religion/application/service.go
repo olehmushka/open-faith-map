@@ -159,6 +159,28 @@ func (s *Service) ListSitesByUnit(ctx context.Context, unitID string) ([]religio
 	return adapters.NewRepository(s.pool).ListSitesByUnit(ctx, unitID)
 }
 
+// GetPrimarySiteByUnit answers M14.11's content-module cross-module read for a site-chrome header/
+// footer: the congregation's name and full address components (uncoarsened — the caller applies
+// religiondomain.CoarsenAddress itself using the site's own PublicPrecision). Ungated like
+// ListSitesByUnit: this method exists specifically for an anonymous public caller (content's
+// GetSiteChrome), unlike GetSiteByUnit's owner-only site.manage gate. Returns found=false if the
+// unit has no religion site at all.
+func (s *Service) GetPrimarySiteByUnit(ctx context.Context, unitID string) (religiondomain.Site, bool, error) {
+	return adapters.NewRepository(s.pool).GetPrimarySiteByUnit(ctx, unitID)
+}
+
+// ListServiceSchedulesByUnit answers M14.11's site-chrome footer: unitID's primary site's real
+// service schedule rows (day/time/language/mode), not just SearchSites'/SearchFacets' aggregated
+// facets. Ungated — public-safe, same trust level ServiceDays already gets in DiscoverySite.
+// Returns an empty slice (not an error) if the unit has no religion site.
+func (s *Service) ListServiceSchedulesByUnit(ctx context.Context, unitID string) ([]religiondomain.ServiceSchedule, error) {
+	site, found, err := s.GetPrimarySiteByUnit(ctx, unitID)
+	if err != nil || !found {
+		return nil, err
+	}
+	return adapters.NewRepository(s.pool).ListServiceSchedulesBySite(ctx, site.ID)
+}
+
 // CreateSite attaches a site to unitID at locationID.
 func (s *Service) CreateSite(ctx context.Context, in adapters.CreateSiteInput) (religiondomain.Site, error) {
 	return adapters.NewRepository(s.pool).InsertSite(ctx, in)
