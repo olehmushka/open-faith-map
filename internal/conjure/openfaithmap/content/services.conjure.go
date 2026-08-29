@@ -27,6 +27,10 @@ type ContentPublicServiceClient interface {
 	GetPreviewBlocks(ctx context.Context, documentIdArg string, tokenArg string) (BlockList, error)
 	// Active block types only.
 	ListBlockTypes(ctx context.Context) (BlockTypePage, error)
+	// M14.10. Resolved hrefs, in sortOrder — see PublicNavItem's own docs for the omit-on-missing-or-draft-target behavior.
+	ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error)
+	// M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
+	GetPublicDocumentByPath(ctx context.Context, siteIdArg string, localeArg string, pathArg string) (DocumentWithAncestors, error)
 }
 
 type contentPublicServiceClient struct {
@@ -169,6 +173,42 @@ func (c *contentPublicServiceClient) ListBlockTypes(ctx context.Context) (BlockT
 	return *returnVal, nil
 }
 
+func (c *contentPublicServiceClient) ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error) {
+	var returnVal *PublicNavItemList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPublicNavItems"))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/public/sites/%s/nav-items", url.PathEscape(fmt.Sprint(siteIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(PublicNavItemList), werror.WrapWithContextParams(ctx, err, "listPublicNavItems failed")
+	}
+	if returnVal == nil {
+		return *new(PublicNavItemList), werror.ErrorWithContextParams(ctx, "listPublicNavItems response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentPublicServiceClient) GetPublicDocumentByPath(ctx context.Context, siteIdArg string, localeArg string, pathArg string) (DocumentWithAncestors, error) {
+	var returnVal *DocumentWithAncestors
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetPublicDocumentByPath"))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/public/sites/%s/documents/by-path", url.PathEscape(fmt.Sprint(siteIdArg))))
+	queryParams := make(url.Values)
+	queryParams.Set("locale", fmt.Sprint(localeArg))
+	queryParams.Set("path", fmt.Sprint(pathArg))
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(DocumentWithAncestors), werror.WrapWithContextParams(ctx, err, "getPublicDocumentByPath failed")
+	}
+	if returnVal == nil {
+		return *new(DocumentWithAncestors), werror.ErrorWithContextParams(ctx, "getPublicDocumentByPath response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // Congregation site authoring: sites, documents (pages), blocks. Every write, and every read that must see draft state, is content.manage-gated — a live, target-scoped Authorize call against the site's own congregation unit (see file header). See docs/modules/content.md.
 type ContentServiceClient interface {
 	CreateSite(ctx context.Context, authHeader bearertoken.Token, requestArg CreateSiteRequest) (Site, error)
@@ -188,6 +228,10 @@ type ContentServiceClient interface {
 	RestoreRevision(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, revisionIdArg string) (BlockList, error)
 	// M14.7. Mints a short-lived, site-scoped preview token — content.manage-gated, same as every other write/draft-read on this service. The returned token is handed to ContentPublicService's preview endpoints on the tenant subdomain, never used here again.
 	CreatePreviewLink(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (PreviewLink, error)
+	// M14.10. Admin read of the site's nav menu, in sortOrder.
+	ListNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (NavItemList, error)
+	// M14.10. Full replace of the site's nav menu — a small, hand-curated list edited as a batch, the same shape putBlocks used before M14.6's revision refactor moved it to an in-place update. Content:DuplicateNavItemSortOrder if two items share a sortOrder, Content:NavTargetAmbiguous if an item has neither or both of targetDocumentId/targetUrl, Content:NavTargetInvalid if targetDocumentId doesn't resolve to a PAGE document in this same site.
+	PutNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error)
 }
 
 type contentServiceClient struct {
@@ -402,6 +446,41 @@ func (c *contentServiceClient) CreatePreviewLink(ctx context.Context, authHeader
 	return *returnVal, nil
 }
 
+func (c *contentServiceClient) ListNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (NavItemList, error) {
+	var returnVal *NavItemList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListNavItems"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/sites/%s/nav-items", url.PathEscape(fmt.Sprint(siteIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(NavItemList), werror.WrapWithContextParams(ctx, err, "listNavItems failed")
+	}
+	if returnVal == nil {
+		return *new(NavItemList), werror.ErrorWithContextParams(ctx, "listNavItems response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentServiceClient) PutNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error) {
+	var returnVal *NavItemList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("PutNavItems"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/sites/%s/nav-items", url.PathEscape(fmt.Sprint(siteIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(NavItemList), werror.WrapWithContextParams(ctx, err, "putNavItems failed")
+	}
+	if returnVal == nil {
+		return *new(NavItemList), werror.ErrorWithContextParams(ctx, "putNavItems response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // Congregation site authoring: sites, documents (pages), blocks. Every write, and every read that must see draft state, is content.manage-gated — a live, target-scoped Authorize call against the site's own congregation unit (see file header). See docs/modules/content.md.
 type ContentServiceClientWithAuth interface {
 	CreateSite(ctx context.Context, requestArg CreateSiteRequest) (Site, error)
@@ -421,6 +500,10 @@ type ContentServiceClientWithAuth interface {
 	RestoreRevision(ctx context.Context, documentIdArg string, revisionIdArg string) (BlockList, error)
 	// M14.7. Mints a short-lived, site-scoped preview token — content.manage-gated, same as every other write/draft-read on this service. The returned token is handed to ContentPublicService's preview endpoints on the tenant subdomain, never used here again.
 	CreatePreviewLink(ctx context.Context, siteIdArg string) (PreviewLink, error)
+	// M14.10. Admin read of the site's nav menu, in sortOrder.
+	ListNavItems(ctx context.Context, siteIdArg string) (NavItemList, error)
+	// M14.10. Full replace of the site's nav menu — a small, hand-curated list edited as a batch, the same shape putBlocks used before M14.6's revision refactor moved it to an in-place update. Content:DuplicateNavItemSortOrder if two items share a sortOrder, Content:NavTargetAmbiguous if an item has neither or both of targetDocumentId/targetUrl, Content:NavTargetInvalid if targetDocumentId doesn't resolve to a PAGE document in this same site.
+	PutNavItems(ctx context.Context, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error)
 }
 
 func NewContentServiceClientWithAuth(client ContentServiceClient, authHeader bearertoken.Token) ContentServiceClientWithAuth {
@@ -474,6 +557,14 @@ func (c *contentServiceClientWithAuth) RestoreRevision(ctx context.Context, docu
 
 func (c *contentServiceClientWithAuth) CreatePreviewLink(ctx context.Context, siteIdArg string) (PreviewLink, error) {
 	return c.client.CreatePreviewLink(ctx, c.authHeader, siteIdArg)
+}
+
+func (c *contentServiceClientWithAuth) ListNavItems(ctx context.Context, siteIdArg string) (NavItemList, error) {
+	return c.client.ListNavItems(ctx, c.authHeader, siteIdArg)
+}
+
+func (c *contentServiceClientWithAuth) PutNavItems(ctx context.Context, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error) {
+	return c.client.PutNavItems(ctx, c.authHeader, siteIdArg, requestArg)
 }
 
 func NewContentServiceClientWithTokenProvider(client ContentServiceClient, tokenProvider httpclient.TokenProvider) ContentServiceClientWithAuth {
@@ -571,4 +662,20 @@ func (c *contentServiceClientWithTokenProvider) CreatePreviewLink(ctx context.Co
 		return *new(PreviewLink), err
 	}
 	return c.client.CreatePreviewLink(ctx, bearertoken.Token(token), siteIdArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) ListNavItems(ctx context.Context, siteIdArg string) (NavItemList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(NavItemList), err
+	}
+	return c.client.ListNavItems(ctx, bearertoken.Token(token), siteIdArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) PutNavItems(ctx context.Context, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(NavItemList), err
+	}
+	return c.client.PutNavItems(ctx, bearertoken.Token(token), siteIdArg, requestArg)
 }

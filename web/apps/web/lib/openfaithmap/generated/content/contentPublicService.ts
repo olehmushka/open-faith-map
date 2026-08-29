@@ -1,6 +1,8 @@
 import { IBlockList } from "./blockList";
 import { IBlockTypePage } from "./blockTypePage";
 import { IDocumentPage } from "./documentPage";
+import { IDocumentWithAncestors } from "./documentWithAncestors";
+import { IPublicNavItemList } from "./publicNavItemList";
 import { ISite } from "./site";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -33,6 +35,16 @@ export interface IContentPublicService {
     getPreviewBlocks(documentId: string, token: string): Promise<IBlockList>;
     /** Active block types only. */
     listBlockTypes(): Promise<IBlockTypePage>;
+    /**
+     * M14.10. Resolved hrefs, in sortOrder — see PublicNavItem's own docs for the omit-on-missing-or-draft-target behavior.
+     *
+     */
+    listPublicNavItems(siteId: string): Promise<IPublicNavItemList>;
+    /**
+     * M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
+     *
+     */
+    getPublicDocumentByPath(siteId: string, locale: string, path: string): Promise<IDocumentWithAncestors>;
 }
 
 export class ContentPublicService implements IContentPublicService {
@@ -174,6 +186,51 @@ export class ContentPublicService implements IContentPublicService {
             __undefined,
             __undefined,
             __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.10. Resolved hrefs, in sortOrder — see PublicNavItem's own docs for the omit-on-missing-or-draft-target behavior.
+     *
+     */
+    public listPublicNavItems(siteId: string): Promise<IPublicNavItemList> {
+        return this.bridge.call<IPublicNavItemList>(
+            "ContentPublicService",
+            "listPublicNavItems",
+            "GET",
+            "/content/v1/public/sites/{siteId}/nav-items",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                siteId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
+     *
+     */
+    public getPublicDocumentByPath(siteId: string, locale: string, path: string): Promise<IDocumentWithAncestors> {
+        return this.bridge.call<IDocumentWithAncestors>(
+            "ContentPublicService",
+            "getPublicDocumentByPath",
+            "GET",
+            "/content/v1/public/sites/{siteId}/documents/by-path",
+            __undefined,
+            __undefined,
+            {
+                "locale": locale,
+                "path": path,
+            },
+            [
+                siteId,
+            ],
             __undefined,
             __undefined
         );

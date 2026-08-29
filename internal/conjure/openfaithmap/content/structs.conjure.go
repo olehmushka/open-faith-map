@@ -317,6 +317,139 @@ func (o *DocumentRevision) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M14.10's page-route resolver: the leaf document plus its real ancestor chain (root first, leaf excluded), in one round trip, so the tenant-subdomain catch-all page route never needs a second call to render breadcrumbs.
+type DocumentWithAncestors struct {
+	Document  Document   `json:"document"`
+	Ancestors []Document `json:"ancestors"`
+}
+
+func (o DocumentWithAncestors) MarshalJSON() ([]byte, error) {
+	if o.Ancestors == nil {
+		o.Ancestors = make([]Document, 0)
+	}
+	type _tmpDocumentWithAncestors DocumentWithAncestors
+	return safejson.Marshal(_tmpDocumentWithAncestors(o))
+}
+
+func (o *DocumentWithAncestors) UnmarshalJSON(data []byte) error {
+	type _tmpDocumentWithAncestors DocumentWithAncestors
+	var rawDocumentWithAncestors _tmpDocumentWithAncestors
+	if err := safejson.Unmarshal(data, &rawDocumentWithAncestors); err != nil {
+		return err
+	}
+	if rawDocumentWithAncestors.Ancestors == nil {
+		rawDocumentWithAncestors.Ancestors = make([]Document, 0)
+	}
+	*o = DocumentWithAncestors(rawDocumentWithAncestors)
+	return nil
+}
+
+func (o DocumentWithAncestors) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *DocumentWithAncestors) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M14.10. One entry in a site's hand-built nav menu — independent of parent_document_id (M14.0 replaced the page-tree-derived-nav assumption with a curated menu). Exactly one of targetDocumentId/targetUrl is ever set.
+type NavItem struct {
+	Id               string  `json:"id"`
+	SiteId           string  `json:"siteId"`
+	Label            string  `json:"label"`
+	TargetDocumentId *string `json:"targetDocumentId,omitempty"`
+	TargetUrl        *string `json:"targetUrl,omitempty"`
+	SortOrder        int     `json:"sortOrder"`
+}
+
+func (o NavItem) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *NavItem) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type NavItemInput struct {
+	Label            string  `json:"label"`
+	TargetDocumentId *string `json:"targetDocumentId,omitempty"`
+	TargetUrl        *string `json:"targetUrl,omitempty"`
+	SortOrder        int     `json:"sortOrder"`
+}
+
+func (o NavItemInput) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *NavItemInput) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type NavItemList struct {
+	Items []NavItem `json:"items"`
+}
+
+func (o NavItemList) MarshalJSON() ([]byte, error) {
+	if o.Items == nil {
+		o.Items = make([]NavItem, 0)
+	}
+	type _tmpNavItemList NavItemList
+	return safejson.Marshal(_tmpNavItemList(o))
+}
+
+func (o *NavItemList) UnmarshalJSON(data []byte) error {
+	type _tmpNavItemList NavItemList
+	var rawNavItemList _tmpNavItemList
+	if err := safejson.Unmarshal(data, &rawNavItemList); err != nil {
+		return err
+	}
+	if rawNavItemList.Items == nil {
+		rawNavItemList.Items = make([]NavItem, 0)
+	}
+	*o = NavItemList(rawNavItemList)
+	return nil
+}
+
+func (o NavItemList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *NavItemList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // M14.7. token is a short-lived, stateless, site-scoped signed token — opaque to the caller, verified by ContentPublicService's preview endpoints, never a session or a revocable row (see D-ContentRevisions).
 type PreviewLink struct {
 	Token string `json:"token"`
@@ -331,6 +464,70 @@ func (o PreviewLink) MarshalYAML() (interface{}, error) {
 }
 
 func (o *PreviewLink) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M14.10. A nav item as read by openfaithmap-web: the target is already resolved into a ready-to-render href (an internal target's href walks its real ancestor chain into a hierarchical path — the caller never re-derives that), so this is a dumb render list. A nav item whose target document is missing or DRAFT is omitted from the list entirely, never surfaced as a broken link.
+type PublicNavItem struct {
+	Label    string `json:"label"`
+	Href     string `json:"href"`
+	External bool   `json:"external"`
+}
+
+func (o PublicNavItem) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PublicNavItem) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type PublicNavItemList struct {
+	Items []PublicNavItem `json:"items"`
+}
+
+func (o PublicNavItemList) MarshalJSON() ([]byte, error) {
+	if o.Items == nil {
+		o.Items = make([]PublicNavItem, 0)
+	}
+	type _tmpPublicNavItemList PublicNavItemList
+	return safejson.Marshal(_tmpPublicNavItemList(o))
+}
+
+func (o *PublicNavItemList) UnmarshalJSON(data []byte) error {
+	type _tmpPublicNavItemList PublicNavItemList
+	var rawPublicNavItemList _tmpPublicNavItemList
+	if err := safejson.Unmarshal(data, &rawPublicNavItemList); err != nil {
+		return err
+	}
+	if rawPublicNavItemList.Items == nil {
+		rawPublicNavItemList.Items = make([]PublicNavItem, 0)
+	}
+	*o = PublicNavItemList(rawPublicNavItemList)
+	return nil
+}
+
+func (o PublicNavItemList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PublicNavItemList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -372,6 +569,47 @@ func (o PutBlocksRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *PutBlocksRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type PutNavItemsRequest struct {
+	Items []NavItemInput `json:"items"`
+}
+
+func (o PutNavItemsRequest) MarshalJSON() ([]byte, error) {
+	if o.Items == nil {
+		o.Items = make([]NavItemInput, 0)
+	}
+	type _tmpPutNavItemsRequest PutNavItemsRequest
+	return safejson.Marshal(_tmpPutNavItemsRequest(o))
+}
+
+func (o *PutNavItemsRequest) UnmarshalJSON(data []byte) error {
+	type _tmpPutNavItemsRequest PutNavItemsRequest
+	var rawPutNavItemsRequest _tmpPutNavItemsRequest
+	if err := safejson.Unmarshal(data, &rawPutNavItemsRequest); err != nil {
+		return err
+	}
+	if rawPutNavItemsRequest.Items == nil {
+		rawPutNavItemsRequest.Items = make([]NavItemInput, 0)
+	}
+	*o = PutNavItemsRequest(rawPutNavItemsRequest)
+	return nil
+}
+
+func (o PutNavItemsRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PutNavItemsRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

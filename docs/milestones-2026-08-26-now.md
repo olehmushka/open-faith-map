@@ -9,8 +9,8 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.9 (all 2026-08-27/28)
-are done**, no other sub-milestone is built yet. It is the second half of the
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.10 (M14.0–M14.9
+2026-08-27/28, M14.10 2026-08-29) are done**, no other sub-milestone is built yet. It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -28,7 +28,9 @@ was blocked on M14.9. **M14.9 serves each congregation's site on its own subdoma
 routing, a reserved-slug blocklist, a real 301 from the old path, and U16's `content.manage`
 tightening) — see its own row below. **M14.7 renders a draft revision through the real public
 renderer** on the tenant subdomain, behind a short-lived signed token, once M14.9 unblocked it — see
-its own row below. Next up: M14.10.
+its own row below. **M14.10 gives each Page its own hierarchical URL** on the tenant host and adds a
+hand-built nav menu (`content_site_nav_items`), replacing the one-pager's inline Pages section — see
+its own row below. Next up: M14.11.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -84,7 +86,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.7 · Preview | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-28).** Renders the draft revision through the **real public renderer** (`components/site-page.tsx`) — an optional `previewToken` prop swaps its two data-fetch calls to token-gated preview reads; the render tree itself never forks. A new `ContentService.createPreviewLink` (content.manage-gated) mints a short-lived (20 min), stateless, site-scoped HS256 token (`internal/content/application/previewtoken.go`, no DB row — a draft is content, not a special code path); `ContentPublicService.listPreviewDocuments`/`getPreviewBlocks` accept it in place of a session, the one deliberate exception to "published/unlisted only," returning a single `Content:PreviewTokenInvalid` for every failure mode (missing/malformed/expired/wrong-site) so a probing caller learns nothing. Reached on the tenant subdomain at plain `/{locale}/preview?token=…` — no `proxy.ts`/`lib/tenant-host.ts` change needed, since that's the same browser-facing shape every tenant page already has; `injectSitesSegment` rewrites it into `app/[locale]/%5Fsites/[slug]/preview/page.tsx` exactly like every other tenant route. `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store`, added as a second path-scoped entry in the existing `next.config.ts` `headers()` array (M14.1's baseline headers untouched). A new `components/preview-frame.tsx` client component gives the device-width toggle (mobile/tablet/full) by constraining a wrapping div's `max-width` — no iframe, so there is exactly one render pipeline to keep pixel-identical to publishing. The admin editor's document page mints a link and opens it in a new tab (`target="_blank"`, never embedded) next to Publish/Unlist/Revert-to-draft — no congregation content ever renders inside the admin origin, cross-origin by construction. Verified against a real running docker-compose stack: a document created and left in `DRAFT` (never published) renders through `/en/preview?token=…` on `grace.localhost:3002` while the public root and a tokenless/garbage-token preview request both show nothing of it; a token minted for a different site is rejected on this one. `internal/content/content_integration_test.go` covers the same shapes against real Postgres, plus a dedicated `previewtoken_test.go` for expiry/tampering/malformed-token/alg-confusion cases a live clock can't easily exercise. `Verified` awaits CI green on `main`. |
 | M14.8 · Editor polish | ✅ | ✅ | ➖ | ➖ | ✅ | ⬜ | **Built (2026-08-28), out of milestone order** (M14.7 above is blocked on M14.9; this one only depends on M14.5). Session-local client-side undo/redo over the block list (`hooks/use-block-history.ts`), independent of M14.6's server-side revision history — Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, plus toolbar buttons, disabled at stack boundaries. A real empty state for a zero-block document, with a CTA into the existing inserter — **scoped down from "start from a template," named rather than silently dropped:** M14.13 (`content_patterns`) doesn't exist yet, so there is no template to start from. The block row's fixed 5-column grid now stacks to a single column below the `sm:` breakpoint, usable at 375px. The two remaining `?error=`-redirect round trips (document details save, new-document create) are now inline via `useActionState`, matching the pattern `people/invite/invite-form.tsx` established — zero `?error=` round trips remain anywhere in the document editor. `Verified` awaits CI green on `main`. |
 | M14.9 · Tenant subdomain routing (Phase 1) | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-28).** `web/apps/web/proxy.ts` (Next 16 renamed `middleware.ts` to `proxy.ts` — extended in place, composed with the existing next-intl locale middleware, rather than a second file) resolves the `Host` header to a site slug (`lib/tenant-host.ts`, unit-tested) and rewrites into an internal `/[locale]/_sites/[slug]/…` tree; the apex host keeps serving discovery unchanged. **Direct `/_sites/*` access from the apex 404s** — checked first, before next-intl even runs. **Reserved-subdomain blocklist enforced server-side** (`internal/content/application/slugvalidation.go`, checked in `CreateSite` before the existing `Content:SlugTaken` uniqueness probe) — `content_sites.slug` is now a hostname, so `admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/`help`/`status` and 25 more are unclaimable, rejected with a new typed `Content:SlugReserved` error. A real 301 (not Next's 307/308 `redirect()`) from the old `/congregations/[unitId]` route, now a Route Handler, to the tenant root. Rendering logic extracted into `components/site-page.tsx`, an "extractable module" reused by the new thin `[locale]/%5Fsites/[slug]/page.tsx` wrapper (the actual directory is `%5Fsites` — Next.js's private-folder convention would otherwise exclude a literal `_sites` folder from routing; `%5F` is the documented URL-encoded-underscore escape) — set up for the owner's Phase 2 (`openfaithmap-sites`) to be a move, not a rewrite. **Also implements M14.0's U16 ruling:** `content.manage` (`PermContentManage`) stops resolving through `religionorg.manage`'s subtree grant and becomes its own per-unit permission granted to `congregation-admin` only (`migrations/0026_content_manage_permission.sql`, same shape as M13.2's `site.manage`); registration operators lose that edit access, confirmed with the owner as leaving them with **no** replacement edit path for now — granting a moderation permission is a separate, later decision. Cross-tenant-denial and operator-denial cases (`docs/modules/content.md`'s previously-named test-coverage gap) covered by new `internal/content/content_integration_test.go` cases against real Postgres. Verified against a real running docker-compose stack: `grace.localhost:3002/` resolves through a real `content_sites` row created over HTTP by a real `congregation-admin` session (307 to `/en` with `NEXT_LOCALE` preserved, then 200); `localhost:3002/_sites/grace` and `/en/_sites/grace` both 404 from the apex; `CreateSite` with `slug: "admin"` returns `400 Content:SlugReserved` over a direct HTTP call (bypassing the admin form entirely); the old `/en/congregations/[unitId]` route returns a real `301` to `http://grace.localhost:3002/`. See [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist). `Verified` awaits CI green on `main`. |
-| M14.10 · Navigation + page routes | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `/[pageSlug]` and nested child routes on the tenant host, honoring the existing 3-level cap. **Nav is a hand-built menu (`content_site_nav_items`), not derived from the page tree** — M14.0 replaced the original page-tree-derivation assumption with an independently-curated menu (label, target document or external URL, sort order); `parent_document_id` still governs page nesting/breadcrumbs, just not the nav itself. Breadcrumbs at depth ≥ 2. |
+| M14.10 · Navigation + page routes | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-29).** `/[pageSlug]` and hierarchical nested child routes on the tenant host, honoring the existing 3-level cap — a wrong ancestor segment 404s, never resolved by the last segment alone. **Nav is a hand-built menu (`content_site_nav_items`), not derived from the page tree** — M14.0 replaced the original page-tree-derivation assumption with an independently-curated menu (label, target document or external URL, sort order); `parent_document_id` still governs page nesting/breadcrumbs, just not the nav itself. Breadcrumbs at depth ≥ 2. The site root drops its old inline "every Page rendered inline" section (owner decision) — Pages are reachable only via their own route or the nav menu; Posts/Events feeds are unchanged. `Verified` awaits CI green on `main`. |
 | M14.11 · Site chrome — header, footer, template parts | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Congregation name, logo URL, nav, and a footer whose contact details and service times are read **live from `religion_sites`/`religion_service_schedules`, never copied** — the existing content.md invariant, restated because a footer is exactly where someone would be tempted to denormalize. Social links. Site-level settings on `content_sites`, not content documents. |
 | M14.12 · Curated theme tokens | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Gives the entirely-unused `content_sites.theme` a real schema: accent color from a vetted palette, one of a few font pairings, a spacing scale, header layout, light/dark — WordPress's `theme.json` lesson, a fixed vocabulary rather than CSS. Emitted as CSS custom properties. **A WCAG contrast check rejects a failing combination at write time**, so no congregation can ship an unreadable site. Live theme preview in the admin. |
 | M14.13 · Starter patterns + block-type catalog admin | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_patterns` with WordPress's **unsynced** semantics: an inserted pattern detaches into ordinary blocks and is freely edited. Seeded church-specific starters — Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement. Finally builds the `content.catalog.manage` endpoints M3 left unbuilt (moderator-gated per D-PlatformModerator), so block types and patterns stop being migration-only. The single biggest onboarding lever in the arc. |
@@ -749,24 +751,82 @@ green on `main`.
 
 ### M14.10 · Navigation + page routes
 
-**Not started.** Depends on M14.9.
+**Built (2026-08-29).** Depends on M14.9 (the tenant-subdomain route tree `/_sites/[slug]/…`). Two
+decisions confirmed with the owner before building, since the milestone text left them open: (1) the
+site root (`/`) drops its old "every published Page rendered inline" section entirely — Pages are
+reachable only via their own route or the nav menu, while the Posts/Events feed and discovery header
+on the root are untouched; (2) nested child pages get **hierarchical URLs**
+(`/parent-slug/child-slug/grandchild-slug`) that mirror the real `parent_document_id` tree exactly,
+not a flat `/slug` regardless of depth — chosen because `content_documents.slug` is unique only per
+`(site_id, kind, locale)`, not per parent, so a flat scheme would technically work but defeat the
+point of a real path; a wrong ancestor segment anywhere in the URL 404s, never silently resolved by
+the last segment alone.
 
-`/[pageSlug]` and nested child routes on the tenant host, honoring `content_documents`' existing
-3-level nesting cap — a structure that has been in the schema since M3 and has never had a URL.
+**Nav model resolved at M14.0 (2026-08-27): a hand-built menu, not page-tree-derived.** New
+`content_site_nav_items` (`migrations/0027_content_nav_items.sql`): `site_id`, `label`,
+`target_document_id`/`target_url` (a same-table `CHECK` enforces exactly one is set;
+`target_document_id` is `ON DELETE CASCADE` since a `SET NULL` would violate that same `CHECK`),
+`sort_order` (unique per site). No soft-delete, no `updated_at` — mirrors
+`content_document_revisions`' own precedent for a table whose rows are wholesale-replaced, never
+mutated in place. `parent_document_id` still governs page nesting and breadcrumbs; it no longer
+drives the nav menu itself.
 
-**Nav model resolved at M14.0 (2026-08-27): a hand-built menu, not page-tree-derived.** The
-original page-tree-derivation sub-question was superseded when the owner replaced the routing
-options with their own subdomain design, leaving it an assumption rather than a decision — M14.0
-replaced it rather than confirming it. A new `content_site_nav_items` table
-([content.md](modules/content.md)) holds an independently-curated, ordered list per site: a label,
-a target (an internal document or an external URL), and a sort order. `parent_document_id` still
-governs page nesting and breadcrumbs; it no longer drives the nav menu itself.
+**Backend** (`api/content.conjure.yml` + `internal/content`): `ContentService.putNavItems`
+(content.manage-gated, full replace — mirrors `putBlocks`' own precedent, not per-item CRUD) and
+`listNavItems`; `ContentPublicService.listPublicNavItems` (returns each item's target already
+resolved to a ready-to-render `href`, silently omitting an item whose target document is missing or
+still `DRAFT` — never a broken link) and `getPublicDocumentByPath` (resolves the leaf `PAGE`
+document by `site+kind+locale+slug` plus its real ancestor chain in one round trip, for the
+catch-all route's breadcrumbs). Three new typed errors: `Content:NavTargetInvalid` (target isn't a
+`PAGE` in this same site), `Content:NavTargetAmbiguous` (neither or both of
+`targetDocumentId`/`targetUrl` set), `Content:DuplicateNavItemSortOrder` (rejected up front, same
+discipline as `DuplicateBlockPosition`). `application.Service.resolveAncestorChain` (bounded at 3,
+mirroring `checkParentDepth`'s own bound) is shared by both `listPublicNavItems` and
+`getPublicDocumentByPath` so the walk is never duplicated. `ReplaceNavItems`
+(`adapters/repository.go`) is a real transaction (delete-then-insert), mirroring `InsertDocument`'s
+tx shape rather than `PutBlocks`' — since M14.6, `PutBlocks` is a single-row JSON update, the wrong
+precedent for a genuinely relational table.
 
-Breadcrumbs at depth ≥ 2.
+**`web/apps/web`**: new catch-all route
+`app/[locale]/%5Fsites/[slug]/[...pageSlug]/page.tsx` (1-to-3 segments; `>3` 404s before any API
+call) renders one document via new `components/page-document.tsx`, with a new
+`components/breadcrumbs.tsx` shown only at depth ≥ 2 (ancestor labels are the ancestor's own slug,
+humanized — documents have no title field in this schema). New
+`app/[locale]/%5Fsites/[slug]/layout.tsx` fetches the site + nav menu once and renders bare nav
+chrome around every route nested under `[slug]/` (deliberately minimal — full header/footer chrome
+is M14.11's job). `components/site-page.tsx` drops its inline Pages section; Posts/Events sections
+are unchanged. `getSiteBySlug` wrapped in React's `cache()` so the new layout and its sibling routes
+dedupe to one fetch per request. No `proxy.ts`/`lib/tenant-host.ts` change was needed —
+`injectSitesSegment` already passed arbitrarily deep paths through untouched.
 
-**Acceptance criteria.** A three-level page tree is reachable by URL and by nav. Hiding a page
-removes it from the nav but leaves it reachable by direct URL (the `UNLISTED` semantics that already
-exist). Slug collisions within a site produce the existing typed `Content:SlugTaken`.
+**`web/apps/admin`**: new `sites/[unitId]/nav/page.tsx` + `nav-item-list-editor.tsx` — reuses
+`block-list-editor.tsx`'s dnd-kit reorder **idiom** (not its code, a parallel component: this table
+is a different shape than blocks). An explicit **Save** button, not autosave — a menu with a
+handful of rows edited rarely doesn't earn M14.6's debounce/indicator complexity. Per row: a label
+input, a Page/External-URL toggle, and either a page `<Select>` (reusing the same picker pattern
+`document-details-form.tsx` already established) or a URL input — never both, enforcing the
+exactly-one-of invariant at the UI layer too. A "Manage navigation" button joins the existing
+"Manage pages" one on `sites/[unitId]/page.tsx`. New `nav-item-list-editor.test.tsx` (Vitest +
+RTL, following `block-list-editor.test.tsx`'s exact setup) covers add/remove/keyboard-reorder,
+mode-toggle clearing the other field, and the submitted payload shape.
+
+**Acceptance criteria — met, verified against a real running docker-compose stack (`grace.localhost:3002`,
+a real 3-level published page tree created over direct authenticated HTTP calls, no admin UI in the
+loop).** A depth-3 page (`/en/verify-top/verify-child/verify-grandchild`) renders its own content
+with a breadcrumb showing both ancestors linked correctly; a depth-1 page shows no breadcrumb. A
+wrong **middle** URL segment 404s (`/en/verify-top/wrong-slug/verify-grandchild`), proving positional
+ancestor matching, not last-segment-only resolution. `>3` segments 404s. A never-published (`DRAFT`)
+page 404s on its direct URL, same "draft is never public" invariant as `GetPublicBlocks`. The nav
+menu renders in `sort_order` with an external item opening in a new tab
+(`target="_blank" rel="noopener noreferrer"`) and an internal item at its real hierarchical href; a
+nav item targeting the still-`DRAFT` page is silently absent from the rendered menu. The site root
+no longer inline-renders any Page content (confirmed by grep: none of the three pages' body text
+appears in the root response), only the existing Posts/Events feed. A cross-site
+`targetDocumentId` is rejected with `400 Content:NavTargetInvalid` over a direct HTTP call to
+`putNavItems`, bypassing the admin form entirely. `go test ./internal/content/... -run
+TestContentIntegration`, `./godelw verify`, and `make sdk-verify` all pass; `web/apps/web` and
+`web/apps/admin`'s `npm run lint && npm run test && npm run build` all pass. `Verified` awaits CI
+green on `main`.
 
 ### M14.11 · Site chrome — header, footer, template parts
 

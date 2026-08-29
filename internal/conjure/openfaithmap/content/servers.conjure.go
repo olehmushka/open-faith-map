@@ -29,6 +29,10 @@ type ContentPublicService interface {
 	GetPreviewBlocks(ctx context.Context, documentIdArg string, tokenArg string) (BlockList, error)
 	// Active block types only.
 	ListBlockTypes(ctx context.Context) (BlockTypePage, error)
+	// M14.10. Resolved hrefs, in sortOrder — see PublicNavItem's own docs for the omit-on-missing-or-draft-target behavior.
+	ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error)
+	// M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
+	GetPublicDocumentByPath(ctx context.Context, siteIdArg string, localeArg string, pathArg string) (DocumentWithAncestors, error)
 }
 
 // RegisterRoutesContentPublicService registers handlers for the ContentPublicService endpoints with a witchcraft wrouter.
@@ -58,6 +62,12 @@ func RegisterRoutesContentPublicService(router wrouter.Router, impl ContentPubli
 	}
 	if err := resource.Get("ListBlockTypes", "/content/v1/public/block-types", httpserver.NewJSONHandler(handler.HandleListBlockTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listBlockTypes route")
+	}
+	if err := resource.Get("ListPublicNavItems", "/content/v1/public/sites/{siteId}/nav-items", httpserver.NewJSONHandler(handler.HandleListPublicNavItems, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPublicNavItems route")
+	}
+	if err := resource.Get("GetPublicDocumentByPath", "/content/v1/public/sites/{siteId}/documents/by-path", httpserver.NewJSONHandler(handler.HandleGetPublicDocumentByPath, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getPublicDocumentByPath route")
 	}
 	return nil
 }
@@ -199,6 +209,42 @@ func (c *contentPublicServiceHandler) HandleListBlockTypes(rw http.ResponseWrite
 	return codecs.JSON.Encode(rw, respArg)
 }
 
+func (c *contentPublicServiceHandler) HandleListPublicNavItems(rw http.ResponseWriter, req *http.Request) error {
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	respArg, err := c.impl.ListPublicNavItems(req.Context(), siteIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentPublicServiceHandler) HandleGetPublicDocumentByPath(rw http.ResponseWriter, req *http.Request) error {
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	localeArg := req.URL.Query().Get("locale")
+	pathArg := req.URL.Query().Get("path")
+	respArg, err := c.impl.GetPublicDocumentByPath(req.Context(), siteIdArg, localeArg, pathArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
 // Congregation site authoring: sites, documents (pages), blocks. Every write, and every read that must see draft state, is content.manage-gated — a live, target-scoped Authorize call against the site's own congregation unit (see file header). See docs/modules/content.md.
 type ContentService interface {
 	CreateSite(ctx context.Context, authHeader bearertoken.Token, requestArg CreateSiteRequest) (Site, error)
@@ -218,6 +264,10 @@ type ContentService interface {
 	RestoreRevision(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, revisionIdArg string) (BlockList, error)
 	// M14.7. Mints a short-lived, site-scoped preview token — content.manage-gated, same as every other write/draft-read on this service. The returned token is handed to ContentPublicService's preview endpoints on the tenant subdomain, never used here again.
 	CreatePreviewLink(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (PreviewLink, error)
+	// M14.10. Admin read of the site's nav menu, in sortOrder.
+	ListNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (NavItemList, error)
+	// M14.10. Full replace of the site's nav menu — a small, hand-curated list edited as a batch, the same shape putBlocks used before M14.6's revision refactor moved it to an in-place update. Content:DuplicateNavItemSortOrder if two items share a sortOrder, Content:NavTargetAmbiguous if an item has neither or both of targetDocumentId/targetUrl, Content:NavTargetInvalid if targetDocumentId doesn't resolve to a PAGE document in this same site.
+	PutNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error)
 }
 
 // RegisterRoutesContentService registers handlers for the ContentService endpoints with a witchcraft wrouter.
@@ -259,6 +309,12 @@ func RegisterRoutesContentService(router wrouter.Router, impl ContentService, ro
 	}
 	if err := resource.Post("CreatePreviewLink", "/content/v1/sites/{siteId}/preview-link", httpserver.NewJSONHandler(handler.HandleCreatePreviewLink, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createPreviewLink route")
+	}
+	if err := resource.Get("ListNavItems", "/content/v1/sites/{siteId}/nav-items", httpserver.NewJSONHandler(handler.HandleListNavItems, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listNavItems route")
+	}
+	if err := resource.Put("PutNavItems", "/content/v1/sites/{siteId}/nav-items", httpserver.NewJSONHandler(handler.HandlePutNavItems, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add putNavItems route")
 	}
 	return nil
 }
@@ -526,6 +582,52 @@ func (c *contentServiceHandler) HandleCreatePreviewLink(rw http.ResponseWriter, 
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
 	}
 	respArg, err := c.impl.CreatePreviewLink(req.Context(), bearertoken.Token(authHeader), siteIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleListNavItems(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	respArg, err := c.impl.ListNavItems(req.Context(), bearertoken.Token(authHeader), siteIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandlePutNavItems(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	var requestArg PutNavItemsRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.PutNavItems(req.Context(), bearertoken.Token(authHeader), siteIdArg, requestArg)
 	if err != nil {
 		return err
 	}

@@ -148,6 +148,35 @@ type BlockType struct {
 	SortOrder  int
 }
 
+// NavItem is one entry in a site's hand-built nav menu (M14.10) — independent of
+// Document.ParentDocumentID (M14.0 replaced the page-tree-derived-nav assumption with a curated
+// menu). Exactly one of TargetDocumentID/TargetURL is ever set.
+type NavItem struct {
+	ID               string
+	SiteID           string
+	Label            string
+	TargetDocumentID *string
+	TargetURL        *string
+	SortOrder        int
+}
+
+type NavItemInput struct {
+	Label            string
+	TargetDocumentID *string
+	TargetURL        *string
+	SortOrder        int
+}
+
+// PublicNavItem is a NavItem as read by openfaithmap-web: Href is already resolved (an internal
+// target's href walks its real ancestor chain into a hierarchical path server-side, so the caller
+// never re-derives that). Items whose target document is missing or DRAFT are omitted upstream,
+// never represented here as a broken link.
+type PublicNavItem struct {
+	Label    string
+	Href     string
+	External bool
+}
+
 var (
 	ErrSiteNotFound       = errors.New("content site not found")
 	ErrDocumentNotFound   = errors.New("content document not found")
@@ -227,3 +256,33 @@ func (e *BlockUrlNotAllowedError) Error() string {
 }
 
 func (e *BlockUrlNotAllowedError) Unwrap() error { return ErrBlockUrlNotAllowed }
+
+// NavTargetInvalidError: a nav item's TargetDocumentID didn't resolve to a PAGE document belonging
+// to this same site.
+type NavTargetInvalidError struct {
+	TargetDocumentID string
+}
+
+func (e *NavTargetInvalidError) Error() string {
+	return fmt.Sprintf("nav item target document %q is not a PAGE in this site", e.TargetDocumentID)
+}
+
+// NavTargetAmbiguousError: a nav item had neither or both of TargetDocumentID/TargetURL set —
+// exactly one is required.
+type NavTargetAmbiguousError struct {
+	SortOrder int
+}
+
+func (e *NavTargetAmbiguousError) Error() string {
+	return fmt.Sprintf("nav item at sortOrder %d must set exactly one of targetDocumentId/targetUrl", e.SortOrder)
+}
+
+// DuplicateNavItemSortOrderError: two nav items in one putNavItems call shared a sortOrder —
+// rejected up front, mirroring DuplicateBlockPositionError's own discipline.
+type DuplicateNavItemSortOrderError struct {
+	SortOrder int
+}
+
+func (e *DuplicateNavItemSortOrderError) Error() string {
+	return fmt.Sprintf("duplicate nav item sortOrder %d", e.SortOrder)
+}

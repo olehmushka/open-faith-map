@@ -15,7 +15,9 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/content/adapters"
@@ -392,6 +394,156 @@ func (s *Service) RestoreRevision(ctx context.Context, documentID, revisionID st
 		return nil, err
 	}
 	return unmarshalBlocksSnapshot(documentID, draft.CreatedAt, draft.Data)
+}
+
+// ---- nav items (M14.10) ----
+
+// PutNavItems is a full replace, content.manage-gated like every other write on this service —
+// a small, hand-curated list edited as a batch, the same shape putBlocks used before M14.6's
+// revision refactor moved it to an in-place update.
+func (s *Service) PutNavItems(ctx context.Context, siteID string, items []domain.NavItemInput) ([]domain.NavItem, error) {
+	site, err := s.store.GetSiteByID(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
+		return nil, err
+	}
+
+	seen := make(map[int]bool, len(items))
+	for _, item := range items {
+		if seen[item.SortOrder] {
+			return nil, &domain.DuplicateNavItemSortOrderError{SortOrder: item.SortOrder}
+		}
+		seen[item.SortOrder] = true
+
+		hasDoc, hasURL := item.TargetDocumentID != nil, item.TargetURL != nil
+		if hasDoc == hasURL {
+			return nil, &domain.NavTargetAmbiguousError{SortOrder: item.SortOrder}
+		}
+		if hasDoc {
+			target, err := s.store.GetDocument(ctx, *item.TargetDocumentID)
+			if errors.Is(err, domain.ErrDocumentNotFound) {
+				return nil, &domain.NavTargetInvalidError{TargetDocumentID: *item.TargetDocumentID}
+			}
+			if err != nil {
+				return nil, err
+			}
+			if target.SiteID != siteID || target.Kind != domain.KindPage {
+				return nil, &domain.NavTargetInvalidError{TargetDocumentID: *item.TargetDocumentID}
+			}
+		}
+	}
+	return s.store.ReplaceNavItems(ctx, siteID, items)
+}
+
+// ListNavItems is the admin read (ContentService) — content.manage-gated.
+func (s *Service) ListNavItems(ctx context.Context, siteID string) ([]domain.NavItem, error) {
+	site, err := s.store.GetSiteByID(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
+		return nil, err
+	}
+	return s.store.ListNavItems(ctx, siteID)
+}
+
+// ListPublicNavItems is the public read (ContentPublicService) — no auth. An item whose target
+// document is missing or DRAFT is silently omitted, never surfaced as a broken link (D-
+// ContentRevisions' own consequence: a draft is never public).
+func (s *Service) ListPublicNavItems(ctx context.Context, siteID string) ([]domain.PublicNavItem, error) {
+	items, err := s.store.ListNavItems(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.PublicNavItem, 0, len(items))
+	for _, item := range items {
+		if item.TargetURL != nil {
+			out = append(out, domain.PublicNavItem{Label: item.Label, Href: *item.TargetURL, External: true})
+			continue
+		}
+		doc, err := s.store.GetDocument(ctx, *item.TargetDocumentID)
+		if errors.Is(err, domain.ErrDocumentNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if doc.State == domain.StateDraft {
+			continue
+		}
+		ancestors, err := s.resolveAncestorChain(ctx, doc)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.PublicNavItem{Label: item.Label, Href: buildPublicHref(doc, ancestors), External: false})
+	}
+	return out, nil
+}
+
+// GetPublicDocumentByPath resolves the leaf PAGE document (by locale + slug) plus its real
+// ancestor chain, for the tenant-subdomain catch-all page route — no auth. segments is the
+// ordered, 1-to-3-long list of URL path slugs; every segment before the last must match the
+// leaf's real parent_document_id chain positionally (only the leaf's own state gates public
+// visibility — an ancestor's state is never re-checked, only its slug identity). Any mismatch,
+// including the segment count itself, collapses to the same Content:DocumentNotFound a missing
+// document already returns — never resolved by the last segment alone.
+func (s *Service) GetPublicDocumentByPath(ctx context.Context, siteID, locale string, segments []string) (domain.Document, []domain.Document, error) {
+	if len(segments) == 0 || len(segments) > 3 {
+		return domain.Document{}, nil, domain.ErrDocumentNotFound
+	}
+	leaf, err := s.store.GetDocumentBySlug(ctx, siteID, domain.KindPage, locale, segments[len(segments)-1])
+	if err != nil {
+		return domain.Document{}, nil, err
+	}
+	if leaf.State == domain.StateDraft {
+		return domain.Document{}, nil, domain.ErrDocumentNotFound
+	}
+	ancestors, err := s.resolveAncestorChain(ctx, leaf)
+	if err != nil {
+		return domain.Document{}, nil, err
+	}
+	if len(ancestors) != len(segments)-1 {
+		return domain.Document{}, nil, domain.ErrDocumentNotFound
+	}
+	for i, ancestor := range ancestors {
+		if ancestor.Slug != segments[i] {
+			return domain.Document{}, nil, domain.ErrDocumentNotFound
+		}
+	}
+	return leaf, ancestors, nil
+}
+
+// resolveAncestorChain walks doc's real ParentDocumentID chain, root-first, leaf excluded —
+// bounded at 3 (mirrors checkParentDepth's own bound), shared by ListPublicNavItems and
+// GetPublicDocumentByPath so the walk is never duplicated.
+func (s *Service) resolveAncestorChain(ctx context.Context, doc domain.Document) ([]domain.Document, error) {
+	var chain []domain.Document
+	id := doc.ParentDocumentID
+	for depth := 0; id != nil && depth < 3; depth++ {
+		ancestor, err := s.store.GetDocument(ctx, *id)
+		if err != nil {
+			return nil, err
+		}
+		chain = append(chain, ancestor)
+		id = ancestor.ParentDocumentID
+	}
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+	return chain, nil
+}
+
+// buildPublicHref assembles a document's hierarchical public path from its resolved ancestor
+// chain (root-first) plus its own slug.
+func buildPublicHref(doc domain.Document, ancestors []domain.Document) string {
+	segments := make([]string, 0, len(ancestors)+1)
+	for _, a := range ancestors {
+		segments = append(segments, a.Slug)
+	}
+	segments = append(segments, doc.Slug)
+	return "/" + doc.Locale + "/" + strings.Join(segments, "/")
 }
 
 // ---- block-type catalog ----

@@ -6,14 +6,17 @@
 // web/apps/admin's lib/content.ts public half, minus the content.manage-gated admin functions,
 // which this app can never call.
 import { isConjureError } from "conjure-client";
+import { cache } from "react";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
-import type { IBlock, IBlockType, IDocument, ISite } from "./openfaithmap/generated/content";
+import type { IBlock, IBlockType, IDocument, IDocumentWithAncestors, IPublicNavItem, ISite } from "./openfaithmap/generated/content";
 
 export type Site = ISite;
 export type Document = IDocument;
 export type Block = IBlock;
 export type BlockType = IBlockType;
+export type PublicNavItem = IPublicNavItem;
+export type DocumentWithAncestors = IDocumentWithAncestors;
 
 export class ContentApiError extends Error {
   constructor(
@@ -53,10 +56,14 @@ export async function getSite(congregationUnitId: string): Promise<Site> {
   return unwrap(client().contentPublic.getSite(congregationUnitId));
 }
 
-// M14.9: what the tenant-subdomain route resolves a Host header's slug through.
-export async function getSiteBySlug(slug: string): Promise<Site> {
+// M14.9: what the tenant-subdomain route resolves a Host header's slug through. M14.10 wraps this
+// in React's cache() — the new [slug]/layout.tsx and every route nested under it (page.tsx,
+// preview/page.tsx, [...pageSlug]/page.tsx) each resolve the site independently, and cache()
+// dedupes those to one network call per request instead of prop-drilling site data through Next's
+// layout/page boundary (which doesn't support that natively).
+export const getSiteBySlug = cache(async (slug: string): Promise<Site> => {
   return unwrap(client().contentPublic.getSiteBySlug(slug));
-}
+});
 
 export async function listPublicDocuments(siteId: string, kind?: string): Promise<Document[]> {
   const page = await unwrap(client().contentPublic.listPublicDocuments(siteId, kind));
@@ -80,4 +87,19 @@ export async function listPreviewDocuments(siteId: string, token: string, kind?:
 export async function getPreviewBlocks(documentId: string, token: string): Promise<Block[]> {
   const list = await unwrap(client().contentPublic.getPreviewBlocks(documentId, token));
   return list.blocks;
+}
+
+// M14.10: the site's hand-built nav menu, targets already resolved to ready-to-render hrefs.
+export async function listPublicNavItems(siteId: string): Promise<PublicNavItem[]> {
+  const list = await unwrap(client().contentPublic.listPublicNavItems(siteId));
+  return list.items;
+}
+
+// M14.10: resolves the leaf PAGE document plus its real ancestor chain for the tenant-subdomain
+// catch-all page route — path is an ordered array of URL slug segments (1-3 long), joined here
+// into the slash-separated string the API expects. Throws ContentApiError with errorName
+// "Content:DocumentNotFound" for any resolution failure (missing, non-PAGE, draft, or a path that
+// doesn't match the document's real ancestor chain).
+export async function getPublicDocumentByPath(siteId: string, locale: string, path: string[]): Promise<DocumentWithAncestors> {
+  return unwrap(client().contentPublic.getPublicDocumentByPath(siteId, locale, path.join("/")));
 }

@@ -1,5 +1,5 @@
 import { getTranslations } from "next-intl/server";
-import { FileText } from "lucide-react";
+import { FileText, Menu } from "lucide-react";
 
 import { ACCESSIBILITY_KEYS } from "@/lib/accessibility";
 import { createSite, getSite, updateSiteTheme } from "@/lib/content";
@@ -127,12 +127,20 @@ export default async function SitePage({
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{t("siteHeading", { slug: site.slug })}</h1>
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/admin/sites/${unitId}/documents`}>
-            <FileText className="size-3.5" />
-            {t("managePages")}
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/admin/sites/${unitId}/documents`}>
+              <FileText className="size-3.5" />
+              {t("managePages")}
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/admin/sites/${unitId}/nav`}>
+              <Menu className="size-3.5" />
+              {t("manageNav")}
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card>

@@ -157,6 +157,39 @@ func (s *Service) RestoreRevision(ctx context.Context, authHeader bearertoken.To
 	return gencontent.BlockList{Blocks: toAPIBlocks(blocks)}, nil
 }
 
+func (s *Service) ListNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (gencontent.NavItemList, error) {
+	items, err := s.appService.ListNavItems(ctx, siteIdArg)
+	if err != nil {
+		return gencontent.NavItemList{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	return gencontent.NavItemList{Items: toAPINavItems(items)}, nil
+}
+
+func (s *Service) PutNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg gencontent.PutNavItemsRequest) (gencontent.NavItemList, error) {
+	inputs := make([]domain.NavItemInput, 0, len(requestArg.Items))
+	for _, item := range requestArg.Items {
+		inputs = append(inputs, domain.NavItemInput{
+			Label: item.Label, TargetDocumentID: item.TargetDocumentId, TargetURL: item.TargetUrl, SortOrder: item.SortOrder,
+		})
+	}
+	items, err := s.appService.PutNavItems(ctx, siteIdArg, inputs)
+	if err != nil {
+		return gencontent.NavItemList{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	return gencontent.NavItemList{Items: toAPINavItems(items)}, nil
+}
+
+func toAPINavItems(items []domain.NavItem) []gencontent.NavItem {
+	out := make([]gencontent.NavItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, gencontent.NavItem{
+			Id: item.ID, SiteId: item.SiteID, Label: item.Label,
+			TargetDocumentId: item.TargetDocumentID, TargetUrl: item.TargetURL, SortOrder: item.SortOrder,
+		})
+	}
+	return out
+}
+
 func toAPISite(site domain.Site) gencontent.Site {
 	return gencontent.Site{
 		Id:                 site.ID,

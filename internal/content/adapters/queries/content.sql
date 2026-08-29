@@ -125,3 +125,26 @@ WHERE cdr.document_id = sqlc.arg('document_id')
     ORDER BY r2.revision_no DESC
     OFFSET sqlc.arg('keep_count') LIMIT 1
   );
+
+-- name: GetDocumentBySlug :one
+SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+FROM openfaithmap.content_documents
+WHERE site_id = sqlc.arg('site_id') AND kind = sqlc.arg('kind') AND locale = sqlc.arg('locale')
+	AND slug = sqlc.arg('slug') AND deleted_at IS NULL;
+
+-- ---- nav items (M14.10) ----
+
+-- name: DeleteNavItems :exec
+DELETE FROM openfaithmap.content_site_nav_items WHERE site_id = sqlc.arg('site_id');
+
+-- name: InsertNavItem :one
+INSERT INTO openfaithmap.content_site_nav_items (site_id, label, target_document_id, target_url, sort_order)
+VALUES (sqlc.arg('site_id'), sqlc.arg('label'), sqlc.narg('target_document_id'), sqlc.narg('target_url'), sqlc.arg('sort_order'))
+RETURNING id, site_id, label, target_document_id, target_url, sort_order;
+
+-- name: ListNavItems :many
+SELECT id, site_id, label, target_document_id, target_url, sort_order
+FROM openfaithmap.content_site_nav_items
+WHERE site_id = sqlc.arg('site_id')
+ORDER BY sort_order ASC;
