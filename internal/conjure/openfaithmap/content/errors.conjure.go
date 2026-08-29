@@ -2561,6 +2561,307 @@ func (e *SlugTaken) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type themeContrastFailed struct {
+	Accent string `json:"accent"`
+	Mode   string `json:"mode"`
+}
+
+func (o themeContrastFailed) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *themeContrastFailed) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewThemeContrastFailed returns new instance of ThemeContrastFailed error.
+func NewThemeContrastFailed(accentArg string, modeArg string) *ThemeContrastFailed {
+	return &ThemeContrastFailed{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), themeContrastFailed: themeContrastFailed{Accent: accentArg, Mode: modeArg}}
+}
+
+// WrapWithThemeContrastFailed returns new instance of ThemeContrastFailed error wrapping an existing error.
+func WrapWithThemeContrastFailed(err error, accentArg string, modeArg string) *ThemeContrastFailed {
+	return &ThemeContrastFailed{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, themeContrastFailed: themeContrastFailed{Accent: accentArg, Mode: modeArg}}
+}
+
+// ThemeContrastFailed is an error type.
+// M14.12. The submitted accent/mode pair fails WCAG AA contrast (D-CuratedTheme's write-time gate) — both are curated token names, never a raw hex value.
+type ThemeContrastFailed struct {
+	errorInstanceID uuid.UUID
+	themeContrastFailed
+	cause error
+	stack werror.StackTrace
+}
+
+// IsThemeContrastFailed returns true if err is an instance of ThemeContrastFailed.
+func IsThemeContrastFailed(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*ThemeContrastFailed)
+	return ok
+}
+
+func (e *ThemeContrastFailed) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:ThemeContrastFailed (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *ThemeContrastFailed) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *ThemeContrastFailed) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *ThemeContrastFailed) Message() string {
+	return "INVALID_ARGUMENT Content:ThemeContrastFailed"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *ThemeContrastFailed) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *ThemeContrastFailed) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *ThemeContrastFailed) Name() string {
+	return "Content:ThemeContrastFailed"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *ThemeContrastFailed) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *ThemeContrastFailed) Parameters() map[string]interface{} {
+	return map[string]interface{}{"accent": e.Accent, "mode": e.Mode}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *ThemeContrastFailed) safeParams() map[string]interface{} {
+	return map[string]interface{}{"accent": e.Accent, "mode": e.Mode, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ThemeContrastFailed) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *ThemeContrastFailed) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ThemeContrastFailed) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e ThemeContrastFailed) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.themeContrastFailed)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:ThemeContrastFailed", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *ThemeContrastFailed) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters themeContrastFailed
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.themeContrastFailed = parameters
+	return nil
+}
+
+type themeInvalid struct {
+	Field string `json:"field"`
+}
+
+func (o themeInvalid) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *themeInvalid) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewThemeInvalid returns new instance of ThemeInvalid error.
+func NewThemeInvalid(fieldArg string) *ThemeInvalid {
+	return &ThemeInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), themeInvalid: themeInvalid{Field: fieldArg}}
+}
+
+// WrapWithThemeInvalid returns new instance of ThemeInvalid error wrapping an existing error.
+func WrapWithThemeInvalid(err error, fieldArg string) *ThemeInvalid {
+	return &ThemeInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, themeInvalid: themeInvalid{Field: fieldArg}}
+}
+
+// ThemeInvalid is an error type.
+// M14.12. A theme field's value is outside D-CuratedTheme's fixed vocabulary (never a raw hex/font — see themevalidation.go). field is the failing top-level property name when it could be safely determined, otherwise empty; never the raw submitted value.
+type ThemeInvalid struct {
+	errorInstanceID uuid.UUID
+	themeInvalid
+	cause error
+	stack werror.StackTrace
+}
+
+// IsThemeInvalid returns true if err is an instance of ThemeInvalid.
+func IsThemeInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*ThemeInvalid)
+	return ok
+}
+
+func (e *ThemeInvalid) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:ThemeInvalid (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *ThemeInvalid) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *ThemeInvalid) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *ThemeInvalid) Message() string {
+	return "INVALID_ARGUMENT Content:ThemeInvalid"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *ThemeInvalid) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *ThemeInvalid) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *ThemeInvalid) Name() string {
+	return "Content:ThemeInvalid"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *ThemeInvalid) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *ThemeInvalid) Parameters() map[string]interface{} {
+	return map[string]interface{}{"field": e.Field}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *ThemeInvalid) safeParams() map[string]interface{} {
+	return map[string]interface{}{"field": e.Field, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ThemeInvalid) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *ThemeInvalid) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ThemeInvalid) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e ThemeInvalid) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.themeInvalid)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:ThemeInvalid", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *ThemeInvalid) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters themeInvalid
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.themeInvalid = parameters
+	return nil
+}
+
 func init() {
 	conjureerrors.RegisterErrorType("Content:BlockDataInvalid", reflect.TypeOf(BlockDataInvalid{}))
 	conjureerrors.RegisterErrorType("Content:BlockTypeNotFound", reflect.TypeOf(BlockTypeNotFound{}))
@@ -2579,4 +2880,6 @@ func init() {
 	conjureerrors.RegisterErrorType("Content:SiteNotFound", reflect.TypeOf(SiteNotFound{}))
 	conjureerrors.RegisterErrorType("Content:SlugReserved", reflect.TypeOf(SlugReserved{}))
 	conjureerrors.RegisterErrorType("Content:SlugTaken", reflect.TypeOf(SlugTaken{}))
+	conjureerrors.RegisterErrorType("Content:ThemeContrastFailed", reflect.TypeOf(ThemeContrastFailed{}))
+	conjureerrors.RegisterErrorType("Content:ThemeInvalid", reflect.TypeOf(ThemeInvalid{}))
 }

@@ -83,7 +83,10 @@ export async function SitePage({
     typeof discoverySite?.latitude === "number" && typeof discoverySite?.longitude === "number";
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-10 px-6 py-12">
+    <main
+      className="mx-auto flex max-w-3xl flex-col gap-10"
+      style={{ paddingInline: "calc(1.5rem * var(--of-space-scale, 1))", paddingBlock: "calc(3rem * var(--of-space-scale, 1))" }}
+    >
       {discoverySite ? (
         <section className="flex flex-col gap-2 border-b pb-8">
           {discoverySite.address ? (

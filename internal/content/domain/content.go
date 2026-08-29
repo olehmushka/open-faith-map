@@ -228,6 +228,9 @@ var (
 	ErrBlockDataInvalid   = errors.New("block data failed json schema validation")
 	ErrBlockUrlNotAllowed = errors.New("block field failed URL scheme/embed host allowlist")
 	ErrRevisionNotFound   = errors.New("content document revision not found")
+	// ErrThemeInvalid/ErrThemeContrastFailed back M14.12's theme write-time gate (D-CuratedTheme).
+	ErrThemeInvalid        = errors.New("theme value outside the curated vocabulary")
+	ErrThemeContrastFailed = errors.New("theme accent/mode pair fails WCAG AA contrast")
 	// ErrPreviewTokenInvalid covers a missing, malformed, expired, or wrong-site preview token alike
 	// (M14.7) — deliberately one sentinel for every case, so a caller probing the preview endpoints
 	// learns nothing about which check failed.
@@ -296,6 +299,33 @@ func (e *BlockUrlNotAllowedError) Error() string {
 }
 
 func (e *BlockUrlNotAllowedError) Unwrap() error { return ErrBlockUrlNotAllowed }
+
+// ThemeInvalidError carries the theme field that failed the curated-vocabulary check (M14.12,
+// D-CuratedTheme) — never the raw submitted value, which could be an arbitrary hex/font string an
+// attacker chose (same safe-arg discipline as BlockDataInvalidError).
+type ThemeInvalidError struct {
+	Field string
+}
+
+func (e *ThemeInvalidError) Error() string {
+	return fmt.Sprintf("theme field %q is not one of the curated values", e.Field)
+}
+
+func (e *ThemeInvalidError) Unwrap() error { return ErrThemeInvalid }
+
+// ThemeContrastFailedError carries the accent/mode pair a WCAG AA contrast check rejected at write
+// time (M14.12, D-CuratedTheme) — both are curated token names, never a raw hex value, so they're
+// safe to surface directly.
+type ThemeContrastFailedError struct {
+	Accent string
+	Mode   string
+}
+
+func (e *ThemeContrastFailedError) Error() string {
+	return fmt.Sprintf("accent %q fails WCAG AA contrast in %q mode", e.Accent, e.Mode)
+}
+
+func (e *ThemeContrastFailedError) Unwrap() error { return ErrThemeContrastFailed }
 
 // NavTargetInvalidError: a nav item's TargetDocumentID didn't resolve to a PAGE document belonging
 // to this same site.

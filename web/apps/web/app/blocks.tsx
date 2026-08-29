@@ -47,7 +47,7 @@ function BlockView({
       const level = Math.min(6, Math.max(1, Number(data.level) || 2));
       const Tag = `h${level}` as keyof React.JSX.IntrinsicElements;
       return (
-        <Tag className="font-semibold">
+        <Tag className="font-heading font-semibold">
           <RichText nodes={data.text} />
         </Tag>
       );

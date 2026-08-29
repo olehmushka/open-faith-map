@@ -348,6 +348,24 @@ types:
           blockTypeCode: string
           position: integer
           field: string
+      ThemeInvalid:
+        docs: >
+          M14.12. A theme field's value is outside D-CuratedTheme's fixed vocabulary (never a raw
+          hex/font — see themevalidation.go). field is the failing top-level property name when it
+          could be safely determined, otherwise empty; never the raw submitted value.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          field: string
+      ThemeContrastFailed:
+        docs: >
+          M14.12. The submitted accent/mode pair fails WCAG AA contrast (D-CuratedTheme's
+          write-time gate) — both are curated token names, never a raw hex value.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          accent: string
+          mode: string
       RevisionNotFound:
         docs: >
           M14.6. The revision id either doesn't exist or belongs to a different document —

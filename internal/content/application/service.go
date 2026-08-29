@@ -54,12 +54,18 @@ func (s *Service) CreateSite(ctx context.Context, in domain.CreateSiteInput) (do
 	return s.store.InsertSite(ctx, in)
 }
 
+// UpdateSiteTheme validates theme against D-CuratedTheme's fixed vocabulary and write-time WCAG
+// contrast gate (M14.12, validateTheme) before storing — the only write path in this module with
+// no validation until this milestone.
 func (s *Service) UpdateSiteTheme(ctx context.Context, siteID string, theme json.RawMessage) (domain.Site, error) {
 	site, err := s.store.GetSiteByID(ctx, siteID)
 	if err != nil {
 		return domain.Site{}, err
 	}
 	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
+		return domain.Site{}, err
+	}
+	if _, err := validateTheme(theme); err != nil {
 		return domain.Site{}, err
 	}
 	return s.store.UpdateSiteTheme(ctx, siteID, theme)

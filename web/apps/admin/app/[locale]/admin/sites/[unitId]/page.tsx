@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { AttributesForm } from "./attributes-form";
+import { parseTheme } from "@/lib/theme-tokens";
+import { ThemeForm } from "./theme-form";
 
 // Site creation + theme editor for one congregation's unit (M3, docs/modules/content.md). getSite
 // is a public-read call (ContentPublicService) — no site yet is a normal, expected state (a
@@ -24,10 +26,13 @@ import { AttributesForm } from "./attributes-form";
 // card is simply omitted, not an error.
 export default async function SitePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string; unitId: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { locale, unitId } = await params;
+  const { error } = await searchParams;
   const t = await getTranslations("SitePage");
   const site = await getSite(unitId).catch(() => null);
   const religionSite = await getReligionSite(unitId).catch((e) => {
@@ -111,15 +116,31 @@ export default async function SitePage({
     );
   }
 
-  const theme = (site.theme ?? {}) as { accentColor?: string; fontPairing?: string; headerLayout?: string };
+  const theme = parseTheme(site.theme);
 
+  // M14.12: theme fields are D-CuratedTheme's fixed vocabulary — omit rather than send "" for an
+  // unset <select> (an empty string isn't a valid enum value; the write-time gate would reject it
+  // as unset behaves differently from "chosen but empty"). A rejection (ThemeInvalid, e.g. a
+  // stale/tampered request; ThemeContrastFailed, e.g. an accent/mode pair that fails AA) redirects
+  // with the typed error name in ?error=, the same shape `create` above already uses.
   async function saveTheme(formData: FormData) {
     "use server";
-    await updateSiteTheme(site!.id, {
-      accentColor: String(formData.get("accentColor") ?? ""),
-      fontPairing: String(formData.get("fontPairing") ?? ""),
-      headerLayout: String(formData.get("headerLayout") ?? ""),
-    });
+    const submitted: Record<string, string> = {};
+    for (const key of ["accent", "mode", "fontPairing", "spacing", "headerLayout"]) {
+      const v = String(formData.get(key) ?? "").trim();
+      if (v !== "") submitted[key] = v;
+    }
+    try {
+      await updateSiteTheme(site!.id, submitted);
+    } catch (e) {
+      if (e && typeof e === "object" && "errorName" in e) {
+        redirect({
+          href: `/admin/sites/${unitId}?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`,
+          locale,
+        });
+      }
+      throw e;
+    }
     redirect({ href: `/admin/sites/${unitId}`, locale });
   }
 
@@ -163,28 +184,27 @@ export default async function SitePage({
         </div>
       </div>
 
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{t("themeHeading")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form action={saveTheme} className="flex flex-col gap-4">
-            <Label className="flex flex-col items-start gap-1">
-              {t("accentColorLabel")}
-              <Input name="accentColor" defaultValue={theme.accentColor ?? ""} />
-            </Label>
-            <Label className="flex flex-col items-start gap-1">
-              {t("fontPairingLabel")}
-              <Input name="fontPairing" defaultValue={theme.fontPairing ?? ""} />
-            </Label>
-            <Label className="flex flex-col items-start gap-1">
-              {t("headerLayoutLabel")}
-              <Input name="headerLayout" defaultValue={theme.headerLayout ?? ""} />
-            </Label>
-            <Button type="submit" className="self-start">
-              {t("saveTheme")}
-            </Button>
-          </form>
+          <ThemeForm
+            initial={theme}
+            labels={{
+              accent: t("accentColorLabel"),
+              mode: t("modeLabel"),
+              fontPairing: t("fontPairingLabel"),
+              spacing: t("spacingLabel"),
+              headerLayout: t("headerLayoutLabel"),
+              notSet: t("notSetOption"),
+              preview: t("previewHeading"),
+              submit: t("saveTheme"),
+            }}
+            action={saveTheme}
+          />
         </CardContent>
       </Card>
 

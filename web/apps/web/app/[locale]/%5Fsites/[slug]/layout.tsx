@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getSiteBySlug, getSiteChrome, listPublicNavItems } from "@/lib/content";
+import { parseTheme, resolveThemeDataAttr, resolveThemeStyle } from "@/lib/theme-tokens";
 
 // M14.11: full header/footer chrome — congregation name/logo/nav in SiteHeader, address/service
 // schedule/social links in SiteFooter, both fed from one getSiteChrome call (logoUrl/socialLinks
@@ -30,11 +31,15 @@ export default async function TenantSiteLayout({
     ? await Promise.all([listPublicNavItems(site.id).catch(() => []), getSiteChrome(site.id).catch(() => null)])
     : [[], null];
 
+  // M14.12: theme resolution never trusts site.theme's shape — a pre-M14.12 row (or any future
+  // format this code doesn't recognize) degrades to "no theme customization", not a crash.
+  const theme = parseTheme(site?.theme);
+
   return (
-    <>
-      {chrome ? <SiteHeader chrome={chrome} navItems={navItems} /> : null}
+    <div className="min-h-dvh bg-background text-foreground" style={resolveThemeStyle(theme)} data-theme={resolveThemeDataAttr(theme)}>
+      {chrome ? <SiteHeader chrome={chrome} navItems={navItems} layout={theme.headerLayout} /> : null}
       {children}
       {chrome ? <SiteFooter chrome={chrome} /> : null}
-    </>
+    </div>
   );
 }

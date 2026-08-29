@@ -45,6 +45,8 @@ export * from "./siteNotFound";
 export * from "./slugReserved";
 export * from "./slugTaken";
 export * from "./socialLinks";
+export * from "./themeContrastFailed";
+export * from "./themeInvalid";
 export * from "./transitionDocumentRequest";
 export * from "./updateDocumentRequest";
 export * from "./updateSiteChromeRequest";
