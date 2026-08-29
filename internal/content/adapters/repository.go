@@ -190,6 +190,26 @@ func (r *Repository) InsertDocument(ctx context.Context, siteID string, in domai
 	}, nil
 }
 
+// GetDocumentBySlug resolves a document by its natural key (site+kind+locale+slug), matching the
+// unique index content_documents_slug_idx — used by M14.10's page-route resolver.
+func (r *Repository) GetDocumentBySlug(ctx context.Context, siteID string, kind domain.DocumentKind, locale, slug string) (domain.Document, error) {
+	row, err := r.q.GetDocumentBySlug(ctx, contentsql.GetDocumentBySlugParams{SiteID: siteID, Kind: string(kind), Locale: locale, Slug: slug})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Document{}, domain.ErrDocumentNotFound
+	}
+	if err != nil {
+		return domain.Document{}, err
+	}
+	return domain.Document{
+		ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
+		Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
+		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
+		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+	}, nil
+}
+
 func (r *Repository) GetDocument(ctx context.Context, id string) (domain.Document, error) {
 	row, err := r.q.GetDocument(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -206,6 +226,66 @@ func (r *Repository) GetDocument(ctx context.Context, id string) (domain.Documen
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
 	}, nil
+}
+
+// ---- nav items (M14.10) ----
+
+// ReplaceNavItems is a full replace (delete-then-insert in one transaction) — a nav menu is a
+// small, hand-curated list edited as a batch (application.Service.PutNavItems), and mirrors
+// InsertDocument's own transaction shape rather than PutBlocks' (which since M14.6 is a single-row
+// JSON update — the wrong precedent for a genuinely relational table like this one).
+func (r *Repository) ReplaceNavItems(ctx context.Context, siteID string, items []domain.NavItemInput) ([]domain.NavItem, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("content: replace nav items: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	txq := contentsql.New(tx)
+
+	if err := txq.DeleteNavItems(ctx, siteID); err != nil {
+		return nil, fmt.Errorf("content: replace nav items: delete: %w", err)
+	}
+
+	out := make([]domain.NavItem, 0, len(items))
+	for _, item := range items {
+		row, err := txq.InsertNavItem(ctx, contentsql.InsertNavItemParams{
+			SiteID: siteID, Label: item.Label,
+			TargetDocumentID: nullableText(item.TargetDocumentID), TargetUrl: nullableText(item.TargetURL),
+			SortOrder: int32(item.SortOrder),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("content: replace nav items: insert: %w", err)
+		}
+		out = append(out, domain.NavItem{
+			ID: row.ID, SiteID: row.SiteID, Label: row.Label,
+			TargetDocumentID: fromNullableText(row.TargetDocumentID), TargetURL: fromNullableText(row.TargetUrl),
+			SortOrder: int(row.SortOrder),
+		})
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("content: replace nav items: commit: %w", err)
+	}
+	return out, nil
+}
+
+// ListNavItems is used by both the admin read and the public read (application.Service.ListNavItems
+// / ListPublicNavItems) — the table itself has no draft/published distinction, only what each
+// caller does with a target document's own state.
+func (r *Repository) ListNavItems(ctx context.Context, siteID string) ([]domain.NavItem, error) {
+	rows, err := r.q.ListNavItems(ctx, siteID)
+	if err != nil {
+		return nil, fmt.Errorf("content: list nav items: %w", err)
+	}
+	out := make([]domain.NavItem, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.NavItem{
+			ID: row.ID, SiteID: row.SiteID, Label: row.Label,
+			TargetDocumentID: fromNullableText(row.TargetDocumentID), TargetURL: fromNullableText(row.TargetUrl),
+			SortOrder: int(row.SortOrder),
+		})
+	}
+	return out, nil
 }
 
 // UpdateDocument updates slug and/or parent — nil fields in `in` leave the column unchanged;

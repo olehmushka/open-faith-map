@@ -13,6 +13,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteNavItems = `-- name: DeleteNavItems :exec
+
+DELETE FROM openfaithmap.content_site_nav_items WHERE site_id = $1
+`
+
+// ---- nav items (M14.10) ----
+func (q *Queries) DeleteNavItems(ctx context.Context, siteID string) error {
+	_, err := q.db.Exec(ctx, deleteNavItems, siteID)
+	return err
+}
+
 const getBlockTypeByCode = `-- name: GetBlockTypeByCode :one
 SELECT id, code, name, json_schema, ui_schema, status, sort_order
 FROM openfaithmap.content_block_types WHERE code = $1 AND deleted_at IS NULL
@@ -71,6 +82,69 @@ type GetDocumentRow struct {
 func (q *Queries) GetDocument(ctx context.Context, id string) (GetDocumentRow, error) {
 	row := q.db.QueryRow(ctx, getDocument, id)
 	var i GetDocumentRow
+	err := row.Scan(
+		&i.ID,
+		&i.SiteID,
+		&i.Kind,
+		&i.TranslationGroupID,
+		&i.Locale,
+		&i.ParentDocumentID,
+		&i.Slug,
+		&i.State,
+		&i.PublishedAt,
+		&i.EventStartsAt,
+		&i.EventEndsAt,
+		&i.EventRecurrenceRrule,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DraftRevisionID,
+		&i.PublishedRevisionID,
+	)
+	return i, err
+}
+
+const getDocumentBySlug = `-- name: GetDocumentBySlug :one
+SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+FROM openfaithmap.content_documents
+WHERE site_id = $1 AND kind = $2 AND locale = $3
+	AND slug = $4 AND deleted_at IS NULL
+`
+
+type GetDocumentBySlugParams struct {
+	SiteID string
+	Kind   string
+	Locale string
+	Slug   string
+}
+
+type GetDocumentBySlugRow struct {
+	ID                   string
+	SiteID               string
+	Kind                 string
+	TranslationGroupID   string
+	Locale               string
+	ParentDocumentID     pgtype.Text
+	Slug                 string
+	State                string
+	PublishedAt          pgtype.Timestamptz
+	EventStartsAt        pgtype.Timestamptz
+	EventEndsAt          pgtype.Timestamptz
+	EventRecurrenceRrule pgtype.Text
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	DraftRevisionID      pgtype.Text
+	PublishedRevisionID  pgtype.Text
+}
+
+func (q *Queries) GetDocumentBySlug(ctx context.Context, arg GetDocumentBySlugParams) (GetDocumentBySlugRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentBySlug,
+		arg.SiteID,
+		arg.Kind,
+		arg.Locale,
+		arg.Slug,
+	)
+	var i GetDocumentBySlugRow
 	err := row.Scan(
 		&i.ID,
 		&i.SiteID,
@@ -268,6 +342,49 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 		&i.UpdatedAt,
 		&i.DraftRevisionID,
 		&i.PublishedRevisionID,
+	)
+	return i, err
+}
+
+const insertNavItem = `-- name: InsertNavItem :one
+INSERT INTO openfaithmap.content_site_nav_items (site_id, label, target_document_id, target_url, sort_order)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, site_id, label, target_document_id, target_url, sort_order
+`
+
+type InsertNavItemParams struct {
+	SiteID           string
+	Label            string
+	TargetDocumentID pgtype.Text
+	TargetUrl        pgtype.Text
+	SortOrder        int32
+}
+
+type InsertNavItemRow struct {
+	ID               string
+	SiteID           string
+	Label            string
+	TargetDocumentID pgtype.Text
+	TargetUrl        pgtype.Text
+	SortOrder        int32
+}
+
+func (q *Queries) InsertNavItem(ctx context.Context, arg InsertNavItemParams) (InsertNavItemRow, error) {
+	row := q.db.QueryRow(ctx, insertNavItem,
+		arg.SiteID,
+		arg.Label,
+		arg.TargetDocumentID,
+		arg.TargetUrl,
+		arg.SortOrder,
+	)
+	var i InsertNavItemRow
+	err := row.Scan(
+		&i.ID,
+		&i.SiteID,
+		&i.Label,
+		&i.TargetDocumentID,
+		&i.TargetUrl,
+		&i.SortOrder,
 	)
 	return i, err
 }
@@ -496,6 +613,49 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 			&i.UpdatedAt,
 			&i.DraftRevisionID,
 			&i.PublishedRevisionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNavItems = `-- name: ListNavItems :many
+SELECT id, site_id, label, target_document_id, target_url, sort_order
+FROM openfaithmap.content_site_nav_items
+WHERE site_id = $1
+ORDER BY sort_order ASC
+`
+
+type ListNavItemsRow struct {
+	ID               string
+	SiteID           string
+	Label            string
+	TargetDocumentID pgtype.Text
+	TargetUrl        pgtype.Text
+	SortOrder        int32
+}
+
+func (q *Queries) ListNavItems(ctx context.Context, siteID string) ([]ListNavItemsRow, error) {
+	rows, err := q.db.Query(ctx, listNavItems, siteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListNavItemsRow
+	for rows.Next() {
+		var i ListNavItemsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SiteID,
+			&i.Label,
+			&i.TargetDocumentID,
+			&i.TargetUrl,
+			&i.SortOrder,
 		); err != nil {
 			return nil, err
 		}

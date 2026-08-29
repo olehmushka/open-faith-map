@@ -6,13 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { Blocks } from "@/app/blocks";
 import { Badge } from "@/components/ui/badge";
 import { ACCESSIBILITY_KEYS, ACCESSIBILITY_MESSAGE_KEYS } from "@/lib/accessibility";
-import {
-  getPreviewBlocks,
-  getPublicBlocks,
-  listPreviewDocuments,
-  listPublicDocuments,
-  type Site,
-} from "@/lib/content";
+import { getPreviewBlocks, getPublicBlocks, listPreviewDocuments, listPublicDocuments, type Site } from "@/lib/content";
 import { getSite as getDiscoverySite } from "@/lib/discovery";
 import { fileReport, type FileReportInput } from "@/lib/moderation";
 import { redirect } from "@/i18n/navigation";
@@ -30,11 +24,17 @@ const REPORT_REASON_CODES: FileReportInput["reasonCode"][] = [
 const DAY_KEYS = ["day0", "day1", "day2", "day3", "day4", "day5", "day6"] as const;
 
 // The real public-site renderer (M14.9, D-TenantSubdomains) — the "extractable module" the
-// milestone names: everything a congregation's site needs to render, keyed by an already-resolved
-// Site rather than fetching one itself, so this component has no opinion about which route or host
-// reached it. Rendered today from app/[locale]/%5Fsites/[slug]/page.tsx (the tenant-subdomain
-// route the proxy rewrites into); Phase 2 (openfaithmap-sites, out of scope here) can move this
-// file into its own deployment without a rewrite.
+// milestone names: the site's discovery-derived header, its Posts/Events feed, and the report
+// form, keyed by an already-resolved Site rather than fetching one itself, so this component has
+// no opinion about which route or host reached it. Rendered today from
+// app/[locale]/%5Fsites/[slug]/page.tsx (the tenant-subdomain route the proxy rewrites into);
+// Phase 2 (openfaithmap-sites, out of scope here) can move this file into its own deployment
+// without a rewrite.
+//
+// M14.10: Pages no longer render inline here — each gets its own route
+// (app/[locale]/%5Fsites/[slug]/[...pageSlug]/page.tsx via components/page-document.tsx), reached
+// through the nav menu (M14.10's layout.tsx) or a direct URL. This component's own root route
+// (the site's "/") is now posts/events plus the discovery header/report form only.
 export async function SitePage({
   site,
   locale,
@@ -56,9 +56,6 @@ export async function SitePage({
   const listDocuments = previewToken
     ? (kind: string) => listPreviewDocuments(site.id, previewToken, kind)
     : (kind: string) => listPublicDocuments(site.id, kind);
-  const getBlocks = previewToken
-    ? (documentId: string) => getPreviewBlocks(documentId, previewToken)
-    : (documentId: string) => getPublicBlocks(documentId);
 
   // M5, D-AdminSurface: this app never holds a session, so the report is filed anonymously — the
   // caller identity is never asked (ModerationPublicService.fileReport, docs/modules/moderation.md).
@@ -75,14 +72,11 @@ export async function SitePage({
     redirect({ href: `/_sites/${site.slug}?reported=1`, locale });
   }
 
-  const [pages, posts, events, discoverySite] = await Promise.all([
-    listDocuments("PAGE"),
+  const [posts, events, discoverySite] = await Promise.all([
     listDocuments("POST"),
     listDocuments("EVENT"),
     getDiscoverySite(site.congregationUnitId).catch(() => null),
   ]);
-
-  const pageBlocks = await Promise.all(pages.map((p) => getBlocks(p.id)));
 
   const hasCoords =
     typeof discoverySite?.latitude === "number" && typeof discoverySite?.longitude === "number";
@@ -129,12 +123,6 @@ export async function SitePage({
           ) : null}
         </section>
       ) : null}
-
-      {pages.map((page, i) => (
-        <section key={page.id} className="flex flex-col gap-4">
-          <Blocks blocks={pageBlocks[i]} />
-        </section>
-      ))}
 
       {events.length > 0 && (
         <section className="flex flex-col gap-4 border-t pt-8">

@@ -170,6 +170,55 @@ types:
         fields:
           token: string
 
+      NavItem:
+        docs: >
+          M14.10. One entry in a site's hand-built nav menu — independent of
+          parent_document_id (M14.0 replaced the page-tree-derived-nav assumption with a
+          curated menu). Exactly one of targetDocumentId/targetUrl is ever set.
+        fields:
+          id: string
+          siteId: string
+          label: string
+          targetDocumentId: optional<string>
+          targetUrl: optional<string>
+          sortOrder: integer
+      NavItemInput:
+        fields:
+          label: string
+          targetDocumentId: optional<string>
+          targetUrl: optional<string>
+          sortOrder: integer
+      PutNavItemsRequest:
+        fields:
+          items: list<NavItemInput>
+      NavItemList:
+        fields:
+          items: list<NavItem>
+
+      PublicNavItem:
+        docs: >
+          M14.10. A nav item as read by openfaithmap-web: the target is already resolved into a
+          ready-to-render href (an internal target's href walks its real ancestor chain into a
+          hierarchical path — the caller never re-derives that), so this is a dumb render list. A
+          nav item whose target document is missing or DRAFT is omitted from the list entirely,
+          never surfaced as a broken link.
+        fields:
+          label: string
+          href: string
+          external: boolean
+      PublicNavItemList:
+        fields:
+          items: list<PublicNavItem>
+
+      DocumentWithAncestors:
+        docs: >
+          M14.10's page-route resolver: the leaf document plus its real ancestor chain (root
+          first, leaf excluded), in one round trip, so the tenant-subdomain catch-all page route
+          never needs a second call to render breadcrumbs.
+        fields:
+          document: Document
+          ancestors: list<Document>
+
     errors:
       SiteNotFound:
         namespace: Content
@@ -270,6 +319,28 @@ types:
         namespace: Content
         code: PERMISSION_DENIED
         safe-args: {}
+      NavTargetInvalid:
+        docs: >
+          M14.10. A nav item's targetDocumentId doesn't resolve to a PAGE document belonging to
+          this same site.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          targetDocumentId: string
+      NavTargetAmbiguous:
+        docs: >
+          M14.10. A nav item in one putNavItems call had neither or both of
+          targetDocumentId/targetUrl set — exactly one is required.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          sortOrder: integer
+      DuplicateNavItemSortOrder:
+        docs: Two nav items in the same putNavItems call shared a sortOrder — rejected up front.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          sortOrder: integer
 
 services:
   ContentService:
@@ -388,6 +459,29 @@ services:
             type: string
             param-type: path
         returns: PreviewLink
+      listNavItems:
+        http: GET /sites/{siteId}/nav-items
+        docs: M14.10. Admin read of the site's nav menu, in sortOrder.
+        args:
+          siteId:
+            type: string
+            param-type: path
+        returns: NavItemList
+      putNavItems:
+        http: PUT /sites/{siteId}/nav-items
+        docs: >
+          M14.10. Full replace of the site's nav menu — a small, hand-curated list edited as a
+          batch, the same shape putBlocks used before M14.6's revision refactor moved it to an
+          in-place update. Content:DuplicateNavItemSortOrder if two items share a sortOrder,
+          Content:NavTargetAmbiguous if an item has neither or both of
+          targetDocumentId/targetUrl, Content:NavTargetInvalid if targetDocumentId doesn't
+          resolve to a PAGE document in this same site.
+        args:
+          siteId:
+            type: string
+            param-type: path
+          request: PutNavItemsRequest
+        returns: NavItemList
 
   ContentPublicService:
     name: Content Public Service
@@ -484,3 +578,35 @@ services:
         http: GET /block-types
         docs: Active block types only.
         returns: BlockTypePage
+      listPublicNavItems:
+        http: GET /sites/{siteId}/nav-items
+        docs: >
+          M14.10. Resolved hrefs, in sortOrder — see PublicNavItem's own docs for the
+          omit-on-missing-or-draft-target behavior.
+        args:
+          siteId:
+            type: string
+            param-type: path
+        returns: PublicNavItemList
+      getPublicDocumentByPath:
+        http: GET /sites/{siteId}/documents/by-path
+        docs: >
+          M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor
+          chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered
+          list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the
+          document's real parent_document_id chain positionally — a mismatch at any position
+          (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving
+          by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a
+          PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same
+          discipline as getPublicBlocks.
+        args:
+          siteId:
+            type: string
+            param-type: path
+          locale:
+            type: string
+            param-type: query
+          path:
+            type: string
+            param-type: query
+        returns: DocumentWithAncestors

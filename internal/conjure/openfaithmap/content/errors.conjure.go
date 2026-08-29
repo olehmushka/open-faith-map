@@ -767,6 +767,156 @@ func (e *DuplicateBlockPosition) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type duplicateNavItemSortOrder struct {
+	SortOrder int `json:"sortOrder"`
+}
+
+func (o duplicateNavItemSortOrder) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *duplicateNavItemSortOrder) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewDuplicateNavItemSortOrder returns new instance of DuplicateNavItemSortOrder error.
+func NewDuplicateNavItemSortOrder(sortOrderArg int) *DuplicateNavItemSortOrder {
+	return &DuplicateNavItemSortOrder{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), duplicateNavItemSortOrder: duplicateNavItemSortOrder{SortOrder: sortOrderArg}}
+}
+
+// WrapWithDuplicateNavItemSortOrder returns new instance of DuplicateNavItemSortOrder error wrapping an existing error.
+func WrapWithDuplicateNavItemSortOrder(err error, sortOrderArg int) *DuplicateNavItemSortOrder {
+	return &DuplicateNavItemSortOrder{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, duplicateNavItemSortOrder: duplicateNavItemSortOrder{SortOrder: sortOrderArg}}
+}
+
+// DuplicateNavItemSortOrder is an error type.
+// Two nav items in the same putNavItems call shared a sortOrder — rejected up front.
+type DuplicateNavItemSortOrder struct {
+	errorInstanceID uuid.UUID
+	duplicateNavItemSortOrder
+	cause error
+	stack werror.StackTrace
+}
+
+// IsDuplicateNavItemSortOrder returns true if err is an instance of DuplicateNavItemSortOrder.
+func IsDuplicateNavItemSortOrder(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*DuplicateNavItemSortOrder)
+	return ok
+}
+
+func (e *DuplicateNavItemSortOrder) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:DuplicateNavItemSortOrder (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *DuplicateNavItemSortOrder) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *DuplicateNavItemSortOrder) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *DuplicateNavItemSortOrder) Message() string {
+	return "INVALID_ARGUMENT Content:DuplicateNavItemSortOrder"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *DuplicateNavItemSortOrder) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *DuplicateNavItemSortOrder) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *DuplicateNavItemSortOrder) Name() string {
+	return "Content:DuplicateNavItemSortOrder"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *DuplicateNavItemSortOrder) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *DuplicateNavItemSortOrder) Parameters() map[string]interface{} {
+	return map[string]interface{}{"sortOrder": e.SortOrder}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *DuplicateNavItemSortOrder) safeParams() map[string]interface{} {
+	return map[string]interface{}{"sortOrder": e.SortOrder, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *DuplicateNavItemSortOrder) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *DuplicateNavItemSortOrder) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *DuplicateNavItemSortOrder) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e DuplicateNavItemSortOrder) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.duplicateNavItemSortOrder)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:DuplicateNavItemSortOrder", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *DuplicateNavItemSortOrder) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters duplicateNavItemSortOrder
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.duplicateNavItemSortOrder = parameters
+	return nil
+}
+
 type eventMissingStart struct{}
 
 func (o eventMissingStart) MarshalYAML() (interface{}, error) {
@@ -1211,6 +1361,306 @@ func (e *InvalidTransition) UnmarshalJSON(data []byte) error {
 	}
 	e.errorInstanceID = serializableError.ErrorInstanceID
 	e.invalidTransition = parameters
+	return nil
+}
+
+type navTargetAmbiguous struct {
+	SortOrder int `json:"sortOrder"`
+}
+
+func (o navTargetAmbiguous) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *navTargetAmbiguous) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewNavTargetAmbiguous returns new instance of NavTargetAmbiguous error.
+func NewNavTargetAmbiguous(sortOrderArg int) *NavTargetAmbiguous {
+	return &NavTargetAmbiguous{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), navTargetAmbiguous: navTargetAmbiguous{SortOrder: sortOrderArg}}
+}
+
+// WrapWithNavTargetAmbiguous returns new instance of NavTargetAmbiguous error wrapping an existing error.
+func WrapWithNavTargetAmbiguous(err error, sortOrderArg int) *NavTargetAmbiguous {
+	return &NavTargetAmbiguous{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, navTargetAmbiguous: navTargetAmbiguous{SortOrder: sortOrderArg}}
+}
+
+// NavTargetAmbiguous is an error type.
+// M14.10. A nav item in one putNavItems call had neither or both of targetDocumentId/targetUrl set — exactly one is required.
+type NavTargetAmbiguous struct {
+	errorInstanceID uuid.UUID
+	navTargetAmbiguous
+	cause error
+	stack werror.StackTrace
+}
+
+// IsNavTargetAmbiguous returns true if err is an instance of NavTargetAmbiguous.
+func IsNavTargetAmbiguous(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*NavTargetAmbiguous)
+	return ok
+}
+
+func (e *NavTargetAmbiguous) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:NavTargetAmbiguous (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *NavTargetAmbiguous) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *NavTargetAmbiguous) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *NavTargetAmbiguous) Message() string {
+	return "INVALID_ARGUMENT Content:NavTargetAmbiguous"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *NavTargetAmbiguous) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *NavTargetAmbiguous) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *NavTargetAmbiguous) Name() string {
+	return "Content:NavTargetAmbiguous"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *NavTargetAmbiguous) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *NavTargetAmbiguous) Parameters() map[string]interface{} {
+	return map[string]interface{}{"sortOrder": e.SortOrder}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *NavTargetAmbiguous) safeParams() map[string]interface{} {
+	return map[string]interface{}{"sortOrder": e.SortOrder, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *NavTargetAmbiguous) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *NavTargetAmbiguous) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *NavTargetAmbiguous) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e NavTargetAmbiguous) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.navTargetAmbiguous)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:NavTargetAmbiguous", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *NavTargetAmbiguous) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters navTargetAmbiguous
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.navTargetAmbiguous = parameters
+	return nil
+}
+
+type navTargetInvalid struct {
+	TargetDocumentId string `json:"targetDocumentId"`
+}
+
+func (o navTargetInvalid) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *navTargetInvalid) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewNavTargetInvalid returns new instance of NavTargetInvalid error.
+func NewNavTargetInvalid(targetDocumentIdArg string) *NavTargetInvalid {
+	return &NavTargetInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), navTargetInvalid: navTargetInvalid{TargetDocumentId: targetDocumentIdArg}}
+}
+
+// WrapWithNavTargetInvalid returns new instance of NavTargetInvalid error wrapping an existing error.
+func WrapWithNavTargetInvalid(err error, targetDocumentIdArg string) *NavTargetInvalid {
+	return &NavTargetInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, navTargetInvalid: navTargetInvalid{TargetDocumentId: targetDocumentIdArg}}
+}
+
+// NavTargetInvalid is an error type.
+// M14.10. A nav item's targetDocumentId doesn't resolve to a PAGE document belonging to this same site.
+type NavTargetInvalid struct {
+	errorInstanceID uuid.UUID
+	navTargetInvalid
+	cause error
+	stack werror.StackTrace
+}
+
+// IsNavTargetInvalid returns true if err is an instance of NavTargetInvalid.
+func IsNavTargetInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*NavTargetInvalid)
+	return ok
+}
+
+func (e *NavTargetInvalid) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:NavTargetInvalid (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *NavTargetInvalid) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *NavTargetInvalid) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *NavTargetInvalid) Message() string {
+	return "INVALID_ARGUMENT Content:NavTargetInvalid"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *NavTargetInvalid) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *NavTargetInvalid) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *NavTargetInvalid) Name() string {
+	return "Content:NavTargetInvalid"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *NavTargetInvalid) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *NavTargetInvalid) Parameters() map[string]interface{} {
+	return map[string]interface{}{"targetDocumentId": e.TargetDocumentId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *NavTargetInvalid) safeParams() map[string]interface{} {
+	return map[string]interface{}{"targetDocumentId": e.TargetDocumentId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *NavTargetInvalid) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *NavTargetInvalid) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *NavTargetInvalid) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e NavTargetInvalid) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.navTargetInvalid)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:NavTargetInvalid", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *NavTargetInvalid) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters navTargetInvalid
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.navTargetInvalid = parameters
 	return nil
 }
 
@@ -2117,9 +2567,12 @@ func init() {
 	conjureerrors.RegisterErrorType("Content:BlockUrlNotAllowed", reflect.TypeOf(BlockUrlNotAllowed{}))
 	conjureerrors.RegisterErrorType("Content:DocumentNotFound", reflect.TypeOf(DocumentNotFound{}))
 	conjureerrors.RegisterErrorType("Content:DuplicateBlockPosition", reflect.TypeOf(DuplicateBlockPosition{}))
+	conjureerrors.RegisterErrorType("Content:DuplicateNavItemSortOrder", reflect.TypeOf(DuplicateNavItemSortOrder{}))
 	conjureerrors.RegisterErrorType("Content:EventMissingStart", reflect.TypeOf(EventMissingStart{}))
 	conjureerrors.RegisterErrorType("Content:Forbidden", reflect.TypeOf(Forbidden{}))
 	conjureerrors.RegisterErrorType("Content:InvalidTransition", reflect.TypeOf(InvalidTransition{}))
+	conjureerrors.RegisterErrorType("Content:NavTargetAmbiguous", reflect.TypeOf(NavTargetAmbiguous{}))
+	conjureerrors.RegisterErrorType("Content:NavTargetInvalid", reflect.TypeOf(NavTargetInvalid{}))
 	conjureerrors.RegisterErrorType("Content:ParentTooDeep", reflect.TypeOf(ParentTooDeep{}))
 	conjureerrors.RegisterErrorType("Content:PreviewTokenInvalid", reflect.TypeOf(PreviewTokenInvalid{}))
 	conjureerrors.RegisterErrorType("Content:RevisionNotFound", reflect.TypeOf(RevisionNotFound{}))

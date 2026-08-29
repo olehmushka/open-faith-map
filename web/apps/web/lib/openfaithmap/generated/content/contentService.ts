@@ -3,8 +3,10 @@ import { ICreateDocumentRequest } from "./createDocumentRequest";
 import { ICreateSiteRequest } from "./createSiteRequest";
 import { IDocument } from "./document";
 import { IDocumentPage } from "./documentPage";
+import { INavItemList } from "./navItemList";
 import { IPreviewLink } from "./previewLink";
 import { IPutBlocksRequest } from "./putBlocksRequest";
+import { IPutNavItemsRequest } from "./putNavItemsRequest";
 import { IRevisionPage } from "./revisionPage";
 import { ISite } from "./site";
 import { ITransitionDocumentRequest } from "./transitionDocumentRequest";
@@ -46,6 +48,13 @@ export interface IContentService {
      *
      */
     createPreviewLink(siteId: string): Promise<IPreviewLink>;
+    /** M14.10. Admin read of the site's nav menu, in sortOrder. */
+    listNavItems(siteId: string): Promise<INavItemList>;
+    /**
+     * M14.10. Full replace of the site's nav menu — a small, hand-curated list edited as a batch, the same shape putBlocks used before M14.6's revision refactor moved it to an in-place update. Content:DuplicateNavItemSortOrder if two items share a sortOrder, Content:NavTargetAmbiguous if an item has neither or both of targetDocumentId/targetUrl, Content:NavTargetInvalid if targetDocumentId doesn't resolve to a PAGE document in this same site.
+     *
+     */
+    putNavItems(siteId: string, request: IPutNavItemsRequest): Promise<INavItemList>;
 }
 
 export class ContentService implements IContentService {
@@ -247,6 +256,45 @@ export class ContentService implements IContentService {
             "POST",
             "/content/v1/sites/{siteId}/preview-link",
             __undefined,
+            __undefined,
+            __undefined,
+            [
+                siteId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M14.10. Admin read of the site's nav menu, in sortOrder. */
+    public listNavItems(siteId: string): Promise<INavItemList> {
+        return this.bridge.call<INavItemList>(
+            "ContentService",
+            "listNavItems",
+            "GET",
+            "/content/v1/sites/{siteId}/nav-items",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                siteId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.10. Full replace of the site's nav menu — a small, hand-curated list edited as a batch, the same shape putBlocks used before M14.6's revision refactor moved it to an in-place update. Content:DuplicateNavItemSortOrder if two items share a sortOrder, Content:NavTargetAmbiguous if an item has neither or both of targetDocumentId/targetUrl, Content:NavTargetInvalid if targetDocumentId doesn't resolve to a PAGE document in this same site.
+     *
+     */
+    public putNavItems(siteId: string, request: IPutNavItemsRequest): Promise<INavItemList> {
+        return this.bridge.call<INavItemList>(
+            "ContentService",
+            "putNavItems",
+            "PUT",
+            "/content/v1/sites/{siteId}/nav-items",
+            request,
             __undefined,
             __undefined,
             [

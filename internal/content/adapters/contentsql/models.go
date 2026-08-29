@@ -227,6 +227,16 @@ type OpenfaithmapContentSite struct {
 	DeletedAt           pgtype.Timestamptz
 }
 
+type OpenfaithmapContentSiteNavItem struct {
+	ID               string
+	SiteID           string
+	Label            string
+	TargetDocumentID pgtype.Text
+	TargetUrl        pgtype.Text
+	SortOrder        int32
+	CreatedAt        time.Time
+}
+
 type OpenfaithmapDirectoryClosureStatus struct {
 	GraphID       string
 	LastCheckedAt time.Time

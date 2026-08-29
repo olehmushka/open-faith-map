@@ -21,6 +21,8 @@ import type {
   ICreateSiteRequest,
   IDocument,
   IDocumentRevision,
+  INavItem,
+  INavItemInput,
   ISite,
   IUpdateDocumentRequest,
 } from "./openfaithmap/generated/content";
@@ -35,6 +37,8 @@ export type CreateDocumentInput = ICreateDocumentRequest;
 export type UpdateDocumentInput = IUpdateDocumentRequest;
 export type BlockInput = IBlockInput;
 export type DocumentRevision = IDocumentRevision;
+export type NavItem = INavItem;
+export type NavItemInput = INavItemInput;
 export { DocumentTransitionAction };
 
 export class ContentApiError extends Error {
@@ -139,6 +143,18 @@ export async function restoreRevision(documentId: string, revisionId: string): P
 export async function createPreviewLink(siteId: string): Promise<string> {
   const link = await unwrap((await client()).content.createPreviewLink(siteId));
   return link.token;
+}
+
+// M14.10: the site's hand-built nav menu — putNavItems is a full replace (same shape as putBlocks
+// before M14.6's revision refactor), so the editor always saves the whole ordered list as one call.
+export async function listNavItems(siteId: string): Promise<NavItem[]> {
+  const list = await unwrap((await client()).content.listNavItems(siteId));
+  return list.items;
+}
+
+export async function putNavItems(siteId: string, items: NavItemInput[]): Promise<NavItem[]> {
+  const list = await unwrap((await client()).content.putNavItems(siteId, { items }));
+  return list.items;
 }
 
 // buildPreviewUrl points at the SAME tenant host every other tenant page uses (D-TenantSubdomains) —

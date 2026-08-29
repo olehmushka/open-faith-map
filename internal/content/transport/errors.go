@@ -32,6 +32,9 @@ func mapErr(err error, c errCtx) error {
 	var blockInvalid *domain.BlockDataInvalidError
 	var dupPosition *domain.DuplicateBlockPositionError
 	var urlNotAllowed *domain.BlockUrlNotAllowedError
+	var navTargetInvalid *domain.NavTargetInvalidError
+	var navTargetAmbiguous *domain.NavTargetAmbiguousError
+	var dupNavSortOrder *domain.DuplicateNavItemSortOrderError
 
 	switch {
 	case errors.As(err, &slugTaken):
@@ -44,6 +47,12 @@ func mapErr(err error, c errCtx) error {
 		return gencontent.NewDuplicateBlockPosition(dupPosition.Position)
 	case errors.As(err, &urlNotAllowed):
 		return gencontent.NewBlockUrlNotAllowed(urlNotAllowed.BlockTypeCode, urlNotAllowed.Position, urlNotAllowed.Field)
+	case errors.As(err, &navTargetInvalid):
+		return gencontent.NewNavTargetInvalid(navTargetInvalid.TargetDocumentID)
+	case errors.As(err, &navTargetAmbiguous):
+		return gencontent.NewNavTargetAmbiguous(navTargetAmbiguous.SortOrder)
+	case errors.As(err, &dupNavSortOrder):
+		return gencontent.NewDuplicateNavItemSortOrder(dupNavSortOrder.SortOrder)
 	case errors.Is(err, domain.ErrSiteNotFound):
 		return gencontent.NewSiteNotFound(c.SiteID)
 	case errors.Is(err, domain.ErrDocumentNotFound):

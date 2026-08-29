@@ -57,7 +57,13 @@ func TestContentIntegration(t *testing.T) {
 	var personIDs, unitIDs, siteIDs, assignmentIDs, documentIDs []string
 	t.Cleanup(func() {
 		bg := context.Background()
-		for _, id := range documentIDs {
+		// Reverse creation order: content_documents.parent_document_id has no ON DELETE CASCADE
+		// (app-enforced 3-level cap, not a DB one — see checkParentDepth), and M14.10 is the first
+		// case in this file to create a real parent/child chain, so a child must be deleted before
+		// its parent or the FK rejects the parent's delete. Reverse order also happens to be a
+		// no-op for every pre-existing (non-nested) document in this file.
+		for i := len(documentIDs) - 1; i >= 0; i-- {
+			id := documentIDs[i]
 			// ON DELETE CASCADE from content_blocks; content_documents.site_id has no cascade, so
 			// this must run before the content_sites delete below.
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.content_documents WHERE id = $1`, id); err != nil {
@@ -679,4 +685,255 @@ func TestContentIntegration(t *testing.T) {
 	if _, err := contentSvc.ListPreviewDocuments(context.Background(), site.ID, otherSiteToken, nil, nil); !errors.Is(err, contentdomain.ErrPreviewTokenInvalid) {
 		t.Errorf("ListPreviewDocuments (token scoped to a different site) error = %v, want ErrPreviewTokenInvalid", err)
 	}
+
+	// ---- M14.10: nav items + page-route resolution ----
+
+	// PutNavItems/ListNavItems are content.manage-gated like every other write/draft-adjacent read
+	// on this service.
+	if _, err := contentSvc.PutNavItems(otherCtx, site.ID, nil); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("PutNavItems by non-manager error = %v, want ErrForbidden", err)
+	}
+	if _, err := contentSvc.ListNavItems(otherCtx, site.ID); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("ListNavItems by non-manager error = %v, want ErrForbidden", err)
+	}
+
+	// A 3-level published page tree, so path resolution/breadcrumbs can be proved at every depth.
+	topPage, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-10-top",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (top page): %v", err)
+	}
+	documentIDs = append(documentIDs, topPage.ID)
+	if _, err := contentSvc.PutBlocks(adminCtx, topPage.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"Top"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks (top page): %v", err)
+	}
+	if _, err := contentSvc.TransitionDocument(adminCtx, topPage.ID, contentdomain.ActionPublish); err != nil {
+		t.Fatalf("TransitionDocument(PUBLISH, top page): %v", err)
+	}
+
+	childPage, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-10-child", ParentDocumentID: &topPage.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (child page): %v", err)
+	}
+	documentIDs = append(documentIDs, childPage.ID)
+	if _, err := contentSvc.PutBlocks(adminCtx, childPage.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"Child"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks (child page): %v", err)
+	}
+	if _, err := contentSvc.TransitionDocument(adminCtx, childPage.ID, contentdomain.ActionPublish); err != nil {
+		t.Fatalf("TransitionDocument(PUBLISH, child page): %v", err)
+	}
+
+	grandchildPage, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-10-grandchild", ParentDocumentID: &childPage.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (grandchild page): %v", err)
+	}
+	documentIDs = append(documentIDs, grandchildPage.ID)
+	if _, err := contentSvc.PutBlocks(adminCtx, grandchildPage.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"Grandchild"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks (grandchild page): %v", err)
+	}
+	if _, err := contentSvc.TransitionDocument(adminCtx, grandchildPage.ID, contentdomain.ActionPublish); err != nil {
+		t.Fatalf("TransitionDocument(PUBLISH, grandchild page): %v", err)
+	}
+
+	// A never-published (DRAFT) top-level page — for the DRAFT-leaf-404 and DRAFT-nav-target-
+	// omitted cases below.
+	draftPage, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-10-draft",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (draft page): %v", err)
+	}
+	documentIDs = append(documentIDs, draftPage.ID)
+
+	// --- GetPublicDocumentByPath: happy path at depth 1/2/3, ancestors returned root-first.
+	got1, ancestors1, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top"})
+	if err != nil {
+		t.Fatalf("GetPublicDocumentByPath (depth 1): %v", err)
+	}
+	if got1.ID != topPage.ID || len(ancestors1) != 0 {
+		t.Errorf("GetPublicDocumentByPath (depth 1) = doc %s, %d ancestors, want %s, 0 ancestors", got1.ID, len(ancestors1), topPage.ID)
+	}
+
+	got2, ancestors2, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top", "m14-10-child"})
+	if err != nil {
+		t.Fatalf("GetPublicDocumentByPath (depth 2): %v", err)
+	}
+	if got2.ID != childPage.ID || len(ancestors2) != 1 || ancestors2[0].ID != topPage.ID {
+		t.Errorf("GetPublicDocumentByPath (depth 2) = doc %s, ancestors %+v, want %s, [%s]", got2.ID, ancestors2, childPage.ID, topPage.ID)
+	}
+
+	got3, ancestors3, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top", "m14-10-child", "m14-10-grandchild"})
+	if err != nil {
+		t.Fatalf("GetPublicDocumentByPath (depth 3): %v", err)
+	}
+	if got3.ID != grandchildPage.ID || len(ancestors3) != 2 || ancestors3[0].ID != topPage.ID || ancestors3[1].ID != childPage.ID {
+		t.Errorf("GetPublicDocumentByPath (depth 3) = doc %s, ancestors %+v, want %s, [%s %s]", got3.ID, ancestors3, grandchildPage.ID, topPage.ID, childPage.ID)
+	}
+
+	// A DRAFT leaf 404s exactly like a missing document does.
+	if _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-draft"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+		t.Errorf("GetPublicDocumentByPath (draft leaf) error = %v, want ErrDocumentNotFound", err)
+	}
+
+	// A wrong MIDDLE segment 404s — proves positional ancestor matching, not last-segment-only
+	// resolution (a naive implementation would resolve this by grandchildPage's own slug alone,
+	// since slugs are unique per site+kind+locale, not per parent).
+	if _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top", "wrong-slug", "m14-10-grandchild"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+		t.Errorf("GetPublicDocumentByPath (wrong middle segment) error = %v, want ErrDocumentNotFound", err)
+	}
+
+	// More than 3 segments 404s outright, before any lookup.
+	if _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"a", "b", "c", "d"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+		t.Errorf("GetPublicDocumentByPath (>3 segments) error = %v, want ErrDocumentNotFound", err)
+	}
+
+	// --- PutNavItems: full CRUD round trip, mixing an internal target with an external URL.
+	navItems, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
+		{Label: "Top", TargetDocumentID: &topPage.ID, SortOrder: 0},
+		{Label: "Our Friends", TargetURL: strPtr("https://example.org/friends"), SortOrder: 1},
+		{Label: "Grandchild", TargetDocumentID: &grandchildPage.ID, SortOrder: 2},
+	})
+	if err != nil {
+		t.Fatalf("PutNavItems: %v", err)
+	}
+	if len(navItems) != 3 {
+		t.Fatalf("PutNavItems returned %d items, want 3", len(navItems))
+	}
+	listedNavItems, err := contentSvc.ListNavItems(adminCtx, site.ID)
+	if err != nil {
+		t.Fatalf("ListNavItems: %v", err)
+	}
+	if len(listedNavItems) != 3 {
+		t.Errorf("ListNavItems = %d items, want 3", len(listedNavItems))
+	}
+
+	// A full replace really replaces — the next call's items are the only ones left afterward,
+	// nothing from the previous call lingers.
+	if _, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
+		{Label: "Top", TargetDocumentID: &topPage.ID, SortOrder: 0},
+		{Label: "Draft (never public)", TargetDocumentID: &draftPage.ID, SortOrder: 1},
+		{Label: "External", TargetURL: strPtr("https://example.org/external"), SortOrder: 2},
+	}); err != nil {
+		t.Fatalf("PutNavItems (replace): %v", err)
+	}
+
+	// --- ListPublicNavItems: the internal item resolves to a real hierarchical href; the item
+	// targeting the still-DRAFT page is silently omitted (never a broken link); the external item
+	// passes through with External=true and its raw target URL as Href.
+	publicNavItems, err := contentSvc.ListPublicNavItems(context.Background(), site.ID)
+	if err != nil {
+		t.Fatalf("ListPublicNavItems: %v", err)
+	}
+	if len(publicNavItems) != 2 {
+		t.Fatalf("ListPublicNavItems = %+v, want 2 items (draft target omitted)", publicNavItems)
+	}
+	var sawTop, sawExternal bool
+	for _, item := range publicNavItems {
+		switch item.Label {
+		case "Top":
+			sawTop = true
+			if item.External {
+				t.Errorf("ListPublicNavItems Top item External = true, want false")
+			}
+			if want := "/en/m14-10-top"; item.Href != want {
+				t.Errorf("ListPublicNavItems Top item Href = %q, want %q", item.Href, want)
+			}
+		case "External":
+			sawExternal = true
+			if !item.External {
+				t.Errorf("ListPublicNavItems External item External = false, want true")
+			}
+			if item.Href != "https://example.org/external" {
+				t.Errorf("ListPublicNavItems External item Href = %q, want the raw target URL", item.Href)
+			}
+		case "Draft (never public)":
+			t.Errorf("ListPublicNavItems unexpectedly included the draft-target item")
+		}
+	}
+	if !sawTop || !sawExternal {
+		t.Errorf("ListPublicNavItems = %+v, want both Top and External items present", publicNavItems)
+	}
+
+	// A nested target resolves to its full hierarchical href, not just its own slug.
+	if _, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
+		{Label: "Grandchild", TargetDocumentID: &grandchildPage.ID, SortOrder: 0},
+	}); err != nil {
+		t.Fatalf("PutNavItems (nested target): %v", err)
+	}
+	publicNavItemsNested, err := contentSvc.ListPublicNavItems(context.Background(), site.ID)
+	if err != nil {
+		t.Fatalf("ListPublicNavItems (nested target): %v", err)
+	}
+	if len(publicNavItemsNested) != 1 {
+		t.Fatalf("ListPublicNavItems (nested target) = %+v, want 1 item", publicNavItemsNested)
+	}
+	if want := "/en/m14-10-top/m14-10-child/m14-10-grandchild"; publicNavItemsNested[0].Href != want {
+		t.Errorf("ListPublicNavItems (nested target) Href = %q, want %q", publicNavItemsNested[0].Href, want)
+	}
+
+	// --- Validation: duplicate sortOrder, ambiguous target (both/neither set), cross-site target,
+	// non-PAGE-kind target — each rejected up front with its own typed error.
+	if _, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
+		{Label: "A", TargetURL: strPtr("https://example.org/a"), SortOrder: 0},
+		{Label: "B", TargetURL: strPtr("https://example.org/b"), SortOrder: 0},
+	}); !errors.As(err, new(*contentdomain.DuplicateNavItemSortOrderError)) {
+		t.Errorf("PutNavItems (duplicate sortOrder) error = %v, want *DuplicateNavItemSortOrderError", err)
+	}
+
+	if _, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
+		{Label: "Neither", SortOrder: 0},
+	}); !errors.As(err, new(*contentdomain.NavTargetAmbiguousError)) {
+		t.Errorf("PutNavItems (neither target set) error = %v, want *NavTargetAmbiguousError", err)
+	}
+	if _, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
+		{Label: "Both", TargetDocumentID: &topPage.ID, TargetURL: strPtr("https://example.org"), SortOrder: 0},
+	}); !errors.As(err, new(*contentdomain.NavTargetAmbiguousError)) {
+		t.Errorf("PutNavItems (both targets set) error = %v, want *NavTargetAmbiguousError", err)
+	}
+
+	// A targetDocumentId belonging to a DIFFERENT site (otherSite/unitC, created above in the
+	// M14.7 preview section) is rejected — content.manage on THIS site doesn't imply trust of a
+	// document id just because it resolves to a real PAGE somewhere else.
+	crossSiteDoc, err := contentSvc.CreateDocument(adminCtx, otherSite.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-10-cross-site-target",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (otherSite, cross-site nav target check): %v", err)
+	}
+	documentIDs = append(documentIDs, crossSiteDoc.ID)
+	if _, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
+		{Label: "Cross-site", TargetDocumentID: &crossSiteDoc.ID, SortOrder: 0},
+	}); !errors.As(err, new(*contentdomain.NavTargetInvalidError)) {
+		t.Errorf("PutNavItems (cross-site target) error = %v, want *NavTargetInvalidError", err)
+	}
+
+	// A targetDocumentId pointing at a POST (not a PAGE) is rejected the same way.
+	postDoc, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPost, Locale: "en", Slug: "m14-10-a-post",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (POST, for non-PAGE-kind nav target check): %v", err)
+	}
+	documentIDs = append(documentIDs, postDoc.ID)
+	var navInvalidErr *contentdomain.NavTargetInvalidError
+	if _, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
+		{Label: "A Post", TargetDocumentID: &postDoc.ID, SortOrder: 0},
+	}); !errors.As(err, &navInvalidErr) {
+		t.Errorf("PutNavItems (POST-kind target) error = %v, want *NavTargetInvalidError", err)
+	} else if navInvalidErr.TargetDocumentID != postDoc.ID {
+		t.Errorf("PutNavItems (POST-kind target) TargetDocumentID = %q, want %q", navInvalidErr.TargetDocumentID, postDoc.ID)
+	}
 }
+
+func strPtr(s string) *string { return &s }

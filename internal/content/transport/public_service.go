@@ -5,6 +5,7 @@ package transport
 
 import (
 	"context"
+	"strings"
 
 	gencontent "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/content"
 	"github.com/olehmushka/open-faith-map/internal/content/application"
@@ -76,6 +77,37 @@ func (s *PublicService) GetPreviewBlocks(ctx context.Context, documentIdArg stri
 		return gencontent.BlockList{}, mapErr(err, errCtx{DocumentID: documentIdArg})
 	}
 	return gencontent.BlockList{Blocks: toAPIBlocks(blocks)}, nil
+}
+
+// ListPublicNavItems returns the site's nav menu with every target already resolved to a
+// ready-to-render href (see PublicNavItem's own docs in api/content.conjure.yml).
+func (s *PublicService) ListPublicNavItems(ctx context.Context, siteIdArg string) (gencontent.PublicNavItemList, error) {
+	items, err := s.appService.ListPublicNavItems(ctx, siteIdArg)
+	if err != nil {
+		return gencontent.PublicNavItemList{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	out := make([]gencontent.PublicNavItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, gencontent.PublicNavItem{Label: item.Label, Href: item.Href, External: item.External})
+	}
+	return gencontent.PublicNavItemList{Items: out}, nil
+}
+
+// GetPublicDocumentByPath splits the slash-joined path query param into ordered slug segments
+// (filtering empty segments, so a leading/trailing "/" is tolerated) and resolves the leaf PAGE
+// document plus its real ancestor chain — see the endpoint's own docs in api/content.conjure.yml.
+func (s *PublicService) GetPublicDocumentByPath(ctx context.Context, siteIdArg string, localeArg string, pathArg string) (gencontent.DocumentWithAncestors, error) {
+	var segments []string
+	for _, seg := range strings.Split(pathArg, "/") {
+		if seg != "" {
+			segments = append(segments, seg)
+		}
+	}
+	doc, ancestors, err := s.appService.GetPublicDocumentByPath(ctx, siteIdArg, localeArg, segments)
+	if err != nil {
+		return gencontent.DocumentWithAncestors{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	return gencontent.DocumentWithAncestors{Document: toAPIDocument(doc), Ancestors: toAPIDocuments(ancestors)}, nil
 }
 
 func (s *PublicService) ListBlockTypes(ctx context.Context) (gencontent.BlockTypePage, error) {
