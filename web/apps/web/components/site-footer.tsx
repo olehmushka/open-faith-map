@@ -36,7 +36,13 @@ export async function SiteFooter({ chrome }: { chrome: SiteChrome }) {
 
   return (
     <footer className="border-t">
-      <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-8 text-sm">
+      <div
+        className="mx-auto flex max-w-3xl flex-col gap-4 text-sm"
+        style={{
+          paddingInline: "calc(1.5rem * var(--of-space-scale, 1))",
+          paddingBlock: "calc(2rem * var(--of-space-scale, 1))",
+        }}
+      >
         {chrome.address ? <p className="text-muted-foreground">{chrome.address}</p> : null}
 
         {hasSchedules ? (

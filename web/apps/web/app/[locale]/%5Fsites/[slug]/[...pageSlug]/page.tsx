@@ -37,7 +37,10 @@ export default async function TenantPageRoute({
   }
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-12">
+    <main
+      className="mx-auto flex max-w-3xl flex-col gap-6"
+      style={{ paddingInline: "calc(1.5rem * var(--of-space-scale, 1))", paddingBlock: "calc(3rem * var(--of-space-scale, 1))" }}
+    >
       <Breadcrumbs ancestors={resolved.ancestors} current={resolved.document} locale={locale} />
       <PageDocument documentId={resolved.document.id} />
     </main>

@@ -9,8 +9,8 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.11 (M14.0–M14.9
-2026-08-27/28, M14.10–M14.11 2026-08-29) are done**, no other sub-milestone is built yet. It is the second half of the
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.12 (M14.0–M14.9
+2026-08-27/28, M14.10–M14.12 2026-08-29) are done**, no other sub-milestone is built yet. It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -34,7 +34,10 @@ its own row below. **M14.11 gives every tenant site a real header and footer** �
 name/logo/nav in the header, address/service-schedule/social-links in the footer, the address and
 schedule composed live from religion's data at request time (content's application layer now
 depends on religion's, the same direct-interface-call shape discovery already established) — see its
-own row below. Next up: M14.12.
+own row below. **M14.12 gives `content_sites.theme` a real, curated schema** — accent color, font
+pairing, spacing scale, and header layout are each chosen from a fixed vocabulary, never typed as
+raw CSS, with a WCAG AA contrast check rejecting a failing accent/mode pair at write time — see its
+own row below. Next up: M14.13.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -92,7 +95,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.9 · Tenant subdomain routing (Phase 1) | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-28).** `web/apps/web/proxy.ts` (Next 16 renamed `middleware.ts` to `proxy.ts` — extended in place, composed with the existing next-intl locale middleware, rather than a second file) resolves the `Host` header to a site slug (`lib/tenant-host.ts`, unit-tested) and rewrites into an internal `/[locale]/_sites/[slug]/…` tree; the apex host keeps serving discovery unchanged. **Direct `/_sites/*` access from the apex 404s** — checked first, before next-intl even runs. **Reserved-subdomain blocklist enforced server-side** (`internal/content/application/slugvalidation.go`, checked in `CreateSite` before the existing `Content:SlugTaken` uniqueness probe) — `content_sites.slug` is now a hostname, so `admin`/`api`/`auth`/`login`/`www`/`app`/`mail`/`static`/`support`/`billing`/`help`/`status` and 25 more are unclaimable, rejected with a new typed `Content:SlugReserved` error. A real 301 (not Next's 307/308 `redirect()`) from the old `/congregations/[unitId]` route, now a Route Handler, to the tenant root. Rendering logic extracted into `components/site-page.tsx`, an "extractable module" reused by the new thin `[locale]/%5Fsites/[slug]/page.tsx` wrapper (the actual directory is `%5Fsites` — Next.js's private-folder convention would otherwise exclude a literal `_sites` folder from routing; `%5F` is the documented URL-encoded-underscore escape) — set up for the owner's Phase 2 (`openfaithmap-sites`) to be a move, not a rewrite. **Also implements M14.0's U16 ruling:** `content.manage` (`PermContentManage`) stops resolving through `religionorg.manage`'s subtree grant and becomes its own per-unit permission granted to `congregation-admin` only (`migrations/0026_content_manage_permission.sql`, same shape as M13.2's `site.manage`); registration operators lose that edit access, confirmed with the owner as leaving them with **no** replacement edit path for now — granting a moderation permission is a separate, later decision. Cross-tenant-denial and operator-denial cases (`docs/modules/content.md`'s previously-named test-coverage gap) covered by new `internal/content/content_integration_test.go` cases against real Postgres. Verified against a real running docker-compose stack: `grace.localhost:3002/` resolves through a real `content_sites` row created over HTTP by a real `congregation-admin` session (307 to `/en` with `NEXT_LOCALE` preserved, then 200); `localhost:3002/_sites/grace` and `/en/_sites/grace` both 404 from the apex; `CreateSite` with `slug: "admin"` returns `400 Content:SlugReserved` over a direct HTTP call (bypassing the admin form entirely); the old `/en/congregations/[unitId]` route returns a real `301` to `http://grace.localhost:3002/`. See [D-TenantSubdomains](architecture/decisions.md#d-tenantsubdomains--subdomain-per-congregation-wildcard-tls-and-a-reserved-slug-blocklist). `Verified` awaits CI green on `main`. |
 | M14.10 · Navigation + page routes | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-29).** `/[pageSlug]` and hierarchical nested child routes on the tenant host, honoring the existing 3-level cap — a wrong ancestor segment 404s, never resolved by the last segment alone. **Nav is a hand-built menu (`content_site_nav_items`), not derived from the page tree** — M14.0 replaced the original page-tree-derivation assumption with an independently-curated menu (label, target document or external URL, sort order); `parent_document_id` still governs page nesting/breadcrumbs, just not the nav itself. Breadcrumbs at depth ≥ 2. The site root drops its old inline "every Page rendered inline" section (owner decision) — Pages are reachable only via their own route or the nav menu; Posts/Events feeds are unchanged. `Verified` awaits CI green on `main`. |
 | M14.11 · Site chrome — header, footer, template parts | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-29).** Congregation name, logo URL, nav, and a footer whose contact details and service times are read **live from `religion_sites`/`religion_service_schedules`, never copied** — the existing content.md invariant, restated because a footer is exactly where someone would be tempted to denormalize. Social links. Site-level settings on `content_sites`, not content documents. |
-| M14.12 · Curated theme tokens | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Gives the entirely-unused `content_sites.theme` a real schema: accent color from a vetted palette, one of a few font pairings, a spacing scale, header layout, light/dark — WordPress's `theme.json` lesson, a fixed vocabulary rather than CSS. Emitted as CSS custom properties. **A WCAG contrast check rejects a failing combination at write time**, so no congregation can ship an unreadable site. Live theme preview in the admin. |
+| M14.12 · Curated theme tokens | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-29).** `content_sites.theme` gets a real schema: accent color from an 8-color vetted palette, one of three system-font pairings, a spacing scale, a header layout, and light/dark/system mode — WordPress's `theme.json` lesson, a fixed vocabulary rather than CSS. Emitted as CSS custom properties consumed by the tenant layout. **A WCAG AA contrast check rejects a failing accent/mode combination at write time**, naming the pair. Live theme preview in the admin. `Verified` awaits CI green on `main`. |
 | M14.13 · Starter patterns + block-type catalog admin | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_patterns` with WordPress's **unsynced** semantics: an inserted pattern detaches into ordinary blocks and is freely edited. Seeded church-specific starters — Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement. Finally builds the `content.catalog.manage` endpoints M3 left unbuilt (moderator-gated per D-PlatformModerator), so block types and patterns stop being migration-only. The single biggest onboarding lever in the arc. |
 | M14.14 · Locale switching — closes `DS-OFM-7` | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Visitor-facing locale picker offering **only locales that actually have a published variant**, plus `hreflang` alternates. Editor-side translation panel per document showing which locales exist and their state, with "create translation" seeding a variant into the same translation group. Translation groups have worked structurally since M3 with no UI on either side. |
 | M14.15 · Scheduled publishing, no scheduler | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `content_documents.publish_at` + a `SCHEDULED` state; the public predicate becomes `state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())`. **Correctness lives in the `WHERE` clause**, so it behaves identically in local dev and on a VM that does not exist yet — no timer, no goroutine, nothing to fire, and no new unattributable background writer (`DS-OFM-16`). The one cost: the admin UI must show **effective** state, not the raw column. |
@@ -901,22 +904,72 @@ dedicated verification pass rather than silently skipped. `Verified` awaits CI g
 
 ### M14.12 · Curated theme tokens
 
-**Not started.** Depends on M14.11. Gives `content_sites.theme` its first-ever reader.
+**Built (2026-08-29).** Depends on M14.11.
 
-A real schema for the column: accent color from a vetted palette, one of a small set of font
-pairings, a spacing scale, header layout, light/dark. WordPress's `theme.json` lesson — a fixed
-vocabulary, not CSS, and not free-form hex entry. Emitted as CSS custom properties consumed by the
-tenant layout.
+**Correction to the original scoping text, found at build time:** `content_sites.theme` was not
+actually unread — an M3-era editor already existed
+(`web/apps/admin/app/[locale]/admin/sites/[unitId]/page.tsx`) with three **raw text inputs**
+(`accentColor`/`fontPairing`/`headerLayout`) and zero validation, and the backend
+(`UpdateSiteTheme`) passed the submitted bytes straight to storage. `web/apps/web` never read
+`.theme` at all — the public renderer applied no theme styling before this milestone. M14.12's real
+job was retrofitting a real, curated schema onto an already-live but unvalidated feature, not
+greenfield work — safe to do as a hard replacement, since no live congregation content exists yet
+(the same fact M14.3's migration already relied on).
 
-**A WCAG contrast check runs at write time and rejects a failing combination.** A warning would be
-ignored; the platform badges its congregations on accessibility elsewhere, and shipping a
-congregation an unreadable site would contradict that directly.
+A real schema for the column, enforced structurally by a fixed JSON Schema (`enum` per field, the
+same `santhosh-tekuri/jsonschema/v6` library `blockvalidation.go` already uses) rather than merely
+requested in the UI: **accent** from an 8-color curated palette (indigo/violet/rose/amber/emerald/
+teal/sky/slate), **mode** (light/dark/system), **fontPairing** from three system-font-stack pairings
+(Modern Sans/Classic Serif/Friendly Rounded — no web fonts, no new dependency, no CSP allowlist
+change, confirmed with the owner), **spacing** (compact/comfortable/spacious), and **headerLayout**
+(logo-left/centered/stacked) — WordPress's `theme.json` lesson, a fixed vocabulary, never free-form
+CSS or a raw hex/font entry. Emitted as CSS custom properties (`internal/content/application/
+themetokens.go` is the Go source of truth; `web/apps/{admin,web}/lib/theme-tokens.ts` duplicate the
+token→value table, the same "frontend-only static table" precedent M14.5's `block-catalog.ts`
+established, since no shared package exists between the two Next apps) — overriding `--primary`/
+`--primary-foreground` (already read by every shadcn-derived Tailwind utility used throughout
+blocks, so accent propagates with no new CSS classes anywhere) and `--font-heading` on a wrapper the
+tenant layout renders around header/children/footer; a forced light/dark mode also overrides
+`--background`/`--foreground`/`--card`/`--border` to the same values `globals.css`'s own media-query
+block already uses. `SiteHeader` gained a `layout` prop branching the three curated arrangements —
+previously the component had exactly one, undifferentiated layout.
 
-Live theme preview in the admin.
+**A WCAG AA contrast check runs at write time and rejects a failing combination**
+(`internal/content/application/themevalidation.go`'s `checkThemeContrast`, real relative-luminance
+math against the actual `#FFFFFF`/`#0A0A0A` background values `globals.css` renders, not a
+placeholder) — computed, not curated by hand, so the palette has genuine pass/fail variation rather
+than every entry being pre-guaranteed safe: a dark-saturated accent (e.g. indigo) fails against the
+near-black dark background, a bright accent (e.g. amber) fails against the white light background,
+and `system` mode is checked against both, making it the most restrictive of the three. A typed
+`Content:ThemeContrastFailed{accent, mode}` names the failing pair; a value outside the curated
+vocabulary gets a separate `Content:ThemeInvalid{field}` — both mirror `BlockDataInvalidError`'s
+existing safe-arg discipline (a curated token name, never a raw submitted value, ever reaches the
+error).
 
-**Acceptance criteria.** A theme change is visible on the public tenant site. A combination failing
-AA contrast is rejected with a typed error naming the failing pair. No congregation can enter a raw
-hex value or an arbitrary font.
+Live theme preview in the admin: `theme-form.tsx` is a client component (the M14.12 acceptance
+criterion needs the preview to update before the form is ever submitted, unlike the plain
+`<form action={...}>` chrome card next to it) rendering curated `<select>`s plus a swatch that
+recomputes from the same duplicated token table as the public site.
+
+**Acceptance criteria — met, verified against the running docker-compose stack** (the API's real
+app port isn't published to the host per `D-HeadlessTopology`, so verification ran from inside the
+`openfaithmap-web` container, on the compose network, against `https://openfaithmap-api:3000`): a
+curated theme (`emerald`/`light`/`classic-serif`/`spacious`/`centered`) written over a real
+authenticated HTTP call renders as real CSS custom properties (`--primary:#047857`, the correct
+auto-computed white foreground, the classic-serif `--font-heading` stack, `--of-space-scale:1.35`)
+and the `centered` header markup on `grace.localhost:3002`'s live response; a raw-hex accent
+(`"#ff00ff"`) is rejected with `400 Content:ThemeInvalid{field: "accent"}`; an individually-valid
+but contrast-failing pair (`indigo`/`dark`) is rejected with `400
+Content:ThemeContrastFailed{accent: "indigo", mode: "dark"}`, and neither rejected write mutated the
+stored theme. A pre-M14.12 site with the old free-text shape (`{"accentColor": "F2F230", ...}`,
+found live in the local dev database) still renders with no crash — `parseTheme` degrades an
+unrecognized shape to "no theme set," the same defensive-parsing precedent M14.2's renderer
+established for a legacy shape it doesn't recognize. `internal/content/content_integration_test.go`
+covers the same three cases against real Postgres; `themevalidation_test.go` unit-tests the
+curated-vocabulary gate, the contrast gate in both directions, and the WCAG math itself against
+known reference ratios (pure black/white ≈ 21:1). `go test ./...`, `./godelw verify`, and
+`make sdk-verify` all pass; both Next apps' `tsc --noEmit`, `eslint`, and `next build` all pass.
+`Verified` awaits CI green on `main`.
 
 ### M14.13 · Starter patterns + block-type catalog admin
 

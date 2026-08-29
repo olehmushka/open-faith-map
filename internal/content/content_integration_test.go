@@ -169,15 +169,38 @@ func TestContentIntegration(t *testing.T) {
 	if _, err := contentSvc.UpdateSiteTheme(otherCtx, site.ID, []byte(`{"color":"red"}`)); !errors.Is(err, contentdomain.ErrForbidden) {
 		t.Errorf("UpdateSiteTheme by non-manager error = %v, want ErrForbidden", err)
 	}
-	updated, err := contentSvc.UpdateSiteTheme(adminCtx, site.ID, []byte(`{"color":"blue"}`))
+	// M14.12: theme is now D-CuratedTheme's fixed vocabulary, not a free-form object — "color":"blue"
+	// would be rejected by the write-time schema gate (see TestContentIntegrationTheme below for
+	// that gate's own coverage).
+	updated, err := contentSvc.UpdateSiteTheme(adminCtx, site.ID, []byte(`{"accent":"indigo","mode":"light"}`))
 	if err != nil {
 		t.Fatalf("UpdateSiteTheme by congregation-admin: %v", err)
 	}
 	var theme struct {
-		Color string `json:"color"`
+		Accent string `json:"accent"`
 	}
-	if err := json.Unmarshal(updated.Theme, &theme); err != nil || theme.Color != "blue" {
-		t.Errorf("UpdateSiteTheme result theme = %s, want color=blue", updated.Theme)
+	if err := json.Unmarshal(updated.Theme, &theme); err != nil || theme.Accent != "indigo" {
+		t.Errorf("UpdateSiteTheme result theme = %s, want accent=indigo", updated.Theme)
+	}
+
+	// --- M14.12: UpdateSiteTheme rejects a value outside D-CuratedTheme's fixed vocabulary with a
+	// typed ThemeInvalidError naming the field — a raw hex, never a curated token name.
+	_, err = contentSvc.UpdateSiteTheme(adminCtx, site.ID, []byte(`{"accent":"#ff00ff"}`))
+	var themeInvalidErr *contentdomain.ThemeInvalidError
+	if !errors.As(err, &themeInvalidErr) {
+		t.Errorf("UpdateSiteTheme(raw hex accent) error = %v, want ThemeInvalidError", err)
+	} else if themeInvalidErr.Field != "accent" {
+		t.Errorf("UpdateSiteTheme(raw hex accent) Field = %q, want %q", themeInvalidErr.Field, "accent")
+	}
+
+	// --- M14.12: an accent/mode pair that fails WCAG AA contrast is rejected with a typed
+	// ThemeContrastFailedError naming the pair, even though both values are individually curated.
+	_, err = contentSvc.UpdateSiteTheme(adminCtx, site.ID, []byte(`{"accent":"indigo","mode":"dark"}`))
+	var contrastErr *contentdomain.ThemeContrastFailedError
+	if !errors.As(err, &contrastErr) {
+		t.Errorf("UpdateSiteTheme(indigo/dark) error = %v, want ThemeContrastFailedError", err)
+	} else if contrastErr.Accent != "indigo" || contrastErr.Mode != "dark" {
+		t.Errorf("UpdateSiteTheme(indigo/dark) = %+v, want {Accent:indigo Mode:dark}", contrastErr)
 	}
 
 	// --- GetSite is the public read — no auth required, works with a plain background context.
