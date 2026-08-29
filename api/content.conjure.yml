@@ -48,8 +48,21 @@ types:
           theme:
             type: any
             docs: Accent color, font pairing, header layout — data, never a per-tenant code fork.
+          logoUrl:
+            type: optional<string>
+            docs: M14.11. content_sites' own setting — never a content document.
+          socialLinks:
+            type: SocialLinks
+            docs: M14.11. content_sites' own setting — never a content document.
           createdAt: datetime
           updatedAt: datetime
+      SocialLinks:
+        fields:
+          facebook: optional<string>
+          instagram: optional<string>
+          youtube: optional<string>
+          twitter: optional<string>
+          website: optional<string>
       CreateSiteRequest:
         fields:
           congregationUnitId: string
@@ -59,6 +72,39 @@ types:
       UpdateSiteThemeRequest:
         fields:
           theme: any
+      UpdateSiteChromeRequest:
+        fields:
+          logoUrl: optional<string>
+          socialLinks: SocialLinks
+      ServiceSchedule:
+        docs: >
+          M14.11. One religion_service_schedules row, read live and composed into SiteChrome —
+          never copied into content's own tables (docs/modules/content.md's standing invariant).
+        fields:
+          dayOfWeek: optional<integer>
+          rrule: optional<string>
+          startTime:
+            type: optional<string>
+            docs: "\"HH:MM\", 24h. Absent for an rrule-only schedule."
+          endTime: optional<string>
+          timezone: string
+          language: optional<string>
+          mode: string
+          meetingUrl: optional<string>
+          description: optional<string>
+      SiteChrome:
+        docs: >
+          M14.11's header/footer bundle, fetched once by the tenant layout. logoUrl/socialLinks are
+          content_sites' own persisted settings; congregationName/address/schedules are composed
+          live from religion_sites/religion_service_schedules at read time — never copied here.
+        fields:
+          congregationName: string
+          address:
+            type: optional<string>
+            docs: Coarsened per the religion site's own publish precision; absent if hidden or unset.
+          logoUrl: optional<string>
+          socialLinks: SocialLinks
+          schedules: list<ServiceSchedule>
 
       Document:
         fields:
@@ -366,6 +412,15 @@ services:
             param-type: path
           request: UpdateSiteThemeRequest
         returns: Site
+      updateSiteChrome:
+        http: PUT /sites/{siteId}/chrome
+        docs: M14.11. Full replace, same shape as updateSiteTheme — the admin form always submits the complete logoUrl/socialLinks pair.
+        args:
+          siteId:
+            type: string
+            param-type: path
+          request: UpdateSiteChromeRequest
+        returns: Site
       listDocuments:
         http: GET /sites/{siteId}/documents
         docs: Admin read — returns documents in every state.
@@ -517,6 +572,17 @@ services:
             type: string
             param-type: path
         returns: Site
+      getSiteChrome:
+        docs: >
+          M14.11. The tenant layout's one call for header/footer data — logoUrl/socialLinks from
+          content_sites, congregationName/address/schedules composed live from religion at read
+          time. No auth, same anonymous shape as getSite/getSiteBySlug.
+        http: GET /sites/{siteId}/chrome
+        args:
+          siteId:
+            type: string
+            param-type: path
+        returns: SiteChrome
       listPublicDocuments:
         http: GET /sites/{siteId}/documents
         args:

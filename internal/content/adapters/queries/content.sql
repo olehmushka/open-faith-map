@@ -1,24 +1,33 @@
 -- name: InsertSite :one
 INSERT INTO openfaithmap.content_sites (congregation_unit_rid, slug)
 VALUES (sqlc.arg('congregation_unit_rid'), sqlc.arg('slug'))
-RETURNING id, congregation_unit_rid, slug, theme, created_at, updated_at;
+RETURNING id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at;
 
 -- name: GetSiteByID :one
-SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
+SELECT id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at
 FROM openfaithmap.content_sites WHERE id = sqlc.arg('id') AND deleted_at IS NULL;
 
 -- name: GetSiteByUnit :one
-SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
+SELECT id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at
 FROM openfaithmap.content_sites WHERE congregation_unit_rid = sqlc.arg('congregation_unit_rid') AND deleted_at IS NULL;
 
 -- name: GetSiteBySlug :one
-SELECT id, congregation_unit_rid, slug, theme, created_at, updated_at
+SELECT id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at
 FROM openfaithmap.content_sites WHERE slug = sqlc.arg('slug') AND deleted_at IS NULL;
 
 -- name: UpdateSiteTheme :one
 UPDATE openfaithmap.content_sites SET theme = sqlc.arg('theme')
 WHERE id = sqlc.arg('id') AND deleted_at IS NULL
-RETURNING id, congregation_unit_rid, slug, theme, created_at, updated_at;
+RETURNING id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at;
+
+-- name: UpdateSiteChrome :one
+-- M14.11: logo_url/social_links are content_sites' own site-level settings (never a content
+-- document) — everything else the header/footer needs (congregation name, address, service
+-- schedule) is composed at read time from religion_sites/religion_service_schedules, never stored
+-- here.
+UPDATE openfaithmap.content_sites SET logo_url = sqlc.narg('logo_url'), social_links = sqlc.arg('social_links')
+WHERE id = sqlc.arg('id') AND deleted_at IS NULL
+RETURNING id, congregation_unit_rid, slug, theme, logo_url, social_links, created_at, updated_at;
 
 -- name: GetBlockTypeByCode :one
 SELECT id, code, name, json_schema, ui_schema, status, sort_order

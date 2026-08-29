@@ -22,16 +22,22 @@ import (
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/content/adapters"
 	"github.com/olehmushka/open-faith-map/internal/content/domain"
+	religionapplication "github.com/olehmushka/open-faith-map/internal/religion/application"
+	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
 )
 
 type Service struct {
 	store          *adapters.Repository
 	authzSvc       *authz.Service
+	religion       *religionapplication.Service
 	previewHMACKey string
 }
 
-func NewService(store *adapters.Repository, authzSvc *authz.Service, previewHMACKey string) *Service {
-	return &Service{store: store, authzSvc: authzSvc, previewHMACKey: previewHMACKey}
+// religion is injected the same direct-interface-call shape internal/discovery already uses
+// against internal/religion (docs/architecture/conventions.md) — M14.11's site-chrome footer is
+// the first place content itself, not just discovery, reads religion's live data.
+func NewService(store *adapters.Repository, authzSvc *authz.Service, religionSvc *religionapplication.Service, previewHMACKey string) *Service {
+	return &Service{store: store, authzSvc: authzSvc, religion: religionSvc, previewHMACKey: previewHMACKey}
 }
 
 // ---- sites ----
@@ -57,6 +63,64 @@ func (s *Service) UpdateSiteTheme(ctx context.Context, siteID string, theme json
 		return domain.Site{}, err
 	}
 	return s.store.UpdateSiteTheme(ctx, siteID, theme)
+}
+
+// UpdateSiteChrome overwrites logoUrl/socialLinks wholesale (M14.11) — content.manage-gated, same
+// authorize path as UpdateSiteTheme; these are content_sites' own settings, never a content
+// document (docs/modules/content.md's own M14.11 framing).
+func (s *Service) UpdateSiteChrome(ctx context.Context, siteID string, logoURL *string, socialLinks domain.SocialLinks) (domain.Site, error) {
+	site, err := s.store.GetSiteByID(ctx, siteID)
+	if err != nil {
+		return domain.Site{}, err
+	}
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
+		return domain.Site{}, err
+	}
+	return s.store.UpdateSiteChrome(ctx, siteID, logoURL, socialLinks)
+}
+
+// GetSiteChrome is the public read (ContentPublicService) a tenant site's header/footer fetches
+// once (M14.11): logoUrl/socialLinks are content_sites' own persisted columns; congregationName/
+// address/schedules are composed live from religion's application service — never copied into
+// content's own tables (docs/modules/content.md's standing invariant, restated by this milestone).
+// No auth: same anonymous shape as GetSite/GetSiteBySlug. Degrades gracefully rather than erroring
+// if the unit has no religion site yet (address/schedules empty, name falls back to the site's own
+// slug) — the same "found bool, no hard fail" shape ContentResolver already establishes cross-module.
+func (s *Service) GetSiteChrome(ctx context.Context, siteID string) (domain.SiteChrome, error) {
+	site, err := s.store.GetSiteByID(ctx, siteID)
+	if err != nil {
+		return domain.SiteChrome{}, err
+	}
+	chrome := domain.SiteChrome{
+		CongregationName: site.Slug,
+		LogoURL:          site.LogoURL,
+		SocialLinks:      site.SocialLinks,
+	}
+
+	rsite, found, err := s.religion.GetPrimarySiteByUnit(ctx, site.CongregationUnitRID)
+	if err != nil {
+		return domain.SiteChrome{}, err
+	}
+	if !found {
+		return chrome, nil
+	}
+	chrome.CongregationName = rsite.Name
+	if line, ok := religiondomain.CoarsenAddress(rsite.Locality, rsite.AdminArea1, rsite.AdminArea2, rsite.Street, rsite.HouseNumber, rsite.PostalCode, rsite.PublicPrecision); ok {
+		chrome.Address = &line
+	}
+
+	schedules, err := s.religion.ListServiceSchedulesByUnit(ctx, site.CongregationUnitRID)
+	if err != nil {
+		return domain.SiteChrome{}, err
+	}
+	chrome.Schedules = make([]domain.ServiceSchedule, len(schedules))
+	for i, sch := range schedules {
+		chrome.Schedules[i] = domain.ServiceSchedule{
+			DayOfWeek: sch.DayOfWeek, RRule: sch.RRule, StartTime: sch.StartTime, EndTime: sch.EndTime,
+			Timezone: sch.Timezone, Language: sch.Language, Mode: sch.Mode, MeetingURL: sch.MeetingURL, Description: sch.Description,
+		}
+	}
+	return chrome, nil
 }
 
 // CreatePreviewLink mints a short-lived, site-scoped preview token (M14.7) — content.manage-gated

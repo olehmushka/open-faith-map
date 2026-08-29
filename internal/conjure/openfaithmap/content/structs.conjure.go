@@ -658,15 +658,49 @@ func (o *RevisionPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M14.11. One religion_service_schedules row, read live and composed into SiteChrome — never copied into content's own tables (docs/modules/content.md's standing invariant).
+type ServiceSchedule struct {
+	DayOfWeek *int    `json:"dayOfWeek,omitempty"`
+	Rrule     *string `json:"rrule,omitempty"`
+	// "HH:MM", 24h. Absent for an rrule-only schedule.
+	StartTime   *string `json:"startTime,omitempty"`
+	EndTime     *string `json:"endTime,omitempty"`
+	Timezone    string  `json:"timezone"`
+	Language    *string `json:"language,omitempty"`
+	Mode        string  `json:"mode"`
+	MeetingUrl  *string `json:"meetingUrl,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+func (o ServiceSchedule) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ServiceSchedule) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type Site struct {
 	Id string `json:"id"`
 	// The directory_units RID this site belongs to (opaque value).
 	CongregationUnitId string `json:"congregationUnitId"`
 	Slug               string `json:"slug"`
 	// Accent color, font pairing, header layout — data, never a per-tenant code fork.
-	Theme     interface{}       `json:"theme"`
-	CreatedAt datetime.DateTime `json:"createdAt"`
-	UpdatedAt datetime.DateTime `json:"updatedAt"`
+	Theme interface{} `json:"theme"`
+	// M14.11. content_sites' own setting — never a content document.
+	LogoUrl *string `json:"logoUrl,omitempty"`
+	// M14.11. content_sites' own setting — never a content document.
+	SocialLinks SocialLinks       `json:"socialLinks"`
+	CreatedAt   datetime.DateTime `json:"createdAt"`
+	UpdatedAt   datetime.DateTime `json:"updatedAt"`
 }
 
 func (o Site) MarshalYAML() (interface{}, error) {
@@ -678,6 +712,77 @@ func (o Site) MarshalYAML() (interface{}, error) {
 }
 
 func (o *Site) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M14.11's header/footer bundle, fetched once by the tenant layout. logoUrl/socialLinks are content_sites' own persisted settings; congregationName/address/schedules are composed live from religion_sites/religion_service_schedules at read time — never copied here.
+type SiteChrome struct {
+	CongregationName string `json:"congregationName"`
+	// Coarsened per the religion site's own publish precision; absent if hidden or unset.
+	Address     *string           `json:"address,omitempty"`
+	LogoUrl     *string           `json:"logoUrl,omitempty"`
+	SocialLinks SocialLinks       `json:"socialLinks"`
+	Schedules   []ServiceSchedule `json:"schedules"`
+}
+
+func (o SiteChrome) MarshalJSON() ([]byte, error) {
+	if o.Schedules == nil {
+		o.Schedules = make([]ServiceSchedule, 0)
+	}
+	type _tmpSiteChrome SiteChrome
+	return safejson.Marshal(_tmpSiteChrome(o))
+}
+
+func (o *SiteChrome) UnmarshalJSON(data []byte) error {
+	type _tmpSiteChrome SiteChrome
+	var rawSiteChrome _tmpSiteChrome
+	if err := safejson.Unmarshal(data, &rawSiteChrome); err != nil {
+		return err
+	}
+	if rawSiteChrome.Schedules == nil {
+		rawSiteChrome.Schedules = make([]ServiceSchedule, 0)
+	}
+	*o = SiteChrome(rawSiteChrome)
+	return nil
+}
+
+func (o SiteChrome) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SiteChrome) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type SocialLinks struct {
+	Facebook  *string `json:"facebook,omitempty"`
+	Instagram *string `json:"instagram,omitempty"`
+	Youtube   *string `json:"youtube,omitempty"`
+	Twitter   *string `json:"twitter,omitempty"`
+	Website   *string `json:"website,omitempty"`
+}
+
+func (o SocialLinks) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SocialLinks) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -722,6 +827,27 @@ func (o UpdateDocumentRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpdateDocumentRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type UpdateSiteChromeRequest struct {
+	LogoUrl     *string     `json:"logoUrl,omitempty"`
+	SocialLinks SocialLinks `json:"socialLinks"`
+}
+
+func (o UpdateSiteChromeRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateSiteChromeRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

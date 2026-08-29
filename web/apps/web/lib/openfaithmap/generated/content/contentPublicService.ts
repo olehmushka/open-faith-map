@@ -4,6 +4,7 @@ import { IDocumentPage } from "./documentPage";
 import { IDocumentWithAncestors } from "./documentWithAncestors";
 import { IPublicNavItemList } from "./publicNavItemList";
 import { ISite } from "./site";
+import { ISiteChrome } from "./siteChrome";
 import type { IHttpApiBridge } from "conjure-client";
 
 /** Constant reference to `undefined` that we expect to get minified and therefore reduce total code size */
@@ -20,6 +21,11 @@ export interface IContentPublicService {
      *
      */
     getSiteBySlug(slug: string): Promise<ISite>;
+    /**
+     * M14.11. The tenant layout's one call for header/footer data — logoUrl/socialLinks from content_sites, congregationName/address/schedules composed live from religion at read time. No auth, same anonymous shape as getSite/getSiteBySlug.
+     *
+     */
+    getSiteChrome(siteId: string): Promise<ISiteChrome>;
     listPublicDocuments(siteId: string, kind?: string | null, locale?: string | null): Promise<IDocumentPage>;
     /** Content:DocumentNotFound if the document is draft or doesn't exist — never distinguishes the two. */
     getPublicBlocks(documentId: string): Promise<IBlockList>;
@@ -83,6 +89,27 @@ export class ContentPublicService implements IContentPublicService {
             __undefined,
             [
                 slug,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.11. The tenant layout's one call for header/footer data — logoUrl/socialLinks from content_sites, congregationName/address/schedules composed live from religion at read time. No auth, same anonymous shape as getSite/getSiteBySlug.
+     *
+     */
+    public getSiteChrome(siteId: string): Promise<ISiteChrome> {
+        return this.bridge.call<ISiteChrome>(
+            "ContentPublicService",
+            "getSiteChrome",
+            "GET",
+            "/content/v1/public/sites/{siteId}/chrome",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                siteId,
             ],
             __undefined,
             __undefined

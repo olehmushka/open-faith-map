@@ -225,6 +225,8 @@ type OpenfaithmapContentSite struct {
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	DeletedAt           pgtype.Timestamptz
+	LogoUrl             pgtype.Text
+	SocialLinks         json.RawMessage
 }
 
 type OpenfaithmapContentSiteNavItem struct {

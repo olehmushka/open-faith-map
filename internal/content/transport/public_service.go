@@ -44,6 +44,16 @@ func (s *PublicService) GetSiteBySlug(ctx context.Context, slugArg string) (genc
 	return toAPISite(site), nil
 }
 
+// GetSiteChrome is the tenant layout's one call for header/footer data (M14.11) — logoUrl/
+// socialLinks from content_sites, congregationName/address/schedules composed live from religion.
+func (s *PublicService) GetSiteChrome(ctx context.Context, siteIdArg string) (gencontent.SiteChrome, error) {
+	chrome, err := s.appService.GetSiteChrome(ctx, siteIdArg)
+	if err != nil {
+		return gencontent.SiteChrome{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	return toAPISiteChrome(chrome), nil
+}
+
 func (s *PublicService) ListPublicDocuments(ctx context.Context, siteIdArg string, kindArg, localeArg *string) (gencontent.DocumentPage, error) {
 	docs, err := s.appService.ListPublicDocuments(ctx, siteIdArg, kindArg, localeArg)
 	if err != nil {

@@ -87,7 +87,20 @@ convention exactly — no case conversion anywhere across the transport/domain/a
   scale, header layout, light/dark; a fixed, contrast-checked-at-write-time vocabulary as of
   M14.12 ([D-CuratedTheme](../architecture/decisions.md#d-curatedtheme--a-fixed-token-vocabulary-contrast-checked-at-write-time)),
   emitted as CSS custom properties — data, never a per-tenant code fork
+- `logo_url TEXT` (M14.11, nullable) and `social_links JSONB NOT NULL DEFAULT '{}'` (M14.11, a
+  named `facebook`/`instagram`/`youtube`/`twitter`/`website` field set, not a free-form map) —
+  site-chrome settings, `content.manage`-gated, updated wholesale via `updateSiteChrome`
 - `created_at`, `updated_at`, `deleted_at`
+
+**Site chrome (M14.11)** — `ContentPublicService.getSiteChrome` composes a tenant site's
+header/footer data at read time: `logoUrl`/`socialLinks` are the two columns above; congregation
+name and address (coarsened per the religion site's own `public_precision`, same as
+`CoarsenAddress` elsewhere) and its service schedule (real day/time/language rows, not just
+`DiscoverySite`'s aggregated day/language facets) are read **live from `religion_sites`/
+`religion_service_schedules`, never copied into any `content` table** — this module's standing
+invariant (see Entities above). `internal/content/application.Service` has `internal/religion`'s
+application service injected for this, the same direct-interface-call cross-module shape
+`internal/discovery` already uses (`docs/architecture/conventions.md`).
 
 **`content_block_types`** (catalog)
 - `id` PK · `code TEXT UNIQUE` · `name TEXT` (translatable, OpenFaithMap's own admin-UI label

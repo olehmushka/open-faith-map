@@ -160,6 +160,23 @@ type DiscoverySite struct {
 	Attributes         SiteAttributes
 }
 
+// ServiceSchedule is one religion_service_schedules row (M14.11) — the first place this table's
+// individual rows, not just SearchSites'/SearchFacets' aggregated language/day facets, are read
+// back out, so a congregation's own site-chrome footer can show real service times. Public-safe by
+// construction: schedule details carry no more privacy weight than the day/language facets already
+// exposed through DiscoverySite, so ListServiceSchedulesByUnit stays ungated like ListSitesByUnit.
+type ServiceSchedule struct {
+	DayOfWeek   *int
+	RRule       *string
+	StartTime   *string // "HH:MM" (24h), nil if unset (an rrule-only schedule)
+	EndTime     *string
+	Timezone    string
+	Language    *string
+	Mode        string
+	MeetingURL  *string
+	Description *string
+}
+
 // DiscoveryQuery is SearchSites' input: an optional spatial window (radius XOR bbox), an optional
 // taxon filter (via the taxonomy closure), an optional text query over unit code/name/alias, an
 // optional service-schedule filter (Language/DayOfWeek — matches a site with at least one

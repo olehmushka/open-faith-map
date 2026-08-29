@@ -2,7 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { FileText, Menu } from "lucide-react";
 
 import { ACCESSIBILITY_KEYS } from "@/lib/accessibility";
-import { createSite, getSite, updateSiteTheme } from "@/lib/content";
+import { createSite, getSite, updateSiteChrome, updateSiteTheme } from "@/lib/content";
 import { getSite as getReligionSite, isSiteNotFound, updateSiteAttributes } from "@/lib/religion";
 import { Link, redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
@@ -123,6 +123,26 @@ export default async function SitePage({
     redirect({ href: `/admin/sites/${unitId}`, locale });
   }
 
+  // M14.11: logoUrl/socialLinks are content_sites' own site-level settings — same full-replace
+  // plain-form shape as theme just above (a handful of fixed optional fields, not a dynamic list
+  // like the nav menu, which is why this doesn't need nav-item-list-editor.tsx's client-state
+  // machinery).
+  async function saveChrome(formData: FormData) {
+    "use server";
+    const optional = (name: string) => {
+      const v = String(formData.get(name) ?? "").trim();
+      return v === "" ? null : v;
+    };
+    await updateSiteChrome(site!.id, optional("logoUrl"), {
+      facebook: optional("facebook") ?? undefined,
+      instagram: optional("instagram") ?? undefined,
+      youtube: optional("youtube") ?? undefined,
+      twitter: optional("twitter") ?? undefined,
+      website: optional("website") ?? undefined,
+    });
+    redirect({ href: `/admin/sites/${unitId}`, locale });
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -163,6 +183,43 @@ export default async function SitePage({
             </Label>
             <Button type="submit" className="self-start">
               {t("saveTheme")}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("chromeHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form action={saveChrome} className="flex flex-col gap-4">
+            <Label className="flex flex-col items-start gap-1">
+              {t("logoUrlLabel")}
+              <Input name="logoUrl" type="url" defaultValue={site.logoUrl ?? ""} />
+            </Label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("facebookLabel")}
+              <Input name="facebook" type="url" defaultValue={site.socialLinks.facebook ?? ""} />
+            </Label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("instagramLabel")}
+              <Input name="instagram" type="url" defaultValue={site.socialLinks.instagram ?? ""} />
+            </Label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("youtubeLabel")}
+              <Input name="youtube" type="url" defaultValue={site.socialLinks.youtube ?? ""} />
+            </Label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("twitterLabel")}
+              <Input name="twitter" type="url" defaultValue={site.socialLinks.twitter ?? ""} />
+            </Label>
+            <Label className="flex flex-col items-start gap-1">
+              {t("websiteLabel")}
+              <Input name="website" type="url" defaultValue={site.socialLinks.website ?? ""} />
+            </Label>
+            <Button type="submit" className="self-start">
+              {t("saveChrome")}
             </Button>
           </form>
         </CardContent>

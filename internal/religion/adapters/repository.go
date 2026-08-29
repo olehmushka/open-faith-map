@@ -257,6 +257,29 @@ func (r *Repository) ListSitesByUnit(ctx context.Context, unitID string) ([]doma
 	return out, nil
 }
 
+// GetPrimarySiteByUnit is content module's read for M14.11's site-chrome header/footer: the
+// congregation's name and address, reusing SearchSites' own enriched siteCols/siteFrom projection
+// (the only query in this package that joins directory_units for the name) rather than
+// ListSitesByUnit's plainer shape, whose existing authenticated-owner callers have no discovery-
+// card use for it. Deliberately does NOT apply SearchSites' own visibility='public'/non-hidden
+// filtering — a congregation's own site chrome must show its own name regardless of discovery
+// visibility; the caller coarsens the address text itself via CoarsenAddress, which already
+// degrades a `hidden` precision to ok=false. Returns found=false if the unit has no site row at
+// all, the same "found bool, no hard fail" shape ContentResolver already uses cross-module.
+func (r *Repository) GetPrimarySiteByUnit(ctx context.Context, unitID string) (domain.Site, bool, error) {
+	row := r.conn.QueryRow(ctx, `SELECT `+siteCols+` `+siteFrom+`
+		WHERE s.org_unit_id = $1 AND s.deleted_at IS NULL
+		ORDER BY s.is_primary DESC, s.id LIMIT 1`, unitID)
+	site, err := scanSite(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Site{}, false, nil
+	}
+	if err != nil {
+		return domain.Site{}, false, err
+	}
+	return site, true, nil
+}
+
 type CreateSiteInput struct {
 	OrgUnitID  string
 	LocationID string
@@ -504,4 +527,44 @@ func (r *Repository) SearchFacets(ctx context.Context) (domain.Facets, error) {
 		out.Languages = append(out.Languages, lang)
 	}
 	return out, languageRows.Err()
+}
+
+// ---------------------------------------------------------------- service schedules
+
+// emptyToNil treats ListServiceSchedulesBySite's COALESCE(...,”)-guarded start/end time columns
+// (query.sql's own comment explains why: sqlc infers to_char(...) as NOT NULL) as unset when empty,
+// mirroring fromNullableText's nil-on-absent shape for the columns that came back genuinely nullable.
+func emptyToNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// ListServiceSchedulesBySite returns siteID's service schedules (M14.11), day/start-time ordered.
+func (r *Repository) ListServiceSchedulesBySite(ctx context.Context, siteID string) ([]domain.ServiceSchedule, error) {
+	rows, err := r.q.ListServiceSchedulesBySite(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.ServiceSchedule, 0, len(rows))
+	for _, row := range rows {
+		var dayOfWeek *int
+		if row.DayOfWeek.Valid {
+			d := int(row.DayOfWeek.Int16)
+			dayOfWeek = &d
+		}
+		out = append(out, domain.ServiceSchedule{
+			DayOfWeek:   dayOfWeek,
+			RRule:       fromNullableText(row.Rrule),
+			StartTime:   emptyToNil(row.StartTime),
+			EndTime:     emptyToNil(row.EndTime),
+			Timezone:    row.Timezone,
+			Language:    fromNullableText(row.Language),
+			Mode:        row.Mode,
+			MeetingURL:  fromNullableText(row.MeetingUrl),
+			Description: fromNullableText(row.Description),
+		})
+	}
+	return out, nil
 }
