@@ -25,7 +25,7 @@ export default async function TenantSiteLayout({
   children: ReactNode;
   params: Promise<{ locale: string; slug: string }>;
 }) {
-  const { slug } = await params;
+  const { locale, slug } = await params;
   const site = await getSiteBySlug(slug).catch(() => null);
   const [navItems, chrome] = site
     ? await Promise.all([listPublicNavItems(site.id).catch(() => []), getSiteChrome(site.id).catch(() => null)])
@@ -37,7 +37,7 @@ export default async function TenantSiteLayout({
 
   return (
     <div className="min-h-dvh bg-background text-foreground" style={resolveThemeStyle(theme)} data-theme={resolveThemeDataAttr(theme)}>
-      {chrome ? <SiteHeader chrome={chrome} navItems={navItems} layout={theme.headerLayout} /> : null}
+      {chrome ? <SiteHeader chrome={chrome} navItems={navItems} uiLocale={locale} layout={theme.headerLayout} /> : null}
       {children}
       {chrome ? <SiteFooter chrome={chrome} /> : null}
     </div>

@@ -127,6 +127,14 @@ type Document struct {
 	PublishedRevisionID *string
 }
 
+// DocumentTranslation (M14.14, DS-OFM-7) is one PUBLISHED sibling in a document's translation
+// group, already resolved to a ready-to-render href — mirrors gencontent.DocumentTranslation, kept
+// as a separate domain type so application/service.go never imports the transport-layer package.
+type DocumentTranslation struct {
+	Locale string
+	Href   string
+}
+
 // DocumentRevision is one row of a document's revision history (M14.6). Two roles share this
 // shape, distinguished only by which of Document's two pointers references a given row: the one
 // row a document's DraftRevisionID points at is mutated in place by every save; every other row is
@@ -426,6 +434,30 @@ type BlockTypeCodeTakenError struct {
 
 func (e *BlockTypeCodeTakenError) Error() string {
 	return fmt.Sprintf("block type code %q already taken", e.Code)
+}
+
+// TranslationLocaleTakenError (M14.14): CreateDocument named a translationGroupId that already has
+// a document at the requested locale. There's no DB constraint for this — content.md's own
+// invariant is that a translation group's documents share nothing but the group id — so the guard
+// is app-level (application.Service.CreateDocument).
+type TranslationLocaleTakenError struct {
+	TranslationGroupID string
+	Locale             string
+}
+
+func (e *TranslationLocaleTakenError) Error() string {
+	return fmt.Sprintf("translation group %q already has a document at locale %q", e.TranslationGroupID, e.Locale)
+}
+
+// TranslationGroupNotFoundError (M14.14): a translationGroupId was given that doesn't belong to the
+// requesting site — either it doesn't exist at all, or every document holding it belongs to some
+// other site's content_documents rows.
+type TranslationGroupNotFoundError struct {
+	TranslationGroupID string
+}
+
+func (e *TranslationGroupNotFoundError) Error() string {
+	return fmt.Sprintf("translation group %q not found in this site", e.TranslationGroupID)
 }
 
 func (e *BlockTypeCodeTakenError) Unwrap() error { return ErrBlockTypeCodeTaken }

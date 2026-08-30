@@ -309,10 +309,25 @@ types:
         docs: >
           M14.10's page-route resolver: the leaf document plus its real ancestor chain (root
           first, leaf excluded), in one round trip, so the tenant-subdomain catch-all page route
-          never needs a second call to render breadcrumbs.
+          never needs a second call to render breadcrumbs. M14.14 adds translations in the same
+          round trip for the same reason.
         fields:
           document: Document
           ancestors: list<Document>
+          translations:
+            type: list<DocumentTranslation>
+            docs: >
+              Every PUBLISHED document sharing the leaf's translationGroupId (leaf included), each
+              with its own resolved href — siblings can have a different ancestor chain/slugs per
+              locale, so this is never derived from the leaf's own href alone. Locale here is the
+              document's own free-text content locale, independent of the site chrome's UI
+              language.
+      DocumentTranslation:
+        fields:
+          locale: string
+          href:
+            type: string
+            docs: Root-relative, content-locale-prefixed (matches Document's own href convention) — never includes the UI chrome locale segment.
 
     errors:
       SiteNotFound:
@@ -329,6 +344,23 @@ types:
         safe-args:
           slug: string
           scope: string
+      TranslationLocaleTaken:
+        docs: >
+          M14.14: CreateDocument with a translationGroupId that already has a document at the
+          requested locale — there is no DB constraint preventing this (content.md's own
+          invariant is that a group's documents share nothing but the group id), so the guard is
+          app-level, here.
+        namespace: Content
+        code: CONFLICT
+        safe-args:
+          translationGroupId: string
+          locale: string
+      TranslationGroupNotFound:
+        docs: A translationGroupId was given that doesn't belong to this site (or doesn't exist at all).
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          translationGroupId: string
       SlugReserved:
         docs: >
           D-TenantSubdomains' reserved-subdomain blocklist (M14.9) — content_sites.slug is a

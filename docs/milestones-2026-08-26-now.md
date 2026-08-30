@@ -9,9 +9,9 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.13 (M14.0–M14.9
-2026-08-27/28, M14.10–M14.12 2026-08-29, M14.13 2026-08-30) are done**, no other sub-milestone is
-built yet. It is the second half of the
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.14 (M14.0–M14.9
+2026-08-27/28, M14.10–M14.12 2026-08-29, M14.13–M14.14 2026-08-30) are done**, no other sub-milestone
+is built yet. It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -40,7 +40,10 @@ pairing, spacing scale, and header layout are each chosen from a fixed vocabular
 raw CSS, with a WCAG AA contrast check rejecting a failing accent/mode pair at write time — see its
 own row below. **M14.13 finally builds `content.catalog.manage`** (block-type and pattern CRUD,
 platform-moderator-gated) and ships 5 seeded starter patterns with WordPress's unsynced insert
-semantics — see its own row below. Next up: M14.14.
+semantics — see its own row below. **M14.14 closes `DS-OFM-7`**, splitting the tenant site's
+`[locale]` URL segment into a UI-chrome language and a separate, free-text content locale, adding a
+per-page locale picker + `hreflang` and an editor-side translation panel — see its own row below.
+Next up: M14.15.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -100,7 +103,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.11 · Site chrome — header, footer, template parts | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-29).** Congregation name, logo URL, nav, and a footer whose contact details and service times are read **live from `religion_sites`/`religion_service_schedules`, never copied** — the existing content.md invariant, restated because a footer is exactly where someone would be tempted to denormalize. Social links. Site-level settings on `content_sites`, not content documents. |
 | M14.12 · Curated theme tokens | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-29).** `content_sites.theme` gets a real schema: accent color from an 8-color vetted palette, one of three system-font pairings, a spacing scale, a header layout, and light/dark/system mode — WordPress's `theme.json` lesson, a fixed vocabulary rather than CSS. Emitted as CSS custom properties consumed by the tenant layout. **A WCAG AA contrast check rejects a failing accent/mode combination at write time**, naming the pair. Live theme preview in the admin. `Verified` awaits CI green on `main`. |
 | M14.13 · Starter patterns + block-type catalog admin | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-30).** New `content_patterns` (`migrations/0029_content_patterns.sql`) with WordPress's **unsynced** semantics: inserting a pattern is a pure client-side copy of its `blocks` into the document editor's local state (fetched once via the new public `listPatterns`), persisted through the existing `putBlocks` full-replace path — no dedicated "insert" mutation endpoint exists, or is needed, since a pattern's blocks are already the same `BlockInput`-shaped array a document's own block list uses. Seeded 5 church-specific starters — Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement. Finally builds `content.catalog.manage` (block-type create/update, pattern create/update/delete), gated on `platform-moderator` standing — the exact same `PermModerationStanding`/root-unit-scoped check `internal/moderation`'s `requireModerate` already uses, reused rather than a new authority concept (D-SitePatterns' own explicit call). **Owner decision this session:** `updateBlockType` locks `json_schema`/`ui_schema` after creation — the request type has no such field at all — so a runtime catalog edit can never silently break already-saved blocks of an existing type or the admin form built from its old schema; a moderator wanting a different shape retires the old type and creates a new one. **Named, accepted scope boundary:** a block type added at runtime works in the admin inserter/form (M14.4/M14.5 are schema-driven) but does not render on the public site — `web/apps/web/app/blocks.tsx` dispatches on a hardcoded switch with a no-op fallback for unknown codes; making the public renderer schema-driven too is a separate, larger change. Two new admin routes (`/admin/block-types`, `/admin/patterns`) follow `/admin/moderation`'s own precedent exactly: no local frontend role gate, shown unconditionally in the sidebar nav, the backend's `Content:Forbidden` is the entire authorization decision. Live-verified over real HTTP against the running docker-compose stack (dev-minted tokens, `docker exec ... curlimages/curl` for non-GET per this arc's own verification-notes convention): anonymous 401, an authenticated non-moderator 403, a real `platform-moderator` grant 200 on `GET/POST/PUT /content/v1/catalog/block-types` and the patterns equivalents — a type created, confirmed on the public `listBlockTypes`, retired, confirmed gone; a pattern created, confirmed on the public `listPatterns`, deleted, confirmed gone. `internal/content/content_integration_test.go` covers the same shapes against real Postgres (moderator grant/denial, duplicate-code, not-found, uncompilable-schema cases). `web/apps/admin`'s Vitest suite gained a pattern-insertion test (`block-list-editor.test.tsx`) alongside the existing 42. `Verified` awaits CI green on `main`. |
-| M14.14 · Locale switching — closes `DS-OFM-7` | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Visitor-facing locale picker offering **only locales that actually have a published variant**, plus `hreflang` alternates. Editor-side translation panel per document showing which locales exist and their state, with "create translation" seeding a variant into the same translation group. Translation groups have worked structurally since M3 with no UI on either side. |
+| M14.14 · Locale switching — closes `DS-OFM-7` | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-30).** No migration needed — `content_documents.translation_group_id`/`locale` and their index have existed since M3; this milestone is entirely app-level. **Two owner decisions this session shaped the work:** (1) the picker + `hreflang` are **per-page, in-content** (rendered inside the PAGE route itself), never in the shared site header/footer — the header wraps every route including the root posts/events feed, which has no single translatable document behind it, and a picker that could 404 is explicitly called worse than no picker; (2) the site chrome's UI language (next-intl's `[locale]` route segment, still fixed to 4: en/uk/es/pt) and a document's own **content locale are now decoupled** — a congregation can author a page in any language, not only the 4 chrome locales, so the tenant PAGE route grew a new `[contentLocale]` segment (`/{uiLocale}/{contentLocale}/{pageSlug...}`) independent of the chrome language, which stays put when a visitor switches content locale. `GetPublicDocumentByPath`'s `DocumentWithAncestors` response grew a `translations` list (every `PUBLISHED` sibling in the document's translation group, each with its own resolved href — siblings can sit at a different ancestor hierarchy/slug per locale, so a translation's href is never derived from the leaf's own) — one round trip, same precedent as the response's own `ancestors` field. `generateMetadata` (the first in this app) emits `alternates.languages` from that same list. `CreateDocument`'s existing-but-manual "join an existing translation group" path (`translationGroupId`, already wired since M3/M14.8's own manual admin field) gained two app-level guards with no DB constraint backing either: a duplicate locale within one group (`Content:TranslationLocaleTaken`) and a group belonging to a different site (`Content:TranslationGroupNotFound`) — content.md's own invariant is that a group's documents share nothing but the group id, so nothing in the DB stops either otherwise. The editor's new Translations panel (document editor page) reuses the same "filter what you already have" convention `new/page.tsx`'s own `existingPages` already established — no dedicated list-by-group endpoint — and its "create translation" link reuses the existing `new-document-form.tsx` flow (pre-filling/locking `kind`/`translationGroupId` via query params) rather than a bespoke form. `internal/content/content_integration_test.go` covers the same shapes against real Postgres (a draft sibling excluded from `translations`, both siblings included once published, the duplicate-locale and cross-site guards). `Verified` awaits CI green on `main`. |
 | M14.15 · Scheduled publishing, no scheduler | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `content_documents.publish_at` + a `SCHEDULED` state; the public predicate becomes `state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())`. **Correctness lives in the `WHERE` clause**, so it behaves identically in local dev and on a VM that does not exist yet — no timer, no goroutine, nothing to fire, and no new unattributable background writer (`DS-OFM-16`). The one cost: the admin UI must show **effective** state, not the raw column. |
 | M14.16 · Contact form + in-app inbox | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `content_form_submissions` plus an anonymous write on `ContentPublicService`, reusing `internal/platform/ratelimit` (M7) rather than adding a second limiter. Spam handled without a third party: honeypot field, minimum time-to-submit, per-IP rate limit. Messages screen in `openfaithmap-admin`, `content.manage`-gated. **No SMTP anywhere** — follows D-InviteLinkMVP's precedent exactly. Submission text is untrusted and renders as plain text only. |
 | M14.17 · SEO, structured data, caching | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Per-page `<title>`/description/canonical/OG. Per-tenant `sitemap.xml` + `robots.txt`. JSON-LD: `Church` for the site, `Event` for events, `BreadcrumbList`. Replaces `force-dynamic` with tag-based revalidation invalidated on publish — today every anonymous page view re-queries the API, which is both slow and a free DoS lever. |
@@ -1053,19 +1056,74 @@ a pattern created, confirmed present on the public `listPatterns`, deleted, conf
 
 ### M14.14 · Locale switching — closes `DS-OFM-7`
 
-**Not started.** Depends on M14.10. Closes an open seam the arc would otherwise walk past.
+**Built (2026-08-30).** Depended on M14.10 (per-page routes to attach the picker to). Closes an
+open seam the arc would otherwise walk past — no migration needed, since
+`content_documents.translation_group_id`/`locale` and their index have existed since M3.
 
-Visitor-facing locale picker on the tenant site, offering **only locales that actually have a
-published variant** — a picker that leads to a 404 is worse than no picker. `hreflang` alternates
-so search engines pair the variants.
+**Two design forks, resolved with the owner before building:**
 
-Editor-side: a translation panel per document showing which locales exist in the translation group
-and each one's state, with "create translation" seeding a new variant into the same group.
-Translation groups have worked structurally since M3 with no UI on either side of the product.
+1. **The picker + `hreflang` are per-page, in-content — never the shared site header/footer.** The
+   header/footer (`layout.tsx`) wraps every route under a site, including the root posts/events
+   feed, which has no single translatable document behind it — only individual `PAGE` documents
+   (the `[...pageSlug]` route) have a translation group to offer. A picker that could lead to a 404
+   is explicitly worse than no picker, so precision won over a more prominent but riskier chrome
+   placement. `ContentLocalePicker` (`components/content-locale-picker.tsx`) renders inline inside
+   the page route itself, right below the breadcrumb.
+2. **Content locale and the site chrome's UI language are decoupled.** Previously one URL segment
+   did double duty: next-intl's `[locale]` (fixed to 4: en/uk/es/pt) was also the exact value
+   matched against a document's own `locale` column. The owner wants a congregation to author a
+   page in *any* language, not only the 4 chrome locales, so the tenant PAGE route grew a second
+   segment: `/{uiLocale}/{contentLocale}/{pageSlug...}` — the moved route is now
+   `app/[locale]/%5Fsites/[slug]/[contentLocale]/[...pageSlug]/page.tsx`. `uiLocale` never changes
+   when a visitor switches content locale via the picker, or when `hreflang`'s alternates are built.
+   `proxy.ts`/`lib/tenant-host.ts` needed no change — `injectSitesSegment` already passes
+   arbitrary-depth paths through untouched.
 
-**Acceptance criteria.** A page published in Ukrainian and drafted in English offers only Ukrainian
-to visitors. Publishing the English variant makes it appear with no other change. `hreflang` tags
-are present and correct. `DS-OFM-7` is struck in `open-questions.md`.
+**Backend.** `DocumentWithAncestors` (Conjure) grew a `translations: list<DocumentTranslation>`
+field — every `PUBLISHED` document sharing the leaf's `translationGroupId` (leaf included), each
+resolved through its own ancestor-chain walk and `buildPublicHref` call, since a sibling can sit at
+a different hierarchy/slug per locale — a translation's href is never derived from the leaf's own.
+One round trip, the same precedent `ancestors` itself already set (M14.10). A new store query,
+`ListDocumentsByTranslationGroup` (deliberately not scoped by `site_id` — see below), backs both
+this and `CreateDocument`'s new guard.
+
+`CreateDocument`'s "join an existing translation group" path has existed, if manually, since M3 —
+`web/apps/admin`'s new-document form already had a raw `translationGroupId` text input an admin
+could type into by hand. It had two gaps, both app-level since `content.md`'s own invariant is that
+a group's documents share nothing but the group id (no DB constraint backs either): a caller could
+join a group that already has a document at the requested locale, or a group belonging to a
+*different* site entirely (`translation_group_id` has no FK to site). `checkTranslationGroup`
+(`application/service.go`) rejects both, with two new typed errors, `Content:TranslationLocaleTaken`
+and `Content:TranslationGroupNotFound`.
+
+**Public site.** `generateMetadata` — the first anywhere in `web/apps/web` — emits
+`alternates.languages` from the same `translations` list, absolute URLs preserving the current
+`uiLocale`. `getPublicDocumentByPath` is now `cache()`-wrapped (matching `getSiteBySlug`/
+`getSiteChrome`'s own precedent) since `generateMetadata` and the page component both resolve the
+same document per request. `Breadcrumbs` now takes `uiLocale`/`contentLocale` separately instead of
+one `locale`.
+
+**Editor-side.** A new Translations panel on the document editor page, following History/Preview's
+own inline-`Card` shape (no tabs, no modal): lists this document's translation-group siblings by
+filtering `listDocuments(site.id)` — the same "no dedicated endpoint, filter what you already have"
+convention `new/page.tsx`'s own `existingPages` established — with each sibling's locale/state and
+a link into its own editor page. "Create translation" reuses the existing `new-document-form.tsx`/
+`new/page.tsx` flow entirely (no bespoke form): the link passes `?translationGroupId=&kind=` as
+query params, and the page pre-fills a read-only `translationGroupId` field and replaces the kind
+`Select` with a locked, read-only value — a translation must match its group's existing kind. The
+locale field stays exactly as free-text as it always was — the owner's explicit call: congregations
+should be able to author in any language, not just the platform's 4 chrome locales, even though
+those 4 are all next-intl's UI chrome currently supports.
+
+**Acceptance criteria — met.** A page published in Ukrainian and drafted (unpublished) in English
+offers only Ukrainian in the picker and `hreflang`; publishing the English variant makes it appear
+with no other change (proved directly against real Postgres —
+`internal/content/content_integration_test.go`'s M14.14 section creates the same two-sibling,
+one-draft-then-published shape and asserts on `GetPublicDocumentByPath`'s returned `translations`
+before and after). The duplicate-locale and cross-site `CreateDocument` guards are covered the same
+way. `hreflang` tags are present and correct (verified via `generateMetadata`'s
+`alternates.languages` against a real two-locale page on the running docker-compose stack).
+`DS-OFM-7` is struck in `open-questions.md`. `Verified` awaits CI green on `main`.
 
 ### M14.15 · Scheduled publishing, no scheduler
 

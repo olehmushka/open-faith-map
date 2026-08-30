@@ -196,6 +196,9 @@
     "eventRecurrenceLabel": "Recurrence rule (optional, RRULE)",
     "translationGroupLabel": "Join translation group (optional)",
     "translationGroupPlaceholder": "Leave blank to start a new document",
+    "translationGroupLockedHint": "Creating a translation for an existing document — kind and translation group are fixed to match it.",
+    "errorTranslationLocaleTaken": "This translation group already has a document at that locale.",
+    "errorTranslationGroupNotFound": "That translation group doesn't belong to this site.",
     "submit": "Create document"
   },
   "DocumentEditorPage": {
@@ -247,7 +250,11 @@
     "blocksEmptyBody": "Start from a pattern, or add your first block to build this page from scratch.",
     "blocksEmptyCta": "Add your first block",
     "blocksEmptyPatternCta": "Start from a pattern",
-    "preview": "Preview"
+    "preview": "Preview",
+    "translationsHeading": "Translations",
+    "translationsHint": "Other locale variants of this same page, sharing one translation group.",
+    "translationItem": "{locale} · {state}",
+    "createTranslation": "Create translation"
   },
   "NavPage": {
     "heading": "Navigation",

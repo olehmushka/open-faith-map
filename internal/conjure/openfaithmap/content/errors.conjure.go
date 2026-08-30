@@ -3162,6 +3162,307 @@ func (e *ThemeInvalid) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type translationGroupNotFound struct {
+	TranslationGroupId string `json:"translationGroupId"`
+}
+
+func (o translationGroupNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *translationGroupNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewTranslationGroupNotFound returns new instance of TranslationGroupNotFound error.
+func NewTranslationGroupNotFound(translationGroupIdArg string) *TranslationGroupNotFound {
+	return &TranslationGroupNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), translationGroupNotFound: translationGroupNotFound{TranslationGroupId: translationGroupIdArg}}
+}
+
+// WrapWithTranslationGroupNotFound returns new instance of TranslationGroupNotFound error wrapping an existing error.
+func WrapWithTranslationGroupNotFound(err error, translationGroupIdArg string) *TranslationGroupNotFound {
+	return &TranslationGroupNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, translationGroupNotFound: translationGroupNotFound{TranslationGroupId: translationGroupIdArg}}
+}
+
+// TranslationGroupNotFound is an error type.
+// A translationGroupId was given that doesn't belong to this site (or doesn't exist at all).
+type TranslationGroupNotFound struct {
+	errorInstanceID uuid.UUID
+	translationGroupNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsTranslationGroupNotFound returns true if err is an instance of TranslationGroupNotFound.
+func IsTranslationGroupNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*TranslationGroupNotFound)
+	return ok
+}
+
+func (e *TranslationGroupNotFound) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:TranslationGroupNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *TranslationGroupNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *TranslationGroupNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *TranslationGroupNotFound) Message() string {
+	return "INVALID_ARGUMENT Content:TranslationGroupNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *TranslationGroupNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *TranslationGroupNotFound) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *TranslationGroupNotFound) Name() string {
+	return "Content:TranslationGroupNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *TranslationGroupNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *TranslationGroupNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"translationGroupId": e.TranslationGroupId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *TranslationGroupNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"translationGroupId": e.TranslationGroupId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *TranslationGroupNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *TranslationGroupNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *TranslationGroupNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e TranslationGroupNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.translationGroupNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:TranslationGroupNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *TranslationGroupNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters translationGroupNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.translationGroupNotFound = parameters
+	return nil
+}
+
+type translationLocaleTaken struct {
+	TranslationGroupId string `json:"translationGroupId"`
+	Locale             string `json:"locale"`
+}
+
+func (o translationLocaleTaken) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *translationLocaleTaken) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewTranslationLocaleTaken returns new instance of TranslationLocaleTaken error.
+func NewTranslationLocaleTaken(translationGroupIdArg string, localeArg string) *TranslationLocaleTaken {
+	return &TranslationLocaleTaken{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), translationLocaleTaken: translationLocaleTaken{TranslationGroupId: translationGroupIdArg, Locale: localeArg}}
+}
+
+// WrapWithTranslationLocaleTaken returns new instance of TranslationLocaleTaken error wrapping an existing error.
+func WrapWithTranslationLocaleTaken(err error, translationGroupIdArg string, localeArg string) *TranslationLocaleTaken {
+	return &TranslationLocaleTaken{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, translationLocaleTaken: translationLocaleTaken{TranslationGroupId: translationGroupIdArg, Locale: localeArg}}
+}
+
+// TranslationLocaleTaken is an error type.
+// M14.14: CreateDocument with a translationGroupId that already has a document at the requested locale — there is no DB constraint preventing this (content.md's own invariant is that a group's documents share nothing but the group id), so the guard is app-level, here.
+type TranslationLocaleTaken struct {
+	errorInstanceID uuid.UUID
+	translationLocaleTaken
+	cause error
+	stack werror.StackTrace
+}
+
+// IsTranslationLocaleTaken returns true if err is an instance of TranslationLocaleTaken.
+func IsTranslationLocaleTaken(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*TranslationLocaleTaken)
+	return ok
+}
+
+func (e *TranslationLocaleTaken) Error() string {
+	return fmt.Sprintf("CONFLICT Content:TranslationLocaleTaken (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *TranslationLocaleTaken) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *TranslationLocaleTaken) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *TranslationLocaleTaken) Message() string {
+	return "CONFLICT Content:TranslationLocaleTaken"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *TranslationLocaleTaken) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *TranslationLocaleTaken) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *TranslationLocaleTaken) Name() string {
+	return "Content:TranslationLocaleTaken"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *TranslationLocaleTaken) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *TranslationLocaleTaken) Parameters() map[string]interface{} {
+	return map[string]interface{}{"translationGroupId": e.TranslationGroupId, "locale": e.Locale}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *TranslationLocaleTaken) safeParams() map[string]interface{} {
+	return map[string]interface{}{"translationGroupId": e.TranslationGroupId, "locale": e.Locale, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *TranslationLocaleTaken) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *TranslationLocaleTaken) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *TranslationLocaleTaken) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e TranslationLocaleTaken) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.translationLocaleTaken)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Content:TranslationLocaleTaken", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *TranslationLocaleTaken) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters translationLocaleTaken
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.translationLocaleTaken = parameters
+	return nil
+}
+
 func init() {
 	conjureerrors.RegisterErrorType("Content:BlockDataInvalid", reflect.TypeOf(BlockDataInvalid{}))
 	conjureerrors.RegisterErrorType("Content:BlockTypeCodeTaken", reflect.TypeOf(BlockTypeCodeTaken{}))
@@ -3184,4 +3485,6 @@ func init() {
 	conjureerrors.RegisterErrorType("Content:SlugTaken", reflect.TypeOf(SlugTaken{}))
 	conjureerrors.RegisterErrorType("Content:ThemeContrastFailed", reflect.TypeOf(ThemeContrastFailed{}))
 	conjureerrors.RegisterErrorType("Content:ThemeInvalid", reflect.TypeOf(ThemeInvalid{}))
+	conjureerrors.RegisterErrorType("Content:TranslationGroupNotFound", reflect.TypeOf(TranslationGroupNotFound{}))
+	conjureerrors.RegisterErrorType("Content:TranslationLocaleTaken", reflect.TypeOf(TranslationLocaleTaken{}))
 }

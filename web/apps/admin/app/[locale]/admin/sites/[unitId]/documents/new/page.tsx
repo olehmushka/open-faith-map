@@ -11,10 +11,17 @@ const NO_PARENT = "__none__";
 
 export default async function NewDocumentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string; unitId: string }>;
+  // M14.14: the document editor's Translations panel links here with these two set, so "create
+  // translation" reuses this same form/flow instead of a bespoke one — see new-document-form.tsx's
+  // own locked-kind rendering.
+  searchParams: Promise<{ translationGroupId?: string; kind?: string }>;
 }) {
   const { locale, unitId } = await params;
+  const { translationGroupId: initialTranslationGroupId, kind: lockedKindRaw } = await searchParams;
+  const lockedKind = lockedKindRaw && Object.values(DocumentKind).includes(lockedKindRaw as DocumentKind) ? (lockedKindRaw as DocumentKind) : undefined;
   const t = await getTranslations("NewDocumentPage");
   const site = await getSite(unitId).catch(() => null);
   if (!site) return redirect({ href: `/admin/sites/${unitId}`, locale });
@@ -60,6 +67,12 @@ export default async function NewDocumentPage({
         if (errorName === "Content:EventMissingStart") {
           return { error: "errorEventMissingStart", field: "eventStartsAt" };
         }
+        if (errorName === "Content:TranslationLocaleTaken") {
+          return { error: "errorTranslationLocaleTaken", field: "locale" };
+        }
+        if (errorName === "Content:TranslationGroupNotFound") {
+          return { error: "errorTranslationGroupNotFound", field: "translationGroupId" };
+        }
         return { error: "errorGeneric", raw: errorName };
       }
       throw e;
@@ -71,7 +84,12 @@ export default async function NewDocumentPage({
       <h1 className="text-2xl font-semibold">{t("heading")}</h1>
       <Card>
         <CardContent className="pt-6">
-          <NewDocumentForm action={create} existingPages={existingPages} />
+          <NewDocumentForm
+            action={create}
+            existingPages={existingPages}
+            initialTranslationGroupId={initialTranslationGroupId}
+            lockedKind={lockedKind}
+          />
         </CardContent>
       </Card>
     </div>

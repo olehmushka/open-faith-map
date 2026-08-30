@@ -113,11 +113,15 @@ func (s *PublicService) GetPublicDocumentByPath(ctx context.Context, siteIdArg s
 			segments = append(segments, seg)
 		}
 	}
-	doc, ancestors, err := s.appService.GetPublicDocumentByPath(ctx, siteIdArg, localeArg, segments)
+	doc, ancestors, translations, err := s.appService.GetPublicDocumentByPath(ctx, siteIdArg, localeArg, segments)
 	if err != nil {
 		return gencontent.DocumentWithAncestors{}, mapErr(err, errCtx{SiteID: siteIdArg})
 	}
-	return gencontent.DocumentWithAncestors{Document: toAPIDocument(doc), Ancestors: toAPIDocuments(ancestors)}, nil
+	outTranslations := make([]gencontent.DocumentTranslation, 0, len(translations))
+	for _, t := range translations {
+		outTranslations = append(outTranslations, gencontent.DocumentTranslation{Locale: t.Locale, Href: t.Href})
+	}
+	return gencontent.DocumentWithAncestors{Document: toAPIDocument(doc), Ancestors: toAPIDocuments(ancestors), Translations: outTranslations}, nil
 }
 
 func (s *PublicService) ListBlockTypes(ctx context.Context) (gencontent.BlockTypePage, error) {

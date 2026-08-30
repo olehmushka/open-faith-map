@@ -213,7 +213,37 @@ func (s *Service) CreateDocument(ctx context.Context, siteID string, in domain.C
 			return domain.Document{}, err
 		}
 	}
+	if in.TranslationGroupID != nil {
+		if err := s.checkTranslationGroup(ctx, siteID, *in.TranslationGroupID, in.Locale); err != nil {
+			return domain.Document{}, err
+		}
+	}
 	return s.store.InsertDocument(ctx, siteID, in)
+}
+
+// checkTranslationGroup (M14.14) guards CreateDocument's "join an existing translation group"
+// path: there's no DB constraint enforcing either of these, so both are app-level here. Rejects a
+// group that belongs to a different site (translation_group_id has no FK to site, so a caller
+// could otherwise link an arbitrary site's documents together) and a locale already present in the
+// group (content.md's own invariant is that a group's documents share nothing but the group id —
+// nothing in the DB stops two rows in one group at the same locale otherwise).
+func (s *Service) checkTranslationGroup(ctx context.Context, siteID, translationGroupID, locale string) error {
+	siblings, err := s.store.ListDocumentsByTranslationGroup(ctx, translationGroupID)
+	if err != nil {
+		return err
+	}
+	if len(siblings) == 0 {
+		return &domain.TranslationGroupNotFoundError{TranslationGroupID: translationGroupID}
+	}
+	for _, sibling := range siblings {
+		if sibling.SiteID != siteID {
+			return &domain.TranslationGroupNotFoundError{TranslationGroupID: translationGroupID}
+		}
+		if sibling.Locale == locale {
+			return &domain.TranslationLocaleTakenError{TranslationGroupID: translationGroupID, Locale: locale}
+		}
+	}
+	return nil
 }
 
 func (s *Service) UpdateDocument(ctx context.Context, documentID string, in domain.UpdateDocumentInput) (domain.Document, error) {
@@ -569,30 +599,58 @@ func (s *Service) ListPublicNavItems(ctx context.Context, siteID string) ([]doma
 // visibility — an ancestor's state is never re-checked, only its slug identity). Any mismatch,
 // including the segment count itself, collapses to the same Content:DocumentNotFound a missing
 // document already returns — never resolved by the last segment alone.
-func (s *Service) GetPublicDocumentByPath(ctx context.Context, siteID, locale string, segments []string) (domain.Document, []domain.Document, error) {
+func (s *Service) GetPublicDocumentByPath(ctx context.Context, siteID, locale string, segments []string) (domain.Document, []domain.Document, []domain.DocumentTranslation, error) {
 	if len(segments) == 0 || len(segments) > 3 {
-		return domain.Document{}, nil, domain.ErrDocumentNotFound
+		return domain.Document{}, nil, nil, domain.ErrDocumentNotFound
 	}
 	leaf, err := s.store.GetDocumentBySlug(ctx, siteID, domain.KindPage, locale, segments[len(segments)-1])
 	if err != nil {
-		return domain.Document{}, nil, err
+		return domain.Document{}, nil, nil, err
 	}
 	if leaf.State == domain.StateDraft {
-		return domain.Document{}, nil, domain.ErrDocumentNotFound
+		return domain.Document{}, nil, nil, domain.ErrDocumentNotFound
 	}
 	ancestors, err := s.resolveAncestorChain(ctx, leaf)
 	if err != nil {
-		return domain.Document{}, nil, err
+		return domain.Document{}, nil, nil, err
 	}
 	if len(ancestors) != len(segments)-1 {
-		return domain.Document{}, nil, domain.ErrDocumentNotFound
+		return domain.Document{}, nil, nil, domain.ErrDocumentNotFound
 	}
 	for i, ancestor := range ancestors {
 		if ancestor.Slug != segments[i] {
-			return domain.Document{}, nil, domain.ErrDocumentNotFound
+			return domain.Document{}, nil, nil, domain.ErrDocumentNotFound
 		}
 	}
-	return leaf, ancestors, nil
+	translations, err := s.resolvePublishedTranslations(ctx, leaf)
+	if err != nil {
+		return domain.Document{}, nil, nil, err
+	}
+	return leaf, ancestors, translations, nil
+}
+
+// resolvePublishedTranslations (M14.14, DS-OFM-7) lists every PUBLISHED document sharing leaf's
+// translation group — leaf's own group membership means it's included in the result set already,
+// no special-casing needed. Each sibling gets its own ancestor-chain walk and href: siblings can
+// live at a different hierarchy/slug per locale, so a translation's href is never derived from the
+// leaf's own href.
+func (s *Service) resolvePublishedTranslations(ctx context.Context, leaf domain.Document) ([]domain.DocumentTranslation, error) {
+	siblings, err := s.store.ListDocumentsByTranslationGroup(ctx, leaf.TranslationGroupID)
+	if err != nil {
+		return nil, err
+	}
+	var out []domain.DocumentTranslation
+	for _, sibling := range siblings {
+		if sibling.State != domain.StatePublished {
+			continue
+		}
+		ancestors, err := s.resolveAncestorChain(ctx, sibling)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.DocumentTranslation{Locale: sibling.Locale, Href: buildPublicHref(sibling, ancestors)})
+	}
+	return out, nil
 }
 
 // resolveAncestorChain walks doc's real ParentDocumentID chain, root-first, leaf excluded —

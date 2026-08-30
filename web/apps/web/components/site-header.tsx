@@ -20,10 +20,14 @@ const PADDING_BLOCK_REM = 1;
 export function SiteHeader({
   chrome,
   navItems,
+  uiLocale,
   layout = "logo-left",
 }: {
   chrome: SiteChrome;
   navItems: PublicNavItem[];
+  // M14.14: internal nav item hrefs are already content-locale-prefixed (buildPublicHref, backend)
+  // but never carried the site chrome's own UI language — this app's route now needs both segments.
+  uiLocale: string;
   layout?: ThemeHeaderLayout | string;
 }) {
   const padding = {
@@ -58,7 +62,7 @@ export function SiteHeader({
                   {item.label}
                 </a>
               ) : (
-                <a href={item.href} className="hover:underline">
+                <a href={`/${uiLocale}${item.href}`} className="hover:underline">
                   {item.label}
                 </a>
               )}
