@@ -170,6 +170,180 @@ func (r *Repository) ListActiveBlockTypes(ctx context.Context) ([]domain.BlockTy
 	return out, nil
 }
 
+// ---- block-type catalog admin (M14.13, content.catalog.manage) ----
+
+func blockTypeFromCatalogRow(id, code, name string, jsonSchema, uiSchema json.RawMessage, status string, sortOrder int32) domain.BlockType {
+	return domain.BlockType{ID: id, Code: code, Name: name, JSONSchema: jsonSchema, UISchema: uiSchema, Status: domain.BlockTypeStatus(status), SortOrder: int(sortOrder)}
+}
+
+// ListAllBlockTypes is the admin catalog read (ContentService, catalog.manage) — every status,
+// unlike ListActiveBlockTypes.
+func (r *Repository) ListAllBlockTypes(ctx context.Context) ([]domain.BlockType, error) {
+	rows, err := r.q.ListAllBlockTypes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("content: list all block types: %w", err)
+	}
+	out := make([]domain.BlockType, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, blockTypeFromCatalogRow(row.ID, row.Code, row.Name, row.JsonSchema, row.UiSchema, row.Status, row.SortOrder))
+	}
+	return out, nil
+}
+
+// InsertBlockType implements the same race-safe insert-then-catch-unique-violation discipline as
+// InsertSite — content_block_types_code_idx (migrations/0002_content.sql) is the existing unique
+// index this collides against, no new index needed.
+func (r *Repository) InsertBlockType(ctx context.Context, in domain.CreateBlockTypeInput) (domain.BlockType, error) {
+	row, err := r.q.InsertBlockType(ctx, contentsql.InsertBlockTypeParams{
+		Code: in.Code, Name: in.Name, JsonSchema: in.JSONSchema, UiSchema: in.UISchema, SortOrder: int32(in.SortOrder),
+	})
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "content_block_types_code_idx" {
+		return domain.BlockType{}, &domain.BlockTypeCodeTakenError{Code: in.Code}
+	}
+	if err != nil {
+		return domain.BlockType{}, fmt.Errorf("content: insert block type: %w", err)
+	}
+	return blockTypeFromCatalogRow(row.ID, row.Code, row.Name, row.JsonSchema, row.UiSchema, row.Status, row.SortOrder), nil
+}
+
+// UpdateBlockType only ever touches name/status/sortOrder — json_schema/ui_schema are locked after
+// creation (owner decision, M14.13; see queries/content.sql's own UpdateBlockType comment).
+func (r *Repository) UpdateBlockType(ctx context.Context, id string, in domain.UpdateBlockTypeInput) (domain.BlockType, error) {
+	var status pgtype.Text
+	if in.Status != nil {
+		status = pgtype.Text{String: string(*in.Status), Valid: true}
+	}
+	var sortOrder pgtype.Int4
+	if in.SortOrder != nil {
+		sortOrder = pgtype.Int4{Int32: int32(*in.SortOrder), Valid: true}
+	}
+	row, err := r.q.UpdateBlockType(ctx, contentsql.UpdateBlockTypeParams{ID: id, Name: nullableText(in.Name), Status: status, SortOrder: sortOrder})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.BlockType{}, domain.ErrBlockTypeNotFound
+	}
+	if err != nil {
+		return domain.BlockType{}, fmt.Errorf("content: update block type: %w", err)
+	}
+	return blockTypeFromCatalogRow(row.ID, row.Code, row.Name, row.JsonSchema, row.UiSchema, row.Status, row.SortOrder), nil
+}
+
+// ---- patterns (M14.13, D-SitePatterns) ----
+
+// patternBlock is content_patterns.blocks' on-disk shape — the same {blockTypeCode,position,data}
+// triple content_document_revisions.data already uses (application/revisionsnapshot.go's
+// revisionSnapshotBlock), duplicated here rather than imported: adapters sits below application in
+// this module's layering (adapters must never import application), and this is a small, self-
+// contained shape, not a cross-cutting abstraction worth a shared home.
+type patternBlock struct {
+	BlockTypeCode string          `json:"blockTypeCode"`
+	Position      int             `json:"position"`
+	Data          json.RawMessage `json:"data"`
+}
+
+func marshalPatternBlocks(blocks []domain.BlockInput) (json.RawMessage, error) {
+	out := make([]patternBlock, 0, len(blocks))
+	for _, b := range blocks {
+		out = append(out, patternBlock{BlockTypeCode: b.BlockTypeCode, Position: b.Position, Data: b.Data})
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("content: marshal pattern blocks: %w", err)
+	}
+	return data, nil
+}
+
+func unmarshalPatternBlocks(data json.RawMessage) ([]domain.BlockInput, error) {
+	var raw []patternBlock
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("content: unmarshal pattern blocks: %w", err)
+	}
+	out := make([]domain.BlockInput, 0, len(raw))
+	for _, b := range raw {
+		out = append(out, domain.BlockInput{BlockTypeCode: b.BlockTypeCode, Position: b.Position, Data: b.Data})
+	}
+	return out, nil
+}
+
+func patternFromRow(id, name, description string, blocksJSON json.RawMessage, sortOrder int32, createdAt, updatedAt time.Time) (domain.Pattern, error) {
+	blocks, err := unmarshalPatternBlocks(blocksJSON)
+	if err != nil {
+		return domain.Pattern{}, err
+	}
+	return domain.Pattern{ID: id, Name: name, Description: description, Blocks: blocks, SortOrder: int(sortOrder), CreatedAt: createdAt, UpdatedAt: updatedAt}, nil
+}
+
+func (r *Repository) InsertPattern(ctx context.Context, in domain.CreatePatternInput) (domain.Pattern, error) {
+	blocksJSON, err := marshalPatternBlocks(in.Blocks)
+	if err != nil {
+		return domain.Pattern{}, err
+	}
+	row, err := r.q.InsertPattern(ctx, contentsql.InsertPatternParams{
+		Name: in.Name, Description: in.Description, Blocks: blocksJSON, SortOrder: int32(in.SortOrder),
+	})
+	if err != nil {
+		return domain.Pattern{}, fmt.Errorf("content: insert pattern: %w", err)
+	}
+	return patternFromRow(row.ID, row.Name, row.Description, row.Blocks, row.SortOrder, row.CreatedAt, row.UpdatedAt)
+}
+
+func (r *Repository) UpdatePattern(ctx context.Context, id string, in domain.UpdatePatternInput) (domain.Pattern, error) {
+	var sortOrder pgtype.Int4
+	if in.SortOrder != nil {
+		sortOrder = pgtype.Int4{Int32: int32(*in.SortOrder), Valid: true}
+	}
+	var blocksJSON []byte
+	if in.Blocks != nil {
+		marshaled, err := marshalPatternBlocks(in.Blocks)
+		if err != nil {
+			return domain.Pattern{}, err
+		}
+		blocksJSON = marshaled
+	}
+	row, err := r.q.UpdatePattern(ctx, contentsql.UpdatePatternParams{
+		ID: id, Name: nullableText(in.Name), Description: nullableText(in.Description), Blocks: blocksJSON, SortOrder: sortOrder,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Pattern{}, &domain.PatternNotFoundError{PatternID: id}
+	}
+	if err != nil {
+		return domain.Pattern{}, fmt.Errorf("content: update pattern: %w", err)
+	}
+	return patternFromRow(row.ID, row.Name, row.Description, row.Blocks, row.SortOrder, row.CreatedAt, row.UpdatedAt)
+}
+
+// DeletePattern soft-deletes — no natural unique key exists on this table (unlike
+// content_block_types.code), so "not found" is decided by rows-affected, not a unique-violation
+// catch.
+func (r *Repository) DeletePattern(ctx context.Context, id string) error {
+	rows, err := r.q.DeletePattern(ctx, id)
+	if err != nil {
+		return fmt.Errorf("content: delete pattern: %w", err)
+	}
+	if rows == 0 {
+		return &domain.PatternNotFoundError{PatternID: id}
+	}
+	return nil
+}
+
+// ListPatterns is the public read (ContentPublicService, M14.13) — not sensitive data, same
+// no-auth reasoning ListActiveBlockTypes already uses.
+func (r *Repository) ListPatterns(ctx context.Context) ([]domain.Pattern, error) {
+	rows, err := r.q.ListPatterns(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("content: list patterns: %w", err)
+	}
+	out := make([]domain.Pattern, 0, len(rows))
+	for _, row := range rows {
+		pattern, err := patternFromRow(row.ID, row.Name, row.Description, row.Blocks, row.SortOrder, row.CreatedAt, row.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, pattern)
+	}
+	return out, nil
+}
+
 // InsertDocument implements U5's resolution race-safely: INSERT, catch the unique-violation,
 // translate. A nil in.TranslationGroupID starts a new group (gen_random_uuid()); a non-nil value
 // joins an existing one as another locale variant.

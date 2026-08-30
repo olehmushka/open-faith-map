@@ -15,6 +15,7 @@
 package content_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -57,11 +58,21 @@ func TestContentIntegration(t *testing.T) {
 	authzSvc := authz.NewService(pdp, authzStore, pool)
 	religionSvc := religionapplication.NewService(pool, directorySvc, authzSvc)
 	contentStore := contentadapters.NewRepository(pool)
-	contentSvc := application.NewService(contentStore, authzSvc, religionSvc, "m14-7-test-preview-hmac-key")
+	contentSvc := application.NewService(contentStore, authzSvc, religionSvc, "m14-7-test-preview-hmac-key", application.Config{
+		RootUnitID: seed.RootUnitID,
+	})
 
-	var personIDs, unitIDs, siteIDs, assignmentIDs, documentIDs, religionSiteIDs, locationIDs []string
+	var personIDs, unitIDs, siteIDs, assignmentIDs, documentIDs, religionSiteIDs, locationIDs, blockTypeIDs []string
 	t.Cleanup(func() {
 		bg := context.Background()
+		// M14.13: content_block_types.code is uniquely indexed, so a leftover row from a prior run
+		// would collide on the next — hard-deleted here (UpdateBlockType only ever retires, never
+		// deletes, since a real catalog row can be referenced by real content_blocks rows).
+		for _, id := range blockTypeIDs {
+			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.content_block_types WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup: delete block type %s: %v", id, err)
+			}
+		}
 		// Reverse creation order: content_documents.parent_document_id has no ON DELETE CASCADE
 		// (app-enforced 3-level cap, not a DB one — see checkParentDepth), and M14.10 is the first
 		// case in this file to create a real parent/child chain, so a child must be deleted before
@@ -1071,6 +1082,184 @@ func TestContentIntegration(t *testing.T) {
 		t.Errorf("PutNavItems (POST-kind target) error = %v, want *NavTargetInvalidError", err)
 	} else if navInvalidErr.TargetDocumentID != postDoc.ID {
 		t.Errorf("PutNavItems (POST-kind target) TargetDocumentID = %q, want %q", navInvalidErr.TargetDocumentID, postDoc.ID)
+	}
+
+	// ---- M14.13: block-type/pattern catalog admin (content.catalog.manage, platform-moderator) ----
+
+	catalogBlockTypeSchema := []byte(`{"type":"object","required":["value"],"additionalProperties":false,"properties":{"value":{"type":"string"}}}`)
+
+	// --- Every catalog write is denied for a plain congregation-admin (adminCtx already holds
+	// content.manage on unit, which must not imply content.catalog.manage — a different, platform-wide
+	// authority).
+	if _, err := contentSvc.CreateBlockType(adminCtx, contentdomain.CreateBlockTypeInput{
+		Code: "m1413_test_block", Name: "M14.13 Test Block", JSONSchema: catalogBlockTypeSchema, UISchema: []byte(`{}`), SortOrder: 200,
+	}); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("CreateBlockType by non-moderator error = %v, want ErrForbidden", err)
+	}
+	if _, err := contentSvc.CreatePattern(adminCtx, contentdomain.CreatePatternInput{
+		Name: "M14.13 Test Pattern", Blocks: []contentdomain.BlockInput{}, SortOrder: 200,
+	}); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("CreatePattern by non-moderator error = %v, want ErrForbidden", err)
+	}
+	if _, err := contentSvc.ListAllBlockTypesForCatalog(adminCtx); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("ListAllBlockTypesForCatalog by non-moderator error = %v, want ErrForbidden", err)
+	}
+
+	// --- Grant a real platform-moderator standing on the shared root unit (mirrors
+	// internal/moderation/moderation_integration_test.go's own grant-then-call pattern exactly).
+	moderatorID := insertPerson("M14.13 Content Test Moderator")
+	var modAssignmentID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO openfaithmap.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope)
+		VALUES ($1, $2, $3, 'unit') RETURNING id`,
+		moderatorID, seed.PlatformModeratorRoleID, seed.RootUnitID,
+	).Scan(&modAssignmentID); err != nil {
+		t.Fatalf("grant platform-moderator: %v", err)
+	}
+	assignmentIDs = append(assignmentIDs, modAssignmentID)
+	modCtx := authz.NewContext(ctx, authz.Subject{PersonID: moderatorID})
+
+	// --- CreateBlockType succeeds for a real moderator; the new type immediately appears in the
+	// public ListBlockTypes (active by default) and the admin-side ListAllBlockTypesForCatalog.
+	newBlockType, err := contentSvc.CreateBlockType(modCtx, contentdomain.CreateBlockTypeInput{
+		Code: "m1413_test_block", Name: "M14.13 Test Block", JSONSchema: catalogBlockTypeSchema, UISchema: []byte(`{}`), SortOrder: 200,
+	})
+	if err != nil {
+		t.Fatalf("CreateBlockType by moderator: %v", err)
+	}
+	blockTypeIDs = append(blockTypeIDs, newBlockType.ID)
+	if newBlockType.Status != contentdomain.BlockTypeActive {
+		t.Errorf("CreateBlockType result Status = %q, want ACTIVE", newBlockType.Status)
+	}
+	publicTypes, err := contentSvc.ListBlockTypes(context.Background())
+	if err != nil {
+		t.Fatalf("ListBlockTypes (public) after CreateBlockType: %v", err)
+	}
+	foundPublic := false
+	for _, bt := range publicTypes {
+		if bt.Code == "m1413_test_block" {
+			foundPublic = true
+		}
+	}
+	if !foundPublic {
+		t.Errorf("ListBlockTypes (public) = %+v, want to contain m1413_test_block", publicTypes)
+	}
+
+	// --- A duplicate code is rejected with a typed BlockTypeCodeTakenError, not a generic error.
+	var codeTakenErr *contentdomain.BlockTypeCodeTakenError
+	if _, err := contentSvc.CreateBlockType(modCtx, contentdomain.CreateBlockTypeInput{
+		Code: "m1413_test_block", Name: "Duplicate", JSONSchema: catalogBlockTypeSchema, UISchema: []byte(`{}`), SortOrder: 201,
+	}); !errors.As(err, &codeTakenErr) {
+		t.Errorf("CreateBlockType (duplicate code) error = %v, want *BlockTypeCodeTakenError", err)
+	} else if codeTakenErr.Code != "m1413_test_block" {
+		t.Errorf("CreateBlockType (duplicate code) Code = %q, want m1413_test_block", codeTakenErr.Code)
+	}
+
+	// --- A json_schema that fails to compile is rejected up front, before ever reaching the store.
+	if _, err := contentSvc.CreateBlockType(modCtx, contentdomain.CreateBlockTypeInput{
+		Code: "m1413_test_broken", Name: "Broken", JSONSchema: []byte(`{"type":"not-a-real-type"}`), UISchema: []byte(`{}`), SortOrder: 202,
+	}); err == nil {
+		t.Errorf("CreateBlockType (uncompilable schema) error = nil, want a compile error")
+	}
+
+	// --- UpdateBlockType retires the type by status alone — json_schema/ui_schema are structurally
+	// unsettable (domain.UpdateBlockTypeInput has no such field), the owner's "locked after creation"
+	// decision.
+	retiredStatus := contentdomain.BlockTypeRetired
+	retired, err := contentSvc.UpdateBlockType(modCtx, newBlockType.ID, contentdomain.UpdateBlockTypeInput{Status: &retiredStatus})
+	if err != nil {
+		t.Fatalf("UpdateBlockType (retire) by moderator: %v", err)
+	}
+	if retired.Status != contentdomain.BlockTypeRetired || !bytes.Equal(retired.JSONSchema, newBlockType.JSONSchema) {
+		t.Errorf("UpdateBlockType (retire) result = %+v, want Status=RETIRED, unchanged JSONSchema", retired)
+	}
+	// A retired type is excluded from the public active-only list but still visible to the moderator
+	// catalog read.
+	publicTypesAfterRetire, err := contentSvc.ListBlockTypes(context.Background())
+	if err != nil {
+		t.Fatalf("ListBlockTypes (public) after retire: %v", err)
+	}
+	for _, bt := range publicTypesAfterRetire {
+		if bt.Code == "m1413_test_block" {
+			t.Errorf("ListBlockTypes (public) after retire still contains m1413_test_block")
+		}
+	}
+	catalogTypes, err := contentSvc.ListAllBlockTypesForCatalog(modCtx)
+	if err != nil {
+		t.Fatalf("ListAllBlockTypesForCatalog by moderator: %v", err)
+	}
+	foundRetired := false
+	for _, bt := range catalogTypes {
+		if bt.Code == "m1413_test_block" && bt.Status == contentdomain.BlockTypeRetired {
+			foundRetired = true
+		}
+	}
+	if !foundRetired {
+		t.Errorf("ListAllBlockTypesForCatalog = %+v, want a RETIRED m1413_test_block", catalogTypes)
+	}
+
+	// --- UpdateBlockType against a nonexistent id is ErrBlockTypeNotFound.
+	if _, err := contentSvc.UpdateBlockType(modCtx, "00000000-0000-0000-0000-000000000000", contentdomain.UpdateBlockTypeInput{Status: &retiredStatus}); !errors.Is(err, contentdomain.ErrBlockTypeNotFound) {
+		t.Errorf("UpdateBlockType (nonexistent id) error = %v, want ErrBlockTypeNotFound", err)
+	}
+
+	// --- Patterns: create/update/delete round trip, moderator-gated the same way; ListPatterns is
+	// the public read the admin editor's insert-a-pattern UI calls (no auth, mirroring ListBlockTypes).
+	patternBlocks := []contentdomain.BlockInput{
+		{BlockTypeCode: "heading", Position: 0, Data: json.RawMessage(`{"level":2,"text":[{"type":"text","text":"M14.13 Test Pattern"}]}`)},
+	}
+	newPattern, err := contentSvc.CreatePattern(modCtx, contentdomain.CreatePatternInput{
+		Name: "M14.13 Test Pattern", Description: "for integration test", Blocks: patternBlocks, SortOrder: 999,
+	})
+	if err != nil {
+		t.Fatalf("CreatePattern by moderator: %v", err)
+	}
+	patterns, err := contentSvc.ListPatterns(context.Background())
+	if err != nil {
+		t.Fatalf("ListPatterns (public): %v", err)
+	}
+	foundPattern := false
+	for _, p := range patterns {
+		if p.ID == newPattern.ID {
+			foundPattern = true
+		}
+	}
+	if !foundPattern {
+		t.Errorf("ListPatterns (public) = %+v, want to contain %s", patterns, newPattern.ID)
+	}
+
+	updatedName := "M14.13 Test Pattern (updated)"
+	updatedPattern, err := contentSvc.UpdatePattern(modCtx, newPattern.ID, contentdomain.UpdatePatternInput{Name: &updatedName})
+	if err != nil {
+		t.Fatalf("UpdatePattern by moderator: %v", err)
+	}
+	if updatedPattern.Name != updatedName || len(updatedPattern.Blocks) != len(patternBlocks) || updatedPattern.Blocks[0].BlockTypeCode != patternBlocks[0].BlockTypeCode {
+		t.Errorf("UpdatePattern result = %+v, want Name=%q, unchanged Blocks", updatedPattern, updatedName)
+	}
+
+	var patternNotFoundErr *contentdomain.PatternNotFoundError
+	if _, err := contentSvc.UpdatePattern(modCtx, "00000000-0000-0000-0000-000000000000", contentdomain.UpdatePatternInput{Name: &updatedName}); !errors.As(err, &patternNotFoundErr) {
+		t.Errorf("UpdatePattern (nonexistent id) error = %v, want *PatternNotFoundError", err)
+	}
+
+	// --- DeletePattern is moderator-gated too, and not-found on an already-deleted/unknown id.
+	if err := contentSvc.DeletePattern(adminCtx, newPattern.ID); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("DeletePattern by non-moderator error = %v, want ErrForbidden", err)
+	}
+	if err := contentSvc.DeletePattern(modCtx, newPattern.ID); err != nil {
+		t.Fatalf("DeletePattern by moderator: %v", err)
+	}
+	if err := contentSvc.DeletePattern(modCtx, newPattern.ID); !errors.As(err, &patternNotFoundErr) {
+		t.Errorf("DeletePattern (already deleted) error = %v, want *PatternNotFoundError", err)
+	}
+	patternsAfterDelete, err := contentSvc.ListPatterns(context.Background())
+	if err != nil {
+		t.Fatalf("ListPatterns (public) after delete: %v", err)
+	}
+	for _, p := range patternsAfterDelete {
+		if p.ID == newPattern.ID {
+			t.Errorf("ListPatterns (public) after delete still contains %s", newPattern.ID)
+		}
 	}
 }
 

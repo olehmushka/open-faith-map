@@ -29,6 +29,8 @@ type ContentPublicServiceClient interface {
 	GetPreviewBlocks(ctx context.Context, documentIdArg string, tokenArg string) (BlockList, error)
 	// Active block types only.
 	ListBlockTypes(ctx context.Context) (BlockTypePage, error)
+	// M14.13. Not sensitive data (same reasoning listBlockTypes already uses for having no auth) — every pattern, in sortOrder. The document editor's insert-a-pattern UI calls this exact endpoint to fetch blocks to copy client-side, the same way it already calls listBlockTypes.
+	ListPatterns(ctx context.Context) (PatternPage, error)
 	// M14.10. Resolved hrefs, in sortOrder — see PublicNavItem's own docs for the omit-on-missing-or-draft-target behavior.
 	ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error)
 	// M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
@@ -191,6 +193,22 @@ func (c *contentPublicServiceClient) ListBlockTypes(ctx context.Context) (BlockT
 	return *returnVal, nil
 }
 
+func (c *contentPublicServiceClient) ListPatterns(ctx context.Context) (PatternPage, error) {
+	var returnVal *PatternPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPatterns"))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/public/patterns"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(PatternPage), werror.WrapWithContextParams(ctx, err, "listPatterns failed")
+	}
+	if returnVal == nil {
+		return *new(PatternPage), werror.ErrorWithContextParams(ctx, "listPatterns response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 func (c *contentPublicServiceClient) ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error) {
 	var returnVal *PublicNavItemList
 	var requestParams []httpclient.RequestParam
@@ -252,6 +270,18 @@ type ContentServiceClient interface {
 	ListNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (NavItemList, error)
 	// M14.10. Full replace of the site's nav menu — a small, hand-curated list edited as a batch, the same shape putBlocks used before M14.6's revision refactor moved it to an in-place update. Content:DuplicateNavItemSortOrder if two items share a sortOrder, Content:NavTargetAmbiguous if an item has neither or both of targetDocumentId/targetUrl, Content:NavTargetInvalid if targetDocumentId doesn't resolve to a PAGE document in this same site.
 	PutNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error)
+	// M14.13. content.catalog.manage-gated (platform-moderator, not content.manage) — every status, unlike ContentPublicService.listBlockTypes' active-only filter, so a moderator can see and un-retire RETIRED types too.
+	ListBlockTypesForCatalog(ctx context.Context, authHeader bearertoken.Token) (BlockTypePage, error)
+	// M14.13. content.catalog.manage-gated. Content:BlockTypeCodeTaken on a duplicate code.
+	CreateBlockType(ctx context.Context, authHeader bearertoken.Token, requestArg CreateBlockTypeRequest) (BlockType, error)
+	// M14.13. content.catalog.manage-gated. See UpdateBlockTypeRequest's own docs for why jsonSchema/uiSchema aren't fields on this request at all.
+	UpdateBlockType(ctx context.Context, authHeader bearertoken.Token, blockTypeIdArg string, requestArg UpdateBlockTypeRequest) (BlockType, error)
+	// M14.13. content.catalog.manage-gated.
+	CreatePattern(ctx context.Context, authHeader bearertoken.Token, requestArg CreatePatternRequest) (Pattern, error)
+	// M14.13. content.catalog.manage-gated. Content:PatternNotFound if missing.
+	UpdatePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string, requestArg UpdatePatternRequest) (Pattern, error)
+	// M14.13. content.catalog.manage-gated. Soft-delete (a pattern already copied into a document is unaffected — unsynced, no ongoing reference to detach). Content:PatternNotFound if missing or already deleted.
+	DeletePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string) error
 }
 
 type contentServiceClient struct {
@@ -519,6 +549,107 @@ func (c *contentServiceClient) PutNavItems(ctx context.Context, authHeader beare
 	return *returnVal, nil
 }
 
+func (c *contentServiceClient) ListBlockTypesForCatalog(ctx context.Context, authHeader bearertoken.Token) (BlockTypePage, error) {
+	var returnVal *BlockTypePage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListBlockTypesForCatalog"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/catalog/block-types"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(BlockTypePage), werror.WrapWithContextParams(ctx, err, "listBlockTypesForCatalog failed")
+	}
+	if returnVal == nil {
+		return *new(BlockTypePage), werror.ErrorWithContextParams(ctx, "listBlockTypesForCatalog response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentServiceClient) CreateBlockType(ctx context.Context, authHeader bearertoken.Token, requestArg CreateBlockTypeRequest) (BlockType, error) {
+	var returnVal *BlockType
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreateBlockType"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/catalog/block-types"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(BlockType), werror.WrapWithContextParams(ctx, err, "createBlockType failed")
+	}
+	if returnVal == nil {
+		return *new(BlockType), werror.ErrorWithContextParams(ctx, "createBlockType response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentServiceClient) UpdateBlockType(ctx context.Context, authHeader bearertoken.Token, blockTypeIdArg string, requestArg UpdateBlockTypeRequest) (BlockType, error) {
+	var returnVal *BlockType
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateBlockType"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/catalog/block-types/%s", url.PathEscape(fmt.Sprint(blockTypeIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(BlockType), werror.WrapWithContextParams(ctx, err, "updateBlockType failed")
+	}
+	if returnVal == nil {
+		return *new(BlockType), werror.ErrorWithContextParams(ctx, "updateBlockType response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentServiceClient) CreatePattern(ctx context.Context, authHeader bearertoken.Token, requestArg CreatePatternRequest) (Pattern, error) {
+	var returnVal *Pattern
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreatePattern"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/catalog/patterns"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Pattern), werror.WrapWithContextParams(ctx, err, "createPattern failed")
+	}
+	if returnVal == nil {
+		return *new(Pattern), werror.ErrorWithContextParams(ctx, "createPattern response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentServiceClient) UpdatePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string, requestArg UpdatePatternRequest) (Pattern, error) {
+	var returnVal *Pattern
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdatePattern"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/catalog/patterns/%s", url.PathEscape(fmt.Sprint(patternIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Pattern), werror.WrapWithContextParams(ctx, err, "updatePattern failed")
+	}
+	if returnVal == nil {
+		return *new(Pattern), werror.ErrorWithContextParams(ctx, "updatePattern response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentServiceClient) DeletePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeletePattern"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/catalog/patterns/%s", url.PathEscape(fmt.Sprint(patternIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deletePattern failed")
+	}
+	return nil
+}
+
 // Congregation site authoring: sites, documents (pages), blocks. Every write, and every read that must see draft state, is content.manage-gated — a live, target-scoped Authorize call against the site's own congregation unit (see file header). See docs/modules/content.md.
 type ContentServiceClientWithAuth interface {
 	CreateSite(ctx context.Context, requestArg CreateSiteRequest) (Site, error)
@@ -544,6 +675,18 @@ type ContentServiceClientWithAuth interface {
 	ListNavItems(ctx context.Context, siteIdArg string) (NavItemList, error)
 	// M14.10. Full replace of the site's nav menu — a small, hand-curated list edited as a batch, the same shape putBlocks used before M14.6's revision refactor moved it to an in-place update. Content:DuplicateNavItemSortOrder if two items share a sortOrder, Content:NavTargetAmbiguous if an item has neither or both of targetDocumentId/targetUrl, Content:NavTargetInvalid if targetDocumentId doesn't resolve to a PAGE document in this same site.
 	PutNavItems(ctx context.Context, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error)
+	// M14.13. content.catalog.manage-gated (platform-moderator, not content.manage) — every status, unlike ContentPublicService.listBlockTypes' active-only filter, so a moderator can see and un-retire RETIRED types too.
+	ListBlockTypesForCatalog(ctx context.Context) (BlockTypePage, error)
+	// M14.13. content.catalog.manage-gated. Content:BlockTypeCodeTaken on a duplicate code.
+	CreateBlockType(ctx context.Context, requestArg CreateBlockTypeRequest) (BlockType, error)
+	// M14.13. content.catalog.manage-gated. See UpdateBlockTypeRequest's own docs for why jsonSchema/uiSchema aren't fields on this request at all.
+	UpdateBlockType(ctx context.Context, blockTypeIdArg string, requestArg UpdateBlockTypeRequest) (BlockType, error)
+	// M14.13. content.catalog.manage-gated.
+	CreatePattern(ctx context.Context, requestArg CreatePatternRequest) (Pattern, error)
+	// M14.13. content.catalog.manage-gated. Content:PatternNotFound if missing.
+	UpdatePattern(ctx context.Context, patternIdArg string, requestArg UpdatePatternRequest) (Pattern, error)
+	// M14.13. content.catalog.manage-gated. Soft-delete (a pattern already copied into a document is unaffected — unsynced, no ongoing reference to detach). Content:PatternNotFound if missing or already deleted.
+	DeletePattern(ctx context.Context, patternIdArg string) error
 }
 
 func NewContentServiceClientWithAuth(client ContentServiceClient, authHeader bearertoken.Token) ContentServiceClientWithAuth {
@@ -609,6 +752,30 @@ func (c *contentServiceClientWithAuth) ListNavItems(ctx context.Context, siteIdA
 
 func (c *contentServiceClientWithAuth) PutNavItems(ctx context.Context, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error) {
 	return c.client.PutNavItems(ctx, c.authHeader, siteIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithAuth) ListBlockTypesForCatalog(ctx context.Context) (BlockTypePage, error) {
+	return c.client.ListBlockTypesForCatalog(ctx, c.authHeader)
+}
+
+func (c *contentServiceClientWithAuth) CreateBlockType(ctx context.Context, requestArg CreateBlockTypeRequest) (BlockType, error) {
+	return c.client.CreateBlockType(ctx, c.authHeader, requestArg)
+}
+
+func (c *contentServiceClientWithAuth) UpdateBlockType(ctx context.Context, blockTypeIdArg string, requestArg UpdateBlockTypeRequest) (BlockType, error) {
+	return c.client.UpdateBlockType(ctx, c.authHeader, blockTypeIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithAuth) CreatePattern(ctx context.Context, requestArg CreatePatternRequest) (Pattern, error) {
+	return c.client.CreatePattern(ctx, c.authHeader, requestArg)
+}
+
+func (c *contentServiceClientWithAuth) UpdatePattern(ctx context.Context, patternIdArg string, requestArg UpdatePatternRequest) (Pattern, error) {
+	return c.client.UpdatePattern(ctx, c.authHeader, patternIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithAuth) DeletePattern(ctx context.Context, patternIdArg string) error {
+	return c.client.DeletePattern(ctx, c.authHeader, patternIdArg)
 }
 
 func NewContentServiceClientWithTokenProvider(client ContentServiceClient, tokenProvider httpclient.TokenProvider) ContentServiceClientWithAuth {
@@ -730,4 +897,52 @@ func (c *contentServiceClientWithTokenProvider) PutNavItems(ctx context.Context,
 		return *new(NavItemList), err
 	}
 	return c.client.PutNavItems(ctx, bearertoken.Token(token), siteIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) ListBlockTypesForCatalog(ctx context.Context) (BlockTypePage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(BlockTypePage), err
+	}
+	return c.client.ListBlockTypesForCatalog(ctx, bearertoken.Token(token))
+}
+
+func (c *contentServiceClientWithTokenProvider) CreateBlockType(ctx context.Context, requestArg CreateBlockTypeRequest) (BlockType, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(BlockType), err
+	}
+	return c.client.CreateBlockType(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) UpdateBlockType(ctx context.Context, blockTypeIdArg string, requestArg UpdateBlockTypeRequest) (BlockType, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(BlockType), err
+	}
+	return c.client.UpdateBlockType(ctx, bearertoken.Token(token), blockTypeIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) CreatePattern(ctx context.Context, requestArg CreatePatternRequest) (Pattern, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Pattern), err
+	}
+	return c.client.CreatePattern(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) UpdatePattern(ctx context.Context, patternIdArg string, requestArg UpdatePatternRequest) (Pattern, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Pattern), err
+	}
+	return c.client.UpdatePattern(ctx, bearertoken.Token(token), patternIdArg, requestArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) DeletePattern(ctx context.Context, patternIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeletePattern(ctx, bearertoken.Token(token), patternIdArg)
 }

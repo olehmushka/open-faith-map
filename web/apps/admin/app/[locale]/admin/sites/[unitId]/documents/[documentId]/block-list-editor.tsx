@@ -15,12 +15,16 @@
 // which is what actually satisfies "survive a refresh mid-edit" per M14.6's acceptance criteria.
 //
 // M14.8: adds session-local undo/redo (hooks/use-block-history.ts, reusing this file's own
-// getSnapshot) and a real empty state for a document with zero blocks. The milestone text says an
-// empty site should offer "start from a template" — M14.13 (content_patterns) doesn't exist
-// anywhere in this repo yet, so the empty state offers a clear CTA into the existing inserter
-// instead; M14.13, when built, is what would make it offer real starter layouts. A block-level
-// undo/redo mutation is just another change to useDebouncedAutosave's polled form state — no
-// plumbing connects the two hooks, it's autosaved like any manual edit.
+// getSnapshot) and a real empty state for a document with zero blocks. A block-level undo/redo
+// mutation is just another change to useDebouncedAutosave's polled form state — no plumbing
+// connects the two hooks, it's autosaved like any manual edit.
+//
+// M14.13, D-SitePatterns: the empty state's CTA is now PatternInserter, not just BlockInserter —
+// "start from a template" is real now. Inserting a pattern is unsynced by construction: its blocks
+// (fetched once via listPatterns, no per-insert API call) are mapped into fresh-keyed ClientBlocks
+// and appended via the exact same setItems path insertBlock already uses, so a copied block is
+// indistinguishable from a hand-authored one the moment it lands in state — persisted, validated,
+// and undo/redo-tracked identically.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -47,12 +51,13 @@ import { ChevronDown, ChevronUp, GripVertical, Redo2, Trash2, Undo2 } from "luci
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { Block, BlockType } from "@/lib/content";
+import type { Block, BlockType, Pattern } from "@/lib/content";
 import { useDebouncedAutosave, type AutosaveStatus } from "@/hooks/use-debounced-autosave";
 import { useBlockHistory } from "@/hooks/use-block-history";
 
 import { BlockDataForm } from "./block-data-form";
 import { BlockInserter } from "./block-inserter";
+import { PatternInserter } from "./pattern-inserter";
 
 export interface BlockSaveInput {
   position: number;
@@ -93,10 +98,12 @@ function statusLabel(t: ReturnType<typeof useTranslations>, status: AutosaveStat
 export function BlockListEditor({
   blocks,
   blockTypes,
+  patterns,
   onAutosave,
 }: {
   blocks: Block[];
   blockTypes: BlockType[];
+  patterns: Pattern[];
   onAutosave: (inputs: BlockSaveInput[]) => Promise<BlockSaveResult>;
 }) {
   const t = useTranslations("DocumentEditorPage");
@@ -220,6 +227,17 @@ export function BlockListEditor({
     });
   }
 
+  // M14.13: unsynced by construction — pattern.blocks is copied into fresh-keyed ClientBlocks and
+  // appended, exactly like insertBlock above. There is no ongoing reference back to the pattern row
+  // from this point on; the pattern's own position values are dropped (position is always derived
+  // from array order, per M14.5), only blockTypeCode/data survive the copy.
+  function insertPattern(pattern: Pattern) {
+    setItems((prev) => {
+      setLiveMessage(t("patternInsertedAnnouncement", { name: pattern.name }));
+      return [...prev, ...pattern.blocks.map((b) => ({ key: newKey(), blockTypeCode: b.blockTypeCode, data: b.data }))];
+    });
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -253,13 +271,22 @@ export function BlockListEditor({
         <div className="flex flex-col items-center gap-3 rounded-md border border-dashed p-8 text-center">
           <p className="text-sm font-medium">{t("blocksEmptyHeading")}</p>
           <p className="text-sm text-muted-foreground">{t("blocksEmptyBody")}</p>
-          <BlockInserter
-            blockTypes={blockTypes}
-            onInsert={insertBlock}
-            triggerLabel={t("blocksEmptyCta")}
-            triggerVariant="default"
-            triggerSize="default"
-          />
+          <div className="flex flex-wrap justify-center gap-2">
+            <PatternInserter
+              patterns={patterns}
+              onInsert={insertPattern}
+              triggerLabel={t("blocksEmptyPatternCta")}
+              triggerVariant="default"
+              triggerSize="default"
+            />
+            <BlockInserter
+              blockTypes={blockTypes}
+              onInsert={insertBlock}
+              triggerLabel={t("blocksEmptyCta")}
+              triggerVariant="outline"
+              triggerSize="default"
+            />
+          </div>
         </div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -295,7 +322,12 @@ export function BlockListEditor({
         </DndContext>
       )}
 
-      {items.length > 0 && <BlockInserter blockTypes={blockTypes} onInsert={insertBlock} />}
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <BlockInserter blockTypes={blockTypes} onInsert={insertBlock} />
+          <PatternInserter patterns={patterns} onInsert={insertPattern} />
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <Button type="button" variant="outline" className="self-start" onClick={flush}>

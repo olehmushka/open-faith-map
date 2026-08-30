@@ -256,6 +256,55 @@ types:
         fields:
           items: list<PublicNavItem>
 
+      Pattern:
+        docs: >
+          M14.13, D-SitePatterns. A pre-built starting layout — inserting one copies blocks into a
+          document and detaches immediately (unsynced: no ongoing link back to this row). Reused
+          both by the moderator's catalog page (create/update/delete) and by the document editor's
+          own insert-a-pattern UI, which reads blocks directly and appends them client-side.
+        fields:
+          id: string
+          name: string
+          description: string
+          blocks: list<BlockInput>
+          sortOrder: integer
+          createdAt: datetime
+          updatedAt: datetime
+      PatternPage:
+        fields:
+          patterns: list<Pattern>
+      CreatePatternRequest:
+        fields:
+          name: string
+          description: string
+          blocks: list<BlockInput>
+          sortOrder: integer
+      UpdatePatternRequest:
+        fields:
+          name: optional<string>
+          description: optional<string>
+          blocks: optional<list<BlockInput>>
+          sortOrder: optional<integer>
+
+      CreateBlockTypeRequest:
+        docs: content.catalog.manage (platform-moderator only). Finally builds what M3 left unbuilt.
+        fields:
+          code: string
+          name: string
+          jsonSchema: any
+          uiSchema: any
+          sortOrder: integer
+      UpdateBlockTypeRequest:
+        docs: >
+          M14.13 owner decision: jsonSchema/uiSchema are deliberately absent here — a block type's
+          schema is locked after creation, so a runtime catalog edit can never silently break
+          already-saved blocks of that type or the admin form built from its old schema. A
+          moderator wanting a different shape retires the old type (status) and creates a new one.
+        fields:
+          name: optional<string>
+          status: optional<BlockTypeStatus>
+          sortOrder: optional<integer>
+
       DocumentWithAncestors:
         docs: >
           M14.10's page-route resolver: the leaf document plus its real ancestor chain (root
@@ -295,7 +344,11 @@ types:
         safe-args:
           documentId: string
       Forbidden:
-        docs: The caller does not hold content.manage on this site's congregation unit.
+        docs: >
+          The caller does not hold the authority this action requires: content.manage on the
+          relevant site's congregation unit for a per-site write/draft-read, or (M14.13)
+          content.catalog.manage (platform-moderator standing) for a catalog write. One error for
+          both, since neither ever needs to tell a caller which check failed.
         namespace: Content
         code: PERMISSION_DENIED
         safe-args: {}
@@ -405,6 +458,18 @@ types:
         code: INVALID_ARGUMENT
         safe-args:
           sortOrder: integer
+      PatternNotFound:
+        docs: M14.13. updatePattern/deletePattern against a missing or already-deleted pattern.
+        namespace: Content
+        code: NOT_FOUND
+        safe-args:
+          patternId: string
+      BlockTypeCodeTaken:
+        docs: M14.13. createBlockType's code collided with an existing (non-deleted) block type.
+        namespace: Content
+        code: CONFLICT
+        safe-args:
+          code: string
 
 services:
   ContentService:
@@ -555,6 +620,55 @@ services:
             param-type: path
           request: PutNavItemsRequest
         returns: NavItemList
+      listBlockTypesForCatalog:
+        http: GET /catalog/block-types
+        docs: >
+          M14.13. content.catalog.manage-gated (platform-moderator, not content.manage) — every
+          status, unlike ContentPublicService.listBlockTypes' active-only filter, so a moderator
+          can see and un-retire RETIRED types too.
+        returns: BlockTypePage
+      createBlockType:
+        http: POST /catalog/block-types
+        docs: M14.13. content.catalog.manage-gated. Content:BlockTypeCodeTaken on a duplicate code.
+        args:
+          request: CreateBlockTypeRequest
+        returns: BlockType
+      updateBlockType:
+        http: PUT /catalog/block-types/{blockTypeId}
+        docs: >
+          M14.13. content.catalog.manage-gated. See UpdateBlockTypeRequest's own docs for why
+          jsonSchema/uiSchema aren't fields on this request at all.
+        args:
+          blockTypeId:
+            type: string
+            param-type: path
+          request: UpdateBlockTypeRequest
+        returns: BlockType
+      createPattern:
+        http: POST /catalog/patterns
+        docs: M14.13. content.catalog.manage-gated.
+        args:
+          request: CreatePatternRequest
+        returns: Pattern
+      updatePattern:
+        http: PUT /catalog/patterns/{patternId}
+        docs: M14.13. content.catalog.manage-gated. Content:PatternNotFound if missing.
+        args:
+          patternId:
+            type: string
+            param-type: path
+          request: UpdatePatternRequest
+        returns: Pattern
+      deletePattern:
+        http: DELETE /catalog/patterns/{patternId}
+        docs: >
+          M14.13. content.catalog.manage-gated. Soft-delete (a pattern already copied into a
+          document is unaffected — unsynced, no ongoing reference to detach). Content:PatternNotFound
+          if missing or already deleted.
+        args:
+          patternId:
+            type: string
+            param-type: path
 
   ContentPublicService:
     name: Content Public Service
@@ -662,6 +776,14 @@ services:
         http: GET /block-types
         docs: Active block types only.
         returns: BlockTypePage
+      listPatterns:
+        http: GET /patterns
+        docs: >
+          M14.13. Not sensitive data (same reasoning listBlockTypes already uses for having no
+          auth) — every pattern, in sortOrder. The document editor's insert-a-pattern UI calls this
+          exact endpoint to fetch blocks to copy client-side, the same way it already calls
+          listBlockTypes.
+        returns: PatternPage
       listPublicNavItems:
         http: GET /sites/{siteId}/nav-items
         docs: >

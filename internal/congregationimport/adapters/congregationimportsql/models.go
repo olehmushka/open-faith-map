@@ -217,6 +217,17 @@ type OpenfaithmapContentDocumentRevision struct {
 	Label          pgtype.Text
 }
 
+type OpenfaithmapContentPattern struct {
+	ID          string
+	Name        string
+	Description string
+	Blocks      json.RawMessage
+	SortOrder   int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	DeletedAt   pgtype.Timestamptz
+}
+
 type OpenfaithmapContentSite struct {
 	ID                  string
 	CongregationUnitRid string

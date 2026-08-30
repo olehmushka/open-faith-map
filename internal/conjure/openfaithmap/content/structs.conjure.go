@@ -164,6 +164,31 @@ func (o *BlockTypePage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// content.catalog.manage (platform-moderator only). Finally builds what M3 left unbuilt.
+type CreateBlockTypeRequest struct {
+	Code       string      `json:"code"`
+	Name       string      `json:"name"`
+	JsonSchema interface{} `json:"jsonSchema"`
+	UiSchema   interface{} `json:"uiSchema"`
+	SortOrder  int         `json:"sortOrder"`
+}
+
+func (o CreateBlockTypeRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateBlockTypeRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type CreateDocumentRequest struct {
 	// EVENT requires eventStartsAt to be set (Content:EventMissingStart otherwise).
 	Kind DocumentKind `json:"kind"`
@@ -187,6 +212,50 @@ func (o CreateDocumentRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *CreateDocumentRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type CreatePatternRequest struct {
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Blocks      []BlockInput `json:"blocks"`
+	SortOrder   int          `json:"sortOrder"`
+}
+
+func (o CreatePatternRequest) MarshalJSON() ([]byte, error) {
+	if o.Blocks == nil {
+		o.Blocks = make([]BlockInput, 0)
+	}
+	type _tmpCreatePatternRequest CreatePatternRequest
+	return safejson.Marshal(_tmpCreatePatternRequest(o))
+}
+
+func (o *CreatePatternRequest) UnmarshalJSON(data []byte) error {
+	type _tmpCreatePatternRequest CreatePatternRequest
+	var rawCreatePatternRequest _tmpCreatePatternRequest
+	if err := safejson.Unmarshal(data, &rawCreatePatternRequest); err != nil {
+		return err
+	}
+	if rawCreatePatternRequest.Blocks == nil {
+		rawCreatePatternRequest.Blocks = make([]BlockInput, 0)
+	}
+	*o = CreatePatternRequest(rawCreatePatternRequest)
+	return nil
+}
+
+func (o CreatePatternRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreatePatternRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -443,6 +512,95 @@ func (o NavItemList) MarshalYAML() (interface{}, error) {
 }
 
 func (o *NavItemList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M14.13, D-SitePatterns. A pre-built starting layout — inserting one copies blocks into a document and detaches immediately (unsynced: no ongoing link back to this row). Reused both by the moderator's catalog page (create/update/delete) and by the document editor's own insert-a-pattern UI, which reads blocks directly and appends them client-side.
+type Pattern struct {
+	Id          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Blocks      []BlockInput      `json:"blocks"`
+	SortOrder   int               `json:"sortOrder"`
+	CreatedAt   datetime.DateTime `json:"createdAt"`
+	UpdatedAt   datetime.DateTime `json:"updatedAt"`
+}
+
+func (o Pattern) MarshalJSON() ([]byte, error) {
+	if o.Blocks == nil {
+		o.Blocks = make([]BlockInput, 0)
+	}
+	type _tmpPattern Pattern
+	return safejson.Marshal(_tmpPattern(o))
+}
+
+func (o *Pattern) UnmarshalJSON(data []byte) error {
+	type _tmpPattern Pattern
+	var rawPattern _tmpPattern
+	if err := safejson.Unmarshal(data, &rawPattern); err != nil {
+		return err
+	}
+	if rawPattern.Blocks == nil {
+		rawPattern.Blocks = make([]BlockInput, 0)
+	}
+	*o = Pattern(rawPattern)
+	return nil
+}
+
+func (o Pattern) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Pattern) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type PatternPage struct {
+	Patterns []Pattern `json:"patterns"`
+}
+
+func (o PatternPage) MarshalJSON() ([]byte, error) {
+	if o.Patterns == nil {
+		o.Patterns = make([]Pattern, 0)
+	}
+	type _tmpPatternPage PatternPage
+	return safejson.Marshal(_tmpPatternPage(o))
+}
+
+func (o *PatternPage) UnmarshalJSON(data []byte) error {
+	type _tmpPatternPage PatternPage
+	var rawPatternPage _tmpPatternPage
+	if err := safejson.Unmarshal(data, &rawPatternPage); err != nil {
+		return err
+	}
+	if rawPatternPage.Patterns == nil {
+		rawPatternPage.Patterns = make([]Pattern, 0)
+	}
+	*o = PatternPage(rawPatternPage)
+	return nil
+}
+
+func (o PatternPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PatternPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -810,6 +968,29 @@ func (o *TransitionDocumentRequest) UnmarshalYAML(unmarshal func(interface{}) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M14.13 owner decision: jsonSchema/uiSchema are deliberately absent here — a block type's schema is locked after creation, so a runtime catalog edit can never silently break already-saved blocks of that type or the admin form built from its old schema. A moderator wanting a different shape retires the old type (status) and creates a new one.
+type UpdateBlockTypeRequest struct {
+	Name      *string          `json:"name,omitempty"`
+	Status    *BlockTypeStatus `json:"status,omitempty"`
+	SortOrder *int             `json:"sortOrder,omitempty"`
+}
+
+func (o UpdateBlockTypeRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateBlockTypeRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type UpdateDocumentRequest struct {
 	Slug *string `json:"slug,omitempty"`
 	// Set a new parent. Omit (with clearParent false) to leave the parent unchanged.
@@ -827,6 +1008,29 @@ func (o UpdateDocumentRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpdateDocumentRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type UpdatePatternRequest struct {
+	Name        *string       `json:"name,omitempty"`
+	Description *string       `json:"description,omitempty"`
+	Blocks      *[]BlockInput `json:"blocks,omitempty"`
+	SortOrder   *int          `json:"sortOrder,omitempty"`
+}
+
+func (o UpdatePatternRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdatePatternRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

@@ -7,6 +7,7 @@ import {
   getSite,
   listBlockTypes,
   listDocuments,
+  listPatterns,
   listRevisions,
   putBlocks,
   restoreRevision,
@@ -41,9 +42,10 @@ export default async function DocumentEditorPage({
   const doc = documents.find((d) => d.id === documentId);
   if (!doc) return redirect({ href: `/admin/sites/${unitId}/documents`, locale });
 
-  const [blocks, blockTypes, revisions, previewToken] = await Promise.all([
+  const [blocks, blockTypes, patterns, revisions, previewToken] = await Promise.all([
     getBlocks(documentId),
     listBlockTypes(),
+    listPatterns(),
     listRevisions(documentId),
     createPreviewLink(site.id),
   ]);
@@ -170,7 +172,7 @@ export default async function DocumentEditorPage({
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">{t("blocksHint")}</p>
-          <BlockListEditor blocks={blocks} blockTypes={blockTypes} onAutosave={autosaveBlocks} />
+          <BlockListEditor blocks={blocks} blockTypes={blockTypes} patterns={patterns} onAutosave={autosaveBlocks} />
         </CardContent>
       </Card>
 

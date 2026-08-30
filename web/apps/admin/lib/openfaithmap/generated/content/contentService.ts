@@ -1,16 +1,23 @@
 import { IBlockList } from "./blockList";
+import { IBlockType } from "./blockType";
+import { IBlockTypePage } from "./blockTypePage";
+import { ICreateBlockTypeRequest } from "./createBlockTypeRequest";
 import { ICreateDocumentRequest } from "./createDocumentRequest";
+import { ICreatePatternRequest } from "./createPatternRequest";
 import { ICreateSiteRequest } from "./createSiteRequest";
 import { IDocument } from "./document";
 import { IDocumentPage } from "./documentPage";
 import { INavItemList } from "./navItemList";
+import { IPattern } from "./pattern";
 import { IPreviewLink } from "./previewLink";
 import { IPutBlocksRequest } from "./putBlocksRequest";
 import { IPutNavItemsRequest } from "./putNavItemsRequest";
 import { IRevisionPage } from "./revisionPage";
 import { ISite } from "./site";
 import { ITransitionDocumentRequest } from "./transitionDocumentRequest";
+import { IUpdateBlockTypeRequest } from "./updateBlockTypeRequest";
 import { IUpdateDocumentRequest } from "./updateDocumentRequest";
+import { IUpdatePatternRequest } from "./updatePatternRequest";
 import { IUpdateSiteChromeRequest } from "./updateSiteChromeRequest";
 import { IUpdateSiteThemeRequest } from "./updateSiteThemeRequest";
 import type { IHttpApiBridge } from "conjure-client";
@@ -58,6 +65,27 @@ export interface IContentService {
      *
      */
     putNavItems(siteId: string, request: IPutNavItemsRequest): Promise<INavItemList>;
+    /**
+     * M14.13. content.catalog.manage-gated (platform-moderator, not content.manage) — every status, unlike ContentPublicService.listBlockTypes' active-only filter, so a moderator can see and un-retire RETIRED types too.
+     *
+     */
+    listBlockTypesForCatalog(): Promise<IBlockTypePage>;
+    /** M14.13. content.catalog.manage-gated. Content:BlockTypeCodeTaken on a duplicate code. */
+    createBlockType(request: ICreateBlockTypeRequest): Promise<IBlockType>;
+    /**
+     * M14.13. content.catalog.manage-gated. See UpdateBlockTypeRequest's own docs for why jsonSchema/uiSchema aren't fields on this request at all.
+     *
+     */
+    updateBlockType(blockTypeId: string, request: IUpdateBlockTypeRequest): Promise<IBlockType>;
+    /** M14.13. content.catalog.manage-gated. */
+    createPattern(request: ICreatePatternRequest): Promise<IPattern>;
+    /** M14.13. content.catalog.manage-gated. Content:PatternNotFound if missing. */
+    updatePattern(patternId: string, request: IUpdatePatternRequest): Promise<IPattern>;
+    /**
+     * M14.13. content.catalog.manage-gated. Soft-delete (a pattern already copied into a document is unaffected — unsynced, no ongoing reference to detach). Content:PatternNotFound if missing or already deleted.
+     *
+     */
+    deletePattern(patternId: string): Promise<void>;
 }
 
 export class ContentService implements IContentService {
@@ -320,6 +348,117 @@ export class ContentService implements IContentService {
             __undefined,
             [
                 siteId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.13. content.catalog.manage-gated (platform-moderator, not content.manage) — every status, unlike ContentPublicService.listBlockTypes' active-only filter, so a moderator can see and un-retire RETIRED types too.
+     *
+     */
+    public listBlockTypesForCatalog(): Promise<IBlockTypePage> {
+        return this.bridge.call<IBlockTypePage>(
+            "ContentService",
+            "listBlockTypesForCatalog",
+            "GET",
+            "/content/v1/catalog/block-types",
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M14.13. content.catalog.manage-gated. Content:BlockTypeCodeTaken on a duplicate code. */
+    public createBlockType(request: ICreateBlockTypeRequest): Promise<IBlockType> {
+        return this.bridge.call<IBlockType>(
+            "ContentService",
+            "createBlockType",
+            "POST",
+            "/content/v1/catalog/block-types",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.13. content.catalog.manage-gated. See UpdateBlockTypeRequest's own docs for why jsonSchema/uiSchema aren't fields on this request at all.
+     *
+     */
+    public updateBlockType(blockTypeId: string, request: IUpdateBlockTypeRequest): Promise<IBlockType> {
+        return this.bridge.call<IBlockType>(
+            "ContentService",
+            "updateBlockType",
+            "PUT",
+            "/content/v1/catalog/block-types/{blockTypeId}",
+            request,
+            __undefined,
+            __undefined,
+            [
+                blockTypeId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M14.13. content.catalog.manage-gated. */
+    public createPattern(request: ICreatePatternRequest): Promise<IPattern> {
+        return this.bridge.call<IPattern>(
+            "ContentService",
+            "createPattern",
+            "POST",
+            "/content/v1/catalog/patterns",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** M14.13. content.catalog.manage-gated. Content:PatternNotFound if missing. */
+    public updatePattern(patternId: string, request: IUpdatePatternRequest): Promise<IPattern> {
+        return this.bridge.call<IPattern>(
+            "ContentService",
+            "updatePattern",
+            "PUT",
+            "/content/v1/catalog/patterns/{patternId}",
+            request,
+            __undefined,
+            __undefined,
+            [
+                patternId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.13. content.catalog.manage-gated. Soft-delete (a pattern already copied into a document is unaffected — unsynced, no ongoing reference to detach). Content:PatternNotFound if missing or already deleted.
+     *
+     */
+    public deletePattern(patternId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "ContentService",
+            "deletePattern",
+            "DELETE",
+            "/content/v1/catalog/patterns/{patternId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                patternId,
             ],
             __undefined,
             __undefined

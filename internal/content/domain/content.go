@@ -188,6 +188,59 @@ type BlockType struct {
 	SortOrder  int
 }
 
+// Pattern is a pre-built, church-specific starting layout (M14.13, D-SitePatterns). Blocks is the
+// same []BlockInput shape a document's own block list uses everywhere else in this package — never
+// an opaque json.RawMessage blob, matching the rest of this domain's "the list structure is a real
+// Go slice; only a single block's own Data payload is opaque" convention. Inserting a pattern is
+// unsynced: the caller copies Blocks into a document's own block list client-side (or
+// application-side) and this row is never referenced again by that document — there is no ongoing
+// link to detach.
+type Pattern struct {
+	ID          string
+	Name        string
+	Description string
+	Blocks      []BlockInput
+	SortOrder   int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// CreateBlockTypeInput seeds a new catalog row — content.catalog.manage-gated
+// (requireCatalogManage), platform-moderator only.
+type CreateBlockTypeInput struct {
+	Code       string
+	Name       string
+	JSONSchema json.RawMessage
+	UISchema   json.RawMessage
+	SortOrder  int
+}
+
+// UpdateBlockTypeInput deliberately has no JSONSchema/UISchema field (owner decision, M14.13): a
+// block type's schema is locked after creation, so a runtime catalog edit can never silently break
+// already-saved blocks of that type or the admin form that was built from its old schema. A
+// moderator wanting a different shape retires the old type (Status) and creates a new one.
+type UpdateBlockTypeInput struct {
+	Name      *string
+	Status    *BlockTypeStatus
+	SortOrder *int
+}
+
+type CreatePatternInput struct {
+	Name        string
+	Description string
+	Blocks      []BlockInput
+	SortOrder   int
+}
+
+// UpdatePatternInput.Blocks being nil means "leave unchanged" (optional<list<BlockInput>> in
+// Conjure) — a caller wanting to genuinely empty a pattern's blocks passes a non-nil empty slice.
+type UpdatePatternInput struct {
+	Name        *string
+	Description *string
+	Blocks      []BlockInput
+	SortOrder   *int
+}
+
 // NavItem is one entry in a site's hand-built nav menu (M14.10) — independent of
 // Document.ParentDocumentID (M14.0 replaced the page-tree-derived-nav assumption with a curated
 // menu). Exactly one of TargetDocumentID/TargetURL is ever set.
@@ -218,9 +271,14 @@ type PublicNavItem struct {
 }
 
 var (
-	ErrSiteNotFound       = errors.New("content site not found")
-	ErrDocumentNotFound   = errors.New("content document not found")
-	ErrForbidden          = errors.New("caller does not hold content.manage on this site's congregation unit")
+	ErrSiteNotFound     = errors.New("content site not found")
+	ErrDocumentNotFound = errors.New("content document not found")
+	// ErrForbidden covers both of this module's authorities: content.manage (per congregation unit)
+	// and content.catalog.manage (platform-wide, M14.13, platform-moderator only) — deliberately one
+	// sentinel for both, since neither ever needs to tell a caller which check failed.
+	ErrForbidden          = errors.New("caller does not hold the required authority for this action")
+	ErrPatternNotFound    = errors.New("content pattern not found")
+	ErrBlockTypeCodeTaken = errors.New("block type code already taken")
 	ErrEventMissingStart  = errors.New("kind=EVENT requires eventStartsAt to be set")
 	ErrParentTooDeep      = errors.New("parent document chain exceeds 3 levels")
 	ErrInvalidTransition  = errors.New("invalid document state transition")
@@ -346,6 +404,31 @@ type NavTargetAmbiguousError struct {
 func (e *NavTargetAmbiguousError) Error() string {
 	return fmt.Sprintf("nav item at sortOrder %d must set exactly one of targetDocumentId/targetUrl", e.SortOrder)
 }
+
+// PatternNotFoundError carries the patternId a catalog lookup couldn't resolve (M14.13) —
+// updatePattern/deletePattern against a missing or already-deleted row.
+type PatternNotFoundError struct {
+	PatternID string
+}
+
+func (e *PatternNotFoundError) Error() string {
+	return fmt.Sprintf("pattern %q not found", e.PatternID)
+}
+
+func (e *PatternNotFoundError) Unwrap() error { return ErrPatternNotFound }
+
+// BlockTypeCodeTakenError: createBlockType's code collided with an existing (non-deleted) row —
+// content_block_types_code_idx, race-safe (insert-then-catch-unique-violation), same discipline as
+// SlugTakenError.
+type BlockTypeCodeTakenError struct {
+	Code string
+}
+
+func (e *BlockTypeCodeTakenError) Error() string {
+	return fmt.Sprintf("block type code %q already taken", e.Code)
+}
+
+func (e *BlockTypeCodeTakenError) Unwrap() error { return ErrBlockTypeCodeTaken }
 
 // DuplicateNavItemSortOrderError: two nav items in one putNavItems call shared a sortOrder —
 // rejected up front, mirroring DuplicateBlockPositionError's own discipline.

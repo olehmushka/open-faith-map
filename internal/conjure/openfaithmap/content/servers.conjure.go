@@ -31,6 +31,8 @@ type ContentPublicService interface {
 	GetPreviewBlocks(ctx context.Context, documentIdArg string, tokenArg string) (BlockList, error)
 	// Active block types only.
 	ListBlockTypes(ctx context.Context) (BlockTypePage, error)
+	// M14.13. Not sensitive data (same reasoning listBlockTypes already uses for having no auth) — every pattern, in sortOrder. The document editor's insert-a-pattern UI calls this exact endpoint to fetch blocks to copy client-side, the same way it already calls listBlockTypes.
+	ListPatterns(ctx context.Context) (PatternPage, error)
 	// M14.10. Resolved hrefs, in sortOrder — see PublicNavItem's own docs for the omit-on-missing-or-draft-target behavior.
 	ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error)
 	// M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
@@ -67,6 +69,9 @@ func RegisterRoutesContentPublicService(router wrouter.Router, impl ContentPubli
 	}
 	if err := resource.Get("ListBlockTypes", "/content/v1/public/block-types", httpserver.NewJSONHandler(handler.HandleListBlockTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listBlockTypes route")
+	}
+	if err := resource.Get("ListPatterns", "/content/v1/public/patterns", httpserver.NewJSONHandler(handler.HandleListPatterns, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPatterns route")
 	}
 	if err := resource.Get("ListPublicNavItems", "/content/v1/public/sites/{siteId}/nav-items", httpserver.NewJSONHandler(handler.HandleListPublicNavItems, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPublicNavItems route")
@@ -231,6 +236,15 @@ func (c *contentPublicServiceHandler) HandleListBlockTypes(rw http.ResponseWrite
 	return codecs.JSON.Encode(rw, respArg)
 }
 
+func (c *contentPublicServiceHandler) HandleListPatterns(rw http.ResponseWriter, req *http.Request) error {
+	respArg, err := c.impl.ListPatterns(req.Context())
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
 func (c *contentPublicServiceHandler) HandleListPublicNavItems(rw http.ResponseWriter, req *http.Request) error {
 	pathParams := wrouter.PathParams(req)
 	if pathParams == nil {
@@ -292,6 +306,18 @@ type ContentService interface {
 	ListNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (NavItemList, error)
 	// M14.10. Full replace of the site's nav menu — a small, hand-curated list edited as a batch, the same shape putBlocks used before M14.6's revision refactor moved it to an in-place update. Content:DuplicateNavItemSortOrder if two items share a sortOrder, Content:NavTargetAmbiguous if an item has neither or both of targetDocumentId/targetUrl, Content:NavTargetInvalid if targetDocumentId doesn't resolve to a PAGE document in this same site.
 	PutNavItems(ctx context.Context, authHeader bearertoken.Token, siteIdArg string, requestArg PutNavItemsRequest) (NavItemList, error)
+	// M14.13. content.catalog.manage-gated (platform-moderator, not content.manage) — every status, unlike ContentPublicService.listBlockTypes' active-only filter, so a moderator can see and un-retire RETIRED types too.
+	ListBlockTypesForCatalog(ctx context.Context, authHeader bearertoken.Token) (BlockTypePage, error)
+	// M14.13. content.catalog.manage-gated. Content:BlockTypeCodeTaken on a duplicate code.
+	CreateBlockType(ctx context.Context, authHeader bearertoken.Token, requestArg CreateBlockTypeRequest) (BlockType, error)
+	// M14.13. content.catalog.manage-gated. See UpdateBlockTypeRequest's own docs for why jsonSchema/uiSchema aren't fields on this request at all.
+	UpdateBlockType(ctx context.Context, authHeader bearertoken.Token, blockTypeIdArg string, requestArg UpdateBlockTypeRequest) (BlockType, error)
+	// M14.13. content.catalog.manage-gated.
+	CreatePattern(ctx context.Context, authHeader bearertoken.Token, requestArg CreatePatternRequest) (Pattern, error)
+	// M14.13. content.catalog.manage-gated. Content:PatternNotFound if missing.
+	UpdatePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string, requestArg UpdatePatternRequest) (Pattern, error)
+	// M14.13. content.catalog.manage-gated. Soft-delete (a pattern already copied into a document is unaffected — unsynced, no ongoing reference to detach). Content:PatternNotFound if missing or already deleted.
+	DeletePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string) error
 }
 
 // RegisterRoutesContentService registers handlers for the ContentService endpoints with a witchcraft wrouter.
@@ -342,6 +368,24 @@ func RegisterRoutesContentService(router wrouter.Router, impl ContentService, ro
 	}
 	if err := resource.Put("PutNavItems", "/content/v1/sites/{siteId}/nav-items", httpserver.NewJSONHandler(handler.HandlePutNavItems, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add putNavItems route")
+	}
+	if err := resource.Get("ListBlockTypesForCatalog", "/content/v1/catalog/block-types", httpserver.NewJSONHandler(handler.HandleListBlockTypesForCatalog, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listBlockTypesForCatalog route")
+	}
+	if err := resource.Post("CreateBlockType", "/content/v1/catalog/block-types", httpserver.NewJSONHandler(handler.HandleCreateBlockType, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createBlockType route")
+	}
+	if err := resource.Put("UpdateBlockType", "/content/v1/catalog/block-types/{blockTypeId}", httpserver.NewJSONHandler(handler.HandleUpdateBlockType, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateBlockType route")
+	}
+	if err := resource.Post("CreatePattern", "/content/v1/catalog/patterns", httpserver.NewJSONHandler(handler.HandleCreatePattern, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createPattern route")
+	}
+	if err := resource.Put("UpdatePattern", "/content/v1/catalog/patterns/{patternId}", httpserver.NewJSONHandler(handler.HandleUpdatePattern, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updatePattern route")
+	}
+	if err := resource.Delete("DeletePattern", "/content/v1/catalog/patterns/{patternId}", httpserver.NewJSONHandler(handler.HandleDeletePattern, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deletePattern route")
 	}
 	return nil
 }
@@ -685,4 +729,121 @@ func (c *contentServiceHandler) HandlePutNavItems(rw http.ResponseWriter, req *h
 	}
 	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
 	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleListBlockTypesForCatalog(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := c.impl.ListBlockTypesForCatalog(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleCreateBlockType(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg CreateBlockTypeRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.CreateBlockType(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleUpdateBlockType(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	blockTypeIdArg, ok := pathParams["blockTypeId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"blockTypeId\" not present")
+	}
+	var requestArg UpdateBlockTypeRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.UpdateBlockType(req.Context(), bearertoken.Token(authHeader), blockTypeIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleCreatePattern(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg CreatePatternRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.CreatePattern(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleUpdatePattern(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	patternIdArg, ok := pathParams["patternId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"patternId\" not present")
+	}
+	var requestArg UpdatePatternRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := c.impl.UpdatePattern(req.Context(), bearertoken.Token(authHeader), patternIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentServiceHandler) HandleDeletePattern(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	patternIdArg, ok := pathParams["patternId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"patternId\" not present")
+	}
+	if err := c.impl.DeletePattern(req.Context(), bearertoken.Token(authHeader), patternIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
 }

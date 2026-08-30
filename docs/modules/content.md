@@ -202,13 +202,22 @@ split into two services instead, sharing one `types:` block in `api/content.conj
 | `GET /sites/{siteId}/documents?kind=&locale=` | List a site's `PUBLISHED`/`UNLISTED` documents only |
 | `GET /documents/{documentId}/blocks` | Read a document's blocks — `Content:DocumentNotFound` if it's `DRAFT`, never distinguishing "draft" from "doesn't exist" |
 | `GET /block-types` | Active block types only |
+| `GET /patterns` | M14.13: every starter pattern, in `sortOrder` — not sensitive data, same no-auth reasoning as `/block-types`. The admin editor's insert-a-pattern UI reads a pattern's `blocks` directly from this call and copies them client-side; there is no separate "insert" endpoint (unsynced by construction — see Entities above) |
 | `GET /sites/{siteId}/preview-documents?token=&kind=&locale=` | M14.7: every document in every state for the token's own site — the one deliberate exception below, gated by a token from `createPreviewLink` instead of published/unlisted filtering |
 | `GET /documents/{documentId}/preview-blocks?token=` | M14.7: the document's draft revision regardless of state, gated the same way. Both preview endpoints return `Content:PreviewTokenInvalid` (never `DocumentNotFound`/`Forbidden`) for a missing, malformed, expired, or wrong-site token — one error for every case, so a caller probing them learns nothing about what exists |
 
-`content.catalog.manage` (platform-wide block-type catalog writes) has **no endpoint as of M13** —
-the catalog is migration-seeded only (13 MVP types). **Scheduled to M14.13**
+`content.catalog.manage` (platform-wide block-type and pattern catalog writes) — **built at M14.13**
 ([D-SitePatterns](../architecture/decisions.md#d-sitepatterns--unsynced-starter-patterns-and-a-real-block-type-catalog)):
-block-type and pattern CRUD, gated on platform-moderator authority.
+gated on platform-moderator authority (the same `platform-moderator` Role/`PermModerationStanding`
+check `internal/moderation` already uses, root-unit-scoped — no new authority concept). New
+`ContentService` endpoints, all `content.catalog.manage`-gated:
+
+| Op | Intent |
+|---|---|
+| `GET /catalog/block-types` | Every status (unlike the public, active-only `listBlockTypes`) — so a moderator can see and un-retire `RETIRED` types too |
+| `POST /catalog/block-types` | `Content:BlockTypeCodeTaken` on a duplicate `code`; the submitted `json_schema` is smoke-tested for compile-validity up front |
+| `PUT /catalog/block-types/{blockTypeId}` | **`json_schema`/`ui_schema` are locked after creation** (owner decision, M14.13) — only `name`/`status`/`sortOrder` are settable, structurally: the request type has no schema field at all. A moderator wanting a different shape retires the old type and creates a new one, rather than risking a runtime edit silently breaking already-saved blocks of that type or the admin form built from its old schema |
+| `POST /catalog/patterns` · `PUT /catalog/patterns/{patternId}` · `DELETE /catalog/patterns/{patternId}` | Pattern CRUD; delete is a soft-delete, `Content:PatternNotFound` if missing |
 
 Public reads never expose `draft` documents or blocks belonging to them — with exactly one
 deliberate, token-gated exception (M14.7, `D-ContentRevisions`): `listPreviewDocuments`/
@@ -254,10 +263,11 @@ consequence of that reuse.
 
 `content.manage` (per congregation unit — a target-scoped capability check against go-oikumenea's
 PDP for write authority on *that* unit, see above) and `content.catalog.manage` (platform-wide,
-block-type catalog edits — restricted to platform moderators, whose authority is a
+block-type **and pattern** catalog edits — restricted to platform moderators, whose authority is a
 `platform-moderator` Role on the shared root unit per
-[D-PlatformModerator](../architecture/decisions.md), not a local roster; unused in M3, no endpoint
-exists yet to gate).
+[D-PlatformModerator](../architecture/decisions.md), not a local roster — **built at M14.13**,
+`internal/content/application/authorize.go`'s `requireCatalogManage`, checked against
+`s.cfg.RootUnitID` exactly like `internal/moderation`'s own `requireModerate`).
 
 Neither name is ever consulted by go-oikumenea's PDP — it has no knowledge of the `content` schema.
 What the PDP answers is the underlying capability question; these names are how this module refers
@@ -341,10 +351,20 @@ exist first.
   to a typed `Content:SlugTaken` error — race-safe, never check-then-insert). No silent suffixing,
   no per-country namespacing. The same pattern covers `content_documents.slug` collisions within one
   `(site_id, kind, locale)`.
-- **`content.catalog.manage` has no endpoint yet — resolved by schedule (2026-08-27, M14.0):
-  M14.13 builds it.** The block-type catalog is migration-seeded only (13 MVP types,
-  `migrations/0004_content.sql`) until then; see
+- **`content.catalog.manage` had no endpoint — resolved at M14.13 (2026-08-30).** Block-type and
+  pattern CRUD now exist, `content.catalog.manage`-gated (platform-moderator). The block-type
+  catalog was migration-seeded only (13 MVP types, `migrations/0002_content.sql`, plus `list` at
+  `migrations/0022_content_richtext.sql`) through M14.12; a moderator can now add to it at runtime,
+  live-verified over real HTTP (`docker exec ... curlimages/curl` against the real running stack):
+  anonymous 401, an authenticated non-moderator 403, a real `platform-moderator` grant 200 —
+  creating, retiring, and confirming a type's presence/absence on the public `listBlockTypes` at
+  each step, and the same create/list/delete round trip for a pattern. See
   [D-SitePatterns](../architecture/decisions.md#d-sitepatterns--unsynced-starter-patterns-and-a-real-block-type-catalog).
+  **Named, accepted scope boundary:** a block type added at runtime works in the admin inserter and
+  form (M14.4/M14.5 are schema-driven) but does **not** render on the public site — `web/apps/web/app/blocks.tsx`
+  dispatches on a hardcoded `switch (blockTypeCode)` with a documented no-op fallback for unknown
+  codes; a new `case` still requires a developer. Making the public renderer schema-driven too is a
+  separate, larger change this milestone does not attempt.
 - **A cross-tenant `content.manage` denial was untested — resolved at M14.9 (2026-08-28).** The
   `religionorg.manage` reuse this row used to describe is gone (see the authorization-touchpoints
   section); `internal/content/content_integration_test.go`'s M14.9 section now proves both that a

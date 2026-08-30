@@ -157,3 +157,59 @@ SELECT id, site_id, label, target_document_id, target_url, sort_order
 FROM openfaithmap.content_site_nav_items
 WHERE site_id = sqlc.arg('site_id')
 ORDER BY sort_order ASC;
+
+-- ---- block-type catalog admin (M14.13, content.catalog.manage) ----
+
+-- name: GetBlockTypeByID :one
+SELECT id, code, name, json_schema, ui_schema, status, sort_order
+FROM openfaithmap.content_block_types WHERE id = sqlc.arg('id') AND deleted_at IS NULL;
+
+-- name: ListAllBlockTypes :many
+-- Every status, unlike ListActiveBlockTypes — the moderator catalog page needs to see/edit
+-- RETIRED types too.
+SELECT id, code, name, json_schema, ui_schema, status, sort_order
+FROM openfaithmap.content_block_types
+WHERE deleted_at IS NULL
+ORDER BY sort_order ASC;
+
+-- name: InsertBlockType :one
+INSERT INTO openfaithmap.content_block_types (code, name, json_schema, ui_schema, sort_order)
+VALUES (sqlc.arg('code'), sqlc.arg('name'), sqlc.arg('json_schema'), sqlc.arg('ui_schema'), sqlc.arg('sort_order'))
+RETURNING id, code, name, json_schema, ui_schema, status, sort_order;
+
+-- name: UpdateBlockType :one
+-- json_schema/ui_schema are deliberately not settable here (owner decision, M14.13): locked after
+-- creation, so a runtime catalog edit can never silently break already-saved blocks or the admin
+-- form for an existing type.
+UPDATE openfaithmap.content_block_types
+SET name = COALESCE(sqlc.narg('name'), name),
+    status = COALESCE(sqlc.narg('status'), status),
+    sort_order = COALESCE(sqlc.narg('sort_order'), sort_order)
+WHERE id = sqlc.arg('id') AND deleted_at IS NULL
+RETURNING id, code, name, json_schema, ui_schema, status, sort_order;
+
+-- ---- patterns (M14.13, D-SitePatterns) ----
+
+-- name: InsertPattern :one
+INSERT INTO openfaithmap.content_patterns (name, description, blocks, sort_order)
+VALUES (sqlc.arg('name'), sqlc.arg('description'), sqlc.arg('blocks'), sqlc.arg('sort_order'))
+RETURNING id, name, description, blocks, sort_order, created_at, updated_at;
+
+-- name: UpdatePattern :one
+UPDATE openfaithmap.content_patterns
+SET name = COALESCE(sqlc.narg('name'), name),
+    description = COALESCE(sqlc.narg('description'), description),
+    blocks = COALESCE(sqlc.narg('blocks')::jsonb, blocks),
+    sort_order = COALESCE(sqlc.narg('sort_order'), sort_order)
+WHERE id = sqlc.arg('id') AND deleted_at IS NULL
+RETURNING id, name, description, blocks, sort_order, created_at, updated_at;
+
+-- name: DeletePattern :execrows
+UPDATE openfaithmap.content_patterns SET deleted_at = now()
+WHERE id = sqlc.arg('id') AND deleted_at IS NULL;
+
+-- name: ListPatterns :many
+SELECT id, name, description, blocks, sort_order, created_at, updated_at
+FROM openfaithmap.content_patterns
+WHERE deleted_at IS NULL
+ORDER BY sort_order ASC;

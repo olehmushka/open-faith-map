@@ -9,8 +9,9 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.12 (M14.0–M14.9
-2026-08-27/28, M14.10–M14.12 2026-08-29) are done**, no other sub-milestone is built yet. It is the second half of the
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.13 (M14.0–M14.9
+2026-08-27/28, M14.10–M14.12 2026-08-29, M14.13 2026-08-30) are done**, no other sub-milestone is
+built yet. It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -37,7 +38,9 @@ depends on religion's, the same direct-interface-call shape discovery already es
 own row below. **M14.12 gives `content_sites.theme` a real, curated schema** — accent color, font
 pairing, spacing scale, and header layout are each chosen from a fixed vocabulary, never typed as
 raw CSS, with a WCAG AA contrast check rejecting a failing accent/mode pair at write time — see its
-own row below. Next up: M14.13.
+own row below. **M14.13 finally builds `content.catalog.manage`** (block-type and pattern CRUD,
+platform-moderator-gated) and ships 5 seeded starter patterns with WordPress's unsynced insert
+semantics — see its own row below. Next up: M14.14.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -96,7 +99,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.10 · Navigation + page routes | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-29).** `/[pageSlug]` and hierarchical nested child routes on the tenant host, honoring the existing 3-level cap — a wrong ancestor segment 404s, never resolved by the last segment alone. **Nav is a hand-built menu (`content_site_nav_items`), not derived from the page tree** — M14.0 replaced the original page-tree-derivation assumption with an independently-curated menu (label, target document or external URL, sort order); `parent_document_id` still governs page nesting/breadcrumbs, just not the nav itself. Breadcrumbs at depth ≥ 2. The site root drops its old inline "every Page rendered inline" section (owner decision) — Pages are reachable only via their own route or the nav menu; Posts/Events feeds are unchanged. `Verified` awaits CI green on `main`. |
 | M14.11 · Site chrome — header, footer, template parts | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-29).** Congregation name, logo URL, nav, and a footer whose contact details and service times are read **live from `religion_sites`/`religion_service_schedules`, never copied** — the existing content.md invariant, restated because a footer is exactly where someone would be tempted to denormalize. Social links. Site-level settings on `content_sites`, not content documents. |
 | M14.12 · Curated theme tokens | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-29).** `content_sites.theme` gets a real schema: accent color from an 8-color vetted palette, one of three system-font pairings, a spacing scale, a header layout, and light/dark/system mode — WordPress's `theme.json` lesson, a fixed vocabulary rather than CSS. Emitted as CSS custom properties consumed by the tenant layout. **A WCAG AA contrast check rejects a failing accent/mode combination at write time**, naming the pair. Live theme preview in the admin. `Verified` awaits CI green on `main`. |
-| M14.13 · Starter patterns + block-type catalog admin | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | New `content_patterns` with WordPress's **unsynced** semantics: an inserted pattern detaches into ordinary blocks and is freely edited. Seeded church-specific starters — Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement. Finally builds the `content.catalog.manage` endpoints M3 left unbuilt (moderator-gated per D-PlatformModerator), so block types and patterns stop being migration-only. The single biggest onboarding lever in the arc. |
+| M14.13 · Starter patterns + block-type catalog admin | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-30).** New `content_patterns` (`migrations/0029_content_patterns.sql`) with WordPress's **unsynced** semantics: inserting a pattern is a pure client-side copy of its `blocks` into the document editor's local state (fetched once via the new public `listPatterns`), persisted through the existing `putBlocks` full-replace path — no dedicated "insert" mutation endpoint exists, or is needed, since a pattern's blocks are already the same `BlockInput`-shaped array a document's own block list uses. Seeded 5 church-specific starters — Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement. Finally builds `content.catalog.manage` (block-type create/update, pattern create/update/delete), gated on `platform-moderator` standing — the exact same `PermModerationStanding`/root-unit-scoped check `internal/moderation`'s `requireModerate` already uses, reused rather than a new authority concept (D-SitePatterns' own explicit call). **Owner decision this session:** `updateBlockType` locks `json_schema`/`ui_schema` after creation — the request type has no such field at all — so a runtime catalog edit can never silently break already-saved blocks of an existing type or the admin form built from its old schema; a moderator wanting a different shape retires the old type and creates a new one. **Named, accepted scope boundary:** a block type added at runtime works in the admin inserter/form (M14.4/M14.5 are schema-driven) but does not render on the public site — `web/apps/web/app/blocks.tsx` dispatches on a hardcoded switch with a no-op fallback for unknown codes; making the public renderer schema-driven too is a separate, larger change. Two new admin routes (`/admin/block-types`, `/admin/patterns`) follow `/admin/moderation`'s own precedent exactly: no local frontend role gate, shown unconditionally in the sidebar nav, the backend's `Content:Forbidden` is the entire authorization decision. Live-verified over real HTTP against the running docker-compose stack (dev-minted tokens, `docker exec ... curlimages/curl` for non-GET per this arc's own verification-notes convention): anonymous 401, an authenticated non-moderator 403, a real `platform-moderator` grant 200 on `GET/POST/PUT /content/v1/catalog/block-types` and the patterns equivalents — a type created, confirmed on the public `listBlockTypes`, retired, confirmed gone; a pattern created, confirmed on the public `listPatterns`, deleted, confirmed gone. `internal/content/content_integration_test.go` covers the same shapes against real Postgres (moderator grant/denial, duplicate-code, not-found, uncompilable-schema cases). `web/apps/admin`'s Vitest suite gained a pattern-insertion test (`block-list-editor.test.tsx`) alongside the existing 42. `Verified` awaits CI green on `main`. |
 | M14.14 · Locale switching — closes `DS-OFM-7` | ⬜ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | Visitor-facing locale picker offering **only locales that actually have a published variant**, plus `hreflang` alternates. Editor-side translation panel per document showing which locales exist and their state, with "create translation" seeding a variant into the same translation group. Translation groups have worked structurally since M3 with no UI on either side. |
 | M14.15 · Scheduled publishing, no scheduler | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `content_documents.publish_at` + a `SCHEDULED` state; the public predicate becomes `state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())`. **Correctness lives in the `WHERE` clause**, so it behaves identically in local dev and on a VM that does not exist yet — no timer, no goroutine, nothing to fire, and no new unattributable background writer (`DS-OFM-16`). The one cost: the admin UI must show **effective** state, not the raw column. |
 | M14.16 · Contact form + in-app inbox | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `content_form_submissions` plus an anonymous write on `ContentPublicService`, reusing `internal/platform/ratelimit` (M7) rather than adding a second limiter. Spam handled without a third party: honeypot field, minimum time-to-submit, per-IP rate limit. Messages screen in `openfaithmap-admin`, `content.manage`-gated. **No SMTP anywhere** — follows D-InviteLinkMVP's precedent exactly. Submission text is untrusted and renders as plain text only. |
@@ -461,9 +464,12 @@ inserted block's type is real controlled state from the moment it's added, not a
 
 **The category/description mapping is a frontend-only static table**
 (`block-catalog.ts`), not a new `content_block_types` column — this milestone's own Backend/Migrated
-stage-board cells are `➖`, and a real schema column is M14.13's job once block types stop being
-migration-only. A block type absent from the map (e.g. one added at runtime before M14.13 ships)
-degrades to an "Other" group with just its name, never crashes or disappears.
+stage-board cells are `➖`. **Corrected at M14.13, not carried out as originally anticipated here:**
+M14.13 built `content.catalog.manage` without adding a `category`/`description` column to
+`content_block_types` — `docs/modules/content.md`'s own canonical entity list for that table never
+called for one, and this static map already degrades a block type it doesn't recognize (e.g. one a
+moderator adds at runtime) to an "Other" group with just its name, never crashing or disappearing —
+good enough that promoting it to a real column wasn't worth the migration for M14.13's scope.
 
 Drag-and-drop (`@dnd-kit/core` + `@dnd-kit/sortable`, new dependencies — nothing in this codebase
 did drag-and-drop before) replaces the integer `position` input, which is now computed from array
@@ -973,23 +979,77 @@ known reference ratios (pure black/white ≈ 21:1). `go test ./...`, `./godelw v
 
 ### M14.13 · Starter patterns + block-type catalog admin
 
-**Not started.** Depends on M14.4 (patterns insert blocks that need working forms). Finally builds
-what M3 deferred.
+**Built (2026-08-30).** Depended on M14.4 (patterns insert blocks that need working forms). Finally
+builds what M3 deferred.
 
-New `content_patterns` with WordPress's **unsynced** semantics: inserting a pattern copies its
-blocks into the document and detaches: no ongoing link, no shared state, freely edited afterwards.
-Seeded, church-specific: Parish home page, Service times, Meet the clergy, Getting here, Feast-day
-announcement.
+New `content_patterns` (`migrations/0029_content_patterns.sql`, same table shape/conventions as
+`content_block_types`: plain uuid PK, soft-delete, an `updated_at` trigger) with WordPress's
+**unsynced** semantics. **Design call made at build time:** inserting a pattern needs no dedicated
+backend mutation at all — `content_patterns.blocks` is already a full `BlockInput`-shaped snapshot,
+the same shape a document's own block list uses, and the admin editor already holds its current
+block list client-side and persists the whole thing through the existing `putBlocks` full-replace
+endpoint (manual save or the ~10s autosave). So "insert a pattern" is: fetch every pattern once via
+a new public `listPatterns` (`ContentPublicService`, no auth — not sensitive data, same reasoning
+`listBlockTypes` already uses), and on selection, map the chosen pattern's `blocks` into fresh-keyed
+`ClientBlock`s and append them via the exact same `setItems` path `insertBlock` already uses
+(`block-list-editor.tsx`'s new `insertPattern`) — one undo/redo step, autosaved and schema-validated
+identically to a hand-authored block, with no special-casing anywhere. Seeded 5 church-specific
+starters: Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement.
 
-Builds the `content.catalog.manage` endpoints M3 left unbuilt — block-type and pattern CRUD, gated
-on the platform-moderator authority D-PlatformModerator already defines — so the catalog stops
-being migration-only. This is the arc's single biggest onboarding lever: the research is
-unambiguous that a blank canvas is where non-technical editors stall.
+Builds the `content.catalog.manage` endpoints M3 left unbuilt: `listBlockTypesForCatalog` (every
+status), `createBlockType`, `updateBlockType`, `createPattern`, `updatePattern`, `deletePattern` —
+all on `ContentService`, gated by a new `requireCatalogManage`
+(`internal/content/application/authorize.go`) that mirrors `internal/moderation`'s own
+`requireModerate` exactly: the same `PermModerationStanding` permission, checked against the shared
+root unit (`Config.RootUnitID`, wired the same way `register_moderation.go` already does), not a new
+authority concept — D-SitePatterns' own explicit call. `content.Service` gained a `Config` struct
+and `cfg` field to carry `RootUnitID`, the first content-module addition of its kind.
 
-**Acceptance criteria.** A new congregation builds a plausible homepage from a pattern without
-authoring a block by hand. An inserted pattern is fully editable and unlinked from its source. A
-moderator adds a block type at runtime and it appears in the inserter with a working form (M14.4).
-A non-moderator is refused — tested with a token that should be refused, not inferred.
+**Owner decision (asked and confirmed this session):** `updateBlockType` locks `json_schema`/
+`ui_schema` after creation — `UpdateBlockTypeRequest` has no such field at all, so this is structural,
+not just an application-layer check. Only `name`/`status`/`sortOrder` are editable; a moderator
+wanting a different shape retires the old type and creates a new one. Rationale: a runtime catalog
+edit has no migration/backfill safety net the way a real repo migration does, so a schema change to
+an *existing* type could silently break already-saved blocks or the admin form built from its old
+shape. `createBlockType` still smoke-tests a new type's submitted schema compiles
+(`compileBlockTypeSchema`, reusing `blockvalidation.go`'s own `jsonschema/v6` compile call) before
+seeding the row, so a broken schema is rejected at creation, not discovered on the first `putBlocks`
+that references it.
+
+Two new top-level admin routes, `/admin/block-types` and `/admin/patterns` — following
+`/admin/moderation`'s own precedent exactly: no local frontend role gate, shown unconditionally in
+the sidebar nav (`components/admin-sidebar.tsx`'s main `NAV`, not the unrelated `SUPER_ADMIN_NAV`/
+`isInstanceAdmin` group, a structurally different authority), a non-moderator's call simply comes
+back `Content:Forbidden` server-side. Both use the plain `?error=`-redirect form-action shape still
+used elsewhere in this app outside the document editor (e.g. `sites/[unitId]/page.tsx`) — M14.8's
+"zero `?error=` round trips" discipline was scoped to the document editor specifically, not declared
+app-wide. `jsonSchema`/`uiSchema` are entered as raw JSON textareas at block-type creation (no
+per-field form exists for the catalog's own schema-of-schemas); a pattern's `blocks` are edited the
+same way, in the identical wire shape `putBlocks` already accepts.
+
+**Named, accepted scope boundary, found by reading the code rather than assumed:**
+`web/apps/web/app/blocks.tsx` dispatches on a hardcoded `switch (blockTypeCode)` with a documented
+no-op fallback for unknown codes. A block type a moderator adds at runtime works immediately in the
+admin inserter and form (M14.4/M14.5 are already schema-driven) but will **not** render on the
+public site until a developer adds a new `case` — this milestone's acceptance criteria only
+required the inserter/form half, not full end-to-end runtime rendering; making the public renderer
+schema-driven too is a separate, materially larger change.
+
+**Acceptance criteria — met.** A document with zero blocks builds a plausible homepage from a
+pattern without hand-authoring a block (`PatternInserter`, mirroring `BlockInserter`'s Command-
+palette shape). An inserted pattern is immediately just ordinary, freely-editable blocks — unlinked
+from its source pattern by construction, never referenced again. A moderator adds a block type at
+runtime and it appears in the inserter with a working form; a non-moderator is refused — proved two
+ways, not inferred: `internal/content/content_integration_test.go`'s M14.13 section (real Postgres,
+direct `application.Service` calls, mirroring `internal/moderation/moderation_integration_test.go`'s
+own grant-then-call pattern) and a live-HTTP pass against the real running docker-compose stack
+(dev-minted tokens per `scripts/mint-local-token`, `docker exec ... curlimages/curl` for non-GET
+methods since BusyBox `wget` is GET-only): anonymous 401, an authenticated non-moderator 403, a real
+`platform-moderator` grant 200 on both `/content/v1/catalog/block-types` and `/catalog/patterns` —
+a block type created, confirmed present on the public `listBlockTypes`, retired, confirmed absent;
+a pattern created, confirmed present on the public `listPatterns`, deleted, confirmed absent.
+`web/apps/admin`'s Vitest suite (M14.5's own precedent) gained a dedicated pattern-insertion test.
+`Verified` awaits CI green on `main`.
 
 ### M14.14 · Locale switching — closes `DS-OFM-7`
 
