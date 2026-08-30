@@ -125,17 +125,16 @@ func (s *PublicService) ListBlockTypes(ctx context.Context) (gencontent.BlockTyp
 	if err != nil {
 		return gencontent.BlockTypePage{}, mapErr(err, errCtx{})
 	}
-	out := make([]gencontent.BlockType, 0, len(blockTypes))
-	for _, bt := range blockTypes {
-		out = append(out, gencontent.BlockType{
-			Id:         bt.ID,
-			Code:       bt.Code,
-			Name:       bt.Name,
-			JsonSchema: unmarshalAny(bt.JSONSchema),
-			UiSchema:   unmarshalAny(bt.UISchema),
-			Status:     gencontent.New_BlockTypeStatus(gencontent.BlockTypeStatus_Value(bt.Status)),
-			SortOrder:  bt.SortOrder,
-		})
+	return gencontent.BlockTypePage{BlockTypes: toAPIBlockTypes(blockTypes)}, nil
+}
+
+// ListPatterns is not sensitive data (same reasoning ListBlockTypes above already uses for having
+// no auth) — every pattern, in sortOrder. The admin editor's insert-a-pattern UI calls this exact
+// endpoint to fetch blocks to copy client-side (M14.13, D-SitePatterns).
+func (s *PublicService) ListPatterns(ctx context.Context) (gencontent.PatternPage, error) {
+	patterns, err := s.appService.ListPatterns(ctx)
+	if err != nil {
+		return gencontent.PatternPage{}, mapErr(err, errCtx{})
 	}
-	return gencontent.BlockTypePage{BlockTypes: out}, nil
+	return gencontent.PatternPage{Patterns: toAPIPatterns(patterns)}, nil
 }

@@ -55,6 +55,26 @@ func validateBlockData(blockType domain.BlockType, position int, data []byte) er
 	return nil
 }
 
+// compileBlockTypeSchema smoke-tests that a moderator-submitted json_schema (M14.13,
+// createBlockType) actually compiles, reusing the exact same jsonschema/v6 compile call
+// validateBlockData already makes — without this, a broken schema would seed a catalog row that
+// fails on the first putBlocks call that ever references it, far from where the mistake was made.
+// It never validates any instance data; that's validateBlockData's job at real write time.
+func compileBlockTypeSchema(code string, schema []byte) error {
+	schemaDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(schema))
+	if err != nil {
+		return fmt.Errorf("block type %q: parse json_schema: %w", code, err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource(code, schemaDoc); err != nil {
+		return fmt.Errorf("block type %q: add schema resource: %w", code, err)
+	}
+	if _, err := compiler.Compile(code); err != nil {
+		return fmt.Errorf("block type %q: compile schema: %w", code, err)
+	}
+	return nil
+}
+
 // topLevelFieldFromValidationError walks a jsonschema/v6 validation error tree (a nest of Causes,
 // since a top-level "oneOf"/"required" failure groups its sub-failures) for the first
 // InstanceLocation whose first path segment names one of the block type's own declared top-level

@@ -32,3 +32,24 @@ func (s *Service) requireManage(ctx context.Context, unitRID string) error {
 	}
 	return nil
 }
+
+// catalogManagePermission is content.catalog.manage's underlying internal/authz permission
+// (M14.13, D-SitePatterns): platform-moderator authority, not a new authority concept — the same
+// PermModerationStanding internal/moderation already checks
+// (internal/moderation/application/authorize.go's requireModerate), reused here rather than
+// duplicated.
+const catalogManagePermission = authzdomain.PermModerationStanding
+
+// requireCatalogManage asks internal/authz's PDP whether the request's subject holds
+// catalogManagePermission on s.cfg.RootUnitID specifically — platform-wide, never scoped to a
+// congregation unit (unlike requireManage above). Mirrors
+// internal/moderation/application/authorize.go's requireModerate exactly.
+func (s *Service) requireCatalogManage(ctx context.Context) error {
+	if err := s.authzSvc.Require(ctx, catalogManagePermission, s.cfg.RootUnitID); err != nil {
+		if errors.Is(err, authzdomain.ErrPermissionDenied) {
+			return domain.ErrForbidden
+		}
+		return err
+	}
+	return nil
+}

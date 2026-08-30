@@ -2,6 +2,7 @@ import { IBlockList } from "./blockList";
 import { IBlockTypePage } from "./blockTypePage";
 import { IDocumentPage } from "./documentPage";
 import { IDocumentWithAncestors } from "./documentWithAncestors";
+import { IPatternPage } from "./patternPage";
 import { IPublicNavItemList } from "./publicNavItemList";
 import { ISite } from "./site";
 import { ISiteChrome } from "./siteChrome";
@@ -41,6 +42,11 @@ export interface IContentPublicService {
     getPreviewBlocks(documentId: string, token: string): Promise<IBlockList>;
     /** Active block types only. */
     listBlockTypes(): Promise<IBlockTypePage>;
+    /**
+     * M14.13. Not sensitive data (same reasoning listBlockTypes already uses for having no auth) — every pattern, in sortOrder. The document editor's insert-a-pattern UI calls this exact endpoint to fetch blocks to copy client-side, the same way it already calls listBlockTypes.
+     *
+     */
+    listPatterns(): Promise<IPatternPage>;
     /**
      * M14.10. Resolved hrefs, in sortOrder — see PublicNavItem's own docs for the omit-on-missing-or-draft-target behavior.
      *
@@ -209,6 +215,25 @@ export class ContentPublicService implements IContentPublicService {
             "listBlockTypes",
             "GET",
             "/content/v1/public/block-types",
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.13. Not sensitive data (same reasoning listBlockTypes already uses for having no auth) — every pattern, in sortOrder. The document editor's insert-a-pattern UI calls this exact endpoint to fetch blocks to copy client-side, the same way it already calls listBlockTypes.
+     *
+     */
+    public listPatterns(): Promise<IPatternPage> {
+        return this.bridge.call<IPatternPage>(
+            "ContentPublicService",
+            "listPatterns",
+            "GET",
+            "/content/v1/public/patterns",
             __undefined,
             __undefined,
             __undefined,

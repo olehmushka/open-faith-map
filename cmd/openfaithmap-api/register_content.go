@@ -23,9 +23,15 @@ import (
 // M14.11: also depends on deps.ReligionSvc (populated by registerCore too) — content's own
 // GetSiteChrome composes a site-chrome header/footer from religion's live data, the same
 // direct-interface-call cross-module shape registerDiscovery already uses one line below.
+//
+// M14.13: Config.RootUnitID is deps.CoreRootUnitID, the same fixed structural RID
+// register_moderation.go already passes moderationapplication.Config — content.catalog.manage's
+// requireCatalogManage checks platform-moderator standing against this same root unit.
 func registerContent(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	contentStore := contentadapters.NewRepository(deps.Pool)
-	contentAppSvc := contentapplication.NewService(contentStore, deps.AuthzSvc, deps.ReligionSvc, deps.Install.ContentPreviewHMACKey)
+	contentAppSvc := contentapplication.NewService(contentStore, deps.AuthzSvc, deps.ReligionSvc, deps.Install.ContentPreviewHMACKey, contentapplication.Config{
+		RootUnitID: deps.CoreRootUnitID,
+	})
 	contentTransportSvc := contenttransport.NewService(contentAppSvc)
 	contentPublicTransportSvc := contenttransport.NewPublicService(contentAppSvc)
 

@@ -187,6 +187,90 @@ func (s *Service) PutNavItems(ctx context.Context, authHeader bearertoken.Token,
 	return gencontent.NavItemList{Items: toAPINavItems(items)}, nil
 }
 
+// ---- block-type catalog admin (M14.13, content.catalog.manage) ----
+
+func (s *Service) ListBlockTypesForCatalog(ctx context.Context, authHeader bearertoken.Token) (gencontent.BlockTypePage, error) {
+	blockTypes, err := s.appService.ListAllBlockTypesForCatalog(ctx)
+	if err != nil {
+		return gencontent.BlockTypePage{}, mapErr(err, errCtx{})
+	}
+	return gencontent.BlockTypePage{BlockTypes: toAPIBlockTypes(blockTypes)}, nil
+}
+
+func (s *Service) CreateBlockType(ctx context.Context, authHeader bearertoken.Token, requestArg gencontent.CreateBlockTypeRequest) (gencontent.BlockType, error) {
+	jsonSchema, err := marshalAny(requestArg.JsonSchema)
+	if err != nil {
+		return gencontent.BlockType{}, err
+	}
+	uiSchema, err := marshalAny(requestArg.UiSchema)
+	if err != nil {
+		return gencontent.BlockType{}, err
+	}
+	blockType, err := s.appService.CreateBlockType(ctx, domain.CreateBlockTypeInput{
+		Code: requestArg.Code, Name: requestArg.Name, JSONSchema: jsonSchema, UISchema: uiSchema, SortOrder: requestArg.SortOrder,
+	})
+	if err != nil {
+		return gencontent.BlockType{}, mapErr(err, errCtx{BlockTypeCode: requestArg.Code})
+	}
+	return toAPIBlockType(blockType), nil
+}
+
+func (s *Service) UpdateBlockType(ctx context.Context, authHeader bearertoken.Token, blockTypeIdArg string, requestArg gencontent.UpdateBlockTypeRequest) (gencontent.BlockType, error) {
+	var status *domain.BlockTypeStatus
+	if requestArg.Status != nil {
+		v := domain.BlockTypeStatus(requestArg.Status.Value())
+		status = &v
+	}
+	blockType, err := s.appService.UpdateBlockType(ctx, blockTypeIdArg, domain.UpdateBlockTypeInput{
+		Name: requestArg.Name, Status: status, SortOrder: requestArg.SortOrder,
+	})
+	if err != nil {
+		return gencontent.BlockType{}, mapErr(err, errCtx{BlockTypeCode: blockTypeIdArg})
+	}
+	return toAPIBlockType(blockType), nil
+}
+
+// ---- patterns (M14.13, D-SitePatterns) ----
+
+func (s *Service) CreatePattern(ctx context.Context, authHeader bearertoken.Token, requestArg gencontent.CreatePatternRequest) (gencontent.Pattern, error) {
+	blocks, err := fromAPIBlockInputs(requestArg.Blocks)
+	if err != nil {
+		return gencontent.Pattern{}, err
+	}
+	pattern, err := s.appService.CreatePattern(ctx, domain.CreatePatternInput{
+		Name: requestArg.Name, Description: requestArg.Description, Blocks: blocks, SortOrder: requestArg.SortOrder,
+	})
+	if err != nil {
+		return gencontent.Pattern{}, mapErr(err, errCtx{})
+	}
+	return toAPIPattern(pattern), nil
+}
+
+func (s *Service) UpdatePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string, requestArg gencontent.UpdatePatternRequest) (gencontent.Pattern, error) {
+	var blocks []domain.BlockInput
+	if requestArg.Blocks != nil {
+		converted, err := fromAPIBlockInputs(*requestArg.Blocks)
+		if err != nil {
+			return gencontent.Pattern{}, err
+		}
+		blocks = converted
+	}
+	pattern, err := s.appService.UpdatePattern(ctx, patternIdArg, domain.UpdatePatternInput{
+		Name: requestArg.Name, Description: requestArg.Description, Blocks: blocks, SortOrder: requestArg.SortOrder,
+	})
+	if err != nil {
+		return gencontent.Pattern{}, mapErr(err, errCtx{})
+	}
+	return toAPIPattern(pattern), nil
+}
+
+func (s *Service) DeletePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string) error {
+	if err := s.appService.DeletePattern(ctx, patternIdArg); err != nil {
+		return mapErr(err, errCtx{})
+	}
+	return nil
+}
+
 func toAPINavItems(items []domain.NavItem) []gencontent.NavItem {
 	out := make([]gencontent.NavItem, 0, len(items))
 	for _, item := range items {
@@ -308,6 +392,65 @@ func toAPIRevisions(revisions []domain.DocumentRevision) []gencontent.DocumentRe
 		})
 	}
 	return out
+}
+
+func toAPIBlockTypes(blockTypes []domain.BlockType) []gencontent.BlockType {
+	out := make([]gencontent.BlockType, 0, len(blockTypes))
+	for _, bt := range blockTypes {
+		out = append(out, toAPIBlockType(bt))
+	}
+	return out
+}
+
+func toAPIBlockType(bt domain.BlockType) gencontent.BlockType {
+	return gencontent.BlockType{
+		Id:         bt.ID,
+		Code:       bt.Code,
+		Name:       bt.Name,
+		JsonSchema: unmarshalAny(bt.JSONSchema),
+		UiSchema:   unmarshalAny(bt.UISchema),
+		Status:     gencontent.New_BlockTypeStatus(gencontent.BlockTypeStatus_Value(bt.Status)),
+		SortOrder:  bt.SortOrder,
+	}
+}
+
+// toAPIBlockInputs is the wire-facing side of a pattern's blocks — the exact same
+// {blockTypeCode,position,data} shape gencontent.PutBlocksRequest already carries, so a pattern's
+// blocks round-trip through the identical conversion PutBlocks below already uses for a document's.
+func toAPIBlockInputs(blocks []domain.BlockInput) []gencontent.BlockInput {
+	out := make([]gencontent.BlockInput, 0, len(blocks))
+	for _, b := range blocks {
+		out = append(out, gencontent.BlockInput{BlockTypeCode: b.BlockTypeCode, Position: b.Position, Data: unmarshalAny(b.Data)})
+	}
+	return out
+}
+
+// fromAPIBlockInputs is toAPIBlockInputs' inverse — mirrors PutBlocks' own request-decoding loop.
+func fromAPIBlockInputs(inputs []gencontent.BlockInput) ([]domain.BlockInput, error) {
+	out := make([]domain.BlockInput, 0, len(inputs))
+	for _, b := range inputs {
+		data, err := marshalAny(b.Data)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.BlockInput{BlockTypeCode: b.BlockTypeCode, Position: b.Position, Data: data})
+	}
+	return out, nil
+}
+
+func toAPIPatterns(patterns []domain.Pattern) []gencontent.Pattern {
+	out := make([]gencontent.Pattern, 0, len(patterns))
+	for _, p := range patterns {
+		out = append(out, toAPIPattern(p))
+	}
+	return out
+}
+
+func toAPIPattern(p domain.Pattern) gencontent.Pattern {
+	return gencontent.Pattern{
+		Id: p.ID, Name: p.Name, Description: p.Description, Blocks: toAPIBlockInputs(p.Blocks), SortOrder: p.SortOrder,
+		CreatedAt: datetime.DateTime(p.CreatedAt), UpdatedAt: datetime.DateTime(p.UpdatedAt),
+	}
 }
 
 func derefOr(s *string, fallback string) string {

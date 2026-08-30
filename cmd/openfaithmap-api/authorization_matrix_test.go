@@ -95,6 +95,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			{"content_listPublicDocuments", http.MethodGet, "/content/v1/public/sites/nonexistent-site/documents", nil},
 			{"content_getPublicBlocks", http.MethodGet, "/content/v1/public/documents/nonexistent-doc/blocks", nil},
 			{"content_listBlockTypes", http.MethodGet, "/content/v1/public/block-types", nil},
+			{"content_listPatterns", http.MethodGet, "/content/v1/public/patterns", nil},
 			{"discovery_search", http.MethodGet, "/discovery/v1/search", nil},
 			{"moderation_fileReport", http.MethodPost, "/moderation/v1/reports", map[string]any{
 				"targetKind": "CONGREGATION", "targetRef": subj.unitA, "reasonCode": "SPAM",
@@ -413,6 +414,20 @@ func TestAuthorizationMatrix(t *testing.T) {
 			assertStatus(t, "operator (not a moderator)", deniedStatus, http.StatusForbidden)
 
 			allowedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/vouching/v1/vouches", subj.moderator, subj.moderatorSession, nil)
+			assertStatus(t, "platform-moderator", allowedStatus, http.StatusOK)
+		})
+
+		// M14.13: content.catalog.manage reuses this exact same platform-moderator standing
+		// (D-SitePatterns) — congAdminOwn holds content.manage on its own unit but must not pass
+		// this platform-wide, root-scoped gate.
+		t.Run("content_listBlockTypesForCatalog", func(t *testing.T) {
+			anonStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/content/v1/catalog/block-types", "", "", nil)
+			assertStatus(t, "anonymous", anonStatus, http.StatusUnauthorized)
+
+			deniedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/content/v1/catalog/block-types", subj.congAdminOwn, subj.congAdminOwnSession, nil)
+			assertStatus(t, "congAdminOwn (content.manage, not a moderator)", deniedStatus, http.StatusForbidden)
+
+			allowedStatus, _ := doReq(t, client, apiBase, http.MethodGet, "/content/v1/catalog/block-types", subj.moderator, subj.moderatorSession, nil)
 			assertStatus(t, "platform-moderator", allowedStatus, http.StatusOK)
 		})
 	})

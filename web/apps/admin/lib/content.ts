@@ -17,15 +17,20 @@ import type {
   IBlock,
   IBlockInput,
   IBlockType,
+  ICreateBlockTypeRequest,
   ICreateDocumentRequest,
+  ICreatePatternRequest,
   ICreateSiteRequest,
   IDocument,
   IDocumentRevision,
   INavItem,
   INavItemInput,
+  IPattern,
   ISite,
   ISocialLinks,
+  IUpdateBlockTypeRequest,
   IUpdateDocumentRequest,
+  IUpdatePatternRequest,
 } from "./openfaithmap/generated/content";
 import { DocumentTransitionAction } from "./openfaithmap/generated/content";
 
@@ -41,6 +46,11 @@ export type DocumentRevision = IDocumentRevision;
 export type NavItem = INavItem;
 export type NavItemInput = INavItemInput;
 export type SocialLinks = ISocialLinks;
+export type Pattern = IPattern;
+export type CreateBlockTypeInput = ICreateBlockTypeRequest;
+export type UpdateBlockTypeInput = IUpdateBlockTypeRequest;
+export type CreatePatternInput = ICreatePatternRequest;
+export type UpdatePatternInput = IUpdatePatternRequest;
 export { DocumentTransitionAction };
 
 export class ContentApiError extends Error {
@@ -164,6 +174,35 @@ export async function putNavItems(siteId: string, items: NavItemInput[]): Promis
   return list.items;
 }
 
+// ---- block-type/pattern catalog admin (M14.13, content.catalog.manage — platform-moderator, NOT
+// content.manage; a non-moderator's call comes back Content:Forbidden, same discipline
+// app/[locale]/admin/moderation/page.tsx already follows for moderation.standing) ----
+
+export async function listBlockTypesForCatalog(): Promise<BlockType[]> {
+  const page = await unwrap((await client()).content.listBlockTypesForCatalog());
+  return page.blockTypes;
+}
+
+export async function createBlockType(input: CreateBlockTypeInput): Promise<BlockType> {
+  return unwrap((await client()).content.createBlockType(input));
+}
+
+export async function updateBlockType(blockTypeId: string, input: UpdateBlockTypeInput): Promise<BlockType> {
+  return unwrap((await client()).content.updateBlockType(blockTypeId, input));
+}
+
+export async function createPattern(input: CreatePatternInput): Promise<Pattern> {
+  return unwrap((await client()).content.createPattern(input));
+}
+
+export async function updatePattern(patternId: string, input: UpdatePatternInput): Promise<Pattern> {
+  return unwrap((await client()).content.updatePattern(patternId, input));
+}
+
+export async function deletePattern(patternId: string): Promise<void> {
+  return unwrap((await client()).content.deletePattern(patternId));
+}
+
 // buildPreviewUrl points at the SAME tenant host every other tenant page uses (D-TenantSubdomains) —
 // "{slug}.{apex}", never a path under this admin app's own origin, so the WordPress-CVE-style
 // cross-origin guarantee holds by construction. TENANT_APEX_HOST is openfaithmap-web's own published
@@ -197,4 +236,12 @@ export async function getPublicBlocks(documentId: string): Promise<Block[]> {
 export async function listBlockTypes(): Promise<BlockType[]> {
   const page = await unwrap((await client()).contentPublic.listBlockTypes());
   return page.blockTypes;
+}
+
+// M14.13: not sensitive data, same reasoning listBlockTypes above already uses for having no auth
+// requirement of its own. The document editor's insert-a-pattern UI calls this to fetch a
+// pattern's blocks to copy client-side (unsynced — see Pattern's own doc comment).
+export async function listPatterns(): Promise<Pattern[]> {
+  const page = await unwrap((await client()).contentPublic.listPatterns());
+  return page.patterns;
 }

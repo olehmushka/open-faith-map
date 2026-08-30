@@ -167,6 +167,156 @@ func (e *BlockDataInvalid) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type blockTypeCodeTaken struct {
+	Code string `json:"code"`
+}
+
+func (o blockTypeCodeTaken) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *blockTypeCodeTaken) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewBlockTypeCodeTaken returns new instance of BlockTypeCodeTaken error.
+func NewBlockTypeCodeTaken(codeArg string) *BlockTypeCodeTaken {
+	return &BlockTypeCodeTaken{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), blockTypeCodeTaken: blockTypeCodeTaken{Code: codeArg}}
+}
+
+// WrapWithBlockTypeCodeTaken returns new instance of BlockTypeCodeTaken error wrapping an existing error.
+func WrapWithBlockTypeCodeTaken(err error, codeArg string) *BlockTypeCodeTaken {
+	return &BlockTypeCodeTaken{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, blockTypeCodeTaken: blockTypeCodeTaken{Code: codeArg}}
+}
+
+// BlockTypeCodeTaken is an error type.
+// M14.13. createBlockType's code collided with an existing (non-deleted) block type.
+type BlockTypeCodeTaken struct {
+	errorInstanceID uuid.UUID
+	blockTypeCodeTaken
+	cause error
+	stack werror.StackTrace
+}
+
+// IsBlockTypeCodeTaken returns true if err is an instance of BlockTypeCodeTaken.
+func IsBlockTypeCodeTaken(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*BlockTypeCodeTaken)
+	return ok
+}
+
+func (e *BlockTypeCodeTaken) Error() string {
+	return fmt.Sprintf("CONFLICT Content:BlockTypeCodeTaken (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *BlockTypeCodeTaken) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *BlockTypeCodeTaken) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *BlockTypeCodeTaken) Message() string {
+	return "CONFLICT Content:BlockTypeCodeTaken"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *BlockTypeCodeTaken) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *BlockTypeCodeTaken) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *BlockTypeCodeTaken) Name() string {
+	return "Content:BlockTypeCodeTaken"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *BlockTypeCodeTaken) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *BlockTypeCodeTaken) Parameters() map[string]interface{} {
+	return map[string]interface{}{"code": e.Code}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *BlockTypeCodeTaken) safeParams() map[string]interface{} {
+	return map[string]interface{}{"code": e.Code, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *BlockTypeCodeTaken) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *BlockTypeCodeTaken) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *BlockTypeCodeTaken) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e BlockTypeCodeTaken) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.blockTypeCodeTaken)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Content:BlockTypeCodeTaken", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *BlockTypeCodeTaken) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters blockTypeCodeTaken
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.blockTypeCodeTaken = parameters
+	return nil
+}
+
 type blockTypeNotFound struct {
 	BlockTypeCode string `json:"blockTypeCode"`
 }
@@ -1094,7 +1244,7 @@ func WrapWithForbidden(err error) *Forbidden {
 }
 
 // Forbidden is an error type.
-// The caller does not hold content.manage on this site's congregation unit.
+// The caller does not hold the authority this action requires: content.manage on the relevant site's congregation unit for a per-site write/draft-read, or (M14.13) content.catalog.manage (platform-moderator standing) for a catalog write. One error for both, since neither ever needs to tell a caller which check failed.
 type Forbidden struct {
 	errorInstanceID uuid.UUID
 	forbidden
@@ -1810,6 +1960,156 @@ func (e *ParentTooDeep) UnmarshalJSON(data []byte) error {
 	}
 	e.errorInstanceID = serializableError.ErrorInstanceID
 	e.parentTooDeep = parameters
+	return nil
+}
+
+type patternNotFound struct {
+	PatternId string `json:"patternId"`
+}
+
+func (o patternNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *patternNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewPatternNotFound returns new instance of PatternNotFound error.
+func NewPatternNotFound(patternIdArg string) *PatternNotFound {
+	return &PatternNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), patternNotFound: patternNotFound{PatternId: patternIdArg}}
+}
+
+// WrapWithPatternNotFound returns new instance of PatternNotFound error wrapping an existing error.
+func WrapWithPatternNotFound(err error, patternIdArg string) *PatternNotFound {
+	return &PatternNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, patternNotFound: patternNotFound{PatternId: patternIdArg}}
+}
+
+// PatternNotFound is an error type.
+// M14.13. updatePattern/deletePattern against a missing or already-deleted pattern.
+type PatternNotFound struct {
+	errorInstanceID uuid.UUID
+	patternNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsPatternNotFound returns true if err is an instance of PatternNotFound.
+func IsPatternNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*PatternNotFound)
+	return ok
+}
+
+func (e *PatternNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Content:PatternNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *PatternNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *PatternNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *PatternNotFound) Message() string {
+	return "NOT_FOUND Content:PatternNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *PatternNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *PatternNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *PatternNotFound) Name() string {
+	return "Content:PatternNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *PatternNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *PatternNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"patternId": e.PatternId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *PatternNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"patternId": e.PatternId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *PatternNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *PatternNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *PatternNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e PatternNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.patternNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Content:PatternNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *PatternNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters patternNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.patternNotFound = parameters
 	return nil
 }
 
@@ -2864,6 +3164,7 @@ func (e *ThemeInvalid) UnmarshalJSON(data []byte) error {
 
 func init() {
 	conjureerrors.RegisterErrorType("Content:BlockDataInvalid", reflect.TypeOf(BlockDataInvalid{}))
+	conjureerrors.RegisterErrorType("Content:BlockTypeCodeTaken", reflect.TypeOf(BlockTypeCodeTaken{}))
 	conjureerrors.RegisterErrorType("Content:BlockTypeNotFound", reflect.TypeOf(BlockTypeNotFound{}))
 	conjureerrors.RegisterErrorType("Content:BlockUrlNotAllowed", reflect.TypeOf(BlockUrlNotAllowed{}))
 	conjureerrors.RegisterErrorType("Content:DocumentNotFound", reflect.TypeOf(DocumentNotFound{}))
@@ -2875,6 +3176,7 @@ func init() {
 	conjureerrors.RegisterErrorType("Content:NavTargetAmbiguous", reflect.TypeOf(NavTargetAmbiguous{}))
 	conjureerrors.RegisterErrorType("Content:NavTargetInvalid", reflect.TypeOf(NavTargetInvalid{}))
 	conjureerrors.RegisterErrorType("Content:ParentTooDeep", reflect.TypeOf(ParentTooDeep{}))
+	conjureerrors.RegisterErrorType("Content:PatternNotFound", reflect.TypeOf(PatternNotFound{}))
 	conjureerrors.RegisterErrorType("Content:PreviewTokenInvalid", reflect.TypeOf(PreviewTokenInvalid{}))
 	conjureerrors.RegisterErrorType("Content:RevisionNotFound", reflect.TypeOf(RevisionNotFound{}))
 	conjureerrors.RegisterErrorType("Content:SiteNotFound", reflect.TypeOf(SiteNotFound{}))

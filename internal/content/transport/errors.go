@@ -37,6 +37,8 @@ func mapErr(err error, c errCtx) error {
 	var navTargetInvalid *domain.NavTargetInvalidError
 	var navTargetAmbiguous *domain.NavTargetAmbiguousError
 	var dupNavSortOrder *domain.DuplicateNavItemSortOrderError
+	var patternNotFound *domain.PatternNotFoundError
+	var blockTypeCodeTaken *domain.BlockTypeCodeTakenError
 
 	switch {
 	case errors.As(err, &slugTaken):
@@ -59,6 +61,10 @@ func mapErr(err error, c errCtx) error {
 		return gencontent.NewNavTargetAmbiguous(navTargetAmbiguous.SortOrder)
 	case errors.As(err, &dupNavSortOrder):
 		return gencontent.NewDuplicateNavItemSortOrder(dupNavSortOrder.SortOrder)
+	case errors.As(err, &patternNotFound):
+		return gencontent.NewPatternNotFound(patternNotFound.PatternID)
+	case errors.As(err, &blockTypeCodeTaken):
+		return gencontent.NewBlockTypeCodeTaken(blockTypeCodeTaken.Code)
 	case errors.Is(err, domain.ErrSiteNotFound):
 		return gencontent.NewSiteNotFound(c.SiteID)
 	case errors.Is(err, domain.ErrDocumentNotFound):

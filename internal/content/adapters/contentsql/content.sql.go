@@ -24,6 +24,19 @@ func (q *Queries) DeleteNavItems(ctx context.Context, siteID string) error {
 	return err
 }
 
+const deletePattern = `-- name: DeletePattern :execrows
+UPDATE openfaithmap.content_patterns SET deleted_at = now()
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) DeletePattern(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, deletePattern, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getBlockTypeByCode = `-- name: GetBlockTypeByCode :one
 SELECT id, code, name, json_schema, ui_schema, status, sort_order
 FROM openfaithmap.content_block_types WHERE code = $1 AND deleted_at IS NULL
@@ -42,6 +55,38 @@ type GetBlockTypeByCodeRow struct {
 func (q *Queries) GetBlockTypeByCode(ctx context.Context, code string) (GetBlockTypeByCodeRow, error) {
 	row := q.db.QueryRow(ctx, getBlockTypeByCode, code)
 	var i GetBlockTypeByCodeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.JsonSchema,
+		&i.UiSchema,
+		&i.Status,
+		&i.SortOrder,
+	)
+	return i, err
+}
+
+const getBlockTypeByID = `-- name: GetBlockTypeByID :one
+
+SELECT id, code, name, json_schema, ui_schema, status, sort_order
+FROM openfaithmap.content_block_types WHERE id = $1 AND deleted_at IS NULL
+`
+
+type GetBlockTypeByIDRow struct {
+	ID         string
+	Code       string
+	Name       string
+	JsonSchema json.RawMessage
+	UiSchema   json.RawMessage
+	Status     string
+	SortOrder  int32
+}
+
+// ---- block-type catalog admin (M14.13, content.catalog.manage) ----
+func (q *Queries) GetBlockTypeByID(ctx context.Context, id string) (GetBlockTypeByIDRow, error) {
+	row := q.db.QueryRow(ctx, getBlockTypeByID, id)
+	var i GetBlockTypeByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Code,
@@ -282,6 +327,51 @@ func (q *Queries) GetSiteByUnit(ctx context.Context, congregationUnitRid string)
 	return i, err
 }
 
+const insertBlockType = `-- name: InsertBlockType :one
+INSERT INTO openfaithmap.content_block_types (code, name, json_schema, ui_schema, sort_order)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, code, name, json_schema, ui_schema, status, sort_order
+`
+
+type InsertBlockTypeParams struct {
+	Code       string
+	Name       string
+	JsonSchema json.RawMessage
+	UiSchema   json.RawMessage
+	SortOrder  int32
+}
+
+type InsertBlockTypeRow struct {
+	ID         string
+	Code       string
+	Name       string
+	JsonSchema json.RawMessage
+	UiSchema   json.RawMessage
+	Status     string
+	SortOrder  int32
+}
+
+func (q *Queries) InsertBlockType(ctx context.Context, arg InsertBlockTypeParams) (InsertBlockTypeRow, error) {
+	row := q.db.QueryRow(ctx, insertBlockType,
+		arg.Code,
+		arg.Name,
+		arg.JsonSchema,
+		arg.UiSchema,
+		arg.SortOrder,
+	)
+	var i InsertBlockTypeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.JsonSchema,
+		&i.UiSchema,
+		&i.Status,
+		&i.SortOrder,
+	)
+	return i, err
+}
+
 const insertDocument = `-- name: InsertDocument :one
 INSERT INTO openfaithmap.content_documents
 	(site_id, kind, translation_group_id, locale, parent_document_id, slug,
@@ -401,6 +491,51 @@ func (q *Queries) InsertNavItem(ctx context.Context, arg InsertNavItemParams) (I
 	return i, err
 }
 
+const insertPattern = `-- name: InsertPattern :one
+
+INSERT INTO openfaithmap.content_patterns (name, description, blocks, sort_order)
+VALUES ($1, $2, $3, $4)
+RETURNING id, name, description, blocks, sort_order, created_at, updated_at
+`
+
+type InsertPatternParams struct {
+	Name        string
+	Description string
+	Blocks      json.RawMessage
+	SortOrder   int32
+}
+
+type InsertPatternRow struct {
+	ID          string
+	Name        string
+	Description string
+	Blocks      json.RawMessage
+	SortOrder   int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// ---- patterns (M14.13, D-SitePatterns) ----
+func (q *Queries) InsertPattern(ctx context.Context, arg InsertPatternParams) (InsertPatternRow, error) {
+	row := q.db.QueryRow(ctx, insertPattern,
+		arg.Name,
+		arg.Description,
+		arg.Blocks,
+		arg.SortOrder,
+	)
+	var i InsertPatternRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Description,
+		&i.Blocks,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertRevision = `-- name: InsertRevision :one
 
 INSERT INTO openfaithmap.content_document_revisions (document_id, revision_no, data, author_person_id, label)
@@ -502,6 +637,53 @@ func (q *Queries) ListActiveBlockTypes(ctx context.Context) ([]ListActiveBlockTy
 	var items []ListActiveBlockTypesRow
 	for rows.Next() {
 		var i ListActiveBlockTypesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.JsonSchema,
+			&i.UiSchema,
+			&i.Status,
+			&i.SortOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllBlockTypes = `-- name: ListAllBlockTypes :many
+SELECT id, code, name, json_schema, ui_schema, status, sort_order
+FROM openfaithmap.content_block_types
+WHERE deleted_at IS NULL
+ORDER BY sort_order ASC
+`
+
+type ListAllBlockTypesRow struct {
+	ID         string
+	Code       string
+	Name       string
+	JsonSchema json.RawMessage
+	UiSchema   json.RawMessage
+	Status     string
+	SortOrder  int32
+}
+
+// Every status, unlike ListActiveBlockTypes — the moderator catalog page needs to see/edit
+// RETIRED types too.
+func (q *Queries) ListAllBlockTypes(ctx context.Context) ([]ListAllBlockTypesRow, error) {
+	rows, err := q.db.Query(ctx, listAllBlockTypes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllBlockTypesRow
+	for rows.Next() {
+		var i ListAllBlockTypesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Code,
@@ -683,6 +865,51 @@ func (q *Queries) ListNavItems(ctx context.Context, siteID string) ([]ListNavIte
 	return items, nil
 }
 
+const listPatterns = `-- name: ListPatterns :many
+SELECT id, name, description, blocks, sort_order, created_at, updated_at
+FROM openfaithmap.content_patterns
+WHERE deleted_at IS NULL
+ORDER BY sort_order ASC
+`
+
+type ListPatternsRow struct {
+	ID          string
+	Name        string
+	Description string
+	Blocks      json.RawMessage
+	SortOrder   int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) ListPatterns(ctx context.Context) ([]ListPatternsRow, error) {
+	rows, err := q.db.Query(ctx, listPatterns)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPatternsRow
+	for rows.Next() {
+		var i ListPatternsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.Blocks,
+			&i.SortOrder,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPublicDocuments = `-- name: ListPublicDocuments :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
 	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
@@ -824,6 +1051,55 @@ func (q *Queries) SetPublishedRevision(ctx context.Context, arg SetPublishedRevi
 	return err
 }
 
+const updateBlockType = `-- name: UpdateBlockType :one
+UPDATE openfaithmap.content_block_types
+SET name = COALESCE($1, name),
+    status = COALESCE($2, status),
+    sort_order = COALESCE($3, sort_order)
+WHERE id = $4 AND deleted_at IS NULL
+RETURNING id, code, name, json_schema, ui_schema, status, sort_order
+`
+
+type UpdateBlockTypeParams struct {
+	Name      pgtype.Text
+	Status    pgtype.Text
+	SortOrder pgtype.Int4
+	ID        string
+}
+
+type UpdateBlockTypeRow struct {
+	ID         string
+	Code       string
+	Name       string
+	JsonSchema json.RawMessage
+	UiSchema   json.RawMessage
+	Status     string
+	SortOrder  int32
+}
+
+// json_schema/ui_schema are deliberately not settable here (owner decision, M14.13): locked after
+// creation, so a runtime catalog edit can never silently break already-saved blocks or the admin
+// form for an existing type.
+func (q *Queries) UpdateBlockType(ctx context.Context, arg UpdateBlockTypeParams) (UpdateBlockTypeRow, error) {
+	row := q.db.QueryRow(ctx, updateBlockType,
+		arg.Name,
+		arg.Status,
+		arg.SortOrder,
+		arg.ID,
+	)
+	var i UpdateBlockTypeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.JsonSchema,
+		&i.UiSchema,
+		&i.Status,
+		&i.SortOrder,
+	)
+	return i, err
+}
+
 const updateDocument = `-- name: UpdateDocument :one
 UPDATE openfaithmap.content_documents
 SET slug = COALESCE($1, slug),
@@ -945,6 +1221,55 @@ func (q *Queries) UpdateDocumentState(ctx context.Context, arg UpdateDocumentSta
 		&i.UpdatedAt,
 		&i.DraftRevisionID,
 		&i.PublishedRevisionID,
+	)
+	return i, err
+}
+
+const updatePattern = `-- name: UpdatePattern :one
+UPDATE openfaithmap.content_patterns
+SET name = COALESCE($1, name),
+    description = COALESCE($2, description),
+    blocks = COALESCE($3::jsonb, blocks),
+    sort_order = COALESCE($4, sort_order)
+WHERE id = $5 AND deleted_at IS NULL
+RETURNING id, name, description, blocks, sort_order, created_at, updated_at
+`
+
+type UpdatePatternParams struct {
+	Name        pgtype.Text
+	Description pgtype.Text
+	Blocks      []byte
+	SortOrder   pgtype.Int4
+	ID          string
+}
+
+type UpdatePatternRow struct {
+	ID          string
+	Name        string
+	Description string
+	Blocks      json.RawMessage
+	SortOrder   int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) UpdatePattern(ctx context.Context, arg UpdatePatternParams) (UpdatePatternRow, error) {
+	row := q.db.QueryRow(ctx, updatePattern,
+		arg.Name,
+		arg.Description,
+		arg.Blocks,
+		arg.SortOrder,
+		arg.ID,
+	)
+	var i UpdatePatternRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Description,
+		&i.Blocks,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

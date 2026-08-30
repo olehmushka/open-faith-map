@@ -3,11 +3,13 @@
 import { useTranslations } from "next-intl";
 import {
   ArchiveRestore,
+  Blocks,
   BookOpen,
   Building2,
   Flag,
   History,
   KeyRound,
+  LayoutTemplate,
   MapPinned,
   Search,
   ShieldCheck,
@@ -67,6 +69,19 @@ export const NAV: NavItem[] = [
     href: "/admin/sites",
     icon: ArchiveRestore,
     labelKey: "sites",
+  },
+  // M14.13: content.catalog.manage-gated server-side (platform-moderator, D-SitePatterns) — same
+  // "no local isModerator gate, shown unconditionally" discipline /admin/moderation above already
+  // follows. A non-moderator sees these links but is denied server-side, not hidden from the nav.
+  {
+    href: "/admin/block-types",
+    icon: Blocks,
+    labelKey: "blockTypes",
+  },
+  {
+    href: "/admin/patterns",
+    icon: LayoutTemplate,
+    labelKey: "patterns",
   },
 ];
 

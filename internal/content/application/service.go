@@ -26,18 +26,28 @@ import (
 	religiondomain "github.com/olehmushka/open-faith-map/internal/religion/domain"
 )
 
+// Config carries settings resolved once at wiring time (cmd/openfaithmap-api) rather than derived
+// per-request.
+type Config struct {
+	// RootUnitID is the same shared root unit registration/moderation/discovery already use
+	// (internal/platform/seed.Resolve's RootUnitID) — M14.13's requireCatalogManage target, mirroring
+	// internal/moderation/application.Config's own field exactly.
+	RootUnitID string
+}
+
 type Service struct {
 	store          *adapters.Repository
 	authzSvc       *authz.Service
 	religion       *religionapplication.Service
 	previewHMACKey string
+	cfg            Config
 }
 
 // religion is injected the same direct-interface-call shape internal/discovery already uses
 // against internal/religion (docs/architecture/conventions.md) — M14.11's site-chrome footer is
 // the first place content itself, not just discovery, reads religion's live data.
-func NewService(store *adapters.Repository, authzSvc *authz.Service, religionSvc *religionapplication.Service, previewHMACKey string) *Service {
-	return &Service{store: store, authzSvc: authzSvc, religion: religionSvc, previewHMACKey: previewHMACKey}
+func NewService(store *adapters.Repository, authzSvc *authz.Service, religionSvc *religionapplication.Service, previewHMACKey string, cfg Config) *Service {
+	return &Service{store: store, authzSvc: authzSvc, religion: religionSvc, previewHMACKey: previewHMACKey, cfg: cfg}
 }
 
 // ---- sites ----
@@ -621,4 +631,70 @@ func buildPublicHref(doc domain.Document, ancestors []domain.Document) string {
 // ListBlockTypes is the public read (ContentPublicService) — active types only, no auth.
 func (s *Service) ListBlockTypes(ctx context.Context) ([]domain.BlockType, error) {
 	return s.store.ListActiveBlockTypes(ctx)
+}
+
+// ---- block-type catalog admin (M14.13, content.catalog.manage) ----
+
+// ListAllBlockTypesForCatalog is the admin catalog read (ContentService) — every status, so a
+// moderator can see (and un-retire) RETIRED types too, catalog.manage-gated rather than public.
+func (s *Service) ListAllBlockTypesForCatalog(ctx context.Context) ([]domain.BlockType, error) {
+	if err := s.requireCatalogManage(ctx); err != nil {
+		return nil, err
+	}
+	return s.store.ListAllBlockTypes(ctx)
+}
+
+// CreateBlockType finally builds what M3 left unbuilt (content.catalog.manage). The submitted
+// json_schema is smoke-tested for compile-validity up front — a broken schema would otherwise only
+// surface on the first putBlocks call that references it, far from where the mistake was made.
+func (s *Service) CreateBlockType(ctx context.Context, in domain.CreateBlockTypeInput) (domain.BlockType, error) {
+	if err := s.requireCatalogManage(ctx); err != nil {
+		return domain.BlockType{}, err
+	}
+	if err := compileBlockTypeSchema(in.Code, in.JSONSchema); err != nil {
+		return domain.BlockType{}, err
+	}
+	return s.store.InsertBlockType(ctx, in)
+}
+
+// UpdateBlockType only ever touches name/status/sortOrder (domain.UpdateBlockTypeInput has no
+// schema field at all) — see that type's own doc comment for the owner decision this encodes.
+func (s *Service) UpdateBlockType(ctx context.Context, blockTypeID string, in domain.UpdateBlockTypeInput) (domain.BlockType, error) {
+	if err := s.requireCatalogManage(ctx); err != nil {
+		return domain.BlockType{}, err
+	}
+	return s.store.UpdateBlockType(ctx, blockTypeID, in)
+}
+
+// ---- patterns (M14.13, D-SitePatterns) ----
+
+// ListPatterns is the public read (ContentPublicService) — not sensitive data (same reasoning
+// ListBlockTypes already uses for having no auth); the admin editor calls this exact endpoint to
+// browse patterns for insertion, the same way it already calls the public ListBlockTypes.
+func (s *Service) ListPatterns(ctx context.Context) ([]domain.Pattern, error) {
+	return s.store.ListPatterns(ctx)
+}
+
+// CreatePattern is catalog.manage-gated — platform-wide, no site/unit in scope.
+func (s *Service) CreatePattern(ctx context.Context, in domain.CreatePatternInput) (domain.Pattern, error) {
+	if err := s.requireCatalogManage(ctx); err != nil {
+		return domain.Pattern{}, err
+	}
+	return s.store.InsertPattern(ctx, in)
+}
+
+func (s *Service) UpdatePattern(ctx context.Context, patternID string, in domain.UpdatePatternInput) (domain.Pattern, error) {
+	if err := s.requireCatalogManage(ctx); err != nil {
+		return domain.Pattern{}, err
+	}
+	return s.store.UpdatePattern(ctx, patternID, in)
+}
+
+// DeletePattern soft-deletes — a pattern already inserted into a document is unaffected (unsynced:
+// no ongoing reference from any document back to this row).
+func (s *Service) DeletePattern(ctx context.Context, patternID string) error {
+	if err := s.requireCatalogManage(ctx); err != nil {
+		return err
+	}
+	return s.store.DeletePattern(ctx, patternID)
 }
