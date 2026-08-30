@@ -822,6 +822,74 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 	return items, nil
 }
 
+const listDocumentsByTranslationGroup = `-- name: ListDocumentsByTranslationGroup :many
+SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+FROM openfaithmap.content_documents
+WHERE translation_group_id = $1 AND deleted_at IS NULL
+ORDER BY created_at ASC
+`
+
+type ListDocumentsByTranslationGroupRow struct {
+	ID                   string
+	SiteID               string
+	Kind                 string
+	TranslationGroupID   string
+	Locale               string
+	ParentDocumentID     pgtype.Text
+	Slug                 string
+	State                string
+	PublishedAt          pgtype.Timestamptz
+	EventStartsAt        pgtype.Timestamptz
+	EventEndsAt          pgtype.Timestamptz
+	EventRecurrenceRrule pgtype.Text
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	DraftRevisionID      pgtype.Text
+	PublishedRevisionID  pgtype.Text
+}
+
+// M14.14: every document sharing one translation_group_id, any state, any site — deliberately not
+// scoped by site_id, so CreateDocument's cross-site guard (application.Service) can tell "brand new
+// group" apart from "this group belongs to a different site" by inspecting the returned rows'
+// own site_id, rather than the query silently filtering a cross-site collision down to zero rows.
+func (q *Queries) ListDocumentsByTranslationGroup(ctx context.Context, translationGroupID string) ([]ListDocumentsByTranslationGroupRow, error) {
+	rows, err := q.db.Query(ctx, listDocumentsByTranslationGroup, translationGroupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDocumentsByTranslationGroupRow
+	for rows.Next() {
+		var i ListDocumentsByTranslationGroupRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SiteID,
+			&i.Kind,
+			&i.TranslationGroupID,
+			&i.Locale,
+			&i.ParentDocumentID,
+			&i.Slug,
+			&i.State,
+			&i.PublishedAt,
+			&i.EventStartsAt,
+			&i.EventEndsAt,
+			&i.EventRecurrenceRrule,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DraftRevisionID,
+			&i.PublishedRevisionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNavItems = `-- name: ListNavItems :many
 SELECT id, site_id, label, target_document_id, target_url, sort_order
 FROM openfaithmap.content_site_nav_items

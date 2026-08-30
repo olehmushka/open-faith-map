@@ -906,7 +906,7 @@ func TestContentIntegration(t *testing.T) {
 	documentIDs = append(documentIDs, draftPage.ID)
 
 	// --- GetPublicDocumentByPath: happy path at depth 1/2/3, ancestors returned root-first.
-	got1, ancestors1, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top"})
+	got1, ancestors1, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top"})
 	if err != nil {
 		t.Fatalf("GetPublicDocumentByPath (depth 1): %v", err)
 	}
@@ -914,7 +914,7 @@ func TestContentIntegration(t *testing.T) {
 		t.Errorf("GetPublicDocumentByPath (depth 1) = doc %s, %d ancestors, want %s, 0 ancestors", got1.ID, len(ancestors1), topPage.ID)
 	}
 
-	got2, ancestors2, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top", "m14-10-child"})
+	got2, ancestors2, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top", "m14-10-child"})
 	if err != nil {
 		t.Fatalf("GetPublicDocumentByPath (depth 2): %v", err)
 	}
@@ -922,7 +922,7 @@ func TestContentIntegration(t *testing.T) {
 		t.Errorf("GetPublicDocumentByPath (depth 2) = doc %s, ancestors %+v, want %s, [%s]", got2.ID, ancestors2, childPage.ID, topPage.ID)
 	}
 
-	got3, ancestors3, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top", "m14-10-child", "m14-10-grandchild"})
+	got3, ancestors3, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top", "m14-10-child", "m14-10-grandchild"})
 	if err != nil {
 		t.Fatalf("GetPublicDocumentByPath (depth 3): %v", err)
 	}
@@ -931,20 +931,92 @@ func TestContentIntegration(t *testing.T) {
 	}
 
 	// A DRAFT leaf 404s exactly like a missing document does.
-	if _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-draft"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+	if _, _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-draft"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
 		t.Errorf("GetPublicDocumentByPath (draft leaf) error = %v, want ErrDocumentNotFound", err)
 	}
 
 	// A wrong MIDDLE segment 404s — proves positional ancestor matching, not last-segment-only
 	// resolution (a naive implementation would resolve this by grandchildPage's own slug alone,
 	// since slugs are unique per site+kind+locale, not per parent).
-	if _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top", "wrong-slug", "m14-10-grandchild"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+	if _, _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-10-top", "wrong-slug", "m14-10-grandchild"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
 		t.Errorf("GetPublicDocumentByPath (wrong middle segment) error = %v, want ErrDocumentNotFound", err)
 	}
 
 	// More than 3 segments 404s outright, before any lookup.
-	if _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"a", "b", "c", "d"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+	if _, _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"a", "b", "c", "d"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
 		t.Errorf("GetPublicDocumentByPath (>3 segments) error = %v, want ErrDocumentNotFound", err)
+	}
+
+	// --- M14.14: locale switching (translation groups, closes DS-OFM-7).
+
+	ukPage, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "uk", Slug: "m14-14-uk",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (m14.14 uk page, new group): %v", err)
+	}
+	documentIDs = append(documentIDs, ukPage.ID)
+	if _, err := contentSvc.PutBlocks(adminCtx, ukPage.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"UK"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks (m14.14 uk page): %v", err)
+	}
+	if _, err := contentSvc.TransitionDocument(adminCtx, ukPage.ID, contentdomain.ActionPublish); err != nil {
+		t.Fatalf("TransitionDocument(PUBLISH, m14.14 uk page): %v", err)
+	}
+
+	// Joins ukPage's translation group, left as DRAFT — must not appear in translations until published.
+	enPage, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-14-en", TranslationGroupID: &ukPage.TranslationGroupID,
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (m14.14 en page, joins group): %v", err)
+	}
+	documentIDs = append(documentIDs, enPage.ID)
+
+	_, _, translationsDraftSibling, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "uk", []string{"m14-14-uk"})
+	if err != nil {
+		t.Fatalf("GetPublicDocumentByPath (m14.14, en sibling still draft): %v", err)
+	}
+	if len(translationsDraftSibling) != 1 || translationsDraftSibling[0].Locale != "uk" || translationsDraftSibling[0].Href != "/uk/m14-14-uk" {
+		t.Errorf("GetPublicDocumentByPath translations (en sibling draft) = %+v, want exactly [{uk /uk/m14-14-uk}]", translationsDraftSibling)
+	}
+
+	if _, err := contentSvc.PutBlocks(adminCtx, enPage.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"EN"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks (m14.14 en page): %v", err)
+	}
+	if _, err := contentSvc.TransitionDocument(adminCtx, enPage.ID, contentdomain.ActionPublish); err != nil {
+		t.Fatalf("TransitionDocument(PUBLISH, m14.14 en page): %v", err)
+	}
+
+	_, _, translationsBothPublished, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-14-en"})
+	if err != nil {
+		t.Fatalf("GetPublicDocumentByPath (m14.14, both published): %v", err)
+	}
+	gotLocales := map[string]string{}
+	for _, tr := range translationsBothPublished {
+		gotLocales[tr.Locale] = tr.Href
+	}
+	if len(gotLocales) != 2 || gotLocales["uk"] != "/uk/m14-14-uk" || gotLocales["en"] != "/en/m14-14-en" {
+		t.Errorf("GetPublicDocumentByPath translations (both published) = %+v, want {uk:/uk/m14-14-uk en:/en/m14-14-en}", translationsBothPublished)
+	}
+
+	// CreateDocument rejects a locale already present in the target translation group — no DB
+	// constraint backs this, so it's the app-level checkTranslationGroup guard being proved here.
+	if _, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "uk", Slug: "m14-14-uk-dup", TranslationGroupID: &ukPage.TranslationGroupID,
+	}); !errors.As(err, new(*contentdomain.TranslationLocaleTakenError)) {
+		t.Errorf("CreateDocument (duplicate locale in group) error = %v, want *TranslationLocaleTakenError", err)
+	}
+
+	// CreateDocument rejects a translationGroupId belonging to a different site (otherSite/unitC,
+	// created above) — translation_group_id has no FK to site, so this guard is app-level too.
+	if _, err := contentSvc.CreateDocument(adminCtx, otherSite.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "fr", Slug: "m14-14-cross-site", TranslationGroupID: &ukPage.TranslationGroupID,
+	}); !errors.As(err, new(*contentdomain.TranslationGroupNotFoundError)) {
+		t.Errorf("CreateDocument (cross-site translation group) error = %v, want *TranslationGroupNotFoundError", err)
 	}
 
 	// --- PutNavItems: full CRUD round trip, mixing an internal target with an external URL.

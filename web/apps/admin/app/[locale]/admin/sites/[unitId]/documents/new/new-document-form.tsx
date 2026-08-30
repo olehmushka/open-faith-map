@@ -18,6 +18,8 @@ const NO_PARENT = "__none__";
 export type CreateActionState =
   | { error: "errorSlugTaken"; field: "slug" }
   | { error: "errorEventMissingStart"; field: "eventStartsAt" }
+  | { error: "errorTranslationLocaleTaken"; field: "locale" }
+  | { error: "errorTranslationGroupNotFound"; field: "translationGroupId" }
   | { error: "errorGeneric"; raw: string }
   | null;
 
@@ -29,9 +31,17 @@ export type CreateActionState =
 export function NewDocumentForm({
   action,
   existingPages,
+  initialTranslationGroupId,
+  lockedKind,
 }: {
   action: (prevState: CreateActionState, formData: FormData) => Promise<CreateActionState>;
   existingPages: Document[];
+  // M14.14: set when arriving from the document editor's Translations panel "create translation"
+  // link — a translation must match its group's existing kind, so kind is locked (not just
+  // defaulted) rather than left to the Select, and translationGroupId is fixed rather than
+  // free-typed like the original manual flow this form still supports.
+  initialTranslationGroupId?: string;
+  lockedKind?: DocumentKind;
 }) {
   const t = useTranslations("NewDocumentPage");
   const [state, formAction] = useActionState(action, null);
@@ -39,23 +49,32 @@ export function NewDocumentForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
+      {lockedKind ? (
+        <p className="rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">{t("translationGroupLockedHint")}</p>
+      ) : null}
+
       <Label className="flex flex-col items-start gap-1">
         {t("kindLabel")}
-        <Select name="kind" defaultValue={DocumentKind.PAGE}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={DocumentKind.PAGE}>{t("kindPage")}</SelectItem>
-            <SelectItem value={DocumentKind.POST}>{t("kindPost")}</SelectItem>
-            <SelectItem value={DocumentKind.EVENT}>{t("kindEvent")}</SelectItem>
-          </SelectContent>
-        </Select>
+        {lockedKind ? (
+          <Input readOnly name="kind" value={lockedKind} className="bg-muted" />
+        ) : (
+          <Select name="kind" defaultValue={DocumentKind.PAGE}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={DocumentKind.PAGE}>{t("kindPage")}</SelectItem>
+              <SelectItem value={DocumentKind.POST}>{t("kindPost")}</SelectItem>
+              <SelectItem value={DocumentKind.EVENT}>{t("kindEvent")}</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
       </Label>
 
       <Label className="flex flex-col items-start gap-1">
         {t("localeLabel")}
-        <Input name="locale" required placeholder="eng" />
+        <Input name="locale" required placeholder="eng" aria-invalid={fieldError === "locale"} />
+        {fieldError === "locale" && <span className="text-xs text-destructive">{t("errorTranslationLocaleTaken")}</span>}
       </Label>
 
       <Label className="flex flex-col items-start gap-1">
@@ -102,7 +121,17 @@ export function NewDocumentForm({
 
       <Label className="flex flex-col items-start gap-1">
         {t("translationGroupLabel")}
-        <Input name="translationGroupId" placeholder={t("translationGroupPlaceholder")} />
+        <Input
+          name="translationGroupId"
+          placeholder={t("translationGroupPlaceholder")}
+          defaultValue={initialTranslationGroupId}
+          readOnly={Boolean(initialTranslationGroupId)}
+          className={initialTranslationGroupId ? "bg-muted" : undefined}
+          aria-invalid={fieldError === "translationGroupId"}
+        />
+        {fieldError === "translationGroupId" && (
+          <span className="text-xs text-destructive">{t("errorTranslationGroupNotFound")}</span>
+        )}
       </Label>
 
       {state && "error" in state && state.error === "errorGeneric" && (

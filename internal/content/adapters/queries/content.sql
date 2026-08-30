@@ -142,6 +142,17 @@ FROM openfaithmap.content_documents
 WHERE site_id = sqlc.arg('site_id') AND kind = sqlc.arg('kind') AND locale = sqlc.arg('locale')
 	AND slug = sqlc.arg('slug') AND deleted_at IS NULL;
 
+-- name: ListDocumentsByTranslationGroup :many
+-- M14.14: every document sharing one translation_group_id, any state, any site — deliberately not
+-- scoped by site_id, so CreateDocument's cross-site guard (application.Service) can tell "brand new
+-- group" apart from "this group belongs to a different site" by inspecting the returned rows'
+-- own site_id, rather than the query silently filtering a cross-site collision down to zero rows.
+SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+FROM openfaithmap.content_documents
+WHERE translation_group_id = sqlc.arg('translation_group_id') AND deleted_at IS NULL
+ORDER BY created_at ASC;
+
 -- ---- nav items (M14.10) ----
 
 -- name: DeleteNavItems :exec

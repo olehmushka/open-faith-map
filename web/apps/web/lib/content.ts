@@ -9,7 +9,7 @@ import { isConjureError } from "conjure-client";
 import { cache } from "react";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
-import type { IBlock, IBlockType, IDocument, IDocumentWithAncestors, IPublicNavItem, ISite, ISiteChrome } from "./openfaithmap/generated/content";
+import type { IBlock, IBlockType, IDocument, IDocumentTranslation, IDocumentWithAncestors, IPublicNavItem, ISite, ISiteChrome } from "./openfaithmap/generated/content";
 
 export type Site = ISite;
 export type Document = IDocument;
@@ -17,6 +17,7 @@ export type Block = IBlock;
 export type BlockType = IBlockType;
 export type PublicNavItem = IPublicNavItem;
 export type DocumentWithAncestors = IDocumentWithAncestors;
+export type DocumentTranslation = IDocumentTranslation;
 export type SiteChrome = ISiteChrome;
 
 export class ContentApiError extends Error {
@@ -107,6 +108,14 @@ export async function listPublicNavItems(siteId: string): Promise<PublicNavItem[
 // into the slash-separated string the API expects. Throws ContentApiError with errorName
 // "Content:DocumentNotFound" for any resolution failure (missing, non-PAGE, draft, or a path that
 // doesn't match the document's real ancestor chain).
-export async function getPublicDocumentByPath(siteId: string, locale: string, path: string[]): Promise<DocumentWithAncestors> {
-  return unwrap(client().contentPublic.getPublicDocumentByPath(siteId, locale, path.join("/")));
-}
+//
+// M14.14: contentLocale is the document's own free-text content locale (content_documents.locale),
+// decoupled from the site chrome's UI language (next-intl's `[locale]` route segment, fixed to 4
+// values) — see the `[contentLocale]` URL segment this app's page route reads it from. Wrapped in
+// cache() like getSiteBySlug/getSiteChrome: the page route's generateMetadata (hreflang) and its
+// default export both resolve the same document, deduped to one network call per request.
+export const getPublicDocumentByPath = cache(
+  async (siteId: string, contentLocale: string, path: string[]): Promise<DocumentWithAncestors> => {
+    return unwrap(client().contentPublic.getPublicDocumentByPath(siteId, contentLocale, path.join("/")));
+  },
+);

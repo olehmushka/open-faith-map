@@ -386,15 +386,42 @@ func (o *DocumentRevision) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// M14.10's page-route resolver: the leaf document plus its real ancestor chain (root first, leaf excluded), in one round trip, so the tenant-subdomain catch-all page route never needs a second call to render breadcrumbs.
+type DocumentTranslation struct {
+	Locale string `json:"locale"`
+	// Root-relative, content-locale-prefixed (matches Document's own href convention) — never includes the UI chrome locale segment.
+	Href string `json:"href"`
+}
+
+func (o DocumentTranslation) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *DocumentTranslation) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M14.10's page-route resolver: the leaf document plus its real ancestor chain (root first, leaf excluded), in one round trip, so the tenant-subdomain catch-all page route never needs a second call to render breadcrumbs. M14.14 adds translations in the same round trip for the same reason.
 type DocumentWithAncestors struct {
 	Document  Document   `json:"document"`
 	Ancestors []Document `json:"ancestors"`
+	// Every PUBLISHED document sharing the leaf's translationGroupId (leaf included), each with its own resolved href — siblings can have a different ancestor chain/slugs per locale, so this is never derived from the leaf's own href alone. Locale here is the document's own free-text content locale, independent of the site chrome's UI language.
+	Translations []DocumentTranslation `json:"translations"`
 }
 
 func (o DocumentWithAncestors) MarshalJSON() ([]byte, error) {
 	if o.Ancestors == nil {
 		o.Ancestors = make([]Document, 0)
+	}
+	if o.Translations == nil {
+		o.Translations = make([]DocumentTranslation, 0)
 	}
 	type _tmpDocumentWithAncestors DocumentWithAncestors
 	return safejson.Marshal(_tmpDocumentWithAncestors(o))
@@ -408,6 +435,9 @@ func (o *DocumentWithAncestors) UnmarshalJSON(data []byte) error {
 	}
 	if rawDocumentWithAncestors.Ancestors == nil {
 		rawDocumentWithAncestors.Ancestors = make([]Document, 0)
+	}
+	if rawDocumentWithAncestors.Translations == nil {
+		rawDocumentWithAncestors.Translations = make([]DocumentTranslation, 0)
 	}
 	*o = DocumentWithAncestors(rawDocumentWithAncestors)
 	return nil

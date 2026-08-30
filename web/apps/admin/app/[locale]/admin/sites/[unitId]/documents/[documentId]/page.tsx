@@ -42,6 +42,10 @@ export default async function DocumentEditorPage({
   const doc = documents.find((d) => d.id === documentId);
   if (!doc) return redirect({ href: `/admin/sites/${unitId}/documents`, locale });
 
+  // M14.14: no dedicated "list translation group siblings" endpoint exists — same "filter what
+  // you already have" convention as otherPages below (documents is already one full-site fetch).
+  const translations = documents.filter((d) => d.translationGroupId === doc.translationGroupId && d.id !== doc.id);
+
   const [blocks, blockTypes, patterns, revisions, previewToken] = await Promise.all([
     getBlocks(documentId),
     listBlockTypes(),
@@ -205,6 +209,33 @@ export default async function DocumentEditorPage({
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("translationsHeading")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">{t("translationsHint")}</p>
+          {translations.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("translationsEmpty")}</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {translations.map((tr) => (
+                <li key={tr.id} className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                  <a href={`/admin/sites/${unitId}/documents/${tr.id}`} className="hover:underline">
+                    {t("translationItem", { locale: tr.locale, state: tr.state })}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Button variant="outline" size="sm" className="self-start" asChild>
+            <a href={`/admin/sites/${unitId}/documents/new?translationGroupId=${doc.translationGroupId}&kind=${doc.kind}`}>
+              {t("createTranslation")}
+            </a>
+          </Button>
         </CardContent>
       </Card>
     </div>

@@ -51,11 +51,15 @@ from the module doc it was raised in.
 - **DS-OFM-6 — Automated exclusion enforcement beyond registration-time.** The D-Exclusions taxon
   check runs once, at intake; detecting a congregation that later re-affiliates with an excluded
   body has no design. See [moderation.md](modules/moderation.md#open-seams).
-- **DS-OFM-7 — Locale-switching UX for the public site.** Content translation groups
+- **DS-OFM-7 — Locale-switching UX for the public site.** ~~Content translation groups
   ([content.md](modules/content.md)) support multi-locale structurally; the visitor-facing locale
   picker/detection UX is undesigned. See [web-facade.md](modules/web-facade.md#open-seams).
-  **Scheduled (2026-08-27, M14.14):** a visitor-facing picker offering only locales with a
-  published variant, `hreflang` alternates, and an editor-side translation panel per document. See
+  Scheduled (2026-08-27, M14.14): a visitor-facing picker offering only locales with a published
+  variant, `hreflang` alternates, and an editor-side translation panel per document.~~ **Resolved
+  (2026-08-30, M14.14): built.** A per-page, in-content locale picker (never the shared site
+  header/footer, which has no single translatable document behind the root feed) offering only
+  `PUBLISHED` translation-group siblings, `hreflang` alternates via the page route's own
+  `generateMetadata`, and an editor-side Translations panel with a "create translation" action. See
   [milestones-2026-08-26-now.md](milestones-2026-08-26-now.md#m1414--locale-switching--closes-ds-ofm-7).
 - **DS-OFM-8 — Taxon-level exclusion has no go-oikumenea-native home.** ~~Currently facade-side only
   (OpenFaithMap is the only consumer needing it). If a second consuming app ever needs the same

@@ -569,6 +569,29 @@ func (r *Repository) ListDocuments(ctx context.Context, siteID string, kind, loc
 	return out, nil
 }
 
+// ListDocumentsByTranslationGroup (M14.14) is the one lookup shared by CreateDocument's
+// cross-site/duplicate-locale guard and GetPublicDocumentByPath's sibling-translations resolution —
+// every document sharing one translation_group_id, any state, any site (see the query's own
+// comment for why site_id is never a filter here).
+func (r *Repository) ListDocumentsByTranslationGroup(ctx context.Context, translationGroupID string) ([]domain.Document, error) {
+	rows, err := r.q.ListDocumentsByTranslationGroup(ctx, translationGroupID)
+	if err != nil {
+		return nil, fmt.Errorf("content: list documents by translation group: %w", err)
+	}
+	out := make([]domain.Document, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.Document{
+			ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
+			Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
+			State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+			EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
+			EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+		})
+	}
+	return out, nil
+}
+
 // ListPublicDocuments always filters to published/unlisted — never discloses drafts.
 func (r *Repository) ListPublicDocuments(ctx context.Context, siteID string, kind, locale *string) ([]domain.Document, error) {
 	rows, err := r.q.ListPublicDocuments(ctx, contentsql.ListPublicDocumentsParams{

@@ -12,7 +12,20 @@ import type { Document } from "@/lib/content";
 // Documents have no title/display-name field in this schema, only slug — labels are the ancestor's
 // own slug, humanized (kebab-case -> Title Case). The current (leaf) page renders as plain text,
 // not a link, per standard breadcrumb convention.
-export function Breadcrumbs({ ancestors, current, locale }: { ancestors: Document[]; current: Document; locale: string }) {
+//
+// M14.14: uiLocale (next-intl chrome language) and contentLocale (the document's own locale) are
+// now separate URL segments — see the page route this renders under.
+export function Breadcrumbs({
+  ancestors,
+  current,
+  uiLocale,
+  contentLocale,
+}: {
+  ancestors: Document[];
+  current: Document;
+  uiLocale: string;
+  contentLocale: string;
+}) {
   if (ancestors.length === 0) return null;
 
   const chain = [...ancestors, current];
@@ -21,7 +34,7 @@ export function Breadcrumbs({ ancestors, current, locale }: { ancestors: Documen
     <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
       <ol className="flex flex-wrap items-center gap-1">
         {chain.map((doc, i) => {
-          const href = `/${locale}/${chain
+          const href = `/${uiLocale}/${contentLocale}/${chain
             .slice(0, i + 1)
             .map((d) => d.slug)
             .join("/")}`;
