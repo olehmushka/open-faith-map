@@ -9,7 +9,7 @@ import { isConjureError } from "conjure-client";
 import { cache } from "react";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
-import type { IBlock, IBlockType, IDocument, IDocumentTranslation, IDocumentWithAncestors, IPublicNavItem, ISite, ISiteChrome } from "./openfaithmap/generated/content";
+import type { IBlock, IBlockType, IDocument, IDocumentTranslation, IDocumentWithAncestors, IPublicNavItem, ISite, ISiteChrome, ISubmitContactFormRequest } from "./openfaithmap/generated/content";
 
 export type Site = ISite;
 export type Document = IDocument;
@@ -19,6 +19,7 @@ export type PublicNavItem = IPublicNavItem;
 export type DocumentWithAncestors = IDocumentWithAncestors;
 export type DocumentTranslation = IDocumentTranslation;
 export type SiteChrome = ISiteChrome;
+export type SubmitContactFormInput = ISubmitContactFormRequest;
 
 export class ContentApiError extends Error {
   constructor(
@@ -119,3 +120,11 @@ export const getPublicDocumentByPath = cache(
     return unwrap(client().contentPublic.getPublicDocumentByPath(siteId, contentLocale, path.join("/")));
   },
 );
+
+// M14.16, D-InAppInbox: the third genuinely anonymous write in the codebase, after moderation's
+// two (lib/moderation.ts's fileReport). Always resolves — a honeypot hit or a too-fast submission
+// is handled server-side and still reports success, so this app has no way to tell a real
+// submission from a silently-discarded one, by design.
+export async function submitContactForm(siteId: string, input: SubmitContactFormInput): Promise<void> {
+  return unwrap(client().contentPublic.submitContactForm(siteId, input));
+}

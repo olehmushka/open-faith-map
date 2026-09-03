@@ -6,6 +6,7 @@ import { IPatternPage } from "./patternPage";
 import { IPublicNavItemList } from "./publicNavItemList";
 import { ISite } from "./site";
 import { ISiteChrome } from "./siteChrome";
+import { ISubmitContactFormRequest } from "./submitContactFormRequest";
 import type { IHttpApiBridge } from "conjure-client";
 
 /** Constant reference to `undefined` that we expect to get minified and therefore reduce total code size */
@@ -57,6 +58,11 @@ export interface IContentPublicService {
      *
      */
     getPublicDocumentByPath(siteId: string, locale: string, path: string): Promise<IDocumentWithAncestors>;
+    /**
+     * M14.16, D-InAppInbox. Genuinely anonymous — the third such write in the codebase, after moderation's two. Rate-limited (internal/platform/ratelimit, wrapping this whole service's registration — see cmd/openfaithmap-api/register_content.go). Always succeeds for a honeypot-triggered or too-fast submission; only Content:FormSubmissionInvalid (empty message) and Content:SiteNotFound are ever returned as errors.
+     *
+     */
+    submitContactForm(siteId: string, request: ISubmitContactFormRequest): Promise<void>;
 }
 
 export class ContentPublicService implements IContentPublicService {
@@ -280,6 +286,27 @@ export class ContentPublicService implements IContentPublicService {
                 "locale": locale,
                 "path": path,
             },
+            [
+                siteId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.16, D-InAppInbox. Genuinely anonymous — the third such write in the codebase, after moderation's two. Rate-limited (internal/platform/ratelimit, wrapping this whole service's registration — see cmd/openfaithmap-api/register_content.go). Always succeeds for a honeypot-triggered or too-fast submission; only Content:FormSubmissionInvalid (empty message) and Content:SiteNotFound are ever returned as errors.
+     *
+     */
+    public submitContactForm(siteId: string, request: ISubmitContactFormRequest): Promise<void> {
+        return this.bridge.call<void>(
+            "ContentPublicService",
+            "submitContactForm",
+            "POST",
+            "/content/v1/public/sites/{siteId}/contact",
+            request,
+            __undefined,
+            __undefined,
             [
                 siteId,
             ],

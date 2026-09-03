@@ -1363,6 +1363,156 @@ func (e *Forbidden) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type formSubmissionInvalid struct {
+	Field string `json:"field"`
+}
+
+func (o formSubmissionInvalid) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *formSubmissionInvalid) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewFormSubmissionInvalid returns new instance of FormSubmissionInvalid error.
+func NewFormSubmissionInvalid(fieldArg string) *FormSubmissionInvalid {
+	return &FormSubmissionInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), formSubmissionInvalid: formSubmissionInvalid{Field: fieldArg}}
+}
+
+// WrapWithFormSubmissionInvalid returns new instance of FormSubmissionInvalid error wrapping an existing error.
+func WrapWithFormSubmissionInvalid(err error, fieldArg string) *FormSubmissionInvalid {
+	return &FormSubmissionInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, formSubmissionInvalid: formSubmissionInvalid{Field: fieldArg}}
+}
+
+// FormSubmissionInvalid is an error type.
+// M14.16. submitContactForm's message was empty/whitespace-only.
+type FormSubmissionInvalid struct {
+	errorInstanceID uuid.UUID
+	formSubmissionInvalid
+	cause error
+	stack werror.StackTrace
+}
+
+// IsFormSubmissionInvalid returns true if err is an instance of FormSubmissionInvalid.
+func IsFormSubmissionInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*FormSubmissionInvalid)
+	return ok
+}
+
+func (e *FormSubmissionInvalid) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:FormSubmissionInvalid (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *FormSubmissionInvalid) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *FormSubmissionInvalid) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *FormSubmissionInvalid) Message() string {
+	return "INVALID_ARGUMENT Content:FormSubmissionInvalid"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *FormSubmissionInvalid) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *FormSubmissionInvalid) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *FormSubmissionInvalid) Name() string {
+	return "Content:FormSubmissionInvalid"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *FormSubmissionInvalid) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *FormSubmissionInvalid) Parameters() map[string]interface{} {
+	return map[string]interface{}{"field": e.Field}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *FormSubmissionInvalid) safeParams() map[string]interface{} {
+	return map[string]interface{}{"field": e.Field, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *FormSubmissionInvalid) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *FormSubmissionInvalid) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *FormSubmissionInvalid) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e FormSubmissionInvalid) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.formSubmissionInvalid)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:FormSubmissionInvalid", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *FormSubmissionInvalid) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters formSubmissionInvalid
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.formSubmissionInvalid = parameters
+	return nil
+}
+
 type invalidTransition struct {
 	DocumentId string `json:"documentId"`
 	FromState  string `json:"fromState"`
@@ -3769,6 +3919,7 @@ func init() {
 	conjureerrors.RegisterErrorType("Content:DuplicateNavItemSortOrder", reflect.TypeOf(DuplicateNavItemSortOrder{}))
 	conjureerrors.RegisterErrorType("Content:EventMissingStart", reflect.TypeOf(EventMissingStart{}))
 	conjureerrors.RegisterErrorType("Content:Forbidden", reflect.TypeOf(Forbidden{}))
+	conjureerrors.RegisterErrorType("Content:FormSubmissionInvalid", reflect.TypeOf(FormSubmissionInvalid{}))
 	conjureerrors.RegisterErrorType("Content:InvalidTransition", reflect.TypeOf(InvalidTransition{}))
 	conjureerrors.RegisterErrorType("Content:NavTargetAmbiguous", reflect.TypeOf(NavTargetAmbiguous{}))
 	conjureerrors.RegisterErrorType("Content:NavTargetInvalid", reflect.TypeOf(NavTargetInvalid{}))

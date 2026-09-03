@@ -1516,6 +1516,58 @@ func TestContentIntegration(t *testing.T) {
 			t.Errorf("ListPatterns (public) after delete still contains %s", newPattern.ID)
 		}
 	}
+
+	// --- M14.16, D-InAppInbox: SubmitContactForm is genuinely anonymous (a plain background
+	// context, no subject at all) and ListFormSubmissions is content.manage-gated the same way
+	// every other admin read in this file is.
+	longAgo := time.Now().Add(-time.Hour)
+
+	// A real submission (formRenderedAt well in the past) inserts and is visible to the admin read.
+	name := "Jane Visitor"
+	email := "jane@example.com"
+	if err := contentSvc.SubmitContactForm(context.Background(), contentdomain.SubmitContactFormInput{
+		SiteID: site.ID, Name: &name, Email: &email, Message: "Hello, what time is the Sunday service?", FormRenderedAt: longAgo,
+	}); err != nil {
+		t.Fatalf("SubmitContactForm (real submission): %v", err)
+	}
+
+	// A honeypot-filled submission is silently discarded — no error, no row.
+	if err := contentSvc.SubmitContactForm(context.Background(), contentdomain.SubmitContactFormInput{
+		SiteID: site.ID, Message: "buy cheap watches", Honeypot: "http://spam.example", FormRenderedAt: longAgo,
+	}); err != nil {
+		t.Fatalf("SubmitContactForm (honeypot) error = %v, want nil (silently discarded)", err)
+	}
+
+	// A too-fast submission (formRenderedAt = now) is silently discarded the same way.
+	if err := contentSvc.SubmitContactForm(context.Background(), contentdomain.SubmitContactFormInput{
+		SiteID: site.ID, Message: "too fast", FormRenderedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("SubmitContactForm (too fast) error = %v, want nil (silently discarded)", err)
+	}
+
+	// An empty message is the one real validation failure this endpoint ever reports.
+	var formInvalidErr *contentdomain.FormSubmissionInvalidError
+	if err := contentSvc.SubmitContactForm(context.Background(), contentdomain.SubmitContactFormInput{
+		SiteID: site.ID, Message: "   ", FormRenderedAt: longAgo,
+	}); !errors.As(err, &formInvalidErr) {
+		t.Errorf("SubmitContactForm (empty message) error = %v, want *FormSubmissionInvalidError", err)
+	}
+
+	// ListFormSubmissions is content.manage-gated: denied for otherCtx, allowed for adminCtx — and
+	// contains exactly the one real submission above, never the honeypot/too-fast/invalid attempts.
+	if _, err := contentSvc.ListFormSubmissions(otherCtx, site.ID); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("ListFormSubmissions by non-manager error = %v, want ErrForbidden", err)
+	}
+	submissions, err := contentSvc.ListFormSubmissions(adminCtx, site.ID)
+	if err != nil {
+		t.Fatalf("ListFormSubmissions by congregation-admin: %v", err)
+	}
+	if len(submissions) != 1 {
+		t.Fatalf("ListFormSubmissions = %+v, want exactly 1 submission", submissions)
+	}
+	if got := submissions[0]; got.Message != "Hello, what time is the Sunday service?" || got.Name == nil || *got.Name != name || got.Email == nil || *got.Email != email {
+		t.Errorf("ListFormSubmissions[0] = %+v, want Name=%q Email=%q Message=%q", got, name, email, "Hello, what time is the Sunday service?")
+	}
 }
 
 func strPtr(s string) *string { return &s }

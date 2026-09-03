@@ -276,6 +276,16 @@ func (s *Service) DeletePattern(ctx context.Context, authHeader bearertoken.Toke
 	return nil
 }
 
+// ListFormSubmissions backs the Messages screen (M14.16, D-InAppInbox) — content.manage-gated,
+// same shape as ListDocuments.
+func (s *Service) ListFormSubmissions(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (gencontent.ListFormSubmissionsResponse, error) {
+	submissions, err := s.appService.ListFormSubmissions(ctx, siteIdArg)
+	if err != nil {
+		return gencontent.ListFormSubmissionsResponse{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	return gencontent.ListFormSubmissionsResponse{Submissions: toAPIFormSubmissions(submissions)}, nil
+}
+
 func toAPINavItems(items []domain.NavItem) []gencontent.NavItem {
 	out := make([]gencontent.NavItem, 0, len(items))
 	for _, item := range items {
@@ -464,6 +474,17 @@ func toAPIPattern(p domain.Pattern) gencontent.Pattern {
 		Id: p.ID, Name: p.Name, Description: p.Description, Blocks: toAPIBlockInputs(p.Blocks), SortOrder: p.SortOrder,
 		CreatedAt: datetime.DateTime(p.CreatedAt), UpdatedAt: datetime.DateTime(p.UpdatedAt),
 	}
+}
+
+func toAPIFormSubmissions(submissions []domain.FormSubmission) []gencontent.ContactFormSubmission {
+	out := make([]gencontent.ContactFormSubmission, 0, len(submissions))
+	for _, sub := range submissions {
+		out = append(out, gencontent.ContactFormSubmission{
+			Id: sub.ID, Name: sub.Name, Email: sub.Email, Message: sub.Message,
+			CreatedAt: datetime.DateTime(sub.CreatedAt),
+		})
+	}
+	return out
 }
 
 func derefOr(s *string, fallback string) string {

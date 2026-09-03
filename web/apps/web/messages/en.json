@@ -77,6 +77,14 @@
     "viewOnMap": "View on map",
     "youtubeVideoDefaultTitle": "YouTube video"
   },
+  "ContactFormBlock": {
+    "namePlaceholder": "Your name",
+    "emailPlaceholder": "Your email",
+    "messagePlaceholder": "Your message",
+    "submit": "Send",
+    "thanks": "Thanks for your message — we'll be in touch.",
+    "error": "Something went wrong. Please try again."
+  },
   "LocaleSwitcher": {
     "label": "Language",
     "en": "English",

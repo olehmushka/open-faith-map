@@ -218,6 +218,15 @@ type OpenfaithmapContentDocumentRevision struct {
 	Label          pgtype.Text
 }
 
+type OpenfaithmapContentFormSubmission struct {
+	ID        string
+	SiteID    string
+	Name      pgtype.Text
+	Email     pgtype.Text
+	Message   string
+	CreatedAt time.Time
+}
+
 type OpenfaithmapContentPattern struct {
 	ID          string
 	Name        string

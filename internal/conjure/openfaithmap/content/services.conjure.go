@@ -35,6 +35,8 @@ type ContentPublicServiceClient interface {
 	ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error)
 	// M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
 	GetPublicDocumentByPath(ctx context.Context, siteIdArg string, localeArg string, pathArg string) (DocumentWithAncestors, error)
+	// M14.16, D-InAppInbox. Genuinely anonymous — the third such write in the codebase, after moderation's two. Rate-limited (internal/platform/ratelimit, wrapping this whole service's registration — see cmd/openfaithmap-api/register_content.go). Always succeeds for a honeypot-triggered or too-fast submission; only Content:FormSubmissionInvalid (empty message) and Content:SiteNotFound are ever returned as errors.
+	SubmitContactForm(ctx context.Context, siteIdArg string, requestArg SubmitContactFormRequest) error
 }
 
 type contentPublicServiceClient struct {
@@ -245,6 +247,18 @@ func (c *contentPublicServiceClient) GetPublicDocumentByPath(ctx context.Context
 	return *returnVal, nil
 }
 
+func (c *contentPublicServiceClient) SubmitContactForm(ctx context.Context, siteIdArg string, requestArg SubmitContactFormRequest) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("SubmitContactForm"))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/public/sites/%s/contact", url.PathEscape(fmt.Sprint(siteIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "submitContactForm failed")
+	}
+	return nil
+}
+
 // Congregation site authoring: sites, documents (pages), blocks. Every write, and every read that must see draft state, is content.manage-gated — a live, target-scoped Authorize call against the site's own congregation unit (see file header). See docs/modules/content.md.
 type ContentServiceClient interface {
 	CreateSite(ctx context.Context, authHeader bearertoken.Token, requestArg CreateSiteRequest) (Site, error)
@@ -282,6 +296,8 @@ type ContentServiceClient interface {
 	UpdatePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string, requestArg UpdatePatternRequest) (Pattern, error)
 	// M14.13. content.catalog.manage-gated. Soft-delete (a pattern already copied into a document is unaffected — unsynced, no ongoing reference to detach). Content:PatternNotFound if missing or already deleted.
 	DeletePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string) error
+	// M14.16, D-InAppInbox. content.manage-gated — the Messages screen's one call. Newest first, no pagination (per-congregation volume is low; add keyset pagination if that stops being true).
+	ListFormSubmissions(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (ListFormSubmissionsResponse, error)
 }
 
 type contentServiceClient struct {
@@ -650,6 +666,23 @@ func (c *contentServiceClient) DeletePattern(ctx context.Context, authHeader bea
 	return nil
 }
 
+func (c *contentServiceClient) ListFormSubmissions(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (ListFormSubmissionsResponse, error) {
+	var returnVal *ListFormSubmissionsResponse
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListFormSubmissions"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/sites/%s/messages", url.PathEscape(fmt.Sprint(siteIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ListFormSubmissionsResponse), werror.WrapWithContextParams(ctx, err, "listFormSubmissions failed")
+	}
+	if returnVal == nil {
+		return *new(ListFormSubmissionsResponse), werror.ErrorWithContextParams(ctx, "listFormSubmissions response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // Congregation site authoring: sites, documents (pages), blocks. Every write, and every read that must see draft state, is content.manage-gated — a live, target-scoped Authorize call against the site's own congregation unit (see file header). See docs/modules/content.md.
 type ContentServiceClientWithAuth interface {
 	CreateSite(ctx context.Context, requestArg CreateSiteRequest) (Site, error)
@@ -687,6 +720,8 @@ type ContentServiceClientWithAuth interface {
 	UpdatePattern(ctx context.Context, patternIdArg string, requestArg UpdatePatternRequest) (Pattern, error)
 	// M14.13. content.catalog.manage-gated. Soft-delete (a pattern already copied into a document is unaffected — unsynced, no ongoing reference to detach). Content:PatternNotFound if missing or already deleted.
 	DeletePattern(ctx context.Context, patternIdArg string) error
+	// M14.16, D-InAppInbox. content.manage-gated — the Messages screen's one call. Newest first, no pagination (per-congregation volume is low; add keyset pagination if that stops being true).
+	ListFormSubmissions(ctx context.Context, siteIdArg string) (ListFormSubmissionsResponse, error)
 }
 
 func NewContentServiceClientWithAuth(client ContentServiceClient, authHeader bearertoken.Token) ContentServiceClientWithAuth {
@@ -776,6 +811,10 @@ func (c *contentServiceClientWithAuth) UpdatePattern(ctx context.Context, patter
 
 func (c *contentServiceClientWithAuth) DeletePattern(ctx context.Context, patternIdArg string) error {
 	return c.client.DeletePattern(ctx, c.authHeader, patternIdArg)
+}
+
+func (c *contentServiceClientWithAuth) ListFormSubmissions(ctx context.Context, siteIdArg string) (ListFormSubmissionsResponse, error) {
+	return c.client.ListFormSubmissions(ctx, c.authHeader, siteIdArg)
 }
 
 func NewContentServiceClientWithTokenProvider(client ContentServiceClient, tokenProvider httpclient.TokenProvider) ContentServiceClientWithAuth {
@@ -945,4 +984,12 @@ func (c *contentServiceClientWithTokenProvider) DeletePattern(ctx context.Contex
 		return err
 	}
 	return c.client.DeletePattern(ctx, bearertoken.Token(token), patternIdArg)
+}
+
+func (c *contentServiceClientWithTokenProvider) ListFormSubmissions(ctx context.Context, siteIdArg string) (ListFormSubmissionsResponse, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ListFormSubmissionsResponse), err
+	}
+	return c.client.ListFormSubmissions(ctx, bearertoken.Token(token), siteIdArg)
 }

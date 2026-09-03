@@ -164,6 +164,31 @@ func (o *BlockTypePage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// M14.16, D-InAppInbox. An anonymous contact-form entry, read through openfaithmap-admin's Messages screen. name/email are whatever the visitor entered, or absent — never validated beyond presence. message is untrusted plain text, rendered as such, never as a block or rich text.
+type ContactFormSubmission struct {
+	Id        string            `json:"id"`
+	Name      *string           `json:"name,omitempty"`
+	Email     *string           `json:"email,omitempty"`
+	Message   string            `json:"message"`
+	CreatedAt datetime.DateTime `json:"createdAt"`
+}
+
+func (o ContactFormSubmission) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ContactFormSubmission) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // content.catalog.manage (platform-moderator only). Finally builds what M3 left unbuilt.
 type CreateBlockTypeRequest struct {
 	Code       string      `json:"code"`
@@ -456,6 +481,47 @@ func (o DocumentWithAncestors) MarshalYAML() (interface{}, error) {
 }
 
 func (o *DocumentWithAncestors) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type ListFormSubmissionsResponse struct {
+	Submissions []ContactFormSubmission `json:"submissions"`
+}
+
+func (o ListFormSubmissionsResponse) MarshalJSON() ([]byte, error) {
+	if o.Submissions == nil {
+		o.Submissions = make([]ContactFormSubmission, 0)
+	}
+	type _tmpListFormSubmissionsResponse ListFormSubmissionsResponse
+	return safejson.Marshal(_tmpListFormSubmissionsResponse(o))
+}
+
+func (o *ListFormSubmissionsResponse) UnmarshalJSON(data []byte) error {
+	type _tmpListFormSubmissionsResponse ListFormSubmissionsResponse
+	var rawListFormSubmissionsResponse _tmpListFormSubmissionsResponse
+	if err := safejson.Unmarshal(data, &rawListFormSubmissionsResponse); err != nil {
+		return err
+	}
+	if rawListFormSubmissionsResponse.Submissions == nil {
+		rawListFormSubmissionsResponse.Submissions = make([]ContactFormSubmission, 0)
+	}
+	*o = ListFormSubmissionsResponse(rawListFormSubmissionsResponse)
+	return nil
+}
+
+func (o ListFormSubmissionsResponse) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ListFormSubmissionsResponse) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -975,6 +1041,31 @@ func (o SocialLinks) MarshalYAML() (interface{}, error) {
 }
 
 func (o *SocialLinks) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// honeypot and formRenderedAt are anti-spam signals, not content: a non-empty honeypot (a field a real visitor never sees or fills) or a formRenderedAt too close to now() causes the submission to be silently discarded — this endpoint returns success either way, so a probing bot learns nothing (D-InAppInbox's "an error teaches the bot").
+type SubmitContactFormRequest struct {
+	Name           *string           `json:"name,omitempty"`
+	Email          *string           `json:"email,omitempty"`
+	Message        string            `json:"message"`
+	Honeypot       *string           `json:"honeypot,omitempty"`
+	FormRenderedAt datetime.DateTime `json:"formRenderedAt"`
+}
+
+func (o SubmitContactFormRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SubmitContactFormRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

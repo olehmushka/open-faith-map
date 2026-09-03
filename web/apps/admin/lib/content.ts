@@ -17,6 +17,7 @@ import type {
   IBlock,
   IBlockInput,
   IBlockType,
+  IContactFormSubmission,
   ICreateBlockTypeRequest,
   ICreateDocumentRequest,
   ICreatePatternRequest,
@@ -51,6 +52,7 @@ export type CreateBlockTypeInput = ICreateBlockTypeRequest;
 export type UpdateBlockTypeInput = IUpdateBlockTypeRequest;
 export type CreatePatternInput = ICreatePatternRequest;
 export type UpdatePatternInput = IUpdatePatternRequest;
+export type ContactFormSubmission = IContactFormSubmission;
 export { DocumentTransitionAction };
 
 export class ContentApiError extends Error {
@@ -203,6 +205,13 @@ export async function updatePattern(patternId: string, input: UpdatePatternInput
 
 export async function deletePattern(patternId: string): Promise<void> {
   return unwrap((await client()).content.deletePattern(patternId));
+}
+
+// listFormSubmissions backs the Messages screen (M14.16, D-InAppInbox) — content.manage-gated,
+// server-side, same as every other content.manage call in this file (no local role check here).
+export async function listFormSubmissions(siteId: string): Promise<ContactFormSubmission[]> {
+  const page = await unwrap((await client()).content.listFormSubmissions(siteId));
+  return page.submissions;
 }
 
 // buildPreviewUrl points at the SAME tenant host every other tenant page uses (D-TenantSubdomains) —

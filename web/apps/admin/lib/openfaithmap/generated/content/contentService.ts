@@ -7,6 +7,7 @@ import { ICreatePatternRequest } from "./createPatternRequest";
 import { ICreateSiteRequest } from "./createSiteRequest";
 import { IDocument } from "./document";
 import { IDocumentPage } from "./documentPage";
+import { IListFormSubmissionsResponse } from "./listFormSubmissionsResponse";
 import { INavItemList } from "./navItemList";
 import { IPattern } from "./pattern";
 import { IPreviewLink } from "./previewLink";
@@ -86,6 +87,11 @@ export interface IContentService {
      *
      */
     deletePattern(patternId: string): Promise<void>;
+    /**
+     * M14.16, D-InAppInbox. content.manage-gated — the Messages screen's one call. Newest first, no pagination (per-congregation volume is low; add keyset pagination if that stops being true).
+     *
+     */
+    listFormSubmissions(siteId: string): Promise<IListFormSubmissionsResponse>;
 }
 
 export class ContentService implements IContentService {
@@ -459,6 +465,27 @@ export class ContentService implements IContentService {
             __undefined,
             [
                 patternId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.16, D-InAppInbox. content.manage-gated — the Messages screen's one call. Newest first, no pagination (per-congregation volume is low; add keyset pagination if that stops being true).
+     *
+     */
+    public listFormSubmissions(siteId: string): Promise<IListFormSubmissionsResponse> {
+        return this.bridge.call<IListFormSubmissionsResponse>(
+            "ContentService",
+            "listFormSubmissions",
+            "GET",
+            "/content/v1/sites/{siteId}/messages",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                siteId,
             ],
             __undefined,
             __undefined

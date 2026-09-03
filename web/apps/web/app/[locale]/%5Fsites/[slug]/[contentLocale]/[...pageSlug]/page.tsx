@@ -8,7 +8,7 @@ import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ContentLocalePicker } from "@/components/content-locale-picker";
 import { PageDocument } from "@/components/page-document";
-import { ContentApiError, getPublicDocumentByPath, getSiteBySlug, type DocumentWithAncestors } from "@/lib/content";
+import { ContentApiError, getPublicDocumentByPath, getSiteBySlug, type DocumentWithAncestors, type Site } from "@/lib/content";
 
 // Same force-dynamic reasoning as the tenant root page — content changes independently of any build.
 export const dynamic = "force-dynamic";
@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 // resolution — a congregation can author a page in any language, not only the 4 chrome locales.
 type RouteParams = { locale: string; slug: string; contentLocale: string; pageSlug: string[] };
 
-async function resolve(params: Promise<RouteParams>): Promise<{ params: RouteParams; resolved: DocumentWithAncestors } | null> {
+async function resolve(params: Promise<RouteParams>): Promise<{ params: RouteParams; resolved: DocumentWithAncestors; site: Site } | null> {
   const routeParams = await params;
   const { slug, contentLocale, pageSlug } = routeParams;
   if (pageSlug.length === 0 || pageSlug.length > 3) return null;
@@ -36,7 +36,7 @@ async function resolve(params: Promise<RouteParams>): Promise<{ params: RoutePar
 
   try {
     const resolved = await getPublicDocumentByPath(site.id, contentLocale, pageSlug);
-    return { params: routeParams, resolved };
+    return { params: routeParams, resolved, site };
   } catch (e) {
     if (e instanceof ContentApiError && e.errorName === "Content:DocumentNotFound") return null;
     throw e;
@@ -71,7 +71,7 @@ export async function generateMetadata({ params }: { params: Promise<RouteParams
 export default async function TenantPageRoute({ params }: { params: Promise<RouteParams> }) {
   const found = await resolve(params);
   if (!found) notFound();
-  const { params: routeParams, resolved } = found;
+  const { params: routeParams, resolved, site } = found;
 
   return (
     <main
@@ -80,7 +80,7 @@ export default async function TenantPageRoute({ params }: { params: Promise<Rout
     >
       <Breadcrumbs ancestors={resolved.ancestors} current={resolved.document} uiLocale={routeParams.locale} contentLocale={routeParams.contentLocale} />
       <ContentLocalePicker translations={resolved.translations} uiLocale={routeParams.locale} activeContentLocale={routeParams.contentLocale} />
-      <PageDocument documentId={resolved.document.id} />
+      <PageDocument documentId={resolved.document.id} siteId={site.id} />
     </main>
   );
 }
