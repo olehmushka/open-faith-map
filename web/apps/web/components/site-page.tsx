@@ -136,7 +136,7 @@ export async function SitePage({
               <p className="text-sm text-gray-500">
                 {e.eventStartsAt ? new Date(e.eventStartsAt).toLocaleString() : t("dateTbd")}
               </p>
-              <EventBlocks documentId={e.id} previewToken={previewToken} />
+              <EventBlocks documentId={e.id} siteId={site.id} previewToken={previewToken} />
             </div>
           ))}
         </section>
@@ -147,7 +147,7 @@ export async function SitePage({
           <h2 className="text-xl font-semibold">{t("news")}</h2>
           {posts.map((p) => (
             <article key={p.id} className="rounded border p-4">
-              <PostBlocks documentId={p.id} previewToken={previewToken} />
+              <PostBlocks documentId={p.id} siteId={site.id} previewToken={previewToken} />
             </article>
           ))}
         </section>
@@ -184,12 +184,12 @@ export async function SitePage({
   );
 }
 
-async function EventBlocks({ documentId, previewToken }: { documentId: string; previewToken?: string }) {
+async function EventBlocks({ documentId, siteId, previewToken }: { documentId: string; siteId: string; previewToken?: string }) {
   const blocks = previewToken ? await getPreviewBlocks(documentId, previewToken) : await getPublicBlocks(documentId);
-  return <Blocks blocks={blocks} />;
+  return <Blocks blocks={blocks} siteId={siteId} />;
 }
 
-async function PostBlocks({ documentId, previewToken }: { documentId: string; previewToken?: string }) {
+async function PostBlocks({ documentId, siteId, previewToken }: { documentId: string; siteId: string; previewToken?: string }) {
   const blocks = previewToken ? await getPreviewBlocks(documentId, previewToken) : await getPublicBlocks(documentId);
-  return <Blocks blocks={blocks} />;
+  return <Blocks blocks={blocks} siteId={siteId} />;
 }

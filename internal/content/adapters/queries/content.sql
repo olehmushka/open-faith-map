@@ -230,3 +230,16 @@ SELECT id, name, description, blocks, sort_order, created_at, updated_at
 FROM openfaithmap.content_patterns
 WHERE deleted_at IS NULL
 ORDER BY sort_order ASC;
+
+-- ---- form submissions (M14.16, D-InAppInbox) ----
+
+-- name: InsertFormSubmission :one
+INSERT INTO openfaithmap.content_form_submissions (site_id, name, email, message)
+VALUES (sqlc.arg('site_id'), sqlc.narg('name'), sqlc.narg('email'), sqlc.arg('message'))
+RETURNING id, site_id, name, email, message, created_at;
+
+-- name: ListFormSubmissionsBySite :many
+SELECT id, site_id, name, email, message, created_at
+FROM openfaithmap.content_form_submissions
+WHERE site_id = sqlc.arg('site_id')
+ORDER BY created_at DESC;

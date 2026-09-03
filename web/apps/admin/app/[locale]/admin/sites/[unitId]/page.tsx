@@ -1,5 +1,5 @@
 import { getTranslations } from "next-intl/server";
-import { FileText, Menu } from "lucide-react";
+import { FileText, Mail, Menu } from "lucide-react";
 
 import { ACCESSIBILITY_KEYS } from "@/lib/accessibility";
 import { createSite, getSite, updateSiteChrome, updateSiteTheme } from "@/lib/content";
@@ -179,6 +179,12 @@ export default async function SitePage({
             <Link href={`/admin/sites/${unitId}/nav`}>
               <Menu className="size-3.5" />
               {t("manageNav")}
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/admin/sites/${unitId}/messages`}>
+              <Mail className="size-3.5" />
+              {t("manageMessages")}
             </Link>
           </Button>
         </div>

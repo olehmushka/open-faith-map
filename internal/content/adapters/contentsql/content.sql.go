@@ -454,6 +454,40 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 	return i, err
 }
 
+const insertFormSubmission = `-- name: InsertFormSubmission :one
+
+INSERT INTO openfaithmap.content_form_submissions (site_id, name, email, message)
+VALUES ($1, $2, $3, $4)
+RETURNING id, site_id, name, email, message, created_at
+`
+
+type InsertFormSubmissionParams struct {
+	SiteID  string
+	Name    pgtype.Text
+	Email   pgtype.Text
+	Message string
+}
+
+// ---- form submissions (M14.16, D-InAppInbox) ----
+func (q *Queries) InsertFormSubmission(ctx context.Context, arg InsertFormSubmissionParams) (OpenfaithmapContentFormSubmission, error) {
+	row := q.db.QueryRow(ctx, insertFormSubmission,
+		arg.SiteID,
+		arg.Name,
+		arg.Email,
+		arg.Message,
+	)
+	var i OpenfaithmapContentFormSubmission
+	err := row.Scan(
+		&i.ID,
+		&i.SiteID,
+		&i.Name,
+		&i.Email,
+		&i.Message,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertNavItem = `-- name: InsertNavItem :one
 INSERT INTO openfaithmap.content_site_nav_items (site_id, label, target_document_id, target_url, sort_order)
 VALUES ($1, $2, $3, $4, $5)
@@ -889,6 +923,40 @@ func (q *Queries) ListDocumentsByTranslationGroup(ctx context.Context, translati
 			&i.DraftRevisionID,
 			&i.PublishedRevisionID,
 			&i.PublishAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFormSubmissionsBySite = `-- name: ListFormSubmissionsBySite :many
+SELECT id, site_id, name, email, message, created_at
+FROM openfaithmap.content_form_submissions
+WHERE site_id = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListFormSubmissionsBySite(ctx context.Context, siteID string) ([]OpenfaithmapContentFormSubmission, error) {
+	rows, err := q.db.Query(ctx, listFormSubmissionsBySite, siteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OpenfaithmapContentFormSubmission
+	for rows.Next() {
+		var i OpenfaithmapContentFormSubmission
+		if err := rows.Scan(
+			&i.ID,
+			&i.SiteID,
+			&i.Name,
+			&i.Email,
+			&i.Message,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

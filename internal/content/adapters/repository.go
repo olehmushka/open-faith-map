@@ -344,6 +344,43 @@ func (r *Repository) ListPatterns(ctx context.Context) ([]domain.Pattern, error)
 	return out, nil
 }
 
+// InsertFormSubmission is the anonymous write (M14.16, D-InAppInbox) — called only after the
+// application layer has already decided this submission isn't a silently-discarded honeypot/
+// too-fast hit, so every row that reaches here is real.
+func (r *Repository) InsertFormSubmission(ctx context.Context, in domain.SubmitContactFormInput) (domain.FormSubmission, error) {
+	row, err := r.q.InsertFormSubmission(ctx, contentsql.InsertFormSubmissionParams{
+		SiteID: in.SiteID, Name: nullableText(in.Name), Email: nullableText(in.Email), Message: in.Message,
+	})
+	if err != nil {
+		return domain.FormSubmission{}, fmt.Errorf("content: insert form submission: %w", err)
+	}
+	return formSubmissionFromRow(row), nil
+}
+
+// ListFormSubmissions backs the admin Messages screen — content.manage-gated by the caller.
+func (r *Repository) ListFormSubmissions(ctx context.Context, siteID string) ([]domain.FormSubmission, error) {
+	rows, err := r.q.ListFormSubmissionsBySite(ctx, siteID)
+	if err != nil {
+		return nil, fmt.Errorf("content: list form submissions: %w", err)
+	}
+	out := make([]domain.FormSubmission, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, formSubmissionFromRow(row))
+	}
+	return out, nil
+}
+
+func formSubmissionFromRow(row contentsql.OpenfaithmapContentFormSubmission) domain.FormSubmission {
+	return domain.FormSubmission{
+		ID:        row.ID,
+		SiteID:    row.SiteID,
+		Name:      fromNullableText(row.Name),
+		Email:     fromNullableText(row.Email),
+		Message:   row.Message,
+		CreatedAt: row.CreatedAt,
+	}
+}
+
 // InsertDocument implements U5's resolution race-safely: INSERT, catch the unique-violation,
 // translate. A nil in.TranslationGroupID starts a new group (gen_random_uuid()); a non-nil value
 // joins an existing one as another locale variant.

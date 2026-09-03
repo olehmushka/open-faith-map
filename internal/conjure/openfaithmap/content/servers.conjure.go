@@ -37,6 +37,8 @@ type ContentPublicService interface {
 	ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error)
 	// M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
 	GetPublicDocumentByPath(ctx context.Context, siteIdArg string, localeArg string, pathArg string) (DocumentWithAncestors, error)
+	// M14.16, D-InAppInbox. Genuinely anonymous — the third such write in the codebase, after moderation's two. Rate-limited (internal/platform/ratelimit, wrapping this whole service's registration — see cmd/openfaithmap-api/register_content.go). Always succeeds for a honeypot-triggered or too-fast submission; only Content:FormSubmissionInvalid (empty message) and Content:SiteNotFound are ever returned as errors.
+	SubmitContactForm(ctx context.Context, siteIdArg string, requestArg SubmitContactFormRequest) error
 }
 
 // RegisterRoutesContentPublicService registers handlers for the ContentPublicService endpoints with a witchcraft wrouter.
@@ -78,6 +80,9 @@ func RegisterRoutesContentPublicService(router wrouter.Router, impl ContentPubli
 	}
 	if err := resource.Get("GetPublicDocumentByPath", "/content/v1/public/sites/{siteId}/documents/by-path", httpserver.NewJSONHandler(handler.HandleGetPublicDocumentByPath, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getPublicDocumentByPath route")
+	}
+	if err := resource.Post("SubmitContactForm", "/content/v1/public/sites/{siteId}/contact", httpserver.NewJSONHandler(handler.HandleSubmitContactForm, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add submitContactForm route")
 	}
 	return nil
 }
@@ -281,6 +286,26 @@ func (c *contentPublicServiceHandler) HandleGetPublicDocumentByPath(rw http.Resp
 	return codecs.JSON.Encode(rw, respArg)
 }
 
+func (c *contentPublicServiceHandler) HandleSubmitContactForm(rw http.ResponseWriter, req *http.Request) error {
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	var requestArg SubmitContactFormRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	if err := c.impl.SubmitContactForm(req.Context(), siteIdArg, requestArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 // Congregation site authoring: sites, documents (pages), blocks. Every write, and every read that must see draft state, is content.manage-gated — a live, target-scoped Authorize call against the site's own congregation unit (see file header). See docs/modules/content.md.
 type ContentService interface {
 	CreateSite(ctx context.Context, authHeader bearertoken.Token, requestArg CreateSiteRequest) (Site, error)
@@ -318,6 +343,8 @@ type ContentService interface {
 	UpdatePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string, requestArg UpdatePatternRequest) (Pattern, error)
 	// M14.13. content.catalog.manage-gated. Soft-delete (a pattern already copied into a document is unaffected — unsynced, no ongoing reference to detach). Content:PatternNotFound if missing or already deleted.
 	DeletePattern(ctx context.Context, authHeader bearertoken.Token, patternIdArg string) error
+	// M14.16, D-InAppInbox. content.manage-gated — the Messages screen's one call. Newest first, no pagination (per-congregation volume is low; add keyset pagination if that stops being true).
+	ListFormSubmissions(ctx context.Context, authHeader bearertoken.Token, siteIdArg string) (ListFormSubmissionsResponse, error)
 }
 
 // RegisterRoutesContentService registers handlers for the ContentService endpoints with a witchcraft wrouter.
@@ -386,6 +413,9 @@ func RegisterRoutesContentService(router wrouter.Router, impl ContentService, ro
 	}
 	if err := resource.Delete("DeletePattern", "/content/v1/catalog/patterns/{patternId}", httpserver.NewJSONHandler(handler.HandleDeletePattern, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deletePattern route")
+	}
+	if err := resource.Get("ListFormSubmissions", "/content/v1/sites/{siteId}/messages", httpserver.NewJSONHandler(handler.HandleListFormSubmissions, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listFormSubmissions route")
 	}
 	return nil
 }
@@ -846,4 +876,25 @@ func (c *contentServiceHandler) HandleDeletePattern(rw http.ResponseWriter, req 
 	}
 	rw.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func (c *contentServiceHandler) HandleListFormSubmissions(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	respArg, err := c.impl.ListFormSubmissions(req.Context(), bearertoken.Token(authHeader), siteIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
 }

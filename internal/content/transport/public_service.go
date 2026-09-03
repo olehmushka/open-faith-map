@@ -6,9 +6,11 @@ package transport
 import (
 	"context"
 	"strings"
+	"time"
 
 	gencontent "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/content"
 	"github.com/olehmushka/open-faith-map/internal/content/application"
+	"github.com/olehmushka/open-faith-map/internal/content/domain"
 )
 
 // PublicService implements the generated ContentPublicService — genuinely anonymous, no
@@ -141,4 +143,28 @@ func (s *PublicService) ListPatterns(ctx context.Context) (gencontent.PatternPag
 		return gencontent.PatternPage{}, mapErr(err, errCtx{})
 	}
 	return gencontent.PatternPage{Patterns: toAPIPatterns(patterns)}, nil
+}
+
+// SubmitContactForm is genuinely anonymous (no bearertoken.Token arg at all — this service
+// declares no default-auth). Honeypot/too-fast submissions are handled entirely in
+// application.Service.SubmitContactForm, which returns nil for both exactly like a real insert —
+// this method has no way to tell the two apart, by design (D-InAppInbox: "an error teaches the
+// bot").
+func (s *PublicService) SubmitContactForm(ctx context.Context, siteIdArg string, requestArg gencontent.SubmitContactFormRequest) error {
+	honeypot := ""
+	if requestArg.Honeypot != nil {
+		honeypot = *requestArg.Honeypot
+	}
+	err := s.appService.SubmitContactForm(ctx, domain.SubmitContactFormInput{
+		SiteID:         siteIdArg,
+		Name:           requestArg.Name,
+		Email:          requestArg.Email,
+		Message:        requestArg.Message,
+		Honeypot:       honeypot,
+		FormRenderedAt: time.Time(requestArg.FormRenderedAt),
+	})
+	if err != nil {
+		return mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	return nil
 }

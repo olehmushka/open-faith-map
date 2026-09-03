@@ -264,6 +264,29 @@ type UpdateBlockTypeInput struct {
 	SortOrder *int
 }
 
+// FormSubmission is an anonymous contact-form entry (M14.16, D-InAppInbox), read through
+// openfaithmap-admin's Messages screen. Insert-only — never updated, never soft-deleted.
+type FormSubmission struct {
+	ID        string
+	SiteID    string
+	Name      *string
+	Email     *string
+	Message   string
+	CreatedAt time.Time
+}
+
+// SubmitContactFormInput carries the two anti-spam signals alongside the visitor's own fields.
+// Honeypot non-empty or FormRenderedAt too close to now() means "silently discard, still succeed"
+// — SubmitContactForm never surfaces either case as an error.
+type SubmitContactFormInput struct {
+	SiteID         string
+	Name           *string
+	Email          *string
+	Message        string
+	Honeypot       string
+	FormRenderedAt time.Time
+}
+
 type CreatePatternInput struct {
 	Name        string
 	Description string
@@ -337,6 +360,10 @@ var (
 	// (M14.7) — deliberately one sentinel for every case, so a caller probing the preview endpoints
 	// learns nothing about which check failed.
 	ErrPreviewTokenInvalid = errors.New("preview token missing, invalid, expired, or scoped to a different site")
+	// ErrFormSubmissionInvalid backs M14.16's one validation case (an empty message) — honeypot and
+	// too-fast submissions are never errors at all (D-InAppInbox: "an error teaches the bot"), so
+	// SubmitContactForm returns success and simply skips the insert for those.
+	ErrFormSubmissionInvalid = errors.New("contact form submission invalid")
 )
 
 // SlugTakenError carries U5's resolution: an admin-chosen slug, probed for uniqueness at write
@@ -507,3 +534,15 @@ type DuplicateNavItemSortOrderError struct {
 func (e *DuplicateNavItemSortOrderError) Error() string {
 	return fmt.Sprintf("duplicate nav item sortOrder %d", e.SortOrder)
 }
+
+// FormSubmissionInvalidError (M14.16): submitContactForm's message was empty/whitespace-only —
+// the one validation failure this endpoint ever reports (honeypot/timing failures are silent).
+type FormSubmissionInvalidError struct {
+	Field string
+}
+
+func (e *FormSubmissionInvalidError) Error() string {
+	return fmt.Sprintf("contact form field %q invalid", e.Field)
+}
+
+func (e *FormSubmissionInvalidError) Unwrap() error { return ErrFormSubmissionInvalid }

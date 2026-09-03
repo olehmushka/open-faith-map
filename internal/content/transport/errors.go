@@ -41,6 +41,7 @@ func mapErr(err error, c errCtx) error {
 	var blockTypeCodeTaken *domain.BlockTypeCodeTakenError
 	var translationLocaleTaken *domain.TranslationLocaleTakenError
 	var translationGroupNotFound *domain.TranslationGroupNotFoundError
+	var formSubmissionInvalid *domain.FormSubmissionInvalidError
 
 	switch {
 	case errors.As(err, &slugTaken):
@@ -71,6 +72,8 @@ func mapErr(err error, c errCtx) error {
 		return gencontent.NewTranslationLocaleTaken(translationLocaleTaken.TranslationGroupID, translationLocaleTaken.Locale)
 	case errors.As(err, &translationGroupNotFound):
 		return gencontent.NewTranslationGroupNotFound(translationGroupNotFound.TranslationGroupID)
+	case errors.As(err, &formSubmissionInvalid):
+		return gencontent.NewFormSubmissionInvalid(formSubmissionInvalid.Field)
 	case errors.Is(err, domain.ErrSiteNotFound):
 		return gencontent.NewSiteNotFound(c.SiteID)
 	case errors.Is(err, domain.ErrDocumentNotFound):

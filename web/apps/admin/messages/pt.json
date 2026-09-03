@@ -169,12 +169,20 @@
     "wheelchairSeatingLabel": "Wheelchair seating",
     "brailleOrLargePrintLabel": "Braille or large-print materials",
     "onlineStreamLabel": "Online stream available",
-    "saveAttributes": "Save attributes"
+    "saveAttributes": "Save attributes",
+    "manageMessages": "Messages"
   },
   "DocumentsPage": {
     "heading": "Pages",
     "newPage": "New page",
     "noPages": "No pages yet."
+  },
+  "MessagesPage": {
+    "heading": "Messages",
+    "noMessages": "No messages yet.",
+    "nameLabel": "Name",
+    "emailLabel": "Email",
+    "anonymousLabel": "Anonymous"
   },
   "DocumentState": {
     "stateDraft": "Draft (not public)",

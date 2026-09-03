@@ -784,3 +784,48 @@ func (s *Service) DeletePattern(ctx context.Context, patternID string) error {
 	}
 	return s.store.DeletePattern(ctx, patternID)
 }
+
+// ---- form submissions (M14.16, D-InAppInbox) ----
+
+// minContactFormSubmitDuration is the minimum time a real visitor needs between the page rendering
+// and the form posting back — a submission faster than this is treated exactly like a filled
+// honeypot: silently discarded, still reported as success. Deliberately generous (no legitimate
+// human fills three fields and submits inside it) rather than tuned against real traffic, which
+// doesn't exist yet.
+const minContactFormSubmitDuration = 3 * time.Second
+
+// SubmitContactForm is the anonymous write (ContentPublicService) — the third such endpoint in the
+// codebase after moderation's two. A honeypot hit or a too-fast submission is never an error
+// (D-InAppInbox: "an error teaches the bot") — both return success having inserted nothing, so a
+// probing caller learns nothing about which check, if either, fired.
+func (s *Service) SubmitContactForm(ctx context.Context, in domain.SubmitContactFormInput) error {
+	if _, err := s.store.GetSiteByID(ctx, in.SiteID); err != nil {
+		return err
+	}
+	if in.Honeypot != "" {
+		return nil
+	}
+	if time.Since(in.FormRenderedAt) < minContactFormSubmitDuration {
+		return nil
+	}
+	message := strings.TrimSpace(in.Message)
+	if message == "" {
+		return &domain.FormSubmissionInvalidError{Field: "message"}
+	}
+	in.Message = message
+	_, err := s.store.InsertFormSubmission(ctx, in)
+	return err
+}
+
+// ListFormSubmissions is the admin read (ContentService) backing the Messages screen —
+// content.manage-gated, same shape as ListDocuments.
+func (s *Service) ListFormSubmissions(ctx context.Context, siteID string) ([]domain.FormSubmission, error) {
+	site, err := s.store.GetSiteByID(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
+		return nil, err
+	}
+	return s.store.ListFormSubmissions(ctx, siteID)
+}

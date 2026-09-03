@@ -350,6 +350,34 @@ types:
             type: string
             docs: Root-relative, content-locale-prefixed (matches Document's own href convention) — never includes the UI chrome locale segment.
 
+      ContactFormSubmission:
+        docs: >
+          M14.16, D-InAppInbox. An anonymous contact-form entry, read through openfaithmap-admin's
+          Messages screen. name/email are whatever the visitor entered, or absent — never
+          validated beyond presence. message is untrusted plain text, rendered as such, never as a
+          block or rich text.
+        fields:
+          id: string
+          name: optional<string>
+          email: optional<string>
+          message: string
+          createdAt: datetime
+      ListFormSubmissionsResponse:
+        fields:
+          submissions: list<ContactFormSubmission>
+      SubmitContactFormRequest:
+        docs: >
+          honeypot and formRenderedAt are anti-spam signals, not content: a non-empty honeypot (a
+          field a real visitor never sees or fills) or a formRenderedAt too close to now() causes
+          the submission to be silently discarded — this endpoint returns success either way, so a
+          probing bot learns nothing (D-InAppInbox's "an error teaches the bot").
+        fields:
+          name: optional<string>
+          email: optional<string>
+          message: string
+          honeypot: optional<string>
+          formRenderedAt: datetime
+
     errors:
       SiteNotFound:
         namespace: Content
@@ -533,6 +561,12 @@ types:
         code: CONFLICT
         safe-args:
           code: string
+      FormSubmissionInvalid:
+        docs: M14.16. submitContactForm's message was empty/whitespace-only.
+        namespace: Content
+        code: INVALID_ARGUMENT
+        safe-args:
+          field: string
 
 services:
   ContentService:
@@ -732,6 +766,17 @@ services:
           patternId:
             type: string
             param-type: path
+      listFormSubmissions:
+        http: GET /sites/{siteId}/messages
+        docs: >
+          M14.16, D-InAppInbox. content.manage-gated — the Messages screen's one call. Newest
+          first, no pagination (per-congregation volume is low; add keyset pagination if that stops
+          being true).
+        args:
+          siteId:
+            type: string
+            param-type: path
+        returns: ListFormSubmissionsResponse
 
   ContentPublicService:
     name: Content Public Service
@@ -879,3 +924,16 @@ services:
             type: string
             param-type: query
         returns: DocumentWithAncestors
+      submitContactForm:
+        http: POST /sites/{siteId}/contact
+        docs: >
+          M14.16, D-InAppInbox. Genuinely anonymous — the third such write in the codebase, after
+          moderation's two. Rate-limited (internal/platform/ratelimit, wrapping this whole
+          service's registration — see cmd/openfaithmap-api/register_content.go). Always succeeds
+          for a honeypot-triggered or too-fast submission; only Content:FormSubmissionInvalid
+          (empty message) and Content:SiteNotFound are ever returned as errors.
+        args:
+          siteId:
+            type: string
+            param-type: path
+          request: SubmitContactFormRequest
