@@ -17,11 +17,13 @@ import {
 import { DocumentTransitionAction } from "@/lib/openfaithmap/generated/content";
 import { redirect } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { DOCUMENT_STATE_TONE, documentStateLabel } from "../document-state";
 import { BlockListEditor, type BlockSaveResult } from "./block-list-editor";
 import { DocumentDetailsForm, type DetailsActionState } from "./document-details-form";
+import { ScheduleForm, type ScheduleActionState } from "./schedule-form";
 
 const NO_PARENT = "__none__";
 
@@ -35,6 +37,7 @@ export default async function DocumentEditorPage({
 }) {
   const { locale, unitId, documentId } = await params;
   const t = await getTranslations("DocumentEditorPage");
+  const tState = await getTranslations("DocumentState");
   const site = await getSite(unitId).catch(() => null);
   if (!site) return redirect({ href: `/admin/sites/${unitId}`, locale });
 
@@ -122,6 +125,35 @@ export default async function DocumentEditorPage({
     await transition(DocumentTransitionAction.REVERT_TO_DRAFT);
   }
 
+  // M14.15. Unlike publish/unlist/revertToDraft above, a bad publishAt needs to surface inline
+  // (ScheduleForm's useActionState), not throw into the error boundary — the one gap those three
+  // plain server-action forms already have and this deliberately does not also introduce.
+  async function schedule(_prevState: ScheduleActionState, formData: FormData): Promise<ScheduleActionState> {
+    "use server";
+    const publishAt = String(formData.get("publishAt") ?? "");
+    try {
+      await transitionDocument(
+        documentId,
+        DocumentTransitionAction.SCHEDULE,
+        publishAt ? new Date(publishAt).toISOString() : undefined,
+      );
+      redirect({ href: `/admin/sites/${unitId}/documents/${documentId}`, locale });
+      return null; // unreachable — redirect() always throws; satisfies the function's return type.
+    } catch (e) {
+      if (e && typeof e === "object" && "errorName" in e) {
+        const errorName = String((e as { errorName: string }).errorName);
+        if (errorName === "Content:ScheduleMissingPublishAt") {
+          return { error: "errorScheduleMissingPublishAt", field: "publishAt" };
+        }
+        if (errorName === "Content:SchedulePublishAtNotFuture") {
+          return { error: "errorSchedulePublishAtNotFuture", field: "publishAt" };
+        }
+        return { error: "errorGeneric", raw: errorName };
+      }
+      throw e;
+    }
+  }
+
   async function restore(revisionId: string) {
     "use server";
     await restoreRevision(documentId, revisionId);
@@ -132,25 +164,38 @@ export default async function DocumentEditorPage({
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-semibold">{doc.slug}</h1>
-        <Badge variant="outline">{doc.state}</Badge>
+        {/* M14.15/D-PublishOnRead: always effectiveState, never the raw state column — a document
+            past its publishAt reads as Published here, exactly like a real one. */}
+        <StatusBadge status={documentStateLabel(tState, doc.effectiveState)} tone={DOCUMENT_STATE_TONE[doc.effectiveState]} />
+        {doc.effectiveState === "SCHEDULED" && doc.publishAt && (
+          <span className="text-xs text-muted-foreground">
+            {t("scheduledForLabel", { date: new Date(doc.publishAt).toLocaleString(locale) })}
+          </span>
+        )}
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <form action={publish}>
-          <Button type="submit" variant="outline" size="sm" disabled={doc.state === "PUBLISHED"}>
-            {t("publish")}
+          <Button type="submit" variant="outline" size="sm" disabled={doc.effectiveState === "PUBLISHED"}>
+            {doc.effectiveState === "SCHEDULED" ? t("publishNow") : t("publish")}
           </Button>
         </form>
         <form action={unlist}>
-          <Button type="submit" variant="outline" size="sm" disabled={doc.state !== "PUBLISHED"}>
+          <Button type="submit" variant="outline" size="sm" disabled={doc.effectiveState !== "PUBLISHED"}>
             {t("unlist")}
           </Button>
         </form>
         <form action={revertToDraft}>
-          <Button type="submit" variant="outline" size="sm" disabled={doc.state !== "PUBLISHED"}>
-            {t("backToDraft")}
+          <Button
+            type="submit"
+            variant="outline"
+            size="sm"
+            disabled={doc.effectiveState !== "PUBLISHED" && doc.effectiveState !== "SCHEDULED"}
+          >
+            {doc.effectiveState === "SCHEDULED" ? t("cancelSchedule") : t("backToDraft")}
           </Button>
         </form>
+        <ScheduleForm action={schedule} disabled={doc.effectiveState === "PUBLISHED" || doc.effectiveState === "SCHEDULED"} />
         {/* M14.7: opens on the tenant subdomain, never embedded here — no congregation content ever
             renders inside this admin origin (the same cross-origin guarantee D-TenantSubdomains'
             preview design relies on). */}
@@ -225,7 +270,7 @@ export default async function DocumentEditorPage({
               {translations.map((tr) => (
                 <li key={tr.id} className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
                   <a href={`/admin/sites/${unitId}/documents/${tr.id}`} className="hover:underline">
-                    {t("translationItem", { locale: tr.locale, state: tr.state })}
+                    {t("translationItem", { locale: tr.locale, state: documentStateLabel(tState, tr.effectiveState) })}
                   </a>
                 </li>
               ))}

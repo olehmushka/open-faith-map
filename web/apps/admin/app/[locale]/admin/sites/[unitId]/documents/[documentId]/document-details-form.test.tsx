@@ -22,6 +22,7 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
     siteId: "site-1",
     kind: "PAGE",
     state: "DRAFT",
+    effectiveState: "DRAFT",
     locale: "eng",
     slug: "home",
     parentDocumentId: null,

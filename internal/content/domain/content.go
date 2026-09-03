@@ -30,6 +30,9 @@ const (
 	StateDraft     DocumentState = "DRAFT"
 	StatePublished DocumentState = "PUBLISHED"
 	StateUnlisted  DocumentState = "UNLISTED"
+	// StateScheduled (M14.15, D-PublishOnRead) is a promise to publish at PublishAt with no
+	// scheduler ever acting on it — see Document.EffectiveState.
+	StateScheduled DocumentState = "SCHEDULED"
 )
 
 type TransitionAction string
@@ -38,6 +41,8 @@ const (
 	ActionPublish       TransitionAction = "PUBLISH"
 	ActionUnlist        TransitionAction = "UNLIST"
 	ActionRevertToDraft TransitionAction = "REVERT_TO_DRAFT"
+	// ActionSchedule (M14.15) moves DRAFT/UNLISTED to SCHEDULED; requires a future PublishAt.
+	ActionSchedule TransitionAction = "SCHEDULE"
 )
 
 type BlockTypeStatus string
@@ -104,15 +109,18 @@ type CreateSiteInput struct {
 
 // Document is a Page, Post, or Event.
 type Document struct {
-	ID                   string
-	SiteID               string
-	Kind                 DocumentKind
-	TranslationGroupID   string
-	Locale               string
-	ParentDocumentID     *string
-	Slug                 string
-	State                DocumentState
-	PublishedAt          *time.Time
+	ID                 string
+	SiteID             string
+	Kind               DocumentKind
+	TranslationGroupID string
+	Locale             string
+	ParentDocumentID   *string
+	Slug               string
+	State              DocumentState
+	PublishedAt        *time.Time
+	// PublishAt (M14.15, D-PublishOnRead) is set only while State is StateScheduled and cleared by
+	// every other transition — see EffectiveState.
+	PublishAt            *time.Time
 	EventStartsAt        *time.Time
 	EventEndsAt          *time.Time
 	EventRecurrenceRRule *string
@@ -125,6 +133,29 @@ type Document struct {
 	// row on every subsequent publish.
 	DraftRevisionID     *string
 	PublishedRevisionID *string
+}
+
+// EffectiveState (M14.15, D-PublishOnRead) is State as the public read predicate actually
+// evaluates it: PUBLISHED once a SCHEDULED document's PublishAt has passed, State unchanged
+// otherwise. Nothing ever flips the stored State column itself — no timer, no goroutine — so this
+// is the only state a public-visibility check or the admin UI may ever compare against; comparing
+// State directly anywhere on the public read path re-hides a document that visitors can already
+// see.
+func (d Document) EffectiveState(now time.Time) DocumentState {
+	if d.State == StateScheduled && d.PublishAt != nil && !d.PublishAt.After(now) {
+		return StatePublished
+	}
+	return d.State
+}
+
+// IsPubliclyVisible is the read predicate every public-facing lookup gates on: a real PUBLISHED
+// document, an UNLISTED one (reachable by direct link, excluded from listings — unchanged by
+// M14.15), or a SCHEDULED one whose PublishAt has passed. Deliberately not "EffectiveState !=
+// StateDraft" — a SCHEDULED document that isn't due yet must stay hidden, and EffectiveState only
+// ever promotes SCHEDULED to PUBLISHED, never demotes anything to StateDraft, so a plain
+// not-equal-Draft check would wrongly expose it early.
+func (d Document) IsPubliclyVisible(now time.Time) bool {
+	return d.EffectiveState(now) == StatePublished || d.State == StateUnlisted
 }
 
 // DocumentTranslation (M14.14, DS-OFM-7) is one PUBLISHED sibling in a document's translation
@@ -294,6 +325,11 @@ var (
 	ErrBlockDataInvalid   = errors.New("block data failed json schema validation")
 	ErrBlockUrlNotAllowed = errors.New("block field failed URL scheme/embed host allowlist")
 	ErrRevisionNotFound   = errors.New("content document revision not found")
+	// ErrScheduleMissingPublishAt/ErrSchedulePublishAtNotFuture back M14.15's SCHEDULE action
+	// (D-PublishOnRead) — a schedule with no future publishAt is rejected rather than silently
+	// treated as an immediate publish, which is what ActionPublish is for.
+	ErrScheduleMissingPublishAt   = errors.New("action=SCHEDULE requires publishAt to be set")
+	ErrSchedulePublishAtNotFuture = errors.New("action=SCHEDULE requires publishAt to be in the future")
 	// ErrThemeInvalid/ErrThemeContrastFailed back M14.12's theme write-time gate (D-CuratedTheme).
 	ErrThemeInvalid        = errors.New("theme value outside the curated vocabulary")
 	ErrThemeContrastFailed = errors.New("theme accent/mode pair fails WCAG AA contrast")

@@ -293,10 +293,14 @@ type Document struct {
 	TranslationGroupId string `json:"translationGroupId"`
 	Locale             string `json:"locale"`
 	// Pages only, up to 3 levels deep (app-enforced, not a DB constraint).
-	ParentDocumentId     *string            `json:"parentDocumentId,omitempty"`
-	Slug                 string             `json:"slug"`
-	State                DocumentState      `json:"state"`
-	PublishedAt          *datetime.DateTime `json:"publishedAt,omitempty"`
+	ParentDocumentId *string       `json:"parentDocumentId,omitempty"`
+	Slug             string        `json:"slug"`
+	State            DocumentState `json:"state"`
+	// M14.15/D-PublishOnRead. state as the public predicate actually evaluates it right now: PUBLISHED if state is literally PUBLISHED, or if state is SCHEDULED and publishAt has passed; state unchanged otherwise. Nothing ever flips the raw state column itself — the admin UI must render this field, never state, or an editor would see "Scheduled" on a page visitors already see live.
+	EffectiveState DocumentState      `json:"effectiveState"`
+	PublishedAt    *datetime.DateTime `json:"publishedAt,omitempty"`
+	// M14.15. Set only while state is SCHEDULED; cleared by any other transition. When this passes, the document becomes publicly visible with no further action required — see effectiveState.
+	PublishAt            *datetime.DateTime `json:"publishAt,omitempty"`
 	EventStartsAt        *datetime.DateTime `json:"eventStartsAt,omitempty"`
 	EventEndsAt          *datetime.DateTime `json:"eventEndsAt,omitempty"`
 	EventRecurrenceRrule *string            `json:"eventRecurrenceRrule,omitempty"`
@@ -980,6 +984,8 @@ func (o *SocialLinks) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 type TransitionDocumentRequest struct {
 	Action DocumentTransitionAction `json:"action"`
+	// M14.15. Required (and must be in the future) when action is SCHEDULE; ignored for every other action.
+	PublishAt *datetime.DateTime `json:"publishAt,omitempty"`
 }
 
 func (o TransitionDocumentRequest) MarshalYAML() (interface{}, error) {

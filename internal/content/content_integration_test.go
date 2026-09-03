@@ -21,6 +21,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olehmushka/open-faith-map/internal/authz"
@@ -619,7 +620,7 @@ func TestContentIntegration(t *testing.T) {
 		t.Fatalf("PutBlocks(reset before publish): %v", err)
 	}
 
-	if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionPublish); err != nil {
+	if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionPublish, nil); err != nil {
 		t.Fatalf("TransitionDocument(PUBLISH): %v", err)
 	}
 	publishedFirst, err := contentSvc.GetPublicBlocks(context.Background(), doc.ID)
@@ -710,10 +711,10 @@ func TestContentIntegration(t *testing.T) {
 	// (owner decision, 2026-08-28). One checkpoint already exists from the publish above; 55 more
 	// republish cycles push the total to 56, so the cap must have trimmed it back to 50.
 	for i := 0; i < 55; i++ {
-		if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionUnlist); err != nil {
+		if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionUnlist, nil); err != nil {
 			t.Fatalf("retention test: unlist iteration %d: %v", i, err)
 		}
-		if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionPublish); err != nil {
+		if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionPublish, nil); err != nil {
 			t.Fatalf("retention test: publish iteration %d: %v", i, err)
 		}
 	}
@@ -723,6 +724,188 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if len(prunedRevisions) != 50 {
 		t.Errorf("ListRevisions (after 56 total publishes) = %d entries, want the 50-revision cap", len(prunedRevisions))
+	}
+
+	// ---- M14.15: scheduled publishing, no scheduler (D-PublishOnRead) ----
+
+	schedPage, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-15-scheduled-page",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (M14.15 scheduled page): %v", err)
+	}
+	documentIDs = append(documentIDs, schedPage.ID)
+	if _, err := contentSvc.PutBlocks(adminCtx, schedPage.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"Scheduled content"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks (M14.15 scheduled page): %v", err)
+	}
+
+	// SCHEDULE requires a publishAt, and it must be strictly future — use PUBLISH to go live now.
+	if _, err := contentSvc.TransitionDocument(adminCtx, schedPage.ID, contentdomain.ActionSchedule, nil); !errors.Is(err, contentdomain.ErrScheduleMissingPublishAt) {
+		t.Errorf("TransitionDocument(SCHEDULE, no publishAt) error = %v, want ErrScheduleMissingPublishAt", err)
+	}
+	past := time.Now().Add(-time.Hour)
+	if _, err := contentSvc.TransitionDocument(adminCtx, schedPage.ID, contentdomain.ActionSchedule, &past); !errors.Is(err, contentdomain.ErrSchedulePublishAtNotFuture) {
+		t.Errorf("TransitionDocument(SCHEDULE, past publishAt) error = %v, want ErrSchedulePublishAtNotFuture", err)
+	}
+
+	future := time.Now().Add(time.Hour)
+	scheduled, err := contentSvc.TransitionDocument(adminCtx, schedPage.ID, contentdomain.ActionSchedule, &future)
+	if err != nil {
+		t.Fatalf("TransitionDocument(SCHEDULE, future publishAt): %v", err)
+	}
+	if scheduled.State != contentdomain.StateScheduled {
+		t.Errorf("TransitionDocument(SCHEDULE) state = %s, want SCHEDULED", scheduled.State)
+	}
+	if got := scheduled.EffectiveState(time.Now()); got != contentdomain.StateScheduled {
+		t.Errorf("EffectiveState (not yet due) = %s, want SCHEDULED", got)
+	}
+
+	// A nav item pointing at it, exercising the "everywhere a PUBLISHED document would appear"
+	// scope decision alongside the page route and the POST/EVENT feed below.
+	if _, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
+		{Label: "M14.15 Scheduled", TargetDocumentID: &schedPage.ID, SortOrder: 0},
+	}); err != nil {
+		t.Fatalf("PutNavItems (M14.15): %v", err)
+	}
+
+	// Not due yet: every public read path stays blind to it, same as a draft would be.
+	if _, _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-15-scheduled-page"}); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+		t.Errorf("GetPublicDocumentByPath (not due) error = %v, want ErrDocumentNotFound", err)
+	}
+	if _, err := contentSvc.GetPublicBlocks(context.Background(), schedPage.ID); !errors.Is(err, contentdomain.ErrDocumentNotFound) {
+		t.Errorf("GetPublicBlocks (not due) error = %v, want ErrDocumentNotFound", err)
+	}
+	feedBeforeDue, err := contentSvc.ListPublicDocuments(context.Background(), site.ID, nil, nil)
+	if err != nil {
+		t.Fatalf("ListPublicDocuments (not due): %v", err)
+	}
+	for _, d := range feedBeforeDue {
+		if d.ID == schedPage.ID {
+			t.Errorf("ListPublicDocuments (not due) included the scheduled-but-not-due page")
+		}
+	}
+	navBeforeDue, err := contentSvc.ListPublicNavItems(context.Background(), site.ID)
+	if err != nil {
+		t.Fatalf("ListPublicNavItems (not due): %v", err)
+	}
+	for _, item := range navBeforeDue {
+		if item.Label == "M14.15 Scheduled" {
+			t.Errorf("ListPublicNavItems (not due) included the scheduled-but-not-due page")
+		}
+	}
+
+	// The "no job has run" proof: publish_at moved into the past by a direct SQL write, never
+	// through the app — nothing anywhere flips SCHEDULED to PUBLISHED, so this is the only way a
+	// due document can exist in this test.
+	if _, err := pool.Exec(ctx, `UPDATE openfaithmap.content_documents SET publish_at = now() - interval '1 minute' WHERE id = $1`, schedPage.ID); err != nil {
+		t.Fatalf("direct SQL: move publish_at into the past: %v", err)
+	}
+
+	leaf, _, _, err := contentSvc.GetPublicDocumentByPath(context.Background(), site.ID, "en", []string{"m14-15-scheduled-page"})
+	if err != nil {
+		t.Fatalf("GetPublicDocumentByPath (due, no job ran): %v", err)
+	}
+	if leaf.ID != schedPage.ID {
+		t.Errorf("GetPublicDocumentByPath (due) resolved id = %s, want %s", leaf.ID, schedPage.ID)
+	}
+	dueBlocks, err := contentSvc.GetPublicBlocks(context.Background(), schedPage.ID)
+	if err != nil {
+		t.Fatalf("GetPublicBlocks (due, no job ran): %v", err)
+	}
+	if len(dueBlocks) != 1 || paragraphText(t, dueBlocks[0].Data) != "Scheduled content" {
+		t.Errorf("GetPublicBlocks (due) = %+v, want the scheduled paragraph", dueBlocks)
+	}
+	feedAfterDue, err := contentSvc.ListPublicDocuments(context.Background(), site.ID, nil, nil)
+	if err != nil {
+		t.Fatalf("ListPublicDocuments (due): %v", err)
+	}
+	feedFound := false
+	for _, d := range feedAfterDue {
+		if d.ID == schedPage.ID {
+			feedFound = true
+		}
+	}
+	if !feedFound {
+		t.Errorf("ListPublicDocuments (due) did not include the now-due scheduled page")
+	}
+	navAfterDue, err := contentSvc.ListPublicNavItems(context.Background(), site.ID)
+	if err != nil {
+		t.Fatalf("ListPublicNavItems (due): %v", err)
+	}
+	navFound := false
+	for _, item := range navAfterDue {
+		if item.Label == "M14.15 Scheduled" {
+			navFound = true
+		}
+	}
+	if !navFound {
+		t.Errorf("ListPublicNavItems (due) did not include the now-due scheduled page")
+	}
+
+	// The admin list must show effective state, never the raw column — D-PublishOnRead's whole
+	// point is that the stored state legitimately lags reality here.
+	adminDocsAfterDue, err := contentSvc.ListDocuments(adminCtx, site.ID, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ListDocuments (after due): %v", err)
+	}
+	var adminSched *contentdomain.Document
+	for i := range adminDocsAfterDue {
+		if adminDocsAfterDue[i].ID == schedPage.ID {
+			adminSched = &adminDocsAfterDue[i]
+		}
+	}
+	if adminSched == nil {
+		t.Fatalf("ListDocuments (after due) did not return the scheduled page at all")
+	}
+	if adminSched.State != contentdomain.StateScheduled {
+		t.Errorf("raw state after due date passed = %s, want still SCHEDULED — nothing ever flips it", adminSched.State)
+	}
+	if got := adminSched.EffectiveState(time.Now()); got != contentdomain.StatePublished {
+		t.Errorf("EffectiveState (due) = %s, want PUBLISHED", got)
+	}
+
+	// Taking UNLIST on a due-but-still-raw-SCHEDULED document is what settles the stale column —
+	// the transitions lookup keys off effective state, so this is legal even though raw state says
+	// SCHEDULED, and it really does flip the row and clear publish_at.
+	unlistedAfterDue, err := contentSvc.TransitionDocument(adminCtx, schedPage.ID, contentdomain.ActionUnlist, nil)
+	if err != nil {
+		t.Fatalf("TransitionDocument(UNLIST) on a due-but-raw-SCHEDULED document: %v", err)
+	}
+	if unlistedAfterDue.State != contentdomain.StateUnlisted {
+		t.Errorf("state after settling UNLIST = %s, want UNLISTED", unlistedAfterDue.State)
+	}
+	if unlistedAfterDue.PublishAt != nil {
+		t.Errorf("publish_at after settling UNLIST = %v, want cleared", unlistedAfterDue.PublishAt)
+	}
+
+	// REVERT_TO_DRAFT on a not-yet-due SCHEDULED document cancels the schedule outright.
+	cancelPage, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-15-cancel-page",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (M14.15 cancel page): %v", err)
+	}
+	documentIDs = append(documentIDs, cancelPage.ID)
+	if _, err := contentSvc.PutBlocks(adminCtx, cancelPage.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"Never actually published"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks (M14.15 cancel page): %v", err)
+	}
+	farFuture := time.Now().Add(24 * time.Hour)
+	if _, err := contentSvc.TransitionDocument(adminCtx, cancelPage.ID, contentdomain.ActionSchedule, &farFuture); err != nil {
+		t.Fatalf("TransitionDocument(SCHEDULE, cancel page): %v", err)
+	}
+	canceled, err := contentSvc.TransitionDocument(adminCtx, cancelPage.ID, contentdomain.ActionRevertToDraft, nil)
+	if err != nil {
+		t.Fatalf("TransitionDocument(REVERT_TO_DRAFT) cancelling a schedule: %v", err)
+	}
+	if canceled.State != contentdomain.StateDraft {
+		t.Errorf("state after cancelling schedule = %s, want DRAFT", canceled.State)
+	}
+	if canceled.PublishAt != nil {
+		t.Errorf("publish_at after cancelling schedule = %v, want cleared", canceled.PublishAt)
 	}
 
 	// --- M14.7: Preview. CreatePreviewLink is content.manage-gated like every other draft-adjacent
@@ -859,7 +1042,7 @@ func TestContentIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("PutBlocks (top page): %v", err)
 	}
-	if _, err := contentSvc.TransitionDocument(adminCtx, topPage.ID, contentdomain.ActionPublish); err != nil {
+	if _, err := contentSvc.TransitionDocument(adminCtx, topPage.ID, contentdomain.ActionPublish, nil); err != nil {
 		t.Fatalf("TransitionDocument(PUBLISH, top page): %v", err)
 	}
 
@@ -875,7 +1058,7 @@ func TestContentIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("PutBlocks (child page): %v", err)
 	}
-	if _, err := contentSvc.TransitionDocument(adminCtx, childPage.ID, contentdomain.ActionPublish); err != nil {
+	if _, err := contentSvc.TransitionDocument(adminCtx, childPage.ID, contentdomain.ActionPublish, nil); err != nil {
 		t.Fatalf("TransitionDocument(PUBLISH, child page): %v", err)
 	}
 
@@ -891,7 +1074,7 @@ func TestContentIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("PutBlocks (grandchild page): %v", err)
 	}
-	if _, err := contentSvc.TransitionDocument(adminCtx, grandchildPage.ID, contentdomain.ActionPublish); err != nil {
+	if _, err := contentSvc.TransitionDocument(adminCtx, grandchildPage.ID, contentdomain.ActionPublish, nil); err != nil {
 		t.Fatalf("TransitionDocument(PUBLISH, grandchild page): %v", err)
 	}
 
@@ -961,7 +1144,7 @@ func TestContentIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("PutBlocks (m14.14 uk page): %v", err)
 	}
-	if _, err := contentSvc.TransitionDocument(adminCtx, ukPage.ID, contentdomain.ActionPublish); err != nil {
+	if _, err := contentSvc.TransitionDocument(adminCtx, ukPage.ID, contentdomain.ActionPublish, nil); err != nil {
 		t.Fatalf("TransitionDocument(PUBLISH, m14.14 uk page): %v", err)
 	}
 
@@ -987,7 +1170,7 @@ func TestContentIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("PutBlocks (m14.14 en page): %v", err)
 	}
-	if _, err := contentSvc.TransitionDocument(adminCtx, enPage.ID, contentdomain.ActionPublish); err != nil {
+	if _, err := contentSvc.TransitionDocument(adminCtx, enPage.ID, contentdomain.ActionPublish, nil); err != nil {
 		t.Fatalf("TransitionDocument(PUBLISH, m14.14 en page): %v", err)
 	}
 

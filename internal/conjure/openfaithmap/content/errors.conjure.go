@@ -2411,6 +2411,302 @@ func (e *RevisionNotFound) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type scheduleMissingPublishAt struct{}
+
+func (o scheduleMissingPublishAt) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *scheduleMissingPublishAt) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewScheduleMissingPublishAt returns new instance of ScheduleMissingPublishAt error.
+func NewScheduleMissingPublishAt() *ScheduleMissingPublishAt {
+	return &ScheduleMissingPublishAt{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), scheduleMissingPublishAt: scheduleMissingPublishAt{}}
+}
+
+// WrapWithScheduleMissingPublishAt returns new instance of ScheduleMissingPublishAt error wrapping an existing error.
+func WrapWithScheduleMissingPublishAt(err error) *ScheduleMissingPublishAt {
+	return &ScheduleMissingPublishAt{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, scheduleMissingPublishAt: scheduleMissingPublishAt{}}
+}
+
+// ScheduleMissingPublishAt is an error type.
+// action=SCHEDULE requires publishAt to be set.
+type ScheduleMissingPublishAt struct {
+	errorInstanceID uuid.UUID
+	scheduleMissingPublishAt
+	cause error
+	stack werror.StackTrace
+}
+
+// IsScheduleMissingPublishAt returns true if err is an instance of ScheduleMissingPublishAt.
+func IsScheduleMissingPublishAt(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*ScheduleMissingPublishAt)
+	return ok
+}
+
+func (e *ScheduleMissingPublishAt) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:ScheduleMissingPublishAt (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *ScheduleMissingPublishAt) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *ScheduleMissingPublishAt) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *ScheduleMissingPublishAt) Message() string {
+	return "INVALID_ARGUMENT Content:ScheduleMissingPublishAt"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *ScheduleMissingPublishAt) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *ScheduleMissingPublishAt) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *ScheduleMissingPublishAt) Name() string {
+	return "Content:ScheduleMissingPublishAt"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *ScheduleMissingPublishAt) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *ScheduleMissingPublishAt) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *ScheduleMissingPublishAt) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ScheduleMissingPublishAt) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *ScheduleMissingPublishAt) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ScheduleMissingPublishAt) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e ScheduleMissingPublishAt) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.scheduleMissingPublishAt)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:ScheduleMissingPublishAt", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *ScheduleMissingPublishAt) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters scheduleMissingPublishAt
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.scheduleMissingPublishAt = parameters
+	return nil
+}
+
+type schedulePublishAtNotFuture struct{}
+
+func (o schedulePublishAtNotFuture) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *schedulePublishAtNotFuture) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewSchedulePublishAtNotFuture returns new instance of SchedulePublishAtNotFuture error.
+func NewSchedulePublishAtNotFuture() *SchedulePublishAtNotFuture {
+	return &SchedulePublishAtNotFuture{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), schedulePublishAtNotFuture: schedulePublishAtNotFuture{}}
+}
+
+// WrapWithSchedulePublishAtNotFuture returns new instance of SchedulePublishAtNotFuture error wrapping an existing error.
+func WrapWithSchedulePublishAtNotFuture(err error) *SchedulePublishAtNotFuture {
+	return &SchedulePublishAtNotFuture{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, schedulePublishAtNotFuture: schedulePublishAtNotFuture{}}
+}
+
+// SchedulePublishAtNotFuture is an error type.
+// action=SCHEDULE requires publishAt to be strictly after now — use PUBLISH to go live immediately instead.
+type SchedulePublishAtNotFuture struct {
+	errorInstanceID uuid.UUID
+	schedulePublishAtNotFuture
+	cause error
+	stack werror.StackTrace
+}
+
+// IsSchedulePublishAtNotFuture returns true if err is an instance of SchedulePublishAtNotFuture.
+func IsSchedulePublishAtNotFuture(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*SchedulePublishAtNotFuture)
+	return ok
+}
+
+func (e *SchedulePublishAtNotFuture) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Content:SchedulePublishAtNotFuture (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *SchedulePublishAtNotFuture) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *SchedulePublishAtNotFuture) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *SchedulePublishAtNotFuture) Message() string {
+	return "INVALID_ARGUMENT Content:SchedulePublishAtNotFuture"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *SchedulePublishAtNotFuture) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *SchedulePublishAtNotFuture) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *SchedulePublishAtNotFuture) Name() string {
+	return "Content:SchedulePublishAtNotFuture"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *SchedulePublishAtNotFuture) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *SchedulePublishAtNotFuture) Parameters() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *SchedulePublishAtNotFuture) safeParams() map[string]interface{} {
+	return map[string]interface{}{"errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *SchedulePublishAtNotFuture) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *SchedulePublishAtNotFuture) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *SchedulePublishAtNotFuture) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e SchedulePublishAtNotFuture) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.schedulePublishAtNotFuture)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Content:SchedulePublishAtNotFuture", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *SchedulePublishAtNotFuture) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters schedulePublishAtNotFuture
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.schedulePublishAtNotFuture = parameters
+	return nil
+}
+
 type siteNotFound struct {
 	SiteId string `json:"siteId"`
 }
@@ -3480,6 +3776,8 @@ func init() {
 	conjureerrors.RegisterErrorType("Content:PatternNotFound", reflect.TypeOf(PatternNotFound{}))
 	conjureerrors.RegisterErrorType("Content:PreviewTokenInvalid", reflect.TypeOf(PreviewTokenInvalid{}))
 	conjureerrors.RegisterErrorType("Content:RevisionNotFound", reflect.TypeOf(RevisionNotFound{}))
+	conjureerrors.RegisterErrorType("Content:ScheduleMissingPublishAt", reflect.TypeOf(ScheduleMissingPublishAt{}))
+	conjureerrors.RegisterErrorType("Content:SchedulePublishAtNotFuture", reflect.TypeOf(SchedulePublishAtNotFuture{}))
 	conjureerrors.RegisterErrorType("Content:SiteNotFound", reflect.TypeOf(SiteNotFound{}))
 	conjureerrors.RegisterErrorType("Content:SlugReserved", reflect.TypeOf(SlugReserved{}))
 	conjureerrors.RegisterErrorType("Content:SlugTaken", reflect.TypeOf(SlugTaken{}))

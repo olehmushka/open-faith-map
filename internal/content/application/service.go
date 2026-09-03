@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/content/adapters"
@@ -287,21 +288,33 @@ func (s *Service) checkParentDepth(ctx context.Context, parentID string) error {
 	return domain.ErrParentTooDeep
 }
 
-// transitions is the fixed document-state machine (content.md's invariants).
+// transitions is the fixed document-state machine (content.md's invariants). Looked up by a
+// document's *effective* state (Document.EffectiveState), not its raw one — M14.15/D-PublishOnRead:
+// a SCHEDULED document past its PublishAt is, for the purposes of what actions are legal, already
+// PUBLISHED, so an admin can UNLIST or REVERT_TO_DRAFT it without a scheduler ever having touched
+// the row. Taking either action is what settles the stale column to something real.
 var transitions = map[domain.DocumentState]map[domain.TransitionAction]domain.DocumentState{
 	domain.StateDraft: {
-		domain.ActionPublish: domain.StatePublished,
+		domain.ActionPublish:  domain.StatePublished,
+		domain.ActionSchedule: domain.StateScheduled,
 	},
 	domain.StatePublished: {
 		domain.ActionRevertToDraft: domain.StateDraft,
 		domain.ActionUnlist:        domain.StateUnlisted,
 	},
 	domain.StateUnlisted: {
-		domain.ActionPublish: domain.StatePublished,
+		domain.ActionPublish:  domain.StatePublished,
+		domain.ActionSchedule: domain.StateScheduled,
+	},
+	domain.StateScheduled: {
+		domain.ActionPublish:       domain.StatePublished,
+		domain.ActionRevertToDraft: domain.StateDraft,
 	},
 }
 
-func (s *Service) TransitionDocument(ctx context.Context, documentID string, action domain.TransitionAction) (domain.Document, error) {
+// TransitionDocument applies action to documentID's document. publishAt is only meaningful (and
+// required, and must be strictly future) for ActionSchedule — every other action ignores it.
+func (s *Service) TransitionDocument(ctx context.Context, documentID string, action domain.TransitionAction, publishAt *time.Time) (domain.Document, error) {
 	doc, err := s.store.GetDocument(ctx, documentID)
 	if err != nil {
 		return domain.Document{}, err
@@ -313,9 +326,19 @@ func (s *Service) TransitionDocument(ctx context.Context, documentID string, act
 	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return domain.Document{}, err
 	}
-	next, ok := transitions[doc.State][action]
+	now := time.Now()
+	next, ok := transitions[doc.EffectiveState(now)][action]
 	if !ok {
 		return domain.Document{}, fmt.Errorf("%w: %s -> %s not allowed", domain.ErrInvalidTransition, doc.State, action)
+	}
+	if action == domain.ActionSchedule {
+		if publishAt == nil {
+			return domain.Document{}, domain.ErrScheduleMissingPublishAt
+		}
+		if !publishAt.After(now) {
+			return domain.Document{}, domain.ErrSchedulePublishAtNotFuture
+		}
+		return s.store.ScheduleDocument(ctx, documentID, *doc.DraftRevisionID, currentPersonID(ctx), *publishAt)
 	}
 	firstPublish := next == domain.StatePublished && doc.PublishedAt == nil
 	// M14.6: transitioning into PUBLISHED also snapshots the current draft into a new immutable
@@ -326,7 +349,9 @@ func (s *Service) TransitionDocument(ctx context.Context, documentID string, act
 	if next == domain.StatePublished {
 		return s.store.PublishDocument(ctx, documentID, *doc.DraftRevisionID, currentPersonID(ctx), firstPublish)
 	}
-	return s.store.UpdateDocumentState(ctx, documentID, next, firstPublish)
+	// M14.15: clear a stale publish_at whenever a document leaves SCHEDULED by any path other than
+	// publishing (which already routes through PublishDocument above and never touches publish_at).
+	return s.store.UpdateDocumentState(ctx, documentID, next, firstPublish, nil)
 }
 
 // ---- blocks ----
@@ -372,7 +397,7 @@ func (s *Service) GetPublicBlocks(ctx context.Context, documentID string) ([]dom
 	if err != nil {
 		return nil, err
 	}
-	if doc.State == domain.StateDraft || doc.PublishedRevisionID == nil {
+	if !doc.IsPubliclyVisible(time.Now()) || doc.PublishedRevisionID == nil {
 		return nil, domain.ErrDocumentNotFound
 	}
 	published, err := s.store.GetRevision(ctx, *doc.PublishedRevisionID)
@@ -580,7 +605,7 @@ func (s *Service) ListPublicNavItems(ctx context.Context, siteID string) ([]doma
 		if err != nil {
 			return nil, err
 		}
-		if doc.State == domain.StateDraft {
+		if !doc.IsPubliclyVisible(time.Now()) {
 			continue
 		}
 		ancestors, err := s.resolveAncestorChain(ctx, doc)
@@ -607,7 +632,7 @@ func (s *Service) GetPublicDocumentByPath(ctx context.Context, siteID, locale st
 	if err != nil {
 		return domain.Document{}, nil, nil, err
 	}
-	if leaf.State == domain.StateDraft {
+	if !leaf.IsPubliclyVisible(time.Now()) {
 		return domain.Document{}, nil, nil, domain.ErrDocumentNotFound
 	}
 	ancestors, err := s.resolveAncestorChain(ctx, leaf)
@@ -629,19 +654,22 @@ func (s *Service) GetPublicDocumentByPath(ctx context.Context, siteID, locale st
 	return leaf, ancestors, translations, nil
 }
 
-// resolvePublishedTranslations (M14.14, DS-OFM-7) lists every PUBLISHED document sharing leaf's
-// translation group — leaf's own group membership means it's included in the result set already,
-// no special-casing needed. Each sibling gets its own ancestor-chain walk and href: siblings can
-// live at a different hierarchy/slug per locale, so a translation's href is never derived from the
-// leaf's own href.
+// resolvePublishedTranslations (M14.14, DS-OFM-7) lists every effectively-PUBLISHED document
+// sharing leaf's translation group — leaf's own group membership means it's included in the result
+// set already, no special-casing needed. Each sibling gets its own ancestor-chain walk and href:
+// siblings can live at a different hierarchy/slug per locale, so a translation's href is never
+// derived from the leaf's own href. M14.15: a due SCHEDULED sibling counts as PUBLISHED here just
+// like everywhere else on the public read path; UNLISTED stays excluded, unchanged from M14.14 —
+// only PUBLISHED (real or effective) siblings are worth linking to as a translation.
 func (s *Service) resolvePublishedTranslations(ctx context.Context, leaf domain.Document) ([]domain.DocumentTranslation, error) {
 	siblings, err := s.store.ListDocumentsByTranslationGroup(ctx, leaf.TranslationGroupID)
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	var out []domain.DocumentTranslation
 	for _, sibling := range siblings {
-		if sibling.State != domain.StatePublished {
+		if sibling.EffectiveState(now) != domain.StatePublished {
 			continue
 		}
 		ancestors, err := s.resolveAncestorChain(ctx, sibling)

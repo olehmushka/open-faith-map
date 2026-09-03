@@ -149,8 +149,12 @@ application service injected for this, the same direct-interface-call cross-modu
 - `parent_document_id` FK → `content_documents` (nullable; pages only, ≤3 levels deep, enforced in
   the application)
 - `slug TEXT NOT NULL` — unique within `(site_id, kind, locale)`
-- `state TEXT NOT NULL DEFAULT 'DRAFT' CHECK (state IN ('DRAFT','PUBLISHED','UNLISTED'))`
-- `published_at TIMESTAMPTZ` — set on first transition to `PUBLISHED`
+- `state TEXT NOT NULL DEFAULT 'DRAFT' CHECK (state IN ('DRAFT','PUBLISHED','UNLISTED','SCHEDULED'))`
+- `published_at TIMESTAMPTZ` — set on first transition to `PUBLISHED`; never set by a transition
+  into `SCHEDULED` (M14.15, [D-PublishOnRead](../architecture/decisions.md#d-publishonread--scheduled-publishing-decided-in-the-read-predicate-no-scheduler))
+- `publish_at TIMESTAMPTZ` — M14.15. Set only while `state = 'SCHEDULED'`, cleared by every other
+  transition. Nothing ever reads this column to flip `state`; it exists only for the read
+  predicate below to compare against `now()`
 - `event_starts_at`, `event_ends_at`, `event_recurrence_rrule TEXT` — populated only when
   `kind = 'EVENT'` (schema-ready; M3's application layer rejects any non-`PAGE` kind outright —
   see open seams)
@@ -190,7 +194,7 @@ split into two services instead, sharing one `types:` block in `api/content.conj
 | `GET /sites/{siteId}/documents?kind=&locale=&state=` | List a site's documents, every state | `content.manage` (on the unit) |
 | `POST /sites/{siteId}/documents` | Create a document (starts a new translation group, or joins one via `translationGroupId`) | `content.manage` (on the unit) |
 | `PUT /documents/{documentId}` | Update slug/parent | `content.manage` (on the unit) |
-| `POST /documents/{documentId}/transition` | `DRAFT → PUBLISHED → UNLISTED` and back | `content.manage` (on the unit) |
+| `POST /documents/{documentId}/transition` | `DRAFT → PUBLISHED → UNLISTED` and back, plus M14.15's `DRAFT`/`UNLISTED → SCHEDULED → PUBLISHED` (a `publishAt` in the request body, required and future-only for the `SCHEDULE` action) | `content.manage` (on the unit) |
 | `GET·PUT /documents/{documentId}/blocks` | Read / replace the ordered block list, any document state | `content.manage` (on the unit) |
 | `POST /sites/{siteId}/preview-link` | M14.7: mint a short-lived, site-scoped preview token, handed to `ContentPublicService`'s preview endpoints in place of a session | `content.manage` (on the unit) |
 
@@ -199,8 +203,8 @@ split into two services instead, sharing one `types:` block in `api/content.conj
 | Op | Intent |
 |---|---|
 | `GET /units/{congregationUnitId}/site` | Read a congregation's site by unit. **Not** `/sites/{congregationUnitId}` — that path shares `ContentService`'s `/sites/{siteId}/...` wildcard tree position under a *differently-named* parameter, which witchcraft's underlying `httprouter` rejects at server startup (a hard panic, not a soft warning — found by actually booting the server, not by review). |
-| `GET /sites/{siteId}/documents?kind=&locale=` | List a site's `PUBLISHED`/`UNLISTED` documents only |
-| `GET /documents/{documentId}/blocks` | Read a document's blocks — `Content:DocumentNotFound` if it's `DRAFT`, never distinguishing "draft" from "doesn't exist" |
+| `GET /sites/{siteId}/documents?kind=&locale=` | List a site's `PUBLISHED`/`UNLISTED` documents, plus any `SCHEDULED` one whose `publishAt` has passed (M14.15) |
+| `GET /documents/{documentId}/blocks` | Read a document's blocks — `Content:DocumentNotFound` if it's `DRAFT`, or `SCHEDULED` and not yet due, never distinguishing either from "doesn't exist" |
 | `GET /block-types` | Active block types only |
 | `GET /patterns` | M14.13: every starter pattern, in `sortOrder` — not sensitive data, same no-auth reasoning as `/block-types`. The admin editor's insert-a-pattern UI reads a pattern's `blocks` directly from this call and copies them client-side; there is no separate "insert" endpoint (unsynced by construction — see Entities above) |
 | `GET /sites/{siteId}/preview-documents?token=&kind=&locale=` | M14.7: every document in every state for the token's own site — the one deliberate exception below, gated by a token from `createPreviewLink` instead of published/unlisted filtering |
@@ -318,8 +322,17 @@ exist first.
 - **A document's blocks are always schema-valid.** `content_blocks.data` is validated against its
   `block_type`'s `json_schema` at write time — never left to render-time discovery of a malformed
   block.
-- **Draft is never public.** The public read path filters on `state IN ('PUBLISHED','UNLISTED')`
-  at the query level, not as an application-layer afterthought.
+- **Draft is never public.** The public read path filters on
+  `state IN ('PUBLISHED','UNLISTED') OR (state = 'SCHEDULED' AND publish_at <= now())` at the query
+  level (or the equivalent `Document.EffectiveState`/`IsPubliclyVisible` check in Go for the paths
+  that read a document by id first), not as an application-layer afterthought.
+- **Scheduled publishing never fires anything** (M14.15,
+  [D-PublishOnRead](../architecture/decisions.md#d-publishonread--scheduled-publishing-decided-in-the-read-predicate-no-scheduler)).
+  Correctness lives entirely in the read predicate above; no timer, cron, or goroutine ever flips a
+  `SCHEDULED` row to `PUBLISHED`. The stored `state` column can legitimately lag reality forever —
+  only a later explicit transition (looked up by `EffectiveState`, not the raw column) ever settles
+  it. `ContentService`'s admin-facing `Document` always carries both `state` and `effectiveState`;
+  every admin UI renders the latter.
 - **A translation group's documents share nothing but the group id.** Each locale variant is
   independently editable, independently publishable — a Ukrainian page can be published while its
   English translation is still a draft.

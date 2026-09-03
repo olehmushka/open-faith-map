@@ -174,8 +174,13 @@
   "DocumentsPage": {
     "heading": "Pages",
     "newPage": "New page",
-    "noPages": "No pages yet.",
-    "draftLabel": "DRAFT (not public)"
+    "noPages": "No pages yet."
+  },
+  "DocumentState": {
+    "stateDraft": "Draft (not public)",
+    "statePublished": "Published",
+    "stateUnlisted": "Unlisted",
+    "stateScheduled": "Scheduled"
   },
   "NewDocumentPage": {
     "heading": "New page",
@@ -206,8 +211,15 @@
     "errorBlockDataInvalid": "One of the blocks failed validation against its block type's schema.",
     "errorGeneric": "Something went wrong: {error}",
     "publish": "Publish",
+    "publishNow": "Publish now",
     "unlist": "Unlist",
     "backToDraft": "Back to draft",
+    "cancelSchedule": "Cancel schedule",
+    "schedule": "Schedule",
+    "schedulePublishAtLabel": "Publish at",
+    "scheduledForLabel": "Scheduled for {date}",
+    "errorScheduleMissingPublishAt": "Choose a date and time to schedule for.",
+    "errorSchedulePublishAtNotFuture": "Choose a time in the future — use Publish to go live immediately.",
     "detailsHeading": "Details",
     "slugLabel": "Slug",
     "parentPageLabel": "Parent page",

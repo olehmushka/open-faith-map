@@ -128,8 +128,10 @@ export async function updateDocument(documentId: string, input: UpdateDocumentIn
   return unwrap((await client()).content.updateDocument(documentId, input));
 }
 
-export async function transitionDocument(documentId: string, action: DocumentTransitionAction): Promise<Document> {
-  return unwrap((await client()).content.transitionDocument(documentId, { action }));
+// publishAt is only meaningful for DocumentTransitionAction.SCHEDULE (M14.15) — required (and must
+// be in the future) there, ignored for every other action.
+export async function transitionDocument(documentId: string, action: DocumentTransitionAction, publishAt?: string): Promise<Document> {
+  return unwrap((await client()).content.transitionDocument(documentId, { action, publishAt: publishAt ?? null }));
 }
 
 export async function getBlocks(documentId: string): Promise<Block[]> {

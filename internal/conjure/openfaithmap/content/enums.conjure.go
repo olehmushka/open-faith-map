@@ -133,12 +133,13 @@ const (
 	DocumentState_DRAFT     DocumentState_Value = "DRAFT"
 	DocumentState_PUBLISHED DocumentState_Value = "PUBLISHED"
 	DocumentState_UNLISTED  DocumentState_Value = "UNLISTED"
+	DocumentState_SCHEDULED DocumentState_Value = "SCHEDULED"
 	DocumentState_UNKNOWN   DocumentState_Value = "UNKNOWN"
 )
 
 // DocumentState_Values returns all known variants of DocumentState.
 func DocumentState_Values() []DocumentState_Value {
-	return []DocumentState_Value{DocumentState_DRAFT, DocumentState_PUBLISHED, DocumentState_UNLISTED}
+	return []DocumentState_Value{DocumentState_DRAFT, DocumentState_PUBLISHED, DocumentState_UNLISTED, DocumentState_SCHEDULED}
 }
 
 func New_DocumentState(value DocumentState_Value) DocumentState {
@@ -148,7 +149,7 @@ func New_DocumentState(value DocumentState_Value) DocumentState {
 // IsUnknown returns false for all known variants of DocumentState and true otherwise.
 func (e DocumentState) IsUnknown() bool {
 	switch e.val {
-	case DocumentState_DRAFT, DocumentState_PUBLISHED, DocumentState_UNLISTED:
+	case DocumentState_DRAFT, DocumentState_PUBLISHED, DocumentState_UNLISTED, DocumentState_SCHEDULED:
 		return false
 	}
 	return true
@@ -179,6 +180,8 @@ func (e *DocumentState) UnmarshalText(data []byte) error {
 		*e = New_DocumentState(DocumentState_PUBLISHED)
 	case "UNLISTED":
 		*e = New_DocumentState(DocumentState_UNLISTED)
+	case "SCHEDULED":
+		*e = New_DocumentState(DocumentState_SCHEDULED)
 	}
 	return nil
 }
@@ -193,12 +196,13 @@ const (
 	DocumentTransitionAction_PUBLISH         DocumentTransitionAction_Value = "PUBLISH"
 	DocumentTransitionAction_UNLIST          DocumentTransitionAction_Value = "UNLIST"
 	DocumentTransitionAction_REVERT_TO_DRAFT DocumentTransitionAction_Value = "REVERT_TO_DRAFT"
+	DocumentTransitionAction_SCHEDULE        DocumentTransitionAction_Value = "SCHEDULE"
 	DocumentTransitionAction_UNKNOWN         DocumentTransitionAction_Value = "UNKNOWN"
 )
 
 // DocumentTransitionAction_Values returns all known variants of DocumentTransitionAction.
 func DocumentTransitionAction_Values() []DocumentTransitionAction_Value {
-	return []DocumentTransitionAction_Value{DocumentTransitionAction_PUBLISH, DocumentTransitionAction_UNLIST, DocumentTransitionAction_REVERT_TO_DRAFT}
+	return []DocumentTransitionAction_Value{DocumentTransitionAction_PUBLISH, DocumentTransitionAction_UNLIST, DocumentTransitionAction_REVERT_TO_DRAFT, DocumentTransitionAction_SCHEDULE}
 }
 
 func New_DocumentTransitionAction(value DocumentTransitionAction_Value) DocumentTransitionAction {
@@ -208,7 +212,7 @@ func New_DocumentTransitionAction(value DocumentTransitionAction_Value) Document
 // IsUnknown returns false for all known variants of DocumentTransitionAction and true otherwise.
 func (e DocumentTransitionAction) IsUnknown() bool {
 	switch e.val {
-	case DocumentTransitionAction_PUBLISH, DocumentTransitionAction_UNLIST, DocumentTransitionAction_REVERT_TO_DRAFT:
+	case DocumentTransitionAction_PUBLISH, DocumentTransitionAction_UNLIST, DocumentTransitionAction_REVERT_TO_DRAFT, DocumentTransitionAction_SCHEDULE:
 		return false
 	}
 	return true
@@ -239,6 +243,8 @@ func (e *DocumentTransitionAction) UnmarshalText(data []byte) error {
 		*e = New_DocumentTransitionAction(DocumentTransitionAction_UNLIST)
 	case "REVERT_TO_DRAFT":
 		*e = New_DocumentTransitionAction(DocumentTransitionAction_REVERT_TO_DRAFT)
+	case "SCHEDULE":
+		*e = New_DocumentTransitionAction(DocumentTransitionAction_SCHEDULE)
 	}
 	return nil
 }

@@ -396,7 +396,7 @@ func (r *Repository) InsertDocument(ctx context.Context, siteID string, in domai
 	return domain.Document{
 		ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 		Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
-		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt), PublishAt: db.NullableTime(row.PublishAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: &revision.ID, PublishedRevisionID: nil,
@@ -416,7 +416,7 @@ func (r *Repository) GetDocumentBySlug(ctx context.Context, siteID string, kind 
 	return domain.Document{
 		ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 		Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
-		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt), PublishAt: db.NullableTime(row.PublishAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
@@ -434,7 +434,7 @@ func (r *Repository) GetDocument(ctx context.Context, id string) (domain.Documen
 	return domain.Document{
 		ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 		Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
-		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt), PublishAt: db.NullableTime(row.PublishAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
@@ -520,7 +520,7 @@ func (r *Repository) UpdateDocument(ctx context.Context, id string, in domain.Up
 	return domain.Document{
 		ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 		Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
-		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt), PublishAt: db.NullableTime(row.PublishAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
@@ -529,8 +529,12 @@ func (r *Repository) UpdateDocument(ctx context.Context, id string, in domain.Up
 
 // UpdateDocumentState applies a transition already validated by application.Service — sets
 // published_at on the first-ever transition into published, never overwriting it on a later one.
-func (r *Repository) UpdateDocumentState(ctx context.Context, id string, next domain.DocumentState, firstPublish bool) (domain.Document, error) {
-	row, err := r.q.UpdateDocumentState(ctx, contentsql.UpdateDocumentStateParams{ID: id, State: string(next), FirstPublish: firstPublish})
+// publishAt is nil for every transition here (SCHEDULE goes through ScheduleDocument instead), so
+// this always clears a stale schedule date when a document leaves SCHEDULED by any other path.
+func (r *Repository) UpdateDocumentState(ctx context.Context, id string, next domain.DocumentState, firstPublish bool, publishAt *time.Time) (domain.Document, error) {
+	row, err := r.q.UpdateDocumentState(ctx, contentsql.UpdateDocumentStateParams{
+		ID: id, State: string(next), FirstPublish: firstPublish, PublishAt: db.NullableTimeArg(publishAt),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Document{}, domain.ErrDocumentNotFound
 	}
@@ -540,7 +544,7 @@ func (r *Repository) UpdateDocumentState(ctx context.Context, id string, next do
 	return domain.Document{
 		ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 		Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
-		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt), PublishAt: db.NullableTime(row.PublishAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
@@ -560,7 +564,7 @@ func (r *Repository) ListDocuments(ctx context.Context, siteID string, kind, loc
 		out = append(out, domain.Document{
 			ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 			Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
-			State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+			State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt), PublishAt: db.NullableTime(row.PublishAt),
 			EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 			EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 			DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
@@ -583,7 +587,7 @@ func (r *Repository) ListDocumentsByTranslationGroup(ctx context.Context, transl
 		out = append(out, domain.Document{
 			ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 			Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
-			State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+			State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt), PublishAt: db.NullableTime(row.PublishAt),
 			EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 			EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 			DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
@@ -605,7 +609,7 @@ func (r *Repository) ListPublicDocuments(ctx context.Context, siteID string, kin
 		out = append(out, domain.Document{
 			ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 			Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
-			State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+			State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt), PublishAt: db.NullableTime(row.PublishAt),
 			EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 			EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 			DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
@@ -674,50 +678,69 @@ func (r *Repository) ListCheckpointRevisions(ctx context.Context, documentID, dr
 // without its matching revision pointer (or vice versa). Other transitions (revert-to-draft,
 // unlist) never touch revisions and keep using the plain UpdateDocumentState below.
 func (r *Repository) PublishDocument(ctx context.Context, documentID, draftRevisionID string, authorPersonID *string, firstPublish bool) (domain.Document, error) {
+	return r.snapshotAndPromote(ctx, documentID, draftRevisionID, authorPersonID, domain.StatePublished, firstPublish, nil)
+}
+
+// ScheduleDocument (M14.15, D-PublishOnRead) is SCHEDULE's store-side counterpart to
+// PublishDocument, reusing the exact same snapshot-and-promote transaction: nothing runs later to
+// do this snapshot when publishAt actually arrives, so it must happen now, at schedule time.
+// firstPublish is always false here — a document isn't considered ever-published until an actual
+// PUBLISHED transition happens (see Document.PublishAt's own doc comment).
+func (r *Repository) ScheduleDocument(ctx context.Context, documentID, draftRevisionID string, authorPersonID *string, publishAt time.Time) (domain.Document, error) {
+	return r.snapshotAndPromote(ctx, documentID, draftRevisionID, authorPersonID, domain.StateScheduled, false, &publishAt)
+}
+
+// snapshotAndPromote is PublishDocument's and ScheduleDocument's shared transaction body: snapshot
+// the draft into a new immutable checkpoint revision, repoint published_revision_id at it, flip
+// document state (and publish_at), and prune old checkpoints — all atomically, so a caller can
+// never observe a state flip without its matching revision pointer.
+func (r *Repository) snapshotAndPromote(ctx context.Context, documentID, draftRevisionID string, authorPersonID *string, state domain.DocumentState, firstPublish bool, publishAt *time.Time) (domain.Document, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return domain.Document{}, fmt.Errorf("content: publish document: begin: %w", err)
+		return domain.Document{}, fmt.Errorf("content: snapshot and promote: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	txq := contentsql.New(tx)
 
 	draft, err := txq.GetRevision(ctx, draftRevisionID)
 	if err != nil {
-		return domain.Document{}, fmt.Errorf("content: publish document: get draft: %w", err)
+		return domain.Document{}, fmt.Errorf("content: snapshot and promote: get draft: %w", err)
 	}
 	nextNo, err := txq.NextRevisionNo(ctx, documentID)
 	if err != nil {
-		return domain.Document{}, fmt.Errorf("content: publish document: next revision no: %w", err)
+		return domain.Document{}, fmt.Errorf("content: snapshot and promote: next revision no: %w", err)
 	}
 	checkpoint, err := txq.InsertRevision(ctx, contentsql.InsertRevisionParams{
 		DocumentID: documentID, RevisionNo: nextNo, Data: draft.Data, AuthorPersonID: nullableText(authorPersonID),
 	})
 	if err != nil {
-		return domain.Document{}, fmt.Errorf("content: publish document: insert checkpoint: %w", err)
+		return domain.Document{}, fmt.Errorf("content: snapshot and promote: insert checkpoint: %w", err)
 	}
 	if err := txq.SetPublishedRevision(ctx, contentsql.SetPublishedRevisionParams{ID: documentID, PublishedRevisionID: nullableText(&checkpoint.ID)}); err != nil {
-		return domain.Document{}, fmt.Errorf("content: publish document: set published revision: %w", err)
+		return domain.Document{}, fmt.Errorf("content: snapshot and promote: set published revision: %w", err)
 	}
-	row, err := txq.UpdateDocumentState(ctx, contentsql.UpdateDocumentStateParams{ID: documentID, State: string(domain.StatePublished), FirstPublish: firstPublish})
+	row, err := txq.UpdateDocumentState(ctx, contentsql.UpdateDocumentStateParams{
+		ID: documentID, State: string(state), FirstPublish: firstPublish, PublishAt: db.NullableTimeArg(publishAt),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Document{}, domain.ErrDocumentNotFound
 	}
 	if err != nil {
-		return domain.Document{}, fmt.Errorf("content: publish document: update state: %w", err)
+		return domain.Document{}, fmt.Errorf("content: snapshot and promote: update state: %w", err)
 	}
 	if err := txq.PruneCheckpointRevisions(ctx, contentsql.PruneCheckpointRevisionsParams{
 		DocumentID: documentID, KeepDraftID: draftRevisionID, KeepPublishedID: checkpoint.ID, KeepCount: revisionKeepCount,
 	}); err != nil {
-		return domain.Document{}, fmt.Errorf("content: publish document: prune: %w", err)
+		return domain.Document{}, fmt.Errorf("content: snapshot and promote: prune: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return domain.Document{}, fmt.Errorf("content: publish document: commit: %w", err)
+		return domain.Document{}, fmt.Errorf("content: snapshot and promote: commit: %w", err)
 	}
 
 	return domain.Document{
 		ID: row.ID, SiteID: row.SiteID, Kind: domain.DocumentKind(row.Kind), TranslationGroupID: row.TranslationGroupID,
 		Locale: row.Locale, ParentDocumentID: fromNullableText(row.ParentDocumentID), Slug: row.Slug,
-		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt),
+		State: domain.DocumentState(row.State), PublishedAt: db.NullableTime(row.PublishedAt), PublishAt: db.NullableTime(row.PublishAt),
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
