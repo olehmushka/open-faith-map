@@ -47,11 +47,11 @@ VALUES (sqlc.arg('site_id'), sqlc.arg('kind'), COALESCE(sqlc.narg('translation_g
 	sqlc.arg('locale'), sqlc.narg('parent_document_id'), sqlc.arg('slug'),
 	sqlc.narg('event_starts_at'), sqlc.narg('event_ends_at'), sqlc.narg('event_recurrence_rrule'))
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id;
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at;
 
 -- name: GetDocument :one
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents WHERE id = sqlc.arg('id') AND deleted_at IS NULL;
 
 -- name: UpdateDocument :one
@@ -64,18 +64,21 @@ SET slug = COALESCE(sqlc.narg('slug'), slug),
     END
 WHERE id = sqlc.arg('id') AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id;
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at;
 
 -- name: UpdateDocumentState :one
+-- publish_at is set unconditionally (not COALESCE): every transition other than SCHEDULE passes
+-- NULL, so leaving SCHEDULED by any path clears a stale future date (M14.15).
 UPDATE openfaithmap.content_documents
-SET state = sqlc.arg('state'), published_at = CASE WHEN sqlc.arg('first_publish')::bool THEN now() ELSE published_at END
+SET state = sqlc.arg('state'), publish_at = sqlc.narg('publish_at'),
+    published_at = CASE WHEN sqlc.arg('first_publish')::bool THEN now() ELSE published_at END
 WHERE id = sqlc.arg('id') AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id;
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at;
 
 -- name: ListDocuments :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents
 WHERE site_id = sqlc.arg('site_id') AND deleted_at IS NULL
 	AND (sqlc.narg('kind')::text IS NULL OR kind = sqlc.narg('kind')::text)
@@ -84,10 +87,13 @@ WHERE site_id = sqlc.arg('site_id') AND deleted_at IS NULL
 ORDER BY created_at DESC;
 
 -- name: ListPublicDocuments :many
+-- M14.15/D-PublishOnRead: a SCHEDULED document whose publish_at has passed is publicly listed with
+-- no job ever having flipped its state — correctness lives entirely in this WHERE clause.
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents
-WHERE site_id = sqlc.arg('site_id') AND deleted_at IS NULL AND state IN ('PUBLISHED', 'UNLISTED')
+WHERE site_id = sqlc.arg('site_id') AND deleted_at IS NULL
+	AND (state IN ('PUBLISHED', 'UNLISTED') OR (state = 'SCHEDULED' AND publish_at <= now()))
 	AND (sqlc.narg('kind')::text IS NULL OR kind = sqlc.narg('kind')::text)
 	AND (sqlc.narg('locale')::text IS NULL OR locale = sqlc.narg('locale')::text)
 ORDER BY CASE WHEN kind = 'EVENT' THEN event_starts_at END ASC NULLS LAST, created_at DESC;
@@ -137,7 +143,7 @@ WHERE cdr.document_id = sqlc.arg('document_id')
 
 -- name: GetDocumentBySlug :one
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents
 WHERE site_id = sqlc.arg('site_id') AND kind = sqlc.arg('kind') AND locale = sqlc.arg('locale')
 	AND slug = sqlc.arg('slug') AND deleted_at IS NULL;
@@ -148,7 +154,7 @@ WHERE site_id = sqlc.arg('site_id') AND kind = sqlc.arg('kind') AND locale = sql
 -- group" apart from "this group belongs to a different site" by inspecting the returned rows'
 -- own site_id, rather than the query silently filtering a cross-site collision down to zero rows.
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents
 WHERE translation_group_id = sqlc.arg('translation_group_id') AND deleted_at IS NULL
 ORDER BY created_at ASC;

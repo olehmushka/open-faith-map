@@ -118,7 +118,12 @@ func (s *Service) UpdateDocument(ctx context.Context, authHeader bearertoken.Tok
 
 func (s *Service) TransitionDocument(ctx context.Context, authHeader bearertoken.Token, documentIdArg string, requestArg gencontent.TransitionDocumentRequest) (gencontent.Document, error) {
 	action := domain.TransitionAction(requestArg.Action.Value())
-	doc, err := s.appService.TransitionDocument(ctx, documentIdArg, action)
+	var publishAt *time.Time
+	if requestArg.PublishAt != nil {
+		t := time.Time(*requestArg.PublishAt)
+		publishAt = &t
+	}
+	doc, err := s.appService.TransitionDocument(ctx, documentIdArg, action, publishAt)
 	if err != nil {
 		return gencontent.Document{}, mapErr(err, errCtx{DocumentID: documentIdArg, Action: string(action)})
 	}
@@ -333,10 +338,14 @@ func toAPIDocuments(docs []domain.Document) []gencontent.Document {
 }
 
 func toAPIDocument(d domain.Document) gencontent.Document {
-	var publishedAt, eventStartsAt, eventEndsAt *datetime.DateTime
+	var publishedAt, publishAt, eventStartsAt, eventEndsAt *datetime.DateTime
 	if d.PublishedAt != nil {
 		dt := datetime.DateTime(*d.PublishedAt)
 		publishedAt = &dt
+	}
+	if d.PublishAt != nil {
+		dt := datetime.DateTime(*d.PublishAt)
+		publishAt = &dt
 	}
 	if d.EventStartsAt != nil {
 		dt := datetime.DateTime(*d.EventStartsAt)
@@ -347,15 +356,19 @@ func toAPIDocument(d domain.Document) gencontent.Document {
 		eventEndsAt = &dt
 	}
 	return gencontent.Document{
-		Id:                   d.ID,
-		SiteId:               d.SiteID,
-		Kind:                 gencontent.New_DocumentKind(gencontent.DocumentKind_Value(d.Kind)),
-		TranslationGroupId:   d.TranslationGroupID,
-		Locale:               d.Locale,
-		ParentDocumentId:     d.ParentDocumentID,
-		Slug:                 d.Slug,
-		State:                gencontent.New_DocumentState(gencontent.DocumentState_Value(d.State)),
+		Id:                 d.ID,
+		SiteId:             d.SiteID,
+		Kind:               gencontent.New_DocumentKind(gencontent.DocumentKind_Value(d.Kind)),
+		TranslationGroupId: d.TranslationGroupID,
+		Locale:             d.Locale,
+		ParentDocumentId:   d.ParentDocumentID,
+		Slug:               d.Slug,
+		State:              gencontent.New_DocumentState(gencontent.DocumentState_Value(d.State)),
+		// EffectiveState (M14.15, D-PublishOnRead): the admin app must never render State directly
+		// for a SCHEDULED document — see Document.EffectiveState's own comment.
+		EffectiveState:       gencontent.New_DocumentState(gencontent.DocumentState_Value(d.EffectiveState(time.Now()))),
 		PublishedAt:          publishedAt,
+		PublishAt:            publishAt,
 		EventStartsAt:        eventStartsAt,
 		EventEndsAt:          eventEndsAt,
 		EventRecurrenceRrule: d.EventRecurrenceRRule,

@@ -20,6 +20,7 @@ function makePage(id: string, slug: string): Document {
     locale: "en",
     slug,
     state: "PUBLISHED",
+    effectiveState: "PUBLISHED",
     createdAt: "2026-08-27T00:00:00Z",
     updatedAt: "2026-08-27T00:00:00Z",
   };

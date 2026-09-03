@@ -9,9 +9,9 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.14 (M14.0–M14.9
-2026-08-27/28, M14.10–M14.12 2026-08-29, M14.13–M14.14 2026-08-30) are done**, no other sub-milestone
-is built yet. It is the second half of the
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.15 (M14.0–M14.9
+2026-08-27/28, M14.10–M14.12 2026-08-29, M14.13–M14.14 2026-08-30, M14.15 2026-09-03) are done**, no
+other sub-milestone is built yet. It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -43,7 +43,9 @@ platform-moderator-gated) and ships 5 seeded starter patterns with WordPress's u
 semantics — see its own row below. **M14.14 closes `DS-OFM-7`**, splitting the tenant site's
 `[locale]` URL segment into a UI-chrome language and a separate, free-text content locale, adding a
 per-page locale picker + `hreflang` and an editor-side translation panel — see its own row below.
-Next up: M14.15.
+**M14.15 adds scheduled publishing with no scheduler**, a `SCHEDULED` state whose visibility is
+decided entirely by the public read predicate comparing `publish_at` to `now()` — see its own row
+below. Next up: M14.16.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -104,7 +106,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.12 · Curated theme tokens | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-29).** `content_sites.theme` gets a real schema: accent color from an 8-color vetted palette, one of three system-font pairings, a spacing scale, a header layout, and light/dark/system mode — WordPress's `theme.json` lesson, a fixed vocabulary rather than CSS. Emitted as CSS custom properties consumed by the tenant layout. **A WCAG AA contrast check rejects a failing accent/mode combination at write time**, naming the pair. Live theme preview in the admin. `Verified` awaits CI green on `main`. |
 | M14.13 · Starter patterns + block-type catalog admin | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-30).** New `content_patterns` (`migrations/0029_content_patterns.sql`) with WordPress's **unsynced** semantics: inserting a pattern is a pure client-side copy of its `blocks` into the document editor's local state (fetched once via the new public `listPatterns`), persisted through the existing `putBlocks` full-replace path — no dedicated "insert" mutation endpoint exists, or is needed, since a pattern's blocks are already the same `BlockInput`-shaped array a document's own block list uses. Seeded 5 church-specific starters — Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement. Finally builds `content.catalog.manage` (block-type create/update, pattern create/update/delete), gated on `platform-moderator` standing — the exact same `PermModerationStanding`/root-unit-scoped check `internal/moderation`'s `requireModerate` already uses, reused rather than a new authority concept (D-SitePatterns' own explicit call). **Owner decision this session:** `updateBlockType` locks `json_schema`/`ui_schema` after creation — the request type has no such field at all — so a runtime catalog edit can never silently break already-saved blocks of an existing type or the admin form built from its old schema; a moderator wanting a different shape retires the old type and creates a new one. **Named, accepted scope boundary:** a block type added at runtime works in the admin inserter/form (M14.4/M14.5 are schema-driven) but does not render on the public site — `web/apps/web/app/blocks.tsx` dispatches on a hardcoded switch with a no-op fallback for unknown codes; making the public renderer schema-driven too is a separate, larger change. Two new admin routes (`/admin/block-types`, `/admin/patterns`) follow `/admin/moderation`'s own precedent exactly: no local frontend role gate, shown unconditionally in the sidebar nav, the backend's `Content:Forbidden` is the entire authorization decision. Live-verified over real HTTP against the running docker-compose stack (dev-minted tokens, `docker exec ... curlimages/curl` for non-GET per this arc's own verification-notes convention): anonymous 401, an authenticated non-moderator 403, a real `platform-moderator` grant 200 on `GET/POST/PUT /content/v1/catalog/block-types` and the patterns equivalents — a type created, confirmed on the public `listBlockTypes`, retired, confirmed gone; a pattern created, confirmed on the public `listPatterns`, deleted, confirmed gone. `internal/content/content_integration_test.go` covers the same shapes against real Postgres (moderator grant/denial, duplicate-code, not-found, uncompilable-schema cases). `web/apps/admin`'s Vitest suite gained a pattern-insertion test (`block-list-editor.test.tsx`) alongside the existing 42. `Verified` awaits CI green on `main`. |
 | M14.14 · Locale switching — closes `DS-OFM-7` | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-30).** No migration needed — `content_documents.translation_group_id`/`locale` and their index have existed since M3; this milestone is entirely app-level. **Two owner decisions this session shaped the work:** (1) the picker + `hreflang` are **per-page, in-content** (rendered inside the PAGE route itself), never in the shared site header/footer — the header wraps every route including the root posts/events feed, which has no single translatable document behind it, and a picker that could 404 is explicitly called worse than no picker; (2) the site chrome's UI language (next-intl's `[locale]` route segment, still fixed to 4: en/uk/es/pt) and a document's own **content locale are now decoupled** — a congregation can author a page in any language, not only the 4 chrome locales, so the tenant PAGE route grew a new `[contentLocale]` segment (`/{uiLocale}/{contentLocale}/{pageSlug...}`) independent of the chrome language, which stays put when a visitor switches content locale. `GetPublicDocumentByPath`'s `DocumentWithAncestors` response grew a `translations` list (every `PUBLISHED` sibling in the document's translation group, each with its own resolved href — siblings can sit at a different ancestor hierarchy/slug per locale, so a translation's href is never derived from the leaf's own) — one round trip, same precedent as the response's own `ancestors` field. `generateMetadata` (the first in this app) emits `alternates.languages` from that same list. `CreateDocument`'s existing-but-manual "join an existing translation group" path (`translationGroupId`, already wired since M3/M14.8's own manual admin field) gained two app-level guards with no DB constraint backing either: a duplicate locale within one group (`Content:TranslationLocaleTaken`) and a group belonging to a different site (`Content:TranslationGroupNotFound`) — content.md's own invariant is that a group's documents share nothing but the group id, so nothing in the DB stops either otherwise. The editor's new Translations panel (document editor page) reuses the same "filter what you already have" convention `new/page.tsx`'s own `existingPages` already established — no dedicated list-by-group endpoint — and its "create translation" link reuses the existing `new-document-form.tsx` flow (pre-filling/locking `kind`/`translationGroupId` via query params) rather than a bespoke form. `internal/content/content_integration_test.go` covers the same shapes against real Postgres (a draft sibling excluded from `translations`, both siblings included once published, the duplicate-locale and cross-site guards). `Verified` awaits CI green on `main`. |
-| M14.15 · Scheduled publishing, no scheduler | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `content_documents.publish_at` + a `SCHEDULED` state; the public predicate becomes `state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())`. **Correctness lives in the `WHERE` clause**, so it behaves identically in local dev and on a VM that does not exist yet — no timer, no goroutine, nothing to fire, and no new unattributable background writer (`DS-OFM-16`). The one cost: the admin UI must show **effective** state, not the raw column. |
+| M14.15 · Scheduled publishing, no scheduler | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-09-03).** `content_documents.publish_at` + a `SCHEDULED` state; the public predicate becomes `state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())`, applied everywhere a `PUBLISHED` document is already visible (page route, feeds, nav, translations). **Correctness lives in the `WHERE` clause**, so it behaves identically in local dev and on a VM that does not exist yet — no timer, no goroutine, nothing to fire, and no new unattributable background writer (`DS-OFM-16`). The admin UI shows **effective** state, not the raw column; the transitions lookup itself is keyed by effective state too, so `UNLIST`/`REVERT_TO_DRAFT` on a due-but-unsettled `SCHEDULED` document is what settles it. Live-verified against the running docker-compose stack: `publish_at` moved into the past by a direct SQL write (no app call) flips a real tenant-subdomain 404 to 200 with no restart in between. `Verified` awaits CI green on `main`. |
 | M14.16 · Contact form + in-app inbox | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `content_form_submissions` plus an anonymous write on `ContentPublicService`, reusing `internal/platform/ratelimit` (M7) rather than adding a second limiter. Spam handled without a third party: honeypot field, minimum time-to-submit, per-IP rate limit. Messages screen in `openfaithmap-admin`, `content.manage`-gated. **No SMTP anywhere** — follows D-InviteLinkMVP's precedent exactly. Submission text is untrusted and renders as plain text only. |
 | M14.17 · SEO, structured data, caching | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Per-page `<title>`/description/canonical/OG. Per-tenant `sitemap.xml` + `robots.txt`. JSON-LD: `Church` for the site, `Event` for events, `BreadcrumbList`. Replaces `force-dynamic` with tag-based revalidation invalidated on publish — today every anonymous page view re-queries the API, which is both slow and a free DoS lever. |
 | M14.18 · Deployment wiring | ⬜ | ⬜ | ➖ | ➖ | ➖ | 🔶 | **Blocked on U14: a registered apex domain + a DNS-provider API token.** Caddyfile with the DNS-01 wildcard block (wildcards cannot be issued over HTTP-01 — a new, real constraint on the provider choice D-ProductionDeployment deliberately left open), wildcard DNS record, HSTS with `includeSubDomains`, per-tenant read rate limiting. Confirms the backup story is unchanged: no blobs to back up, because there are no uploads. Records the `openfaithmap-sites` extraction as the named Phase 2 trigger. |
@@ -1127,21 +1129,49 @@ way. `hreflang` tags are present and correct (verified via `generateMetadata`'s
 
 ### M14.15 · Scheduled publishing, no scheduler
 
-**Not started.** Depends on M14.6.
+**Built (2026-09-03).** Depends on M14.6. `migrations/0030_content_scheduled_publishing.sql` adds
+`content_documents.publish_at timestamptz` and widens the `state` CHECK to add `SCHEDULED`. The
+public read predicate becomes `state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())`
+— applied consistently everywhere a `PUBLISHED` document is already treated as visible, per the
+owner's scope call this session: the tenant page route (`GetPublicDocumentByPath`/`GetPublicBlocks`),
+the `POST`/`EVENT` feed (`ListPublicDocuments`, SQL-level), the nav menu (`ListPublicNavItems`), and
+the translation-sibling list (`resolvePublishedTranslations`) — not just the single-document route.
+Sitemap exclusion stays deferred to M14.17 as originally scoped.
 
-`content_documents.publish_at` plus a `SCHEDULED` state. The public read predicate becomes
-`state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())`.
+Correctness lives entirely in the `WHERE` clause / the new `domain.Document.EffectiveState`/
+`IsPubliclyVisible` helpers (`internal/content/domain/content.go`) — nothing ever fires. New
+`ActionSchedule` transition (`DRAFT`/`UNLISTED → SCHEDULED`, requires a strictly-future `publishAt`
+in `TransitionDocumentRequest`, new typed `Content:ScheduleMissingPublishAt`/
+`Content:SchedulePublishAtNotFuture` errors) snapshots the draft into a checkpoint revision at
+schedule time — the same publish-promotion transaction M14.6 built
+(`Repository.snapshotAndPromote`, shared by `PublishDocument` and the new `ScheduleDocument`) —
+since nothing runs later to do it when `publishAt` actually arrives. **The one non-obvious design
+point:** `TransitionDocument`'s legal-action lookup is keyed by a document's *effective* state, not
+its raw column, so a `SCHEDULED` document past its `publishAt` can be `UNLIST`ed or
+`REVERT_TO_DRAFT`ed exactly like a real `PUBLISHED` one — taking either action is what settles the
+stale row, with no scheduler ever having touched it. `Document` gained both `publishAt` and a
+computed `effectiveState` field over the wire; every admin UI surface renders the latter, never the
+raw `state`, per the acceptance criterion. Admin editor gets a new `ScheduleForm` (`useActionState`,
+inline validation) alongside the existing Publish/Unlist/Back-to-draft buttons — relabeled "Publish
+now"/"Cancel schedule" when a document is genuinely still pending — and the document list/editor
+badges now share one `documentStateLabel`/`DOCUMENT_STATE_TONE` helper instead of each page's own ad
+hoc ternary.
 
-Correctness lives in the `WHERE` clause. Nothing has to fire: no systemd timer that does nothing in
-local dev and cannot be verified before the VM in **U14** exists, no in-process goroutine of the
-kind D-CongregationImport explicitly declined to add and `DS-OFM-16` already flags as
-unattributable. The single cost is that the stored state lags reality, so **the admin UI must show
-effective state, not the raw column** — a document whose `publish_at` has passed reads as
-"Published", because to every visitor it is.
-
-**Acceptance criteria.** A document with a future `publish_at` 404s on the public route; with a
-past one it renders — **with no job having run**, verified by not having one. The admin list shows
-effective state. Scheduled documents are excluded from sitemaps until due (M14.17).
+**Acceptance criteria — met.** `internal/content/content_integration_test.go`'s new M14.15 section
+covers the full lifecycle against real Postgres: both new typed errors, every public read path
+staying blind to a not-yet-due schedule, all of them picking it up once `publish_at` is moved into
+the past **by a direct SQL write, never through the app** (the "no job has run" proof), the admin
+list showing raw `SCHEDULED` with `effectiveState() == PUBLISHED`, `UNLIST` settling a due row, and
+`REVERT_TO_DRAFT` cancelling a pending one. `./godelw verify` (fmt/lint/`go test ./...`) and `make
+sdk`/`sdk-verify` clean; both Next.js apps' `tsc`/`eslint`/`next build` clean, `web/apps/admin`'s
+Vitest suite (43 tests) clean. **Live-verified against the running docker-compose stack** (a
+dev-minted congregation-admin token + session, `docker exec`/`curlimages/curl` for non-GET calls per
+this arc's own convention): a real document scheduled for `2026-12-31` over HTTP 404s on
+`grace.localhost:3002`; `publish_at` moved into the past via a direct `psql` `UPDATE` (no restart, no
+deploy, no app call in between) makes the exact same URL return `200` with the scheduled paragraph
+rendered; the admin `listDocuments` response shows `state: SCHEDULED, effectiveState: PUBLISHED` at
+that point; a subsequent `UNLIST` call over HTTP settles the row to a real `state: UNLISTED` with
+`publishAt` cleared. Test document/session cleaned up afterward.
 
 ### M14.16 · Contact form + in-app inbox
 

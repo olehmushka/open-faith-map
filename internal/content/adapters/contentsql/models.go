@@ -205,6 +205,7 @@ type OpenfaithmapContentDocument struct {
 	DeletedAt            pgtype.Timestamptz
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
+	PublishAt            pgtype.Timestamptz
 }
 
 type OpenfaithmapContentDocumentRevision struct {

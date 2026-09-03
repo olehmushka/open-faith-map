@@ -83,6 +83,10 @@ func mapErr(err error, c errCtx) error {
 		return gencontent.NewParentTooDeep(c.ParentDocumentID)
 	case errors.Is(err, domain.ErrInvalidTransition):
 		return gencontent.NewInvalidTransition(c.DocumentID, c.FromState, c.Action)
+	case errors.Is(err, domain.ErrScheduleMissingPublishAt):
+		return gencontent.NewScheduleMissingPublishAt()
+	case errors.Is(err, domain.ErrSchedulePublishAtNotFuture):
+		return gencontent.NewSchedulePublishAtNotFuture()
 	case errors.Is(err, domain.ErrBlockTypeNotFound):
 		return gencontent.NewBlockTypeNotFound(c.BlockTypeCode)
 	case errors.Is(err, domain.ErrRevisionNotFound):

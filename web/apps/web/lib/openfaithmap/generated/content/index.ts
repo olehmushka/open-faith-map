@@ -45,6 +45,8 @@ export * from "./putBlocksRequest";
 export * from "./putNavItemsRequest";
 export * from "./revisionNotFound";
 export * from "./revisionPage";
+export * from "./scheduleMissingPublishAt";
+export * from "./schedulePublishAtNotFuture";
 export * from "./serviceSchedule";
 export * from "./site";
 export * from "./siteChrome";

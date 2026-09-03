@@ -101,7 +101,7 @@ func (q *Queries) GetBlockTypeByID(ctx context.Context, id string) (GetBlockType
 
 const getDocument = `-- name: GetDocument :one
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -122,6 +122,7 @@ type GetDocumentRow struct {
 	UpdatedAt            time.Time
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
+	PublishAt            pgtype.Timestamptz
 }
 
 func (q *Queries) GetDocument(ctx context.Context, id string) (GetDocumentRow, error) {
@@ -144,13 +145,14 @@ func (q *Queries) GetDocument(ctx context.Context, id string) (GetDocumentRow, e
 		&i.UpdatedAt,
 		&i.DraftRevisionID,
 		&i.PublishedRevisionID,
+		&i.PublishAt,
 	)
 	return i, err
 }
 
 const getDocumentBySlug = `-- name: GetDocumentBySlug :one
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents
 WHERE site_id = $1 AND kind = $2 AND locale = $3
 	AND slug = $4 AND deleted_at IS NULL
@@ -180,6 +182,7 @@ type GetDocumentBySlugRow struct {
 	UpdatedAt            time.Time
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
+	PublishAt            pgtype.Timestamptz
 }
 
 func (q *Queries) GetDocumentBySlug(ctx context.Context, arg GetDocumentBySlugParams) (GetDocumentBySlugRow, error) {
@@ -207,6 +210,7 @@ func (q *Queries) GetDocumentBySlug(ctx context.Context, arg GetDocumentBySlugPa
 		&i.UpdatedAt,
 		&i.DraftRevisionID,
 		&i.PublishedRevisionID,
+		&i.PublishAt,
 	)
 	return i, err
 }
@@ -380,7 +384,7 @@ VALUES ($1, $2, COALESCE($3::uuid, gen_random_uuid()),
 	$4, $5, $6,
 	$7, $8, $9)
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 `
 
 type InsertDocumentParams struct {
@@ -412,6 +416,7 @@ type InsertDocumentRow struct {
 	UpdatedAt            time.Time
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
+	PublishAt            pgtype.Timestamptz
 }
 
 func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) (InsertDocumentRow, error) {
@@ -444,6 +449,7 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 		&i.UpdatedAt,
 		&i.DraftRevisionID,
 		&i.PublishedRevisionID,
+		&i.PublishAt,
 	)
 	return i, err
 }
@@ -745,7 +751,7 @@ func (q *Queries) ListCheckpointRevisions(ctx context.Context, arg ListCheckpoin
 
 const listDocuments = `-- name: ListDocuments :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents
 WHERE site_id = $1 AND deleted_at IS NULL
 	AND ($2::text IS NULL OR kind = $2::text)
@@ -778,6 +784,7 @@ type ListDocumentsRow struct {
 	UpdatedAt            time.Time
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
+	PublishAt            pgtype.Timestamptz
 }
 
 func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([]ListDocumentsRow, error) {
@@ -811,6 +818,7 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 			&i.UpdatedAt,
 			&i.DraftRevisionID,
 			&i.PublishedRevisionID,
+			&i.PublishAt,
 		); err != nil {
 			return nil, err
 		}
@@ -824,7 +832,7 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 
 const listDocumentsByTranslationGroup = `-- name: ListDocumentsByTranslationGroup :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents
 WHERE translation_group_id = $1 AND deleted_at IS NULL
 ORDER BY created_at ASC
@@ -847,6 +855,7 @@ type ListDocumentsByTranslationGroupRow struct {
 	UpdatedAt            time.Time
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
+	PublishAt            pgtype.Timestamptz
 }
 
 // M14.14: every document sharing one translation_group_id, any state, any site — deliberately not
@@ -879,6 +888,7 @@ func (q *Queries) ListDocumentsByTranslationGroup(ctx context.Context, translati
 			&i.UpdatedAt,
 			&i.DraftRevisionID,
 			&i.PublishedRevisionID,
+			&i.PublishAt,
 		); err != nil {
 			return nil, err
 		}
@@ -980,9 +990,10 @@ func (q *Queries) ListPatterns(ctx context.Context) ([]ListPatternsRow, error) {
 
 const listPublicDocuments = `-- name: ListPublicDocuments :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 FROM openfaithmap.content_documents
-WHERE site_id = $1 AND deleted_at IS NULL AND state IN ('PUBLISHED', 'UNLISTED')
+WHERE site_id = $1 AND deleted_at IS NULL
+	AND (state IN ('PUBLISHED', 'UNLISTED') OR (state = 'SCHEDULED' AND publish_at <= now()))
 	AND ($2::text IS NULL OR kind = $2::text)
 	AND ($3::text IS NULL OR locale = $3::text)
 ORDER BY CASE WHEN kind = 'EVENT' THEN event_starts_at END ASC NULLS LAST, created_at DESC
@@ -1011,8 +1022,11 @@ type ListPublicDocumentsRow struct {
 	UpdatedAt            time.Time
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
+	PublishAt            pgtype.Timestamptz
 }
 
+// M14.15/D-PublishOnRead: a SCHEDULED document whose publish_at has passed is publicly listed with
+// no job ever having flipped its state — correctness lives entirely in this WHERE clause.
 func (q *Queries) ListPublicDocuments(ctx context.Context, arg ListPublicDocumentsParams) ([]ListPublicDocumentsRow, error) {
 	rows, err := q.db.Query(ctx, listPublicDocuments, arg.SiteID, arg.Kind, arg.Locale)
 	if err != nil {
@@ -1039,6 +1053,7 @@ func (q *Queries) ListPublicDocuments(ctx context.Context, arg ListPublicDocumen
 			&i.UpdatedAt,
 			&i.DraftRevisionID,
 			&i.PublishedRevisionID,
+			&i.PublishAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1178,7 +1193,7 @@ SET slug = COALESCE($1, slug),
     END
 WHERE id = $4 AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 `
 
 type UpdateDocumentParams struct {
@@ -1205,6 +1220,7 @@ type UpdateDocumentRow struct {
 	UpdatedAt            time.Time
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
+	PublishAt            pgtype.Timestamptz
 }
 
 func (q *Queries) UpdateDocument(ctx context.Context, arg UpdateDocumentParams) (UpdateDocumentRow, error) {
@@ -1232,20 +1248,23 @@ func (q *Queries) UpdateDocument(ctx context.Context, arg UpdateDocumentParams) 
 		&i.UpdatedAt,
 		&i.DraftRevisionID,
 		&i.PublishedRevisionID,
+		&i.PublishAt,
 	)
 	return i, err
 }
 
 const updateDocumentState = `-- name: UpdateDocumentState :one
 UPDATE openfaithmap.content_documents
-SET state = $1, published_at = CASE WHEN $2::bool THEN now() ELSE published_at END
-WHERE id = $3 AND deleted_at IS NULL
+SET state = $1, publish_at = $2,
+    published_at = CASE WHEN $3::bool THEN now() ELSE published_at END
+WHERE id = $4 AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
 `
 
 type UpdateDocumentStateParams struct {
 	State        string
+	PublishAt    pgtype.Timestamptz
 	FirstPublish bool
 	ID           string
 }
@@ -1267,10 +1286,18 @@ type UpdateDocumentStateRow struct {
 	UpdatedAt            time.Time
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
+	PublishAt            pgtype.Timestamptz
 }
 
+// publish_at is set unconditionally (not COALESCE): every transition other than SCHEDULE passes
+// NULL, so leaving SCHEDULED by any path clears a stale future date (M14.15).
 func (q *Queries) UpdateDocumentState(ctx context.Context, arg UpdateDocumentStateParams) (UpdateDocumentStateRow, error) {
-	row := q.db.QueryRow(ctx, updateDocumentState, arg.State, arg.FirstPublish, arg.ID)
+	row := q.db.QueryRow(ctx, updateDocumentState,
+		arg.State,
+		arg.PublishAt,
+		arg.FirstPublish,
+		arg.ID,
+	)
 	var i UpdateDocumentStateRow
 	err := row.Scan(
 		&i.ID,
@@ -1289,6 +1316,7 @@ func (q *Queries) UpdateDocumentState(ctx context.Context, arg UpdateDocumentSta
 		&i.UpdatedAt,
 		&i.DraftRevisionID,
 		&i.PublishedRevisionID,
+		&i.PublishAt,
 	)
 	return i, err
 }
