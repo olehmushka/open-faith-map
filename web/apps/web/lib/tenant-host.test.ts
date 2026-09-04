@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { injectSitesSegment, isSitesPath, resolveTenantSlug } from "./tenant-host";
+import { injectSitesSegment, isSitesPath, protocolForHost, resolveTenantSlug } from "./tenant-host";
 
 describe("resolveTenantSlug", () => {
   const apex = "localhost";
@@ -46,6 +46,29 @@ describe("isSitesPath", () => {
 
   it.each(["/", "/about", "/en/about", "/sites/grace", "/_sitesnot/grace"])("does not match %s", (path) => {
     expect(isSitesPath(path)).toBe(false);
+  });
+});
+
+describe("protocolForHost", () => {
+  it("is http for the bare apex, with or without a port", () => {
+    expect(protocolForHost("localhost")).toBe("http");
+    expect(protocolForHost("localhost:3002")).toBe("http");
+  });
+
+  it("is http for a tenant subdomain of localhost — the bug this fixes: a naive " +
+    "startsWith('localhost') check misses this, since the Host header here is 'grace.localhost', " +
+    "not 'localhost'", () => {
+    expect(protocolForHost("grace.localhost:3002")).toBe("http");
+    expect(protocolForHost("grace.localhost")).toBe("http");
+  });
+
+  it("is http for 127.0.0.1, with or without a port", () => {
+    expect(protocolForHost("127.0.0.1:3002")).toBe("http");
+  });
+
+  it("is https for a real domain, apex or tenant subdomain alike", () => {
+    expect(protocolForHost("openfaithmap.org")).toBe("https");
+    expect(protocolForHost("grace.openfaithmap.org")).toBe("https");
   });
 });
 

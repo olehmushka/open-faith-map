@@ -4,12 +4,15 @@
 import { getTranslations } from "next-intl/server";
 
 import { Blocks } from "@/app/blocks";
+import { JsonLd } from "@/components/json-ld";
 import { Badge } from "@/components/ui/badge";
 import { ACCESSIBILITY_KEYS, ACCESSIBILITY_MESSAGE_KEYS } from "@/lib/accessibility";
-import { getPreviewBlocks, getPublicBlocks, listPreviewDocuments, listPublicDocuments, type Site } from "@/lib/content";
+import { getPreviewBlocks, getPublicBlocks, getSiteChrome, listPreviewDocuments, listPublicDocuments, type Site } from "@/lib/content";
 import { getSite as getDiscoverySite } from "@/lib/discovery";
 import { fileReport, type FileReportInput } from "@/lib/moderation";
 import { redirect } from "@/i18n/navigation";
+import { churchJsonLd, eventJsonLd } from "@/lib/structured-data";
+import { deriveTitle, resolveOrigin } from "@/lib/seo";
 
 const REPORT_REASON_CODES: FileReportInput["reasonCode"][] = [
   "SPAM",
@@ -73,20 +76,25 @@ export async function SitePage({
     redirect({ href: `/_sites/${site.slug}?reported=1`, locale });
   }
 
-  const [posts, events, discoverySite] = await Promise.all([
+  const [posts, events, discoverySite, chrome, origin] = await Promise.all([
     listDocuments("POST"),
     listDocuments("EVENT"),
     getDiscoverySite(site.congregationUnitId).catch(() => null),
+    getSiteChrome(site.id).catch(() => null),
+    resolveOrigin(),
   ]);
 
   const hasCoords =
     typeof discoverySite?.latitude === "number" && typeof discoverySite?.longitude === "number";
+
+  const siteUrl = origin ? `${origin}/${locale}` : null;
 
   return (
     <main
       className="mx-auto flex max-w-3xl flex-col gap-10"
       style={{ paddingInline: "calc(1.5rem * var(--of-space-scale, 1))", paddingBlock: "calc(3rem * var(--of-space-scale, 1))" }}
     >
+      {chrome && siteUrl ? <JsonLd data={churchJsonLd(chrome, siteUrl)} /> : null}
       {discoverySite ? (
         <section className="flex flex-col gap-2 border-b pb-8">
           {discoverySite.address ? (
@@ -136,7 +144,16 @@ export async function SitePage({
               <p className="text-sm text-gray-500">
                 {e.eventStartsAt ? new Date(e.eventStartsAt).toLocaleString() : t("dateTbd")}
               </p>
-              <EventBlocks documentId={e.id} siteId={site.id} previewToken={previewToken} />
+              <EventBlocks
+                documentId={e.id}
+                siteId={site.id}
+                previewToken={previewToken}
+                slug={e.slug}
+                startsAt={e.eventStartsAt}
+                endsAt={e.eventEndsAt}
+                siteUrl={siteUrl}
+                address={chrome?.address ?? undefined}
+              />
             </div>
           ))}
         </section>
@@ -184,9 +201,34 @@ export async function SitePage({
   );
 }
 
-async function EventBlocks({ documentId, siteId, previewToken }: { documentId: string; siteId: string; previewToken?: string }) {
+async function EventBlocks({
+  documentId,
+  siteId,
+  previewToken,
+  slug,
+  startsAt,
+  endsAt,
+  siteUrl,
+  address,
+}: {
+  documentId: string;
+  siteId: string;
+  previewToken?: string;
+  slug: string;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  siteUrl: string | null;
+  address?: string;
+}) {
   const blocks = previewToken ? await getPreviewBlocks(documentId, previewToken) : await getPublicBlocks(documentId);
-  return <Blocks blocks={blocks} siteId={siteId} />;
+  return (
+    <>
+      {siteUrl && startsAt ? (
+        <JsonLd data={eventJsonLd(deriveTitle(blocks, slug), startsAt, endsAt ?? undefined, siteUrl, address)} />
+      ) : null}
+      <Blocks blocks={blocks} siteId={siteId} />
+    </>
+  );
 }
 
 async function PostBlocks({ documentId, siteId, previewToken }: { documentId: string; siteId: string; previewToken?: string }) {

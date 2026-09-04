@@ -44,6 +44,19 @@ export function isSitesPath(pathname: string): boolean {
   return SITES_PATH_RE.test(pathname);
 }
 
+// M14.17: local dev's Host header is never the bare "localhost" for a tenant request — it's
+// "{slug}.localhost[:port]" (M14.9's own "*.localhost resolves to loopback with no DNS" design).
+// A naive `host.startsWith("localhost")` (M14.14's original hreflang code, now centralized here)
+// therefore misclassifies every tenant subdomain as https in local dev — checking the hostname's
+// own suffix, not its prefix, is what a subdomain actually needs.
+export function protocolForHost(hostname: string): "http" | "https" {
+  const host = hostname.split(":")[0]?.toLowerCase() ?? "";
+  if (host === "localhost" || host.endsWith(".localhost") || host.startsWith("127.")) {
+    return "http";
+  }
+  return "https";
+}
+
 // injectSitesSegment rewrites a locale-prefixed pathname into the internal tenant tree, e.g.
 // "/en/about" + "grace" -> "/en/_sites/grace/about". Assumes the locale prefix is already present
 // (proxy.ts only calls this after next-intl's own middleware has resolved it) — never called with

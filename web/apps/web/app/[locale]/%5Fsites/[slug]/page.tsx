@@ -1,13 +1,30 @@
 // Copyright 2026 Oleh Mushka
 // SPDX-License-Identifier: Apache-2.0
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { SitePage } from "@/components/site-page";
-import { getSiteBySlug } from "@/lib/content";
+import { getSiteBySlug, getSiteChrome } from "@/lib/content";
+import { resolveOrigin } from "@/lib/seo";
 
-// Same force-dynamic reasoning as app/page.tsx — content changes independently of any build.
-export const dynamic = "force-dynamic";
+// M14.17: replaces force-dynamic — see the page route's own comment (lib/content.ts's tag-based
+// revalidation, 60s TTL, replaces re-querying openfaithmap-api on every anonymous view).
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const site = await getSiteBySlug(slug).catch(() => null);
+  if (!site) return {};
+  const [chrome, origin] = await Promise.all([getSiteChrome(site.id).catch(() => null), resolveOrigin()]);
+  if (!chrome) return {};
+  const canonical = origin ? `${origin}/` : undefined;
+  return {
+    title: chrome.congregationName,
+    openGraph: { title: chrome.congregationName, url: canonical, images: chrome.logoUrl ? [chrome.logoUrl] : undefined },
+    twitter: { card: "summary_large_image", title: chrome.congregationName, images: chrome.logoUrl ? [chrome.logoUrl] : undefined },
+    alternates: { canonical },
+  };
+}
 
 // The tenant-subdomain route (M14.9, D-TenantSubdomains): proxy.ts rewrites a request whose Host
 // header resolves to a congregation's slug into /{locale}/_sites/{slug} (the directory is actually

@@ -12,4 +12,10 @@ export interface ISiteChrome {
     'logoUrl'?: string | null;
     'socialLinks': ISocialLinks;
     'schedules': Array<IServiceSchedule>;
+    /**
+     * M14.17, backs the Church JSON-LD's geo field. Coarsened per the religion site's own publish precision, same as address — absent if hidden or unset, never the exact coordinate for a site that opted for less precision.
+     *
+     */
+    'latitude'?: number | "NaN" | null;
+    'longitude'?: number | "NaN" | null;
 }

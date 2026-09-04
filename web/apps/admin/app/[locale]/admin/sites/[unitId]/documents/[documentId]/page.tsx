@@ -15,6 +15,7 @@ import {
   updateDocument,
 } from "@/lib/content";
 import { DocumentTransitionAction } from "@/lib/openfaithmap/generated/content";
+import { documentTag, revalidateContentTags, siteTag } from "@/lib/revalidate";
 import { redirect } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
@@ -40,6 +41,9 @@ export default async function DocumentEditorPage({
   const tState = await getTranslations("DocumentState");
   const site = await getSite(unitId).catch(() => null);
   if (!site) return redirect({ href: `/admin/sites/${unitId}`, locale });
+  // A const copy, not `site.id` itself: TypeScript doesn't carry the above narrowing into the
+  // "use server" closures below (same reasoning app/blocks.tsx's own contactFormSiteId documents).
+  const siteId: string = site.id;
 
   const documents = await listDocuments(site.id);
   const doc = documents.find((d) => d.id === documentId);
@@ -64,12 +68,17 @@ export default async function DocumentEditorPage({
     "use server";
     const slug = String(formData.get("slug") ?? "");
     const parentDocumentId = String(formData.get("parentDocumentId") ?? "");
+    const metaTitle = String(formData.get("metaTitle") ?? "");
+    const metaDescription = String(formData.get("metaDescription") ?? "");
     try {
       await updateDocument(documentId, {
         slug,
         parentDocumentId: parentDocumentId && parentDocumentId !== NO_PARENT ? parentDocumentId : undefined,
         clearParent: !parentDocumentId || parentDocumentId === NO_PARENT,
+        metaTitle,
+        metaDescription,
       });
+      await revalidateContentTags([documentTag(documentId), siteTag(siteId)]);
       return { ok: true };
     } catch (e) {
       if (e && typeof e === "object" && "errorName" in e) {
@@ -110,6 +119,7 @@ export default async function DocumentEditorPage({
   async function transition(action: DocumentTransitionAction) {
     "use server";
     await transitionDocument(documentId, action);
+    await revalidateContentTags([documentTag(documentId), siteTag(siteId)]);
     redirect({ href: `/admin/sites/${unitId}/documents/${documentId}`, locale });
   }
   async function publish() {
@@ -137,6 +147,7 @@ export default async function DocumentEditorPage({
         DocumentTransitionAction.SCHEDULE,
         publishAt ? new Date(publishAt).toISOString() : undefined,
       );
+      await revalidateContentTags([documentTag(documentId), siteTag(siteId)]);
       redirect({ href: `/admin/sites/${unitId}/documents/${documentId}`, locale });
       return null; // unreachable — redirect() always throws; satisfies the function's return type.
     } catch (e) {

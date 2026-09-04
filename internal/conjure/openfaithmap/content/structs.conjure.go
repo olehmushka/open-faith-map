@@ -329,8 +329,12 @@ type Document struct {
 	EventStartsAt        *datetime.DateTime `json:"eventStartsAt,omitempty"`
 	EventEndsAt          *datetime.DateTime `json:"eventEndsAt,omitempty"`
 	EventRecurrenceRrule *string            `json:"eventRecurrenceRrule,omitempty"`
-	CreatedAt            datetime.DateTime  `json:"createdAt"`
-	UpdatedAt            datetime.DateTime  `json:"updatedAt"`
+	// M14.17. An explicit SEO title override; absent means the public renderer derives a fallback from this document's own blocks (first heading, else the slug) at read time.
+	MetaTitle *string `json:"metaTitle,omitempty"`
+	// Same "absent means derive a fallback" shape as metaTitle, from the first text-bearing block.
+	MetaDescription *string           `json:"metaDescription,omitempty"`
+	CreatedAt       datetime.DateTime `json:"createdAt"`
+	UpdatedAt       datetime.DateTime `json:"updatedAt"`
 }
 
 func (o Document) MarshalYAML() (interface{}, error) {
@@ -985,6 +989,9 @@ type SiteChrome struct {
 	LogoUrl     *string           `json:"logoUrl,omitempty"`
 	SocialLinks SocialLinks       `json:"socialLinks"`
 	Schedules   []ServiceSchedule `json:"schedules"`
+	// M14.17, backs the Church JSON-LD's geo field. Coarsened per the religion site's own publish precision, same as address — absent if hidden or unset, never the exact coordinate for a site that opted for less precision.
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
 }
 
 func (o SiteChrome) MarshalJSON() ([]byte, error) {
@@ -1017,6 +1024,69 @@ func (o SiteChrome) MarshalYAML() (interface{}, error) {
 }
 
 func (o *SiteChrome) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// M14.17. web/apps/web's app/sitemap.ts entry for one PAGE document — href already resolved server-side (same convention as PublicNavItem), never re-derived client-side. POST/EVENT documents have no entry of their own: they have no route besides the tenant root, which the sitemap lists separately.
+type SitemapEntry struct {
+	Href      string            `json:"href"`
+	UpdatedAt datetime.DateTime `json:"updatedAt"`
+}
+
+func (o SitemapEntry) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SitemapEntry) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type SitemapEntryList struct {
+	Entries []SitemapEntry `json:"entries"`
+}
+
+func (o SitemapEntryList) MarshalJSON() ([]byte, error) {
+	if o.Entries == nil {
+		o.Entries = make([]SitemapEntry, 0)
+	}
+	type _tmpSitemapEntryList SitemapEntryList
+	return safejson.Marshal(_tmpSitemapEntryList(o))
+}
+
+func (o *SitemapEntryList) UnmarshalJSON(data []byte) error {
+	type _tmpSitemapEntryList SitemapEntryList
+	var rawSitemapEntryList _tmpSitemapEntryList
+	if err := safejson.Unmarshal(data, &rawSitemapEntryList); err != nil {
+		return err
+	}
+	if rawSitemapEntryList.Entries == nil {
+		rawSitemapEntryList.Entries = make([]SitemapEntry, 0)
+	}
+	*o = SitemapEntryList(rawSitemapEntryList)
+	return nil
+}
+
+func (o SitemapEntryList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SitemapEntryList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -1124,6 +1194,10 @@ type UpdateDocumentRequest struct {
 	ParentDocumentId *string `json:"parentDocumentId,omitempty"`
 	// Set true (with parentDocumentId omitted) to move the page to top level.
 	ClearParent bool `json:"clearParent"`
+	// M14.17. Omit to leave the stored override unchanged; an empty string clears it back to the renderer's derived fallback — never treated as "unchanged" the way omission is.
+	MetaTitle *string `json:"metaTitle,omitempty"`
+	// Same omit-vs-empty-string shape as metaTitle.
+	MetaDescription *string `json:"metaDescription,omitempty"`
 }
 
 func (o UpdateDocumentRequest) MarshalYAML() (interface{}, error) {

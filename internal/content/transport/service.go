@@ -109,6 +109,8 @@ func (s *Service) UpdateDocument(ctx context.Context, authHeader bearertoken.Tok
 		Slug:             requestArg.Slug,
 		ParentDocumentID: requestArg.ParentDocumentId,
 		ClearParent:      requestArg.ClearParent,
+		MetaTitle:        requestArg.MetaTitle,
+		MetaDescription:  requestArg.MetaDescription,
 	})
 	if err != nil {
 		return gencontent.Document{}, mapErr(err, errCtx{DocumentID: documentIdArg, ParentDocumentID: derefOr(requestArg.ParentDocumentId, "")})
@@ -336,6 +338,8 @@ func toAPISiteChrome(c domain.SiteChrome) gencontent.SiteChrome {
 		LogoUrl:          c.LogoURL,
 		SocialLinks:      toAPISocialLinks(c.SocialLinks),
 		Schedules:        schedules,
+		Latitude:         c.Latitude,
+		Longitude:        c.Longitude,
 	}
 }
 
@@ -382,6 +386,8 @@ func toAPIDocument(d domain.Document) gencontent.Document {
 		EventStartsAt:        eventStartsAt,
 		EventEndsAt:          eventEndsAt,
 		EventRecurrenceRrule: d.EventRecurrenceRRule,
+		MetaTitle:            d.MetaTitle,
+		MetaDescription:      d.MetaDescription,
 		CreatedAt:            datetime.DateTime(d.CreatedAt),
 		UpdatedAt:            datetime.DateTime(d.UpdatedAt),
 	}

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { Document } from "@/lib/content";
 
 const NO_PARENT = "__none__";
@@ -71,6 +72,16 @@ export function DocumentDetailsForm({
             ))}
           </SelectContent>
         </Select>
+      </Label>
+      <Label className="flex flex-col items-start gap-1">
+        {t("metaTitleLabel")}
+        <Input name="metaTitle" defaultValue={doc.metaTitle ?? ""} />
+        <span className="text-xs text-muted-foreground">{t("metaTitleHint")}</span>
+      </Label>
+      <Label className="flex flex-col items-start gap-1">
+        {t("metaDescriptionLabel")}
+        <Textarea name="metaDescription" defaultValue={doc.metaDescription ?? ""} rows={2} />
+        <span className="text-xs text-muted-foreground">{t("metaDescriptionHint")}</span>
       </Label>
       {state && "error" in state && state.error === "errorGeneric" && (
         <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">

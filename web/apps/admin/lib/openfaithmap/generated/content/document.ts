@@ -26,6 +26,13 @@ export interface IDocument {
     'eventStartsAt'?: string | null;
     'eventEndsAt'?: string | null;
     'eventRecurrenceRrule'?: string | null;
+    /**
+     * M14.17. An explicit SEO title override; absent means the public renderer derives a fallback from this document's own blocks (first heading, else the slug) at read time.
+     *
+     */
+    'metaTitle'?: string | null;
+    /** Same "absent means derive a fallback" shape as metaTitle, from the first text-bearing block. */
+    'metaDescription'?: string | null;
     'createdAt': string;
     'updatedAt': string;
 }

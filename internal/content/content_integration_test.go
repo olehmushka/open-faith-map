@@ -243,8 +243,8 @@ func TestContentIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSiteChrome (no religion site): %v", err)
 	}
-	if chromeBeforeReligionSite.CongregationName != site.Slug || chromeBeforeReligionSite.Address != nil || len(chromeBeforeReligionSite.Schedules) != 0 {
-		t.Errorf("GetSiteChrome (no religion site) = %+v, want CongregationName=%s, Address=nil, no schedules", chromeBeforeReligionSite, site.Slug)
+	if chromeBeforeReligionSite.CongregationName != site.Slug || chromeBeforeReligionSite.Address != nil || len(chromeBeforeReligionSite.Schedules) != 0 || chromeBeforeReligionSite.Latitude != nil || chromeBeforeReligionSite.Longitude != nil {
+		t.Errorf("GetSiteChrome (no religion site) = %+v, want CongregationName=%s, Address=nil, no schedules, no coordinates", chromeBeforeReligionSite, site.Slug)
 	}
 
 	// --- M14.11: UpdateSiteChrome is content.manage-gated the same way UpdateSiteTheme is, and
@@ -317,6 +317,11 @@ func TestContentIntegration(t *testing.T) {
 	if chromeWithReligionSite.LogoURL == nil || *chromeWithReligionSite.LogoURL != logoURL {
 		t.Errorf("GetSiteChrome.LogoURL = %v, want %s (content_sites' own column, unaffected by the religion read)", chromeWithReligionSite.LogoURL, logoURL)
 	}
+	// --- M14.17: GetSiteChrome.Latitude/Longitude mirror the religion site's own coordinates —
+	// the Church JSON-LD's geo field source.
+	if chromeWithReligionSite.Latitude == nil || *chromeWithReligionSite.Latitude != 50.4501 || chromeWithReligionSite.Longitude == nil || *chromeWithReligionSite.Longitude != 30.5234 {
+		t.Errorf("GetSiteChrome.Latitude/Longitude = %v/%v, want 50.4501/30.5234", chromeWithReligionSite.Latitude, chromeWithReligionSite.Longitude)
+	}
 
 	// --- M14.11: a `hidden`-precision religion site hides the address (CoarsenAddress's own
 	// ok=false case) but NOT the congregation's own name — a site showing its own name on its own
@@ -330,6 +335,11 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if chromeHidden.Address != nil {
 		t.Errorf("GetSiteChrome (hidden precision).Address = %v, want nil", chromeHidden.Address)
+	}
+	// --- M14.17: hidden precision hides the exact coordinate too, the same as it hides the
+	// address — GetSiteChrome must never leak a precise lat/long a `hidden` site opted out of.
+	if chromeHidden.Latitude != nil || chromeHidden.Longitude != nil {
+		t.Errorf("GetSiteChrome (hidden precision).Latitude/Longitude = %v/%v, want nil/nil", chromeHidden.Latitude, chromeHidden.Longitude)
 	}
 	if chromeHidden.CongregationName != unit.Name {
 		t.Errorf("GetSiteChrome (hidden precision).CongregationName = %q, want %q (name still shown)", chromeHidden.CongregationName, unit.Name)
@@ -1337,6 +1347,97 @@ func TestContentIntegration(t *testing.T) {
 		t.Errorf("PutNavItems (POST-kind target) error = %v, want *NavTargetInvalidError", err)
 	} else if navInvalidErr.TargetDocumentID != postDoc.ID {
 		t.Errorf("PutNavItems (POST-kind target) TargetDocumentID = %q, want %q", navInvalidErr.TargetDocumentID, postDoc.ID)
+	}
+
+	// ---- M14.17: SEO overrides (metaTitle/metaDescription) + sitemap entries ----
+
+	// UpdateDocument's metaTitle/metaDescription follow the same content.manage gate as every
+	// other write on this document.
+	if _, err := contentSvc.UpdateDocument(otherCtx, topPage.ID, contentdomain.UpdateDocumentInput{
+		MetaTitle: strPtr("Top Page"),
+	}); !errors.Is(err, contentdomain.ErrForbidden) {
+		t.Errorf("UpdateDocument (metaTitle) by non-manager error = %v, want ErrForbidden", err)
+	}
+
+	// An explicit override round-trips through Document.MetaTitle/MetaDescription.
+	seoTitle, seoDescription := "Top Page — Grace Parish", "Welcome to our parish's top page."
+	withOverride, err := contentSvc.UpdateDocument(adminCtx, topPage.ID, contentdomain.UpdateDocumentInput{
+		MetaTitle: &seoTitle, MetaDescription: &seoDescription,
+	})
+	if err != nil {
+		t.Fatalf("UpdateDocument (set metaTitle/metaDescription): %v", err)
+	}
+	if withOverride.MetaTitle == nil || *withOverride.MetaTitle != seoTitle || withOverride.MetaDescription == nil || *withOverride.MetaDescription != seoDescription {
+		t.Errorf("UpdateDocument (set) = MetaTitle=%v MetaDescription=%v, want %q/%q", withOverride.MetaTitle, withOverride.MetaDescription, seoTitle, seoDescription)
+	}
+	// Omitting both on a later, unrelated update (here: a slug no-op) leaves the override
+	// unchanged — nil means "unchanged," never "clear."
+	unchanged, err := contentSvc.UpdateDocument(adminCtx, topPage.ID, contentdomain.UpdateDocumentInput{Slug: &topPage.Slug})
+	if err != nil {
+		t.Fatalf("UpdateDocument (unrelated update): %v", err)
+	}
+	if unchanged.MetaTitle == nil || *unchanged.MetaTitle != seoTitle {
+		t.Errorf("UpdateDocument (unrelated update) MetaTitle = %v, want unchanged %q", unchanged.MetaTitle, seoTitle)
+	}
+	// An empty string is a real value — it clears the override back to the renderer's own derived
+	// fallback, distinct from nil/omitted ("leave unchanged").
+	cleared, err := contentSvc.UpdateDocument(adminCtx, topPage.ID, contentdomain.UpdateDocumentInput{MetaTitle: strPtr("")})
+	if err != nil {
+		t.Fatalf("UpdateDocument (clear metaTitle): %v", err)
+	}
+	if cleared.MetaTitle == nil || *cleared.MetaTitle != "" {
+		t.Errorf("UpdateDocument (clear) MetaTitle = %v, want empty string", cleared.MetaTitle)
+	}
+	if cleared.MetaDescription == nil || *cleared.MetaDescription != seoDescription {
+		t.Errorf("UpdateDocument (clear metaTitle only) MetaDescription = %v, want still %q", cleared.MetaDescription, seoDescription)
+	}
+
+	// ListSitemapEntries: every effectively-PUBLISHED PAGE (topPage/childPage/grandchildPage,
+	// published above), excluding the never-published draftPage, the POST (postDoc), and an
+	// UNLISTED page — a sitemap is an indexing hint, and UNLISTED's whole point is "excluded from
+	// listings."
+	unlistedPage, err := contentSvc.CreateDocument(adminCtx, site.ID, contentdomain.CreateDocumentInput{
+		Kind: contentdomain.KindPage, Locale: "en", Slug: "m14-17-unlisted",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument (unlisted page): %v", err)
+	}
+	documentIDs = append(documentIDs, unlistedPage.ID)
+	if _, err := contentSvc.PutBlocks(adminCtx, unlistedPage.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 0, Data: json.RawMessage(`{"text":[{"type":"text","text":"Unlisted"}]}`)},
+	}); err != nil {
+		t.Fatalf("PutBlocks (unlisted page): %v", err)
+	}
+	if _, err := contentSvc.TransitionDocument(adminCtx, unlistedPage.ID, contentdomain.ActionPublish, nil); err != nil {
+		t.Fatalf("TransitionDocument(PUBLISH, unlisted page): %v", err)
+	}
+	if _, err := contentSvc.TransitionDocument(adminCtx, unlistedPage.ID, contentdomain.ActionUnlist, nil); err != nil {
+		t.Fatalf("TransitionDocument(UNLIST, unlisted page): %v", err)
+	}
+
+	entries, err := contentSvc.ListSitemapEntries(context.Background(), site.ID)
+	if err != nil {
+		t.Fatalf("ListSitemapEntries: %v", err)
+	}
+	wantHrefs := map[string]bool{
+		"/en/m14-10-top":                                true,
+		"/en/m14-10-top/m14-10-child":                   true,
+		"/en/m14-10-top/m14-10-child/m14-10-grandchild": true,
+	}
+	gotHrefs := map[string]bool{}
+	for _, e := range entries {
+		gotHrefs[e.Href] = true
+	}
+	for want := range wantHrefs {
+		if !gotHrefs[want] {
+			t.Errorf("ListSitemapEntries missing href %q, got %+v", want, entries)
+		}
+	}
+	if gotHrefs["/en/m14-17-unlisted"] {
+		t.Errorf("ListSitemapEntries included an UNLISTED page's href, want excluded: %+v", entries)
+	}
+	if gotHrefs["/en/m14-10-draft"] {
+		t.Errorf("ListSitemapEntries included the never-published draftPage's href, want excluded: %+v", entries)
 	}
 
 	// ---- M14.13: block-type/pattern catalog admin (content.catalog.manage, platform-moderator) ----

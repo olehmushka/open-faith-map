@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Document } from "@/lib/content";
+import { humanizeSlug } from "@/lib/seo";
 
 // M14.10: rendered only at depth >= 2 (i.e. ancestors.length >= 1) — a top-level page shows no
 // breadcrumb at all, per the milestone's own acceptance criterion. Plain <a> tags, not next-intl's
@@ -57,12 +58,4 @@ export function Breadcrumbs({
       </ol>
     </nav>
   );
-}
-
-function humanizeSlug(slug: string): string {
-  return slug
-    .split("-")
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }

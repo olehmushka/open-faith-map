@@ -85,6 +85,14 @@ type SiteChrome struct {
 	LogoURL          *string
 	SocialLinks      SocialLinks
 	Schedules        []ServiceSchedule
+	// Latitude/Longitude (M14.17) back the Church JSON-LD's geo field — from the same religion.Site
+	// read GetSiteChrome already does for Address, run through religiondomain.Coarsen the same way
+	// SearchSites/DiscoverySite already does (never the raw, precise coordinate): nil if the unit
+	// has no religion site, or if PublicPrecision is "hidden" — the same two conditions Address is
+	// already nil under. No telephone field exists here, and never will from this source:
+	// religion.Site carries no phone/email at all.
+	Latitude  *float64
+	Longitude *float64
 }
 
 // ServiceSchedule (M14.11) mirrors religion's own domain.ServiceSchedule shape — content's
@@ -124,8 +132,13 @@ type Document struct {
 	EventStartsAt        *time.Time
 	EventEndsAt          *time.Time
 	EventRecurrenceRRule *string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	// MetaTitle/MetaDescription (M14.17) are optional per-document SEO overrides. Nil means "derive
+	// a fallback from this document's own blocks at read time" — the public renderer's job, not
+	// this package's; a nil value here is a meaningful state, not missing data.
+	MetaTitle       *string
+	MetaDescription *string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 	// DraftRevisionID/PublishedRevisionID (M14.6, D-ContentRevisions) point into
 	// content_document_revisions. DraftRevisionID is set once, at document creation, and never
 	// changes — GetBlocks/PutBlocks always read/write that one row in place. PublishedRevisionID
@@ -196,6 +209,11 @@ type UpdateDocumentInput struct {
 	Slug             *string
 	ParentDocumentID *string
 	ClearParent      bool
+	// MetaTitle/MetaDescription (M14.17): nil means "leave unchanged," mirroring UpdatePatternInput's
+	// own optional-field convention — a caller wanting to clear an override back to "derive a
+	// fallback" passes an empty string, not nil.
+	MetaTitle       *string
+	MetaDescription *string
 }
 
 // Block is a typed, schema-validated content unit within a document.
@@ -330,6 +348,17 @@ type PublicNavItem struct {
 	Label    string
 	Href     string
 	External bool
+}
+
+// SitemapEntry (M14.17) is one PAGE document as web/apps/web's sitemap.ts renders it — Href
+// already resolved server-side, same convention as PublicNavItem. Only PAGE documents get an
+// entry: POST/EVENT documents have no route of their own (rendered inline on the tenant root,
+// which the sitemap already lists separately) — a named scope call, not an oversight. Only real,
+// effectively-PUBLISHED documents qualify — UNLISTED is deliberately excluded, mirroring its own
+// "reachable by direct link, excluded from listings" definition (Document.IsPubliclyVisible).
+type SitemapEntry struct {
+	Href      string
+	UpdatedAt time.Time
 }
 
 var (

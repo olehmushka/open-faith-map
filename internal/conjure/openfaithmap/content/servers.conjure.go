@@ -37,6 +37,8 @@ type ContentPublicService interface {
 	ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error)
 	// M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
 	GetPublicDocumentByPath(ctx context.Context, siteIdArg string, localeArg string, pathArg string) (DocumentWithAncestors, error)
+	// M14.17. Backs web/apps/web's app/sitemap.ts — every effectively-PUBLISHED PAGE document's resolved href, in no particular order. UNLISTED is excluded (a sitemap is an indexing hint; UNLISTED's whole point is "reachable by direct link, excluded from listings").
+	ListSitemapEntries(ctx context.Context, siteIdArg string) (SitemapEntryList, error)
 	// M14.16, D-InAppInbox. Genuinely anonymous — the third such write in the codebase, after moderation's two. Rate-limited (internal/platform/ratelimit, wrapping this whole service's registration — see cmd/openfaithmap-api/register_content.go). Always succeeds for a honeypot-triggered or too-fast submission; only Content:FormSubmissionInvalid (empty message) and Content:SiteNotFound are ever returned as errors.
 	SubmitContactForm(ctx context.Context, siteIdArg string, requestArg SubmitContactFormRequest) error
 }
@@ -80,6 +82,9 @@ func RegisterRoutesContentPublicService(router wrouter.Router, impl ContentPubli
 	}
 	if err := resource.Get("GetPublicDocumentByPath", "/content/v1/public/sites/{siteId}/documents/by-path", httpserver.NewJSONHandler(handler.HandleGetPublicDocumentByPath, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getPublicDocumentByPath route")
+	}
+	if err := resource.Get("ListSitemapEntries", "/content/v1/public/sites/{siteId}/sitemap-entries", httpserver.NewJSONHandler(handler.HandleListSitemapEntries, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listSitemapEntries route")
 	}
 	if err := resource.Post("SubmitContactForm", "/content/v1/public/sites/{siteId}/contact", httpserver.NewJSONHandler(handler.HandleSubmitContactForm, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add submitContactForm route")
@@ -279,6 +284,23 @@ func (c *contentPublicServiceHandler) HandleGetPublicDocumentByPath(rw http.Resp
 	localeArg := req.URL.Query().Get("locale")
 	pathArg := req.URL.Query().Get("path")
 	respArg, err := c.impl.GetPublicDocumentByPath(req.Context(), siteIdArg, localeArg, pathArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *contentPublicServiceHandler) HandleListSitemapEntries(rw http.ResponseWriter, req *http.Request) error {
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	siteIdArg, ok := pathParams["siteId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"siteId\" not present")
+	}
+	respArg, err := c.impl.ListSitemapEntries(req.Context(), siteIdArg)
 	if err != nil {
 		return err
 	}

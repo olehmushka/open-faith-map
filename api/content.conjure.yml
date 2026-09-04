@@ -107,6 +107,13 @@ types:
           logoUrl: optional<string>
           socialLinks: SocialLinks
           schedules: list<ServiceSchedule>
+          latitude:
+            type: optional<double>
+            docs: >
+              M14.17, backs the Church JSON-LD's geo field. Coarsened per the religion site's own
+              publish precision, same as address — absent if hidden or unset, never the exact
+              coordinate for a site that opted for less precision.
+          longitude: optional<double>
 
       Document:
         fields:
@@ -140,6 +147,14 @@ types:
           eventStartsAt: optional<datetime>
           eventEndsAt: optional<datetime>
           eventRecurrenceRrule: optional<string>
+          metaTitle:
+            type: optional<string>
+            docs: >
+              M14.17. An explicit SEO title override; absent means the public renderer derives a
+              fallback from this document's own blocks (first heading, else the slug) at read time.
+          metaDescription:
+            type: optional<string>
+            docs: Same "absent means derive a fallback" shape as metaTitle, from the first text-bearing block.
           createdAt: datetime
           updatedAt: datetime
       CreateDocumentRequest:
@@ -167,6 +182,14 @@ types:
           clearParent:
             type: boolean
             docs: Set true (with parentDocumentId omitted) to move the page to top level.
+          metaTitle:
+            type: optional<string>
+            docs: >
+              M14.17. Omit to leave the stored override unchanged; an empty string clears it back to
+              the renderer's derived fallback — never treated as "unchanged" the way omission is.
+          metaDescription:
+            type: optional<string>
+            docs: Same omit-vs-empty-string shape as metaTitle.
       TransitionDocumentRequest:
         fields:
           action: DocumentTransitionAction
@@ -276,6 +299,19 @@ types:
       PublicNavItemList:
         fields:
           items: list<PublicNavItem>
+
+      SitemapEntry:
+        docs: >
+          M14.17. web/apps/web's app/sitemap.ts entry for one PAGE document — href already
+          resolved server-side (same convention as PublicNavItem), never re-derived client-side.
+          POST/EVENT documents have no entry of their own: they have no route besides the tenant
+          root, which the sitemap lists separately.
+        fields:
+          href: string
+          updatedAt: datetime
+      SitemapEntryList:
+        fields:
+          entries: list<SitemapEntry>
 
       Pattern:
         docs: >
@@ -924,6 +960,17 @@ services:
             type: string
             param-type: query
         returns: DocumentWithAncestors
+      listSitemapEntries:
+        http: GET /sites/{siteId}/sitemap-entries
+        docs: >
+          M14.17. Backs web/apps/web's app/sitemap.ts — every effectively-PUBLISHED PAGE document's
+          resolved href, in no particular order. UNLISTED is excluded (a sitemap is an indexing
+          hint; UNLISTED's whole point is "reachable by direct link, excluded from listings").
+        args:
+          siteId:
+            type: string
+            param-type: path
+        returns: SitemapEntryList
       submitContactForm:
         http: POST /sites/{siteId}/contact
         docs: >
