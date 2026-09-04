@@ -1,0 +1,52 @@
+# M14.18, D-ProductionDeployment: "docker-compose.yml itself is not rewritten by this decision —
+# the production topology is an override/addition on top of the existing file, not a replacement."
+# Layer this on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# 🔶 Gated on U14 (see deploy/README.md) — this file is correct config, but a real apex domain and
+# DNS-provider API token don't exist yet, so nothing here has actually served real traffic.
+
+services:
+  caddy:
+    build:
+      context: ./deploy/caddy
+    restart: unless-stopped
+    depends_on:
+      openfaithmap-web:
+        condition: service_started
+      openfaithmap-admin:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APEX_DOMAIN: "${APEX_DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL}"
+      CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN}"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+
+  # Caddy is the only public entrypoint once this override is layered on (D-ProductionDeployment) —
+  # neither app needs a host-published port of its own anymore. The base file's ports: entries are
+  # dropped here rather than duplicated with different values, since compose has no clean way to
+  # remove a list entry from a merged service.
+  openfaithmap-web:
+    ports: !reset []
+    environment:
+      # M14.17's revalidation secret still flows the same way as in docker-compose.yml; only the
+      # port publication above changes for this override.
+      CONTENT_REVALIDATION_SECRET: "${CONTENT_REVALIDATION_SECRET}"
+
+  openfaithmap-admin:
+    ports: !reset []
+    environment:
+      # Real values instead of docker-compose.yml's local-dev localhost:3002/3004 (that file's own
+      # comment at TENANT_APEX_HOST marks this substitution as deferred to U14).
+      TENANT_APEX_HOST: "${APEX_DOMAIN}"
+      AUTH_URL: "https://admin.${APEX_DOMAIN}"
+      AUTH_TRUST_HOST: "true"
+
+volumes:
+  caddy-data:
+  caddy-config:

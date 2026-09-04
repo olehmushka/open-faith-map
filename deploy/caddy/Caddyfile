@@ -1,0 +1,65 @@
+# M14.18, D-ProductionDeployment, D-TenantSubdomains. Caddy fronts openfaithmap-web and
+# openfaithmap-admin only — openfaithmap-api stays internal-only (never gets a public route),
+# reached over the compose network exactly as it is in local dev
+# (https://openfaithmap-api:3000, docker-compose.yml).
+#
+# 🔶 Gated on U14: this file is correct config, but does nothing until APEX_DOMAIN points at a
+# real registered domain whose DNS is delegated to the provider the `tls dns` block below talks
+# to. See ../README.md.
+#
+# Built against the custom image deploy/caddy/Dockerfile produces (xcaddy + caddy-dns/cloudflare +
+# caddy-ratelimit) — stock Caddy has neither module.
+{
+	email {$ACME_EMAIL}
+}
+
+# openfaithmap-admin (D-ProductionDeployment: "Caddy in front of openfaithmap-web and
+# openfaithmap-admin only"). "admin" is on the reserved-slug blocklist
+# (internal/content/application/slugvalidation.go) precisely so no congregation can ever claim
+# this host out from under the real admin app. Caddy matches the most specific host first, so this
+# block wins over the wildcard block below for exactly this one name.
+admin.{$APEX_DOMAIN} {
+	tls {
+		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	reverse_proxy openfaithmap-admin:3000
+}
+
+# The apex itself (discovery, unchanged since M14.9) plus every congregation subdomain
+# (<slug>.<apex>) — both resolved inside openfaithmap-web's own Host-header routing
+# (web/apps/web/proxy.ts). Caddy's only job here is TLS termination and forwarding, never tenant
+# resolution — that stays app-level so it works identically against *.localhost in local dev.
+{$APEX_DOMAIN}, *.{$APEX_DOMAIN} {
+	# DNS-01 is the only ACME challenge type that can issue a wildcard certificate
+	# (*.{$APEX_DOMAIN}) — HTTP-01 cannot, which is the whole reason U14 constrains the DNS
+	# provider choice. Cloudflare here is a concrete, swappable *example* (see ../README.md for
+	# swapping to a different caddy-dns/* module) — not a decision.
+	tls {
+		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	# Per-tenant read rate limiting (the milestone's own wording) — an edge-level budget keyed by
+	# Host, i.e. per congregation subdomain, distinct from and in addition to
+	# internal/platform/ratelimit's existing per-(client IP, endpoint) in-process limiter inside
+	# openfaithmap-api, which is untouched by this file and keeps doing its own job. Numbers here
+	# are a starting point, not a measured budget — there is no production traffic yet to size
+	# this against.
+	rate_limit {
+		zone tenant_reads {
+			key {http.request.host}
+			events 300
+			window 1m
+		}
+	}
+
+	reverse_proxy openfaithmap-web:3000
+}

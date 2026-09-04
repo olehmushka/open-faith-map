@@ -11,7 +11,8 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 
 **M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.17 (M14.0–M14.9
 2026-08-27/28, M14.10–M14.12 2026-08-29, M14.13–M14.14 2026-08-30, M14.15 2026-09-03, M14.16
-2026-09-03, M14.17 2026-09-04) are done**, no other sub-milestone is built yet. It is the second half of the
+2026-09-03, M14.17 2026-09-04) are done**; M14.18's config was written 2026-09-04 but stays 🔶
+(blocked on U14). It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -51,7 +52,9 @@ anywhere — see its own row below. **M14.17 adds per-page SEO metadata, JSON-LD
 tag-based caching**, closing out the arc's remaining tenant-site gaps: real `<title>`/description/
 canonical/OG on every page, `Church`/`Event`/`BreadcrumbList` JSON-LD, a per-tenant `sitemap.xml`/
 `robots.txt`, and a hybrid tags-plus-TTL cache replacing the unconditional `force-dynamic` most
-tenant routes carried since M14.9 — see its own row below. Every M14.x sub-milestone is now built.
+tenant routes carried since M14.9 — see its own row below. **M14.18 has its Caddy/DNS-01/rate-limit
+config written and locally validated (2026-09-04)**, but stays 🔶 — it needs a real registered
+domain to actually go live, per U14. Every other M14.x sub-milestone is built.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -115,7 +118,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.15 · Scheduled publishing, no scheduler | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-09-03).** `content_documents.publish_at` + a `SCHEDULED` state; the public predicate becomes `state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())`, applied everywhere a `PUBLISHED` document is already visible (page route, feeds, nav, translations). **Correctness lives in the `WHERE` clause**, so it behaves identically in local dev and on a VM that does not exist yet — no timer, no goroutine, nothing to fire, and no new unattributable background writer (`DS-OFM-16`). The admin UI shows **effective** state, not the raw column; the transitions lookup itself is keyed by effective state too, so `UNLIST`/`REVERT_TO_DRAFT` on a due-but-unsettled `SCHEDULED` document is what settles it. Live-verified against the running docker-compose stack: `publish_at` moved into the past by a direct SQL write (no app call) flips a real tenant-subdomain 404 to 200 with no restart in between. `Verified` awaits CI green on `main`. |
 | M14.16 · Contact form + in-app inbox | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-09-03).** `content_form_submissions` plus an anonymous write on `ContentPublicService`, reusing `internal/platform/ratelimit` (M7) rather than adding a second limiter. Spam handled without a third party: honeypot field, minimum time-to-submit, per-IP rate limit. Messages screen in `openfaithmap-admin`, `content.manage`-gated. **No SMTP anywhere** — follows D-InviteLinkMVP's precedent exactly. Submission text is untrusted and renders as plain text only. `Verified` awaits CI green on `main`. |
 | M14.17 · SEO, structured data, caching | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-09-04).** Per-page `<title>`/description/canonical/OG (explicit `meta_title`/`meta_description` override, else derived from the document's own blocks). Per-tenant `sitemap.xml` + `robots.txt`. JSON-LD: `Church` for the site (geo coarsened the same way the address already is), `Event` for events, `BreadcrumbList` for nested pages. Hybrid tags-plus-TTL caching replaces unconditional `force-dynamic` on the tenant root and its data reads (a 60s TTL ceiling plus an on-demand `POST /api/revalidate` openfaithmap-admin calls right after a transition) — see its own row below for the one route this couldn't be removed from. |
-| M14.18 · Deployment wiring | ⬜ | ⬜ | ➖ | ➖ | ➖ | 🔶 | **Blocked on U14: a registered apex domain + a DNS-provider API token.** Caddyfile with the DNS-01 wildcard block (wildcards cannot be issued over HTTP-01 — a new, real constraint on the provider choice D-ProductionDeployment deliberately left open), wildcard DNS record, HSTS with `includeSubDomains`, per-tenant read rate limiting. Confirms the backup story is unchanged: no blobs to back up, because there are no uploads. Records the `openfaithmap-sites` extraction as the named Phase 2 trigger. |
+| M14.18 · Deployment wiring | ✅ | ✅ | ➖ | ➖ | ➖ | 🔶 | **Config written (2026-09-04); still blocked on U14: a registered apex domain + a DNS-provider API token.** `deploy/caddy/Caddyfile` with the DNS-01 wildcard block (wildcards cannot be issued over HTTP-01 — a new, real constraint on the provider choice D-ProductionDeployment deliberately left open), HSTS with `includeSubDomains`, per-tenant read rate limiting, plus `docker-compose.prod.yml` and `.env.prod.example` — all validated locally (custom Caddy image builds, both third-party modules load, `caddy validate` accepts the config). Confirms the backup story is unchanged: no blobs to back up, because there are no uploads. Records the `openfaithmap-sites` extraction as the named Phase 2 trigger. `🔶` stays until a real domain actually serves — see `deploy/README.md`. |
 
 ## Per-milestone detail
 
@@ -1288,9 +1291,18 @@ Postgres. `Verified` awaits CI green on `main`.
 
 ### M14.18 · Deployment wiring
 
-**Not started. 🔶 Blocked on U14: a registered apex domain and a DNS-provider API token** — neither
-exists, and no VM is provisioned (D-ProductionDeployment is design-only). Everything else in M14 is
-verifiable locally without any of it, which is why this milestone is last and alone.
+**Config written (2026-09-04); still 🔶 blocked on U14: a registered apex domain and a
+DNS-provider API token** — neither exists, and no VM is provisioned. `deploy/caddy/Caddyfile`
+(DNS-01 wildcard block, HSTS with `includeSubDomains`, a per-tenant-host `rate_limit` zone),
+`deploy/caddy/Dockerfile` (an `xcaddy` build carrying `caddy-dns/cloudflare` — a concrete,
+swappable example provider, not a decision — and `caddy-ratelimit`, neither shipped by stock
+Caddy), `docker-compose.prod.yml` (the override D-ProductionDeployment names, layered on top of
+the unmodified `docker-compose.yml`), and `.env.prod.example` all exist and validate locally: the
+custom image builds, `caddy list-modules` shows both third-party modules registered, and `caddy
+validate` accepts the Caddyfile against dummy env values. See `deploy/README.md`. None of this
+constitutes going live — no DNS-01 challenge has ever run for real, because there is no real
+domain to run one against. Everything else in M14 is verifiable locally against `*.localhost`
+with no DNS at all, which is why this milestone is last and alone.
 
 A Caddyfile with the DNS-01 wildcard block for `*.<apex>`. This is the one genuinely new
 infrastructure constraint the arc introduces: **ACME cannot issue a wildcard certificate over
