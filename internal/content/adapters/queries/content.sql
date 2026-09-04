@@ -47,24 +47,29 @@ VALUES (sqlc.arg('site_id'), sqlc.arg('kind'), COALESCE(sqlc.narg('translation_g
 	sqlc.arg('locale'), sqlc.narg('parent_document_id'), sqlc.arg('slug'),
 	sqlc.narg('event_starts_at'), sqlc.narg('event_ends_at'), sqlc.narg('event_recurrence_rrule'))
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at;
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at, meta_title, meta_description;
 
 -- name: GetDocument :one
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at, meta_title, meta_description
 FROM openfaithmap.content_documents WHERE id = sqlc.arg('id') AND deleted_at IS NULL;
 
 -- name: UpdateDocument :one
+-- meta_title/meta_description: nil (narg unset) leaves the column unchanged; an empty string is a
+-- real value (clears the override back to the renderer's derived fallback), so this is COALESCE on
+-- the arg itself, same as slug — never on the empty string.
 UPDATE openfaithmap.content_documents
 SET slug = COALESCE(sqlc.narg('slug'), slug),
     parent_document_id = CASE
       WHEN sqlc.arg('clear_parent')::bool THEN NULL
       WHEN sqlc.narg('parent_document_id')::uuid IS NOT NULL THEN sqlc.narg('parent_document_id')::uuid
       ELSE parent_document_id
-    END
+    END,
+    meta_title = COALESCE(sqlc.narg('meta_title'), meta_title),
+    meta_description = COALESCE(sqlc.narg('meta_description'), meta_description)
 WHERE id = sqlc.arg('id') AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at;
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at, meta_title, meta_description;
 
 -- name: UpdateDocumentState :one
 -- publish_at is set unconditionally (not COALESCE): every transition other than SCHEDULE passes
@@ -74,11 +79,11 @@ SET state = sqlc.arg('state'), publish_at = sqlc.narg('publish_at'),
     published_at = CASE WHEN sqlc.arg('first_publish')::bool THEN now() ELSE published_at END
 WHERE id = sqlc.arg('id') AND deleted_at IS NULL
 RETURNING id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at;
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at, meta_title, meta_description;
 
 -- name: ListDocuments :many
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at, meta_title, meta_description
 FROM openfaithmap.content_documents
 WHERE site_id = sqlc.arg('site_id') AND deleted_at IS NULL
 	AND (sqlc.narg('kind')::text IS NULL OR kind = sqlc.narg('kind')::text)
@@ -90,7 +95,7 @@ ORDER BY created_at DESC;
 -- M14.15/D-PublishOnRead: a SCHEDULED document whose publish_at has passed is publicly listed with
 -- no job ever having flipped its state — correctness lives entirely in this WHERE clause.
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at, meta_title, meta_description
 FROM openfaithmap.content_documents
 WHERE site_id = sqlc.arg('site_id') AND deleted_at IS NULL
 	AND (state IN ('PUBLISHED', 'UNLISTED') OR (state = 'SCHEDULED' AND publish_at <= now()))
@@ -143,7 +148,7 @@ WHERE cdr.document_id = sqlc.arg('document_id')
 
 -- name: GetDocumentBySlug :one
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at, meta_title, meta_description
 FROM openfaithmap.content_documents
 WHERE site_id = sqlc.arg('site_id') AND kind = sqlc.arg('kind') AND locale = sqlc.arg('locale')
 	AND slug = sqlc.arg('slug') AND deleted_at IS NULL;
@@ -154,7 +159,7 @@ WHERE site_id = sqlc.arg('site_id') AND kind = sqlc.arg('kind') AND locale = sql
 -- group" apart from "this group belongs to a different site" by inspecting the returned rows'
 -- own site_id, rather than the query silently filtering a cross-site collision down to zero rows.
 SELECT id, site_id, kind, translation_group_id, locale, parent_document_id, slug, state, published_at,
-	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at
+	event_starts_at, event_ends_at, event_recurrence_rrule, created_at, updated_at, draft_revision_id, published_revision_id, publish_at, meta_title, meta_description
 FROM openfaithmap.content_documents
 WHERE translation_group_id = sqlc.arg('translation_group_id') AND deleted_at IS NULL
 ORDER BY created_at ASC;

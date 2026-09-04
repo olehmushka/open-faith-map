@@ -206,6 +206,8 @@ type OpenfaithmapContentDocument struct {
 	DraftRevisionID      pgtype.Text
 	PublishedRevisionID  pgtype.Text
 	PublishAt            pgtype.Timestamptz
+	MetaTitle            pgtype.Text
+	MetaDescription      pgtype.Text
 }
 
 type OpenfaithmapContentDocumentRevision struct {

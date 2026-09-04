@@ -53,6 +53,8 @@ export * from "./schedulePublishAtNotFuture";
 export * from "./serviceSchedule";
 export * from "./site";
 export * from "./siteChrome";
+export * from "./sitemapEntry";
+export * from "./sitemapEntryList";
 export * from "./siteNotFound";
 export * from "./slugReserved";
 export * from "./slugTaken";

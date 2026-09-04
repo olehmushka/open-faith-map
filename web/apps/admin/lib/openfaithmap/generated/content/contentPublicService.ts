@@ -6,6 +6,7 @@ import { IPatternPage } from "./patternPage";
 import { IPublicNavItemList } from "./publicNavItemList";
 import { ISite } from "./site";
 import { ISiteChrome } from "./siteChrome";
+import { ISitemapEntryList } from "./sitemapEntryList";
 import { ISubmitContactFormRequest } from "./submitContactFormRequest";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -58,6 +59,11 @@ export interface IContentPublicService {
      *
      */
     getPublicDocumentByPath(siteId: string, locale: string, path: string): Promise<IDocumentWithAncestors>;
+    /**
+     * M14.17. Backs web/apps/web's app/sitemap.ts — every effectively-PUBLISHED PAGE document's resolved href, in no particular order. UNLISTED is excluded (a sitemap is an indexing hint; UNLISTED's whole point is "reachable by direct link, excluded from listings").
+     *
+     */
+    listSitemapEntries(siteId: string): Promise<ISitemapEntryList>;
     /**
      * M14.16, D-InAppInbox. Genuinely anonymous — the third such write in the codebase, after moderation's two. Rate-limited (internal/platform/ratelimit, wrapping this whole service's registration — see cmd/openfaithmap-api/register_content.go). Always succeeds for a honeypot-triggered or too-fast submission; only Content:FormSubmissionInvalid (empty message) and Content:SiteNotFound are ever returned as errors.
      *
@@ -286,6 +292,27 @@ export class ContentPublicService implements IContentPublicService {
                 "locale": locale,
                 "path": path,
             },
+            [
+                siteId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * M14.17. Backs web/apps/web's app/sitemap.ts — every effectively-PUBLISHED PAGE document's resolved href, in no particular order. UNLISTED is excluded (a sitemap is an indexing hint; UNLISTED's whole point is "reachable by direct link, excluded from listings").
+     *
+     */
+    public listSitemapEntries(siteId: string): Promise<ISitemapEntryList> {
+        return this.bridge.call<ISitemapEntryList>(
+            "ContentPublicService",
+            "listSitemapEntries",
+            "GET",
+            "/content/v1/public/sites/{siteId}/sitemap-entries",
+            __undefined,
+            __undefined,
+            __undefined,
             [
                 siteId,
             ],

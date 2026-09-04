@@ -2,15 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ContentLocalePicker } from "@/components/content-locale-picker";
+import { JsonLd } from "@/components/json-ld";
 import { PageDocument } from "@/components/page-document";
-import { ContentApiError, getPublicDocumentByPath, getSiteBySlug, type DocumentWithAncestors, type Site } from "@/lib/content";
+import { ContentApiError, getPublicBlocks, getPublicDocumentByPath, getSiteBySlug, getSiteChrome, type DocumentWithAncestors, type Site } from "@/lib/content";
+import { deriveDescription, deriveTitle, resolveOrigin } from "@/lib/seo";
+import { breadcrumbListJsonLd } from "@/lib/structured-data";
 
-// Same force-dynamic reasoning as the tenant root page — content changes independently of any build.
+// M14.17: force-dynamic stays — this catch-all's real cost was never route-level static-shell reuse
+// (a per-tenant, per-path page can't share a build-time-generated shell across arbitrary Host
+// headers/slugs it has no generateStaticParams for; verified empirically: removing this here made
+// Next 16/Turbopack attempt static optimization anyway and throw DYNAMIC_SERVER_USAGE on
+// resolveOrigin()'s headers() call for any path outside its build-time static set). The real win
+// this milestone asked for — not re-querying openfaithmap-api on every anonymous view — comes from
+// lib/content.ts's tagged fetch Data Cache (getPublicDocumentByPath/getPublicBlocks, 60s TTL +
+// tag-based revalidation), which persists independent of this route-level setting.
 export const dynamic = "force-dynamic";
 
 // M14.10: individual Page routes on the tenant subdomain, nested under the same /_sites/[slug] tree
@@ -43,41 +52,70 @@ async function resolve(params: Promise<RouteParams>): Promise<{ params: RoutePar
   }
 }
 
-// First generateMetadata in this app — emits alternates.languages (hreflang) for every PUBLISHED
-// sibling in the document's translation group, per DS-OFM-7's acceptance criterion. uiLocale is
-// preserved across every alternate: switching content language never changes the site chrome's own
-// language.
+// First generateMetadata in this app (M14.14 added it for alternates.languages only; M14.17 fills
+// in the rest) — title/description (explicit metaTitle/metaDescription override, else derived from
+// the document's own blocks), canonical, and OpenGraph/Twitter, alongside the existing hreflang.
 export async function generateMetadata({ params }: { params: Promise<RouteParams> }): Promise<Metadata> {
   const found = await resolve(params);
   if (!found) return {};
-  const { params: routeParams, resolved } = found;
+  const { params: routeParams, resolved, site } = found;
+  const { document } = resolved;
 
-  const headersList = await headers();
-  // proxy.ts's own next-intl-response-header-copy (`intlResponse.headers.forEach(...).append(...)`)
-  // duplicates "host" onto the rewritten request in some cases — take the first value defensively
-  // rather than emitting a broken two-host hreflang URL.
-  const host = headersList.get("host")?.split(",")[0]?.trim();
-  if (!host || resolved.translations.length < 2) return {};
-  const protocol = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
-  const origin = `${protocol}://${host}`;
+  const [blocks, chrome, origin] = await Promise.all([
+    getPublicBlocks(document.id),
+    getSiteChrome(site.id).catch(() => null),
+    resolveOrigin(),
+  ]);
+
+  const title = document.metaTitle || deriveTitle(blocks, document.slug);
+  const description = document.metaDescription || deriveDescription(blocks);
+  const path = `/${routeParams.locale}/${routeParams.contentLocale}/${routeParams.pageSlug.join("/")}`;
+  const canonical = origin ? `${origin}${path}` : undefined;
+  const ogImage = firstImageBlockUrl(blocks) ?? chrome?.logoUrl ?? undefined;
 
   return {
+    title,
+    description,
     alternates: {
-      languages: Object.fromEntries(resolved.translations.map((t) => [t.locale, `${origin}/${routeParams.locale}${t.href}`])),
+      canonical,
+      ...(resolved.translations.length >= 2 && origin
+        ? { languages: Object.fromEntries(resolved.translations.map((t) => [t.locale, `${origin}/${routeParams.locale}${t.href}`])) }
+        : {}),
     },
+    openGraph: { title, description, url: canonical, images: ogImage ? [ogImage] : undefined },
+    twitter: { card: "summary_large_image", title, description, images: ogImage ? [ogImage] : undefined },
   };
+}
+
+function firstImageBlockUrl(blocks: { blockTypeCode: string; position: number; data: unknown }[]): string | undefined {
+  const sorted = [...blocks].sort((a, b) => a.position - b.position);
+  for (const b of sorted) {
+    if (b.blockTypeCode !== "image") continue;
+    const url = (b.data as Record<string, unknown> | null)?.url;
+    if (typeof url === "string" && url) return url;
+  }
+  return undefined;
 }
 
 export default async function TenantPageRoute({ params }: { params: Promise<RouteParams> }) {
   const found = await resolve(params);
   if (!found) notFound();
   const { params: routeParams, resolved, site } = found;
+  const origin = await resolveOrigin();
 
   return (
     <main
       className="mx-auto flex max-w-3xl flex-col gap-6"
       style={{ paddingInline: "calc(1.5rem * var(--of-space-scale, 1))", paddingBlock: "calc(3rem * var(--of-space-scale, 1))" }}
     >
+      {resolved.ancestors.length > 0 && origin ? (
+        <JsonLd
+          data={breadcrumbListJsonLd(
+            [...resolved.ancestors, resolved.document],
+            (slugChain) => `${origin}/${routeParams.locale}/${routeParams.contentLocale}/${slugChain.join("/")}`,
+          )}
+        />
+      ) : null}
       <Breadcrumbs ancestors={resolved.ancestors} current={resolved.document} uiLocale={routeParams.locale} contentLocale={routeParams.contentLocale} />
       <ContentLocalePicker translations={resolved.translations} uiLocale={routeParams.locale} activeContentLocale={routeParams.contentLocale} />
       <PageDocument documentId={resolved.document.id} siteId={site.id} />

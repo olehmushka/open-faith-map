@@ -125,6 +125,16 @@ func (s *Service) GetSiteChrome(ctx context.Context, siteID string) (domain.Site
 	if line, ok := religiondomain.CoarsenAddress(rsite.Locality, rsite.AdminArea1, rsite.AdminArea2, rsite.Street, rsite.HouseNumber, rsite.PostalCode, rsite.PublicPrecision); ok {
 		chrome.Address = &line
 	}
+	// M14.17: Church JSON-LD's geo field. Must go through the exact same religiondomain.Coarsen a
+	// SearchSites/DiscoverySite read already applies (internal/religion/application/service.go) —
+	// GetSiteChrome's own precise rsite.Latitude/Longitude bypasses it entirely otherwise, which
+	// would leak an exact coordinate through this anonymous endpoint even for a `hidden`-precision
+	// site whose address CoarsenAddress just suppressed two lines above. ok=false (hidden) leaves
+	// both fields nil, same as Address's own hidden case.
+	if lat, lng, ok := religiondomain.Coarsen(rsite.Latitude, rsite.Longitude, rsite.PublicPrecision); ok {
+		chrome.Latitude = &lat
+		chrome.Longitude = &lng
+	}
 
 	schedules, err := s.religion.ListServiceSchedulesByUnit(ctx, site.CongregationUnitRID)
 	if err != nil {
@@ -613,6 +623,33 @@ func (s *Service) ListPublicNavItems(ctx context.Context, siteID string) ([]doma
 			return nil, err
 		}
 		out = append(out, domain.PublicNavItem{Label: item.Label, Href: buildPublicHref(doc, ancestors), External: false})
+	}
+	return out, nil
+}
+
+// ListSitemapEntries (M14.17) is the public read web/apps/web's app/sitemap.ts calls — every
+// effectively-PUBLISHED PAGE document, hrefs already resolved server-side via the same
+// resolveAncestorChain/buildPublicHref pair ListPublicNavItems already uses, so the caller never
+// walks N ancestor chains itself. Reuses ListPublicDocuments's own store query (kind=PAGE) rather
+// than a new one; the UNLISTED exclusion happens here, in Go, since that query's own WHERE clause
+// intentionally includes UNLISTED for every other caller.
+func (s *Service) ListSitemapEntries(ctx context.Context, siteID string) ([]domain.SitemapEntry, error) {
+	kind := string(domain.KindPage)
+	docs, err := s.store.ListPublicDocuments(ctx, siteID, &kind, nil)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	out := make([]domain.SitemapEntry, 0, len(docs))
+	for _, doc := range docs {
+		if doc.EffectiveState(now) != domain.StatePublished {
+			continue
+		}
+		ancestors, err := s.resolveAncestorChain(ctx, doc)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.SitemapEntry{Href: buildPublicHref(doc, ancestors), UpdatedAt: doc.UpdatedAt})
 	}
 	return out, nil
 }

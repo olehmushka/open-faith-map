@@ -11,6 +11,7 @@ import (
 	gencontent "github.com/olehmushka/open-faith-map/internal/conjure/openfaithmap/content"
 	"github.com/olehmushka/open-faith-map/internal/content/application"
 	"github.com/olehmushka/open-faith-map/internal/content/domain"
+	"github.com/palantir/pkg/datetime"
 )
 
 // PublicService implements the generated ContentPublicService — genuinely anonymous, no
@@ -124,6 +125,20 @@ func (s *PublicService) GetPublicDocumentByPath(ctx context.Context, siteIdArg s
 		outTranslations = append(outTranslations, gencontent.DocumentTranslation{Locale: t.Locale, Href: t.Href})
 	}
 	return gencontent.DocumentWithAncestors{Document: toAPIDocument(doc), Ancestors: toAPIDocuments(ancestors), Translations: outTranslations}, nil
+}
+
+// ListSitemapEntries backs web/apps/web's app/sitemap.ts (M14.17) — no auth, same anonymous shape
+// as every other public read on this service.
+func (s *PublicService) ListSitemapEntries(ctx context.Context, siteIdArg string) (gencontent.SitemapEntryList, error) {
+	entries, err := s.appService.ListSitemapEntries(ctx, siteIdArg)
+	if err != nil {
+		return gencontent.SitemapEntryList{}, mapErr(err, errCtx{SiteID: siteIdArg})
+	}
+	out := make([]gencontent.SitemapEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, gencontent.SitemapEntry{Href: e.Href, UpdatedAt: datetime.DateTime(e.UpdatedAt)})
+	}
+	return gencontent.SitemapEntryList{Entries: out}, nil
 }
 
 func (s *PublicService) ListBlockTypes(ctx context.Context) (gencontent.BlockTypePage, error) {

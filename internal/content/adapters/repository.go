@@ -457,6 +457,7 @@ func (r *Repository) GetDocumentBySlug(ctx context.Context, siteID string, kind 
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+		MetaTitle: fromNullableText(row.MetaTitle), MetaDescription: fromNullableText(row.MetaDescription),
 	}, nil
 }
 
@@ -475,6 +476,7 @@ func (r *Repository) GetDocument(ctx context.Context, id string) (domain.Documen
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+		MetaTitle: fromNullableText(row.MetaTitle), MetaDescription: fromNullableText(row.MetaDescription),
 	}, nil
 }
 
@@ -543,6 +545,7 @@ func (r *Repository) ListNavItems(ctx context.Context, siteID string) ([]domain.
 func (r *Repository) UpdateDocument(ctx context.Context, id string, in domain.UpdateDocumentInput) (domain.Document, error) {
 	row, err := r.q.UpdateDocument(ctx, contentsql.UpdateDocumentParams{
 		ID: id, Slug: nullableText(in.Slug), ClearParent: in.ClearParent, ParentDocumentID: nullableText(in.ParentDocumentID),
+		MetaTitle: nullableText(in.MetaTitle), MetaDescription: nullableText(in.MetaDescription),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Document{}, domain.ErrDocumentNotFound
@@ -561,6 +564,7 @@ func (r *Repository) UpdateDocument(ctx context.Context, id string, in domain.Up
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+		MetaTitle: fromNullableText(row.MetaTitle), MetaDescription: fromNullableText(row.MetaDescription),
 	}, nil
 }
 
@@ -585,6 +589,7 @@ func (r *Repository) UpdateDocumentState(ctx context.Context, id string, next do
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+		MetaTitle: fromNullableText(row.MetaTitle), MetaDescription: fromNullableText(row.MetaDescription),
 	}, nil
 }
 
@@ -605,6 +610,7 @@ func (r *Repository) ListDocuments(ctx context.Context, siteID string, kind, loc
 			EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 			EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 			DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+			MetaTitle: fromNullableText(row.MetaTitle), MetaDescription: fromNullableText(row.MetaDescription),
 		})
 	}
 	return out, nil
@@ -628,6 +634,7 @@ func (r *Repository) ListDocumentsByTranslationGroup(ctx context.Context, transl
 			EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 			EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 			DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+			MetaTitle: fromNullableText(row.MetaTitle), MetaDescription: fromNullableText(row.MetaDescription),
 		})
 	}
 	return out, nil
@@ -650,6 +657,7 @@ func (r *Repository) ListPublicDocuments(ctx context.Context, siteID string, kin
 			EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 			EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 			DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+			MetaTitle: fromNullableText(row.MetaTitle), MetaDescription: fromNullableText(row.MetaDescription),
 		})
 	}
 	return out, nil
@@ -781,5 +789,6 @@ func (r *Repository) snapshotAndPromote(ctx context.Context, documentID, draftRe
 		EventStartsAt: db.NullableTime(row.EventStartsAt), EventEndsAt: db.NullableTime(row.EventEndsAt),
 		EventRecurrenceRRule: fromNullableText(row.EventRecurrenceRrule), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		DraftRevisionID: fromNullableText(row.DraftRevisionID), PublishedRevisionID: fromNullableText(row.PublishedRevisionID),
+		MetaTitle: fromNullableText(row.MetaTitle), MetaDescription: fromNullableText(row.MetaDescription),
 	}, nil
 }

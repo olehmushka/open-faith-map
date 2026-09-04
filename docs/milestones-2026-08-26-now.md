@@ -9,9 +9,9 @@ order*. Gate definitions are in [`development-process.md`](development-process.m
 **M0–M13.6 are done** (no row had unbuilt Backend/Migrated/UI work as of 2026-08-26) — see
 [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) for that full history.
 
-**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.15 (M14.0–M14.9
-2026-08-27/28, M14.10–M14.12 2026-08-29, M14.13–M14.14 2026-08-30, M14.15 2026-09-03) are done**, no
-other sub-milestone is built yet. It is the second half of the
+**M14 · The site-building arc** is scoped (2026-08-26); **M14.0 through M14.17 (M14.0–M14.9
+2026-08-27/28, M14.10–M14.12 2026-08-29, M14.13–M14.14 2026-08-30, M14.15 2026-09-03, M14.16
+2026-09-03, M14.17 2026-09-04) are done**, no other sub-milestone is built yet. It is the second half of the
 product: M4/M13 finished **discovery** (the map); M14 finishes **presence** (the per-congregation
 site builder), whose bones shipped at M3/M4 and were never built on. Nineteen sub-milestones,
 M14.0–M14.18. **M14.0 was the gate for the whole arc** — it wrote the nine `D-` blocks and the
@@ -45,7 +45,13 @@ semantics — see its own row below. **M14.14 closes `DS-OFM-7`**, splitting the
 per-page locale picker + `hreflang` and an editor-side translation panel — see its own row below.
 **M14.15 adds scheduled publishing with no scheduler**, a `SCHEDULED` state whose visibility is
 decided entirely by the public read predicate comparing `publish_at` to `now()` — see its own row
-below. Next up: M14.16.
+below. **M14.16 adds a contact form and an in-app inbox**, a genuinely anonymous write gated by a
+honeypot/minimum-time-to-submit pair and `internal/platform/ratelimit`, with no outbound email
+anywhere — see its own row below. **M14.17 adds per-page SEO metadata, JSON-LD structured data, and
+tag-based caching**, closing out the arc's remaining tenant-site gaps: real `<title>`/description/
+canonical/OG on every page, `Church`/`Event`/`BreadcrumbList` JSON-LD, a per-tenant `sitemap.xml`/
+`robots.txt`, and a hybrid tags-plus-TTL cache replacing the unconditional `force-dynamic` most
+tenant routes carried since M14.9 — see its own row below. Every M14.x sub-milestone is now built.
 
 ## Unresolved unknowns — read this before building anything
 
@@ -107,8 +113,8 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | M14.13 · Starter patterns + block-type catalog admin | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-08-30).** New `content_patterns` (`migrations/0029_content_patterns.sql`) with WordPress's **unsynced** semantics: inserting a pattern is a pure client-side copy of its `blocks` into the document editor's local state (fetched once via the new public `listPatterns`), persisted through the existing `putBlocks` full-replace path — no dedicated "insert" mutation endpoint exists, or is needed, since a pattern's blocks are already the same `BlockInput`-shaped array a document's own block list uses. Seeded 5 church-specific starters — Parish home page, Service times, Meet the clergy, Getting here, Feast-day announcement. Finally builds `content.catalog.manage` (block-type create/update, pattern create/update/delete), gated on `platform-moderator` standing — the exact same `PermModerationStanding`/root-unit-scoped check `internal/moderation`'s `requireModerate` already uses, reused rather than a new authority concept (D-SitePatterns' own explicit call). **Owner decision this session:** `updateBlockType` locks `json_schema`/`ui_schema` after creation — the request type has no such field at all — so a runtime catalog edit can never silently break already-saved blocks of an existing type or the admin form built from its old schema; a moderator wanting a different shape retires the old type and creates a new one. **Named, accepted scope boundary:** a block type added at runtime works in the admin inserter/form (M14.4/M14.5 are schema-driven) but does not render on the public site — `web/apps/web/app/blocks.tsx` dispatches on a hardcoded switch with a no-op fallback for unknown codes; making the public renderer schema-driven too is a separate, larger change. Two new admin routes (`/admin/block-types`, `/admin/patterns`) follow `/admin/moderation`'s own precedent exactly: no local frontend role gate, shown unconditionally in the sidebar nav, the backend's `Content:Forbidden` is the entire authorization decision. Live-verified over real HTTP against the running docker-compose stack (dev-minted tokens, `docker exec ... curlimages/curl` for non-GET per this arc's own verification-notes convention): anonymous 401, an authenticated non-moderator 403, a real `platform-moderator` grant 200 on `GET/POST/PUT /content/v1/catalog/block-types` and the patterns equivalents — a type created, confirmed on the public `listBlockTypes`, retired, confirmed gone; a pattern created, confirmed on the public `listPatterns`, deleted, confirmed gone. `internal/content/content_integration_test.go` covers the same shapes against real Postgres (moderator grant/denial, duplicate-code, not-found, uncompilable-schema cases). `web/apps/admin`'s Vitest suite gained a pattern-insertion test (`block-list-editor.test.tsx`) alongside the existing 42. `Verified` awaits CI green on `main`. |
 | M14.14 · Locale switching — closes `DS-OFM-7` | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-08-30).** No migration needed — `content_documents.translation_group_id`/`locale` and their index have existed since M3; this milestone is entirely app-level. **Two owner decisions this session shaped the work:** (1) the picker + `hreflang` are **per-page, in-content** (rendered inside the PAGE route itself), never in the shared site header/footer — the header wraps every route including the root posts/events feed, which has no single translatable document behind it, and a picker that could 404 is explicitly called worse than no picker; (2) the site chrome's UI language (next-intl's `[locale]` route segment, still fixed to 4: en/uk/es/pt) and a document's own **content locale are now decoupled** — a congregation can author a page in any language, not only the 4 chrome locales, so the tenant PAGE route grew a new `[contentLocale]` segment (`/{uiLocale}/{contentLocale}/{pageSlug...}`) independent of the chrome language, which stays put when a visitor switches content locale. `GetPublicDocumentByPath`'s `DocumentWithAncestors` response grew a `translations` list (every `PUBLISHED` sibling in the document's translation group, each with its own resolved href — siblings can sit at a different ancestor hierarchy/slug per locale, so a translation's href is never derived from the leaf's own) — one round trip, same precedent as the response's own `ancestors` field. `generateMetadata` (the first in this app) emits `alternates.languages` from that same list. `CreateDocument`'s existing-but-manual "join an existing translation group" path (`translationGroupId`, already wired since M3/M14.8's own manual admin field) gained two app-level guards with no DB constraint backing either: a duplicate locale within one group (`Content:TranslationLocaleTaken`) and a group belonging to a different site (`Content:TranslationGroupNotFound`) — content.md's own invariant is that a group's documents share nothing but the group id, so nothing in the DB stops either otherwise. The editor's new Translations panel (document editor page) reuses the same "filter what you already have" convention `new/page.tsx`'s own `existingPages` already established — no dedicated list-by-group endpoint — and its "create translation" link reuses the existing `new-document-form.tsx` flow (pre-filling/locking `kind`/`translationGroupId` via query params) rather than a bespoke form. `internal/content/content_integration_test.go` covers the same shapes against real Postgres (a draft sibling excluded from `translations`, both siblings included once published, the duplicate-locale and cross-site guards). `Verified` awaits CI green on `main`. |
 | M14.15 · Scheduled publishing, no scheduler | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-09-03).** `content_documents.publish_at` + a `SCHEDULED` state; the public predicate becomes `state = 'PUBLISHED' OR (state = 'SCHEDULED' AND publish_at <= now())`, applied everywhere a `PUBLISHED` document is already visible (page route, feeds, nav, translations). **Correctness lives in the `WHERE` clause**, so it behaves identically in local dev and on a VM that does not exist yet — no timer, no goroutine, nothing to fire, and no new unattributable background writer (`DS-OFM-16`). The admin UI shows **effective** state, not the raw column; the transitions lookup itself is keyed by effective state too, so `UNLIST`/`REVERT_TO_DRAFT` on a due-but-unsettled `SCHEDULED` document is what settles it. Live-verified against the running docker-compose stack: `publish_at` moved into the past by a direct SQL write (no app call) flips a real tenant-subdomain 404 to 200 with no restart in between. `Verified` awaits CI green on `main`. |
-| M14.16 · Contact form + in-app inbox | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | `content_form_submissions` plus an anonymous write on `ContentPublicService`, reusing `internal/platform/ratelimit` (M7) rather than adding a second limiter. Spam handled without a third party: honeypot field, minimum time-to-submit, per-IP rate limit. Messages screen in `openfaithmap-admin`, `content.manage`-gated. **No SMTP anywhere** — follows D-InviteLinkMVP's precedent exactly. Submission text is untrusted and renders as plain text only. |
-| M14.17 · SEO, structured data, caching | ⬜ | ⬜ | ➖ | ➖ | ⬜ | ⬜ | Per-page `<title>`/description/canonical/OG. Per-tenant `sitemap.xml` + `robots.txt`. JSON-LD: `Church` for the site, `Event` for events, `BreadcrumbList`. Replaces `force-dynamic` with tag-based revalidation invalidated on publish — today every anonymous page view re-queries the API, which is both slow and a free DoS lever. |
+| M14.16 · Contact form + in-app inbox | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-09-03).** `content_form_submissions` plus an anonymous write on `ContentPublicService`, reusing `internal/platform/ratelimit` (M7) rather than adding a second limiter. Spam handled without a third party: honeypot field, minimum time-to-submit, per-IP rate limit. Messages screen in `openfaithmap-admin`, `content.manage`-gated. **No SMTP anywhere** — follows D-InviteLinkMVP's precedent exactly. Submission text is untrusted and renders as plain text only. `Verified` awaits CI green on `main`. |
+| M14.17 · SEO, structured data, caching | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | **Built (2026-09-04).** Per-page `<title>`/description/canonical/OG (explicit `meta_title`/`meta_description` override, else derived from the document's own blocks). Per-tenant `sitemap.xml` + `robots.txt`. JSON-LD: `Church` for the site (geo coarsened the same way the address already is), `Event` for events, `BreadcrumbList` for nested pages. Hybrid tags-plus-TTL caching replaces unconditional `force-dynamic` on the tenant root and its data reads (a 60s TTL ceiling plus an on-demand `POST /api/revalidate` openfaithmap-admin calls right after a transition) — see its own row below for the one route this couldn't be removed from. |
 | M14.18 · Deployment wiring | ⬜ | ⬜ | ➖ | ➖ | ➖ | 🔶 | **Blocked on U14: a registered apex domain + a DNS-provider API token.** Caddyfile with the DNS-01 wildcard block (wildcards cannot be issued over HTTP-01 — a new, real constraint on the provider choice D-ProductionDeployment deliberately left open), wildcard DNS record, HSTS with `includeSubDomains`, per-tenant read rate limiting. Confirms the backup story is unchanged: no blobs to back up, because there are no uploads. Records the `openfaithmap-sites` extraction as the named Phase 2 trigger. |
 
 ## Per-milestone detail
@@ -1175,42 +1181,110 @@ that point; a subsequent `UNLIST` call over HTTP settles the row to a real `stat
 
 ### M14.16 · Contact form + in-app inbox
 
-**Not started.** Depends on M14.11. Implements `D-InAppInbox`.
+**Built (2026-09-03).** Depends on M14.11. Implements `D-InAppInbox`.
 
-New `content_form_submissions`, plus a genuinely anonymous write on `ContentPublicService` — the
-third such endpoint in the codebase, after moderation's two. It reuses `internal/platform/ratelimit`
-(M7, D-Hardening) rather than adding a second limiter, which also means it inherits the shared-bucket
-behaviour noted in the verification section below.
+New `content_form_submissions` (`migrations/0031_content_form_submissions.sql`), plus a genuinely
+anonymous `submitContactForm` write on `ContentPublicService` — the third such endpoint in the
+codebase, after moderation's two. It reuses `internal/platform/ratelimit` (M7, D-Hardening) rather
+than adding a second limiter, which also means it inherits the shared-bucket behaviour noted in the
+verification section below.
 
 Spam handling with no third-party dependency: a honeypot field, a minimum time-to-submit, and the
-per-IP rate limit. A Messages screen in `openfaithmap-admin`, `content.manage`-gated so it follows
-the same authority as the rest of the site.
+per-IP rate limit — all three handled silently (no error, no insert) rather than reported, per
+D-InAppInbox's "an error teaches the bot." `content.manage`-gated `listFormSubmissions` backs a new
+Messages screen in `openfaithmap-admin`.
 
 **No SMTP anywhere.** D-InviteLinkMVP shipped invites as shareable links precisely because this
-stack has no outbound mail, and this arc does not add that dependency. Submission text is untrusted
-and renders as plain text only — never as rich text, never as a block.
+stack has no outbound mail, and this arc does not add that dependency. The public-facing form ships
+as a new seeded `contact_form` block type, consistent with the arc's structured-components
+philosophy; submission text is untrusted and renders as plain text only — never as rich text, never
+as a block.
 
-**Acceptance criteria.** An anonymous submission appears in the admin inbox. A burst is refused by
-the rate limiter. A honeypot-filled submission is silently accepted and discarded, not error'd (an
-error teaches the bot). Submission text containing markup renders as literal text. No congregation
-admin without `content.manage` on that unit can read the inbox — tested with a refused token.
+**Acceptance criteria — met.** A real anonymous POST inserts and appears in the admin-gated list; a
+honeypot-filled submission returns success but inserts nothing; a burst of requests is
+rate-limited after 5; message text containing markup round-trips as a literal string.
+`internal/content/content_integration_test.go` covers the same shapes against real Postgres,
+including the empty-message validation error and the `content.manage` denial case.
 
 ### M14.17 · SEO, structured data, caching
 
-**Not started.** Depends on M14.10, M14.15 (scheduled documents must not leak into sitemaps).
+**Built (2026-09-04).** Depends on M14.10, M14.15 (scheduled documents must not leak into sitemaps).
 
-Per-page `<title>`, description, canonical and OG tags — none of which exist on any public page
-today. Per-tenant `sitemap.xml` and `robots.txt`. JSON-LD: `Church` for the site, `Event` for event
-documents, `BreadcrumbList` for nested pages.
+New `content_documents.meta_title`/`meta_description` (`migrations/0032_content_seo.sql`, both
+nullable overrides) — nothing else in the schema carried a title field at all before this, so a
+page's `<title>` was always incidental (whatever `heading` block an editor happened to place
+first). `lib/seo.ts` derives a fallback when neither override is set: the first `heading` block's
+plain text for the title (else a humanized slug), the first `paragraph`/`quote`/`list` block's
+plain text for the description (deliberately never a `heading` — that would just repeat the
+title). The page route's `generateMetadata` (M14.14's own first use of the function, extended
+here) emits `title`/`description`/`alternates.canonical`/`openGraph`/`twitter`, OG image = the
+document's first `image` block else the site's `logoUrl`. The tenant root gets the same treatment
+keyed off `SiteChrome.congregationName`/`logoUrl`.
 
-Replaces `export const dynamic = "force-dynamic"` with tag-based revalidation invalidated on
-publish/unpublish. The current setting re-queries the API on every anonymous page view: slow, and a
-free amplification lever against `openfaithmap-api` from unauthenticated traffic.
+JSON-LD, rendered as `<script type="application/ld+json">{JSON.stringify(...)}</script>` — never
+`dangerouslySetInnerHTML` (M14.1's ESLint invariant) — with `<` escaped to `<` in the
+stringified payload first, since a literal `</script>` inside admin-controlled text (a congregation
+name, an event title) would otherwise close the tag early in the browser's own HTML parser,
+independent of React's text-node handling. `Church` on the tenant root: name/address/logo/`sameAs`
+from `SiteChrome`, `geo` from two new `SiteChrome.latitude`/`longitude` fields — which, caught
+during live verification, must run through the exact same `religiondomain.Coarsen` a
+`SearchSites`/`DiscoverySite` read already applies (`internal/content/application/service.go`'s
+`GetSiteChrome`), or a `hidden`-precision site's exact coordinate would leak through this anonymous
+endpoint even though `CoarsenAddress` already suppresses its address line two lines above. `Event`
+per event (location = the site's own address — an `EVENT` document has no venue field of its own,
+a named scope call). `BreadcrumbList` on a page route at depth ≥ 2, mirroring M14.10's own
+breadcrumb UI condition and its `humanizeSlug` label convention exactly (both now share
+`lib/seo.ts`'s one copy).
 
-**Acceptance criteria.** A published page carries a real title and OG tags. The sitemap lists
-published and due-scheduled documents only. Publishing invalidates the cached page within the
-declared window; an unrelated page's cache is untouched. A repeat anonymous page view does not
-re-query the API.
+A new public `listSitemapEntries` (`ContentPublicService`) backs `app/sitemap.ts`: every
+effectively-`PUBLISHED` `PAGE` document's resolved href, reusing the same ancestor-chain-to-href
+resolution `ListPublicNavItems` already has. **UNLISTED is excluded from the sitemap** — a sitemap
+is an indexing hint, and UNLISTED's whole point is "reachable by direct link, excluded from
+listings." **Scope call, named rather than silently dropped:** each `PAGE` gets one representative
+URL at the site's default UI locale; `POST`/`EVENT` documents have no route of their own (rendered
+inline on the tenant root, which the sitemap lists separately) and so get no entry. `app/robots.ts`
+disallows `/*/preview` and `/api/` and points `Sitemap:` at the requesting host's own
+`/sitemap.xml`. Both files resolve their tenant from the raw `Host` header directly — `proxy.ts`'s
+matcher already excludes any dotted path, so `/sitemap.xml`/`/robots.txt` never reach its
+tenant-rewrite logic the way every other tenant route does.
+
+**Caching is hybrid tags-plus-TTL**, decided with the owner before implementation given the tension
+between "invalidate on publish" and M14.15's publish-on-read scheduling (which has no explicit
+trigger event to hook an invalidation call into): `lib/content.ts`'s public reads carry Next
+`fetch` tags (`content-site:{id}`/`content-document:{id}`) plus a 60s `revalidate` ceiling; a new
+authenticated `POST /api/revalidate` on `openfaithmap-web` (shared-secret header, new
+`CONTENT_REVALIDATION_SECRET`/`CONTENT_REVALIDATION_URL` env vars) is called by
+`openfaithmap-admin`'s transition/schedule/metaTitle-edit server actions right after a successful
+write, for near-instant invalidation on an explicit action; the 60s TTL is what still surfaces a
+`SCHEDULED` document within a bounded window once `publish_at` passes with no explicit trigger at
+all. Preview reads (`listPreviewDocuments`/`getPreviewBlocks`) get `cache: "no-store"` explicitly —
+never cached, per M14.7's "reflects the draft as it stands right now."
+
+**One route, named rather than silently dropped, keeps `force-dynamic`:** the individual page route
+(`[...pageSlug]/page.tsx`). Verified empirically (a real `next build`) — removing it there made Next
+16/Turbopack attempt static optimization anyway (inheriting `[locale]/layout.tsx`'s own
+`generateStaticParams` over the 4 UI locales) and throw `DYNAMIC_SERVER_USAGE` on `resolveOrigin()`'s
+`headers()` call for any path outside its build-time static set, a real 500 on first request. The
+tenant root (`_sites/[slug]/page.tsx`) has no such issue and lost `force-dynamic` cleanly. Either
+way, the milestone's actual complaint — every anonymous page view re-querying `openfaithmap-api` —
+is what the tagged Data Cache above fixes; that persists independent of a route's own static/dynamic
+classification, confirmed live (a repeat view served with no origin call in between; a
+`SCHEDULED` document made due by a direct SQL write, no app call, surfaced within the TTL with zero
+staleness in practice, since a not-found response is never cached to begin with).
+
+**Acceptance criteria — met.** Live-verified against the running docker-compose stack (a real
+`congregation-admin`-granted dev token, `docker run --network ... curlimages/curl` for non-GET per
+this arc's own convention): a published page carries a real `<title>`/description/canonical/OG,
+`Church`/`Event`/`BreadcrumbList` JSON-LD render correctly (geo coarsened, `hidden` precision hides
+it entirely); `sitemap.xml` lists a site's published pages with correct hrefs and excludes an
+UNLISTED one; `robots.txt` references that sitemap; an explicit `metaTitle`/`metaDescription` edit
+is reflected immediately after the new revalidation endpoint is called, and is 401'd with no/wrong
+secret; a `SCHEDULED` document's `publish_at` moved into the past by direct SQL (no app call, same
+trick M14.15 verified with) surfaced with no restart and no staleness. Go integration tests cover
+the `metaTitle`/`metaDescription` round trip (including the omit-vs-empty-string "unchanged vs.
+clear" distinction), `GetSiteChrome`'s coarsened geo (present, and nil under `hidden` precision),
+and `ListSitemapEntries` (published pages present, UNLISTED/draft/cross-site excluded) against real
+Postgres. `Verified` awaits CI green on `main`.
 
 ### M14.18 · Deployment wiring
 

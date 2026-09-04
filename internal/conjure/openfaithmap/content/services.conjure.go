@@ -35,6 +35,8 @@ type ContentPublicServiceClient interface {
 	ListPublicNavItems(ctx context.Context, siteIdArg string) (PublicNavItemList, error)
 	// M14.10. Resolves the leaf PAGE document (by locale + slug) plus its real ancestor chain, for the tenant-subdomain catch-all page route. path is a slash-joined, ordered list of slug segments (e.g. "parent-slug/child-slug"); every segment must match the document's real parent_document_id chain positionally — a mismatch at any position (including the leaf's own slug) 404s exactly like a wrong slug would, never resolving by the last segment alone. Content:DocumentNotFound if the leaf doesn't exist, isn't a PAGE, is DRAFT, or the ancestor chain doesn't match — one error for every case, same discipline as getPublicBlocks.
 	GetPublicDocumentByPath(ctx context.Context, siteIdArg string, localeArg string, pathArg string) (DocumentWithAncestors, error)
+	// M14.17. Backs web/apps/web's app/sitemap.ts — every effectively-PUBLISHED PAGE document's resolved href, in no particular order. UNLISTED is excluded (a sitemap is an indexing hint; UNLISTED's whole point is "reachable by direct link, excluded from listings").
+	ListSitemapEntries(ctx context.Context, siteIdArg string) (SitemapEntryList, error)
 	// M14.16, D-InAppInbox. Genuinely anonymous — the third such write in the codebase, after moderation's two. Rate-limited (internal/platform/ratelimit, wrapping this whole service's registration — see cmd/openfaithmap-api/register_content.go). Always succeeds for a honeypot-triggered or too-fast submission; only Content:FormSubmissionInvalid (empty message) and Content:SiteNotFound are ever returned as errors.
 	SubmitContactForm(ctx context.Context, siteIdArg string, requestArg SubmitContactFormRequest) error
 }
@@ -243,6 +245,22 @@ func (c *contentPublicServiceClient) GetPublicDocumentByPath(ctx context.Context
 	}
 	if returnVal == nil {
 		return *new(DocumentWithAncestors), werror.ErrorWithContextParams(ctx, "getPublicDocumentByPath response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *contentPublicServiceClient) ListSitemapEntries(ctx context.Context, siteIdArg string) (SitemapEntryList, error) {
+	var returnVal *SitemapEntryList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListSitemapEntries"))
+	requestParams = append(requestParams, httpclient.WithPathf("/content/v1/public/sites/%s/sitemap-entries", url.PathEscape(fmt.Sprint(siteIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(SitemapEntryList), werror.WrapWithContextParams(ctx, err, "listSitemapEntries failed")
+	}
+	if returnVal == nil {
+		return *new(SitemapEntryList), werror.ErrorWithContextParams(ctx, "listSitemapEntries response cannot be nil")
 	}
 	return *returnVal, nil
 }

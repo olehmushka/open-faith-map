@@ -143,6 +143,10 @@ services:
       # anonymous caller unless it's on the anonymous allowlist (M2.5, M10.6).
       OPENFAITHMAP_API_BASE_URL: "https://openfaithmap-api:3000"
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
+      # M14.17: shared secret openfaithmap-admin's own on-demand revalidation call
+      # (app/api/revalidate/route.ts) is authenticated against — same passthrough convention as
+      # AUTH_SECRET below.
+      CONTENT_REVALIDATION_SECRET: "${CONTENT_REVALIDATION_SECRET}"
 
   # openfaithmap-admin (M2.1, D-AdminSurface) — the only surface that ever holds a session: the
   # registration wizard, operator-approval console, congregation-admin console, moderator console,
@@ -177,6 +181,11 @@ services:
       # published host:port in local dev, matching the "grace.localhost:3002" shape M14.9 verified
       # against. A real deployment sets this to the real apex domain once U14 resolves.
       TENANT_APEX_HOST: "localhost:3002"
+      # M14.17: openfaithmap-web's own internal compose-network address, reached the same way
+      # OPENFAITHMAP_API_BASE_URL reaches openfaithmap-api above — never TENANT_APEX_HOST, which is
+      # the browser-facing host:port this server-to-server call has no reason to go through.
+      CONTENT_REVALIDATION_URL: "http://openfaithmap-web:3000"
+      CONTENT_REVALIDATION_SECRET: "${CONTENT_REVALIDATION_SECRET}"
 
 volumes:
   postgres-data:
