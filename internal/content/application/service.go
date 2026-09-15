@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/content/adapters"
 	"github.com/olehmushka/open-faith-map/internal/content/domain"
@@ -40,6 +41,7 @@ type Service struct {
 	store          *adapters.Repository
 	authzSvc       *authz.Service
 	religion       *religionapplication.Service
+	auditLog       *auditlogapplication.Service
 	previewHMACKey string
 	cfg            Config
 }
@@ -47,8 +49,12 @@ type Service struct {
 // religion is injected the same direct-interface-call shape internal/discovery already uses
 // against internal/religion (docs/architecture/conventions.md) — M14.11's site-chrome footer is
 // the first place content itself, not just discovery, reads religion's live data.
-func NewService(store *adapters.Repository, authzSvc *authz.Service, religionSvc *religionapplication.Service, previewHMACKey string, cfg Config) *Service {
-	return &Service{store: store, authzSvc: authzSvc, religion: religionSvc, previewHMACKey: previewHMACKey, cfg: cfg}
+//
+// auditLog (M15, DS-OFM-15) logs every site/nav/catalog write in this module into the same
+// identity_audit_log ledger internal/core already writes to — see audit.go for the action/target
+// vocabulary and each call site below.
+func NewService(store *adapters.Repository, authzSvc *authz.Service, religionSvc *religionapplication.Service, auditLog *auditlogapplication.Service, previewHMACKey string, cfg Config) *Service {
+	return &Service{store: store, authzSvc: authzSvc, religion: religionSvc, auditLog: auditLog, previewHMACKey: previewHMACKey, cfg: cfg}
 }
 
 // ---- sites ----
@@ -62,7 +68,15 @@ func (s *Service) CreateSite(ctx context.Context, in domain.CreateSiteInput) (do
 	if isReservedSlug(in.Slug) {
 		return domain.Site{}, &domain.SlugReservedError{Slug: in.Slug}
 	}
-	return s.store.InsertSite(ctx, in)
+	created, err := s.store.InsertSite(ctx, in)
+	if err != nil {
+		return domain.Site{}, err
+	}
+	after := map[string]any{"congregationUnitRid": created.CongregationUnitRID, "slug": created.Slug}
+	if err := s.auditLog.Record(ctx, auditActionCreateSite, auditTargetSite, created.ID, nil, after); err != nil {
+		return domain.Site{}, err
+	}
+	return created, nil
 }
 
 // UpdateSiteTheme validates theme against D-CuratedTheme's fixed vocabulary and write-time WCAG
@@ -79,7 +93,15 @@ func (s *Service) UpdateSiteTheme(ctx context.Context, siteID string, theme json
 	if _, err := validateTheme(theme); err != nil {
 		return domain.Site{}, err
 	}
-	return s.store.UpdateSiteTheme(ctx, siteID, theme)
+	updated, err := s.store.UpdateSiteTheme(ctx, siteID, theme)
+	if err != nil {
+		return domain.Site{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionUpdateSiteTheme, auditTargetSite, siteID,
+		map[string]any{"theme": site.Theme}, map[string]any{"theme": updated.Theme}); err != nil {
+		return domain.Site{}, err
+	}
+	return updated, nil
 }
 
 // UpdateSiteChrome overwrites logoUrl/socialLinks wholesale (M14.11) — content.manage-gated, same
@@ -93,7 +115,16 @@ func (s *Service) UpdateSiteChrome(ctx context.Context, siteID string, logoURL *
 	if err := s.requireManage(ctx, site.CongregationUnitRID); err != nil {
 		return domain.Site{}, err
 	}
-	return s.store.UpdateSiteChrome(ctx, siteID, logoURL, socialLinks)
+	updated, err := s.store.UpdateSiteChrome(ctx, siteID, logoURL, socialLinks)
+	if err != nil {
+		return domain.Site{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionUpdateSiteChrome, auditTargetSite, siteID,
+		map[string]any{"logoUrl": site.LogoURL, "socialLinks": site.SocialLinks},
+		map[string]any{"logoUrl": updated.LogoURL, "socialLinks": updated.SocialLinks}); err != nil {
+		return domain.Site{}, err
+	}
+	return updated, nil
 }
 
 // GetSiteChrome is the public read (ContentPublicService) a tenant site's header/footer fetches
@@ -579,7 +610,35 @@ func (s *Service) PutNavItems(ctx context.Context, siteID string, items []domain
 			}
 		}
 	}
-	return s.store.ReplaceNavItems(ctx, siteID, items)
+
+	before, err := s.store.ListNavItems(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	after, err := s.store.ReplaceNavItems(ctx, siteID, items)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionPutNavItems, auditTargetNavItems, siteID, curateNavItems(before), curateNavItems(after)); err != nil {
+		return nil, err
+	}
+	return after, nil
+}
+
+// curateNavItems (M15) is the before/after shape auditLog.Record stores for PutNavItems — a
+// small, hand-picked field set per item, the same "curated map, not full-row diff" convention
+// every other Record call in this module follows.
+func curateNavItems(items []domain.NavItem) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		out = append(out, map[string]any{
+			"label":            it.Label,
+			"targetDocumentId": it.TargetDocumentID,
+			"targetUrl":        it.TargetURL,
+			"sortOrder":        it.SortOrder,
+		})
+	}
+	return out
 }
 
 // ListNavItems is the admin read (ContentService) — content.manage-gated.
@@ -777,7 +836,32 @@ func (s *Service) CreateBlockType(ctx context.Context, in domain.CreateBlockType
 	if err := compileBlockTypeSchema(in.Code, in.JSONSchema); err != nil {
 		return domain.BlockType{}, err
 	}
-	return s.store.InsertBlockType(ctx, in)
+	created, err := s.store.InsertBlockType(ctx, in)
+	if err != nil {
+		return domain.BlockType{}, err
+	}
+	after := map[string]any{"code": in.Code, "name": in.Name, "sortOrder": in.SortOrder}
+	if err := s.auditLog.Record(ctx, auditActionCreateBlockType, auditTargetBlockType, created.ID, nil, after); err != nil {
+		return domain.BlockType{}, err
+	}
+	return created, nil
+}
+
+// findBlockTypeByID reuses the "list then match by id" idiom already established elsewhere in this
+// codebase (provision.go's churchSiteTypeID, jurisdictionsync.go's resolveOrgKindIDs) — no
+// single-row getter exists for this rarely-called admin path, and adding one just to capture a
+// before-snapshot for the audit log isn't worth a new adapter method.
+func (s *Service) findBlockTypeByID(ctx context.Context, id string) (domain.BlockType, error) {
+	all, err := s.store.ListAllBlockTypes(ctx)
+	if err != nil {
+		return domain.BlockType{}, err
+	}
+	for _, bt := range all {
+		if bt.ID == id {
+			return bt, nil
+		}
+	}
+	return domain.BlockType{}, domain.ErrBlockTypeNotFound
 }
 
 // UpdateBlockType only ever touches name/status/sortOrder (domain.UpdateBlockTypeInput has no
@@ -786,7 +870,20 @@ func (s *Service) UpdateBlockType(ctx context.Context, blockTypeID string, in do
 	if err := s.requireCatalogManage(ctx); err != nil {
 		return domain.BlockType{}, err
 	}
-	return s.store.UpdateBlockType(ctx, blockTypeID, in)
+	before, err := s.findBlockTypeByID(ctx, blockTypeID)
+	if err != nil {
+		return domain.BlockType{}, err
+	}
+	after, err := s.store.UpdateBlockType(ctx, blockTypeID, in)
+	if err != nil {
+		return domain.BlockType{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionUpdateBlockType, auditTargetBlockType, blockTypeID,
+		map[string]any{"name": before.Name, "status": before.Status, "sortOrder": before.SortOrder},
+		map[string]any{"name": after.Name, "status": after.Status, "sortOrder": after.SortOrder}); err != nil {
+		return domain.BlockType{}, err
+	}
+	return after, nil
 }
 
 // ---- patterns (M14.13, D-SitePatterns) ----
@@ -803,14 +900,50 @@ func (s *Service) CreatePattern(ctx context.Context, in domain.CreatePatternInpu
 	if err := s.requireCatalogManage(ctx); err != nil {
 		return domain.Pattern{}, err
 	}
-	return s.store.InsertPattern(ctx, in)
+	created, err := s.store.InsertPattern(ctx, in)
+	if err != nil {
+		return domain.Pattern{}, err
+	}
+	after := map[string]any{"name": in.Name, "description": in.Description, "sortOrder": in.SortOrder}
+	if err := s.auditLog.Record(ctx, auditActionCreatePattern, auditTargetPattern, created.ID, nil, after); err != nil {
+		return domain.Pattern{}, err
+	}
+	return created, nil
+}
+
+// findPatternByID mirrors findBlockTypeByID's reasoning — no single-row getter exists, and this
+// admin path is rare enough that adding one just for a before-snapshot isn't worth it.
+func (s *Service) findPatternByID(ctx context.Context, id string) (domain.Pattern, error) {
+	all, err := s.store.ListPatterns(ctx)
+	if err != nil {
+		return domain.Pattern{}, err
+	}
+	for _, p := range all {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return domain.Pattern{}, &domain.PatternNotFoundError{PatternID: id}
 }
 
 func (s *Service) UpdatePattern(ctx context.Context, patternID string, in domain.UpdatePatternInput) (domain.Pattern, error) {
 	if err := s.requireCatalogManage(ctx); err != nil {
 		return domain.Pattern{}, err
 	}
-	return s.store.UpdatePattern(ctx, patternID, in)
+	before, err := s.findPatternByID(ctx, patternID)
+	if err != nil {
+		return domain.Pattern{}, err
+	}
+	after, err := s.store.UpdatePattern(ctx, patternID, in)
+	if err != nil {
+		return domain.Pattern{}, err
+	}
+	if err := s.auditLog.Record(ctx, auditActionUpdatePattern, auditTargetPattern, patternID,
+		map[string]any{"name": before.Name, "description": before.Description, "sortOrder": before.SortOrder},
+		map[string]any{"name": after.Name, "description": after.Description, "sortOrder": after.SortOrder}); err != nil {
+		return domain.Pattern{}, err
+	}
+	return after, nil
 }
 
 // DeletePattern soft-deletes — a pattern already inserted into a document is unaffected (unsynced:
@@ -819,7 +952,15 @@ func (s *Service) DeletePattern(ctx context.Context, patternID string) error {
 	if err := s.requireCatalogManage(ctx); err != nil {
 		return err
 	}
-	return s.store.DeletePattern(ctx, patternID)
+	before, err := s.findPatternByID(ctx, patternID)
+	if err != nil {
+		return err
+	}
+	if err := s.store.DeletePattern(ctx, patternID); err != nil {
+		return err
+	}
+	return s.auditLog.Record(ctx, auditActionDeletePattern, auditTargetPattern, patternID,
+		map[string]any{"name": before.Name, "description": before.Description, "sortOrder": before.SortOrder}, nil)
 }
 
 // ---- form submissions (M14.16, D-InAppInbox) ----

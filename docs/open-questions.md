@@ -75,14 +75,21 @@ from the module doc it was raised in.
   trail to backfill into; D-OwnCore declines to port `internal/audit` at all. The single-ledger
   intent survives, now as a question about a ledger this project would build itself. See
   [moderation.md](modules/moderation.md).
-- **DS-OFM-15 — No audit log in the owned core.** D-OwnCore deliberately does not port
+- **DS-OFM-15 — No audit log in the owned core.** ~~D-OwnCore deliberately does not port
   go-oikumenea's `internal/audit` (1,538 LOC, a monthly-partitioned `audit_log`, and two partition
   maintenance functions) — nothing in OpenFaithMap ever read it, and `moderation_actions` already
   provides the append-only trail the product actually surfaces. The gap is real, though: mutations
   to units, role assignments, taxa and sites now leave no record beyond the row's own
   `created_by`/`updated_by` columns. Promote this to a milestone if operator accountability over the
   new super-admin screens (D-SuperAdminFold) turns out to matter, and fold `DS-OFM-12`'s
-  single-ledger intent into it when it does.
+  single-ledger intent into it when it does.~~ **Resolved (2026-09-15, M15).**
+  `internal/auditlog` (M11.2) had already closed the "no ledger at all" half of this — the actual
+  gap was that only `internal/core` called it. M15 extended `Record` coverage to `content`'s
+  site/nav/catalog writes, `registration`'s congregation-approval unit-create/role-grant, and
+  `congregationimport`'s alias creation and candidate-approval unit-create. One deliberate, named
+  exception remains: `congregationimport.RunJurisdictionSync`'s jurisdiction-unit creation stays
+  unattributed, coupled to `DS-OFM-16` (not solved here). See
+  [auditlog.md](modules/auditlog.md).
 - **DS-OFM-17 — No first-party media storage.** Opened 2026-08-27 (M14.0),
   [D-ExternalMediaOnly](architecture/decisions.md#d-externalmediaonly--congregations-host-their-own-media-no-first-party-uploads):
   congregations host images externally (Google Drive, Dropbox, OneDrive, or any direct URL) — no
@@ -100,6 +107,17 @@ from the module doc it was raised in.
   becomes a real problem the moment a background path writes something a human would be asked to
   justify. Coupled to `DS-OFM-15` — attribution is only worth adding if there is somewhere to
   attribute it to.
+- **DS-OFM-18 — `GrantUnitRole` gives no created-vs-resumed signal.** Opened 2026-09-15 (M15).
+  `internal/authz/adapters/repository.go`'s `InsertRoleAssignment` catches a `23505` conflict on
+  `authz_role_assignments_active_idx` and returns the *pre-existing* row's id on both a genuine
+  create and a resumed retry — there is no `created bool` or equivalent anywhere in the chain. Both
+  `internal/core`'s and `internal/registration`'s `auditLog.Record` calls after `GrantUnitRole`
+  therefore call unconditionally, so a resumed retry (a crash mid-approval, replayed) may write a
+  second, redundant `GRANT_UNIT_ROLE` `identity_audit_log` row against the same assignment id.
+  Low severity today (append-only, no state corruption, the duplicate row is truthful about what
+  happened) but real. Fix: give `InsertRoleAssignment` a real `created bool` (or equivalent) so
+  both call sites can skip logging on a genuine no-op — one change, fixes both at once. See
+  [auditlog.md](modules/auditlog.md#open-seams).
 - **DS-OFM-14 — Per-surface OAuth clients, and WireGuard in front of `oikumenea-console`.** Both are
   recorded as required before any non-local-dev deployment
   ([D-OAuthClients](architecture/decisions.md),

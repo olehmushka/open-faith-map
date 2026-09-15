@@ -23,6 +23,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	auditlogadapters "github.com/olehmushka/open-faith-map/internal/auditlog/adapters"
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzadapters "github.com/olehmushka/open-faith-map/internal/authz/adapters"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
@@ -58,8 +60,9 @@ func TestRegistrationIntegration(t *testing.T) {
 	religionSvc := religionapplication.NewService(pool, directorySvc, authzSvc)
 	locationSvc := locationapplication.NewService(pool)
 	membershipSvc := membershipapplication.NewService(pool)
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	regStore := regadapters.NewRepository(pool)
-	regSvc := application.NewService(regStore, religionSvc, locationSvc, membershipSvc, directorySvc, authzSvc, application.Config{
+	regSvc := application.NewService(regStore, religionSvc, locationSvc, membershipSvc, directorySvc, authzSvc, auditLogSvc, application.Config{
 		RootUnitID:              seed.RootUnitID,
 		CongregationAdminRoleID: seed.CongregationAdminRoleID,
 	})
@@ -67,6 +70,18 @@ func TestRegistrationIntegration(t *testing.T) {
 	var personIDs, unitIDs, requestIDs, assignmentIDs []string
 	t.Cleanup(func() {
 		bg := context.Background()
+		// M15: identity_audit_log is append-only (reject_mutation trigger, disabled here just for
+		// cleanup) — the operator's CREATE_CHILD_ORG/GRANT_UNIT_ROLE rows land under their own
+		// actor_person_id, same cleanup shape internal/core's own integration test already uses.
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log DISABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: disable identity_audit_log trigger: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_audit_log WHERE actor_person_id = ANY($1)`, personIDs); err != nil {
+			t.Errorf("cleanup: delete identity_audit_log rows: %v", err)
+		}
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log ENABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: enable identity_audit_log trigger: %v", err)
+		}
 		for _, id := range requestIDs {
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.jurisdiction_reparenting_jobs WHERE registration_request_id = $1`, id); err != nil {
 				t.Errorf("cleanup: delete reparent jobs for %s: %v", id, err)
@@ -198,6 +213,40 @@ func TestRegistrationIntegration(t *testing.T) {
 	}
 	unitID := *approved.CreatedUnitID
 	unitIDs = append(unitIDs, unitID)
+
+	// M15: Approve's real writes (ensureUnit's CreateChildOrg, ensureGrant's GrantUnitRole) each
+	// write exactly one identity_audit_log row, attributed to the approving OPERATOR — never the
+	// new submitter/admin, even though the grant's own subject_person_id is the submitter.
+	var createChildOrgCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM openfaithmap.identity_audit_log
+		WHERE action = 'CREATE_CHILD_ORG' AND target_kind = 'UNIT' AND target_id = $1 AND actor_person_id = $2`,
+		unitID, operatorID,
+	).Scan(&createChildOrgCount); err != nil {
+		t.Fatalf("count CREATE_CHILD_ORG audit rows: %v", err)
+	}
+	if createChildOrgCount != 1 {
+		t.Errorf("identity_audit_log rows for CREATE_CHILD_ORG/%s (actor=operator) = %d, want 1", unitID, createChildOrgCount)
+	}
+
+	var grantAssignmentID string
+	if err := pool.QueryRow(ctx, `
+		SELECT id FROM openfaithmap.authz_role_assignments
+		WHERE target_unit_id = $1 AND subject_person_id = $2`, unitID, submitterID,
+	).Scan(&grantAssignmentID); err != nil {
+		t.Fatalf("lookup the congregation-admin grant Approve created: %v", err)
+	}
+	var grantUnitRoleCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM openfaithmap.identity_audit_log
+		WHERE action = 'GRANT_UNIT_ROLE' AND target_kind = 'ROLE_ASSIGNMENT' AND target_id = $1 AND actor_person_id = $2`,
+		grantAssignmentID, operatorID,
+	).Scan(&grantUnitRoleCount); err != nil {
+		t.Fatalf("count GRANT_UNIT_ROLE audit rows: %v", err)
+	}
+	if grantUnitRoleCount != 1 {
+		t.Errorf("identity_audit_log rows for GRANT_UNIT_ROLE/%s (actor=operator) = %d, want 1", grantAssignmentID, grantUnitRoleCount)
+	}
 
 	if _, err := directorySvc.GetUnit(ctx, unitID); err != nil {
 		t.Errorf("GetUnit(approved congregation): %v", err)

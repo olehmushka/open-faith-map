@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"strings"
 
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
 	directoryapplication "github.com/olehmushka/open-faith-map/internal/directory/application"
@@ -63,7 +64,11 @@ type Service struct {
 	membership *membershipapplication.Service
 	directory  *directoryapplication.Service
 	authzSvc   *authz.Service
-	cfg        Config
+	// auditLog (M15, DS-OFM-15) logs the real writes a registration approval performs (unit
+	// creation, congregation-admin role grant) into the same identity_audit_log ledger
+	// internal/core already writes to — see audit.go.
+	auditLog *auditlogapplication.Service
+	cfg      Config
 }
 
 func NewService(
@@ -73,11 +78,13 @@ func NewService(
 	membershipSvc *membershipapplication.Service,
 	directorySvc *directoryapplication.Service,
 	authzSvc *authz.Service,
+	auditLog *auditlogapplication.Service,
 	cfg Config,
 ) *Service {
 	return &Service{
 		store: store, religion: religionSvc, location: locationSvc,
-		membership: membershipSvc, directory: directorySvc, authzSvc: authzSvc, cfg: cfg,
+		membership: membershipSvc, directory: directorySvc, authzSvc: authzSvc,
+		auditLog: auditLog, cfg: cfg,
 	}
 }
 
@@ -242,6 +249,10 @@ func (s *Service) ensureUnit(ctx context.Context, decidedByPersonID string, req 
 	if err != nil {
 		return "", fmt.Errorf("createChildOrg: %w", err)
 	}
+	after := map[string]any{"code": unitCode, "name": req.CongregationName, "parentUnitId": parentUnitID, "taxonId": req.TaxonID}
+	if err := s.auditLog.Record(ctx, auditActionCreateChildOrg, auditTargetUnit, profile.UnitID, nil, after); err != nil {
+		return "", err
+	}
 	if _, err := s.store.MarkProvisioning(ctx, req.ID, decidedByPersonID, profile.UnitID, jurisdictionUnitID); err != nil {
 		return "", fmt.Errorf("markProvisioning: %w", err)
 	}
@@ -344,13 +355,21 @@ func (s *Service) ensureFilled(ctx context.Context, position membershipdomain.Po
 	return nil
 }
 
-// ensureGrant grants CongregationAdminRoleID to personID on unitID, idempotent on a resumed retry
-// (internal/authz.Service.GrantUnitRole's own unique-index-conflict-as-success handling).
+// ensureGrant grants CongregationAdminRoleID to personID on unitID. GrantUnitRole's own
+// unique-index-conflict-as-success handling (internal/authz/adapters/repository.go's
+// InsertRoleAssignment) makes the WRITE itself idempotent on a resumed retry — but it returns the
+// same assignmentID on both the first grant and a resumed no-op, with no created-vs-existing
+// signal, so the auditLog.Record call below may write a second, redundant GRANT_UNIT_ROLE row on a
+// resumed retry. internal/core/application's own GrantUnitRole wrapper has this exact same gap
+// today (it calls Record unconditionally too); this mirrors that accepted behavior rather than
+// diverging from it. See DS-OFM-18 (docs/open-questions.md).
 func (s *Service) ensureGrant(ctx context.Context, personID, unitID, grantedByPersonID string) error {
-	if _, err := s.authzSvc.GrantUnitRole(ctx, personID, s.cfg.CongregationAdminRoleID, unitID, authzdomain.ScopeUnit, "", grantedByPersonID, nil); err != nil {
+	assignmentID, err := s.authzSvc.GrantUnitRole(ctx, personID, s.cfg.CongregationAdminRoleID, unitID, authzdomain.ScopeUnit, "", grantedByPersonID, nil)
+	if err != nil {
 		return fmt.Errorf("grantUnitRole: %w", err)
 	}
-	return nil
+	after := map[string]any{"personId": personID, "roleId": s.cfg.CongregationAdminRoleID, "unitId": unitID, "scope": string(authzdomain.ScopeUnit)}
+	return s.auditLog.Record(ctx, auditActionGrantUnitRole, auditTargetRoleAssignment, assignmentID, nil, after)
 }
 
 func (s *Service) Reject(ctx context.Context, decidedByPersonID, id, reason string) (domain.Request, error) {

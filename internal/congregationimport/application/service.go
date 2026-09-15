@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/adapters"
 	"github.com/olehmushka/open-faith-map/internal/congregationimport/domain"
@@ -53,6 +54,11 @@ type Service struct {
 	location *locationapplication.Service
 	refdata  *refdataapplication.Service
 	authzSvc *authz.Service
+	// auditLog (M15, DS-OFM-15) logs candidate-approval unit creation and taxon/jurisdiction alias
+	// creation into the same identity_audit_log ledger internal/core already writes to — see
+	// audit.go. Deliberately NOT threaded into jurisdictionsync.go's RunJurisdictionSync, which
+	// stays unattributed by design (see that file's own comment, coupled to DS-OFM-16).
+	auditLog *auditlogapplication.Service
 	cfg      Config
 	// connectors is the fixed registry of available sources, keyed by Connector.Code() — a plain
 	// map rather than a plugin-discovery mechanism, matching this repo's own bias against
@@ -74,6 +80,7 @@ func NewService(
 	locationSvc *locationapplication.Service,
 	refdataSvc *refdataapplication.Service,
 	authzSvc *authz.Service,
+	auditLog *auditlogapplication.Service,
 	cfg Config,
 	connectors []domain.Connector,
 	geocoders []domain.Geocoder,
@@ -100,7 +107,7 @@ func NewService(
 	}
 	return &Service{
 		store: store, religion: religionSvc, location: locationSvc, refdata: refdataSvc, authzSvc: authzSvc,
-		cfg: cfg, connectors: byCode, geocoder: activeGeocoder, jurisdictionSources: jsByCode,
+		auditLog: auditLog, cfg: cfg, connectors: byCode, geocoder: activeGeocoder, jurisdictionSources: jsByCode,
 	}
 }
 

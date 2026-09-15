@@ -67,7 +67,15 @@ func (s *Service) CreateTaxonAlias(ctx context.Context, callerPersonID string, s
 	if err := s.requireOperator(ctx); err != nil {
 		return domain.TaxonAlias{}, err
 	}
-	return s.store.CreateTaxonAlias(ctx, sourceCode, normalizeAlias(aliasText), taxonID, callerPersonID)
+	created, err := s.store.CreateTaxonAlias(ctx, sourceCode, normalizeAlias(aliasText), taxonID, callerPersonID)
+	if err != nil {
+		return domain.TaxonAlias{}, err
+	}
+	after := map[string]any{"sourceCode": sourceCode, "aliasText": created.AliasText, "taxonId": taxonID}
+	if err := s.auditLog.Record(ctx, auditActionCreateTaxonAlias, auditTargetTaxonAlias, created.ID, nil, after); err != nil {
+		return domain.TaxonAlias{}, err
+	}
+	return created, nil
 }
 
 func (s *Service) ListJurisdictionAliases(ctx context.Context, sourceCode *string) ([]domain.JurisdictionAlias, error) {
@@ -84,7 +92,15 @@ func (s *Service) CreateJurisdictionAlias(ctx context.Context, callerPersonID st
 	if err := s.requireOperator(ctx); err != nil {
 		return domain.JurisdictionAlias{}, err
 	}
-	return s.store.CreateJurisdictionAlias(ctx, sourceCode, normalizeAlias(aliasText), jurisdictionUnitID, callerPersonID)
+	created, err := s.store.CreateJurisdictionAlias(ctx, sourceCode, normalizeAlias(aliasText), jurisdictionUnitID, callerPersonID)
+	if err != nil {
+		return domain.JurisdictionAlias{}, err
+	}
+	after := map[string]any{"sourceCode": sourceCode, "aliasText": created.AliasText, "jurisdictionUnitId": jurisdictionUnitID}
+	if err := s.auditLog.Record(ctx, auditActionCreateJurisdictionAlias, auditTargetJurisdictionAlias, created.ID, nil, after); err != nil {
+		return domain.JurisdictionAlias{}, err
+	}
+	return created, nil
 }
 
 // isApprovable is an allowlist, not a denylist — a real bug, caught live (not by review): the
@@ -165,6 +181,10 @@ func (s *Service) ensureUnit(ctx context.Context, callerPersonID string, cand do
 	profile, err := s.religion.CreateChildOrg(ctx, parentUnitID, slugCode(cand.Name), cand.Name, nil, cand.TaxonID)
 	if err != nil {
 		return "", fmt.Errorf("createChildOrg: %w", err)
+	}
+	after := map[string]any{"code": slugCode(cand.Name), "name": cand.Name, "parentUnitId": parentUnitID, "taxonId": cand.TaxonID}
+	if err := s.auditLog.Record(ctx, auditActionCreateChildOrg, auditTargetUnit, profile.UnitID, nil, after); err != nil {
+		return "", err
 	}
 	if _, err := s.store.MarkProvisioning(ctx, cand.ID, callerPersonID, profile.UnitID); err != nil {
 		return "", fmt.Errorf("markProvisioning: %w", err)

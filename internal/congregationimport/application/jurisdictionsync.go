@@ -55,6 +55,15 @@ func (s *Service) RunJurisdictionSync(ctx context.Context, sourceCode string) (J
 		return JurisdictionSyncSummary{}, err
 	}
 	sysCtx := authz.SystemContext(ctx)
+	// M15 (DS-OFM-15) deliberately does NOT wire auditLog.Record into this write path. Every
+	// jurisdiction-tier Unit ensureJurisdictionUnit creates below leaves no identity_audit_log row —
+	// the same DS-OFM-16 gap ("background writes are unattributable") this method's own doc comment
+	// already names for the SystemContext write itself. Piggy-backing Record on sysCtx would be
+	// inconsistent with the whole point of using SystemContext here (keeping automated sync
+	// unattributed to whichever operator triggered it) and fragile: SystemContext today doesn't
+	// strip the parent ctx's subject, so Record(sysCtx, ...) would not actually fail, but a future,
+	// reasonable hardening of SystemContext to actively strip it would silently turn this into a
+	// mid-sync abort. Solving DS-OFM-16 is out of scope here; this is recorded, not silently dropped.
 
 	source, ok := s.jurisdictionSources[sourceCode]
 	if !ok {

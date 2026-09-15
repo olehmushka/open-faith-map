@@ -514,6 +514,11 @@ uncontrolled filter with no conditional-field logic.
 - go-oikumenea: `Religion.GetTaxon`, `Religion.SearchSites`, `Religion.CreateChildOrg`,
   `Religion.ListUnitSites`, `Religion.ListSiteTypes`, `Religion.CreateSite`, `Location.CreateLocation`,
   `Authorization.Authorize`, `IdentityFederation.Whoami`.
+- [auditlog.md](auditlog.md) (M15) — `CreateTaxonAlias`, `CreateJurisdictionAlias`, and
+  `ensureUnit` (candidate-approval unit creation) each log one `identity_audit_log` row,
+  attributed to the operator. **Not covered:** `RunJurisdictionSync`/`ensureJurisdictionUnit` —
+  that write path deliberately stays unattributed (runs under `authz.SystemContext`, coupled to
+  `DS-OFM-16`), a reader should not assume this module's writes are uniformly logged.
 
 ## Authorization touchpoints
 

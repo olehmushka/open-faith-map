@@ -59,6 +59,9 @@ func registerCore(ctx context.Context, info witchcraft.InitInfo, deps *Deps) err
 	deps.LocationSvc = locationSvc
 	deps.MembershipSvc = membershipSvc
 	deps.RefdataSvc = refdataSvc
+	// M15: expose auditLogSvc on deps too — until now core was its only consumer, so it was only
+	// ever threaded directly into coreapplication.NewService below.
+	deps.AuditLogSvc = auditLogSvc
 
 	// M10.7: the Conjure surface these modules gain via api/core.conjure.yml, for
 	// openfaithmap-admin — deps.IdentitySvc is already built by registerIdentity, which runs before

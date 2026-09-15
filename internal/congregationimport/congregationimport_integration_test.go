@@ -33,6 +33,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	auditlogadapters "github.com/olehmushka/open-faith-map/internal/auditlog/adapters"
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzadapters "github.com/olehmushka/open-faith-map/internal/authz/adapters"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
@@ -111,13 +113,27 @@ func TestCongregationImportIntegration(t *testing.T) {
 			},
 		},
 	}
-	congImportSvc := application.NewService(store, religionSvc, locationSvc, refdataSvc, authzSvc, application.Config{
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
+	congImportSvc := application.NewService(store, religionSvc, locationSvc, refdataSvc, authzSvc, auditLogSvc, application.Config{
 		RootUnitID: seed.RootUnitID,
 	}, []domain.Connector{connector}, nil, nil)
 
 	var personIDs, unitIDs, locationIDs, siteIDs, assignmentIDs, candidateIDs, aliasIDs []string
 	t.Cleanup(func() {
 		bg := context.Background()
+		// M15: identity_audit_log is append-only (reject_mutation trigger, disabled here just for
+		// cleanup) — CreateTaxonAlias/CreateJurisdictionAlias/ApproveCandidate's CreateChildOrg all
+		// write rows attributed to the operator, same cleanup shape internal/core's own integration
+		// test already uses.
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log DISABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: disable identity_audit_log trigger: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_audit_log WHERE actor_person_id = ANY($1)`, personIDs); err != nil {
+			t.Errorf("cleanup: delete identity_audit_log rows: %v", err)
+		}
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log ENABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: enable identity_audit_log trigger: %v", err)
+		}
 		for _, id := range candidateIDs {
 			if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.congregationimport_candidates WHERE id = $1`, id); err != nil {
 				t.Errorf("cleanup: delete candidate %s: %v", id, err)
@@ -242,6 +258,24 @@ func TestCongregationImportIntegration(t *testing.T) {
 	}
 	aliasIDs = append(aliasIDs, rocAlias.ID)
 
+	// M15: each CreateTaxonAlias call writes exactly one identity_audit_log row.
+	auditLogCount := func(action, targetKind, targetID string) int {
+		var n int
+		if err := pool.QueryRow(context.Background(), `
+			SELECT count(*) FROM openfaithmap.identity_audit_log
+			WHERE action = $1 AND target_kind = $2 AND target_id = $3`, action, targetKind, targetID,
+		).Scan(&n); err != nil {
+			t.Fatalf("auditLogCount(%s, %s, %s): %v", action, targetKind, targetID, err)
+		}
+		return n
+	}
+	if n := auditLogCount("CREATE_TAXON_ALIAS", "TAXON_ALIAS", christianAlias.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for CREATE_TAXON_ALIAS/%s = %d, want 1", christianAlias.ID, n)
+	}
+	if n := auditLogCount("CREATE_TAXON_ALIAS", "TAXON_ALIAS", rocAlias.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for CREATE_TAXON_ALIAS/%s = %d, want 1", rocAlias.ID, n)
+	}
+
 	// --- RunConnector: proves the D-Exclusions check and matchCountry both work in-process under
 	// authz.SystemContext — a background pipeline call with no ctx subject at all.
 	run, err := congImportSvc.RunConnector(context.Background(), "m106-fake", operatorID, nil)
@@ -301,6 +335,11 @@ func TestCongregationImportIntegration(t *testing.T) {
 	}
 	unitID := *approved.CreatedUnitID
 	unitIDs = append(unitIDs, unitID)
+	// M15: ensureUnit's CreateChildOrg writes exactly one identity_audit_log row, attributed to the
+	// approving operator.
+	if n := auditLogCount("CREATE_CHILD_ORG", "UNIT", unitID); n != 1 {
+		t.Errorf("identity_audit_log rows for CREATE_CHILD_ORG/%s = %d, want 1", unitID, n)
+	}
 
 	if _, err := directorySvc.GetUnit(ctx, unitID); err != nil {
 		t.Errorf("GetUnit(approved congregation): %v", err)

@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	auditlogadapters "github.com/olehmushka/open-faith-map/internal/auditlog/adapters"
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	authzadapters "github.com/olehmushka/open-faith-map/internal/authz/adapters"
 	authzdomain "github.com/olehmushka/open-faith-map/internal/authz/domain"
@@ -58,14 +60,28 @@ func TestContentIntegration(t *testing.T) {
 	authzStore := authzadapters.NewRepository(pool)
 	authzSvc := authz.NewService(pdp, authzStore, pool)
 	religionSvc := religionapplication.NewService(pool, directorySvc, authzSvc)
+	auditLogSvc := auditlogapplication.NewService(auditlogadapters.NewRepository(pool))
 	contentStore := contentadapters.NewRepository(pool)
-	contentSvc := application.NewService(contentStore, authzSvc, religionSvc, "m14-7-test-preview-hmac-key", application.Config{
+	contentSvc := application.NewService(contentStore, authzSvc, religionSvc, auditLogSvc, "m14-7-test-preview-hmac-key", application.Config{
 		RootUnitID: seed.RootUnitID,
 	})
 
 	var personIDs, unitIDs, siteIDs, assignmentIDs, documentIDs, religionSiteIDs, locationIDs, blockTypeIDs []string
 	t.Cleanup(func() {
 		bg := context.Background()
+		// M15: identity_audit_log is append-only (reject_mutation trigger, disabled here just for
+		// cleanup) — every actor this test authenticates as (adminID, otherID, moderatorID once
+		// inserted below) may have written rows via this module's new auditLog.Record calls,
+		// mirroring internal/core/core_super_admin_integration_test.go's own cleanup pattern.
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log DISABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: disable identity_audit_log trigger: %v", err)
+		}
+		if _, err := pool.Exec(bg, `DELETE FROM openfaithmap.identity_audit_log WHERE actor_person_id = ANY($1)`, personIDs); err != nil {
+			t.Errorf("cleanup: delete identity_audit_log rows: %v", err)
+		}
+		if _, err := pool.Exec(bg, `ALTER TABLE openfaithmap.identity_audit_log ENABLE TRIGGER identity_audit_log_reject_mutation`); err != nil {
+			t.Errorf("cleanup: enable identity_audit_log trigger: %v", err)
+		}
 		// M14.13: content_block_types.code is uniquely indexed, so a leftover row from a prior run
 		// would collide on the next — hard-deleted here (UpdateBlockType only ever retires, never
 		// deletes, since a real catalog row can be referenced by real content_blocks rows).
@@ -141,6 +157,33 @@ func TestContentIntegration(t *testing.T) {
 	adminID := insertPerson("M10.6 Content Test Admin")
 	otherID := insertPerson("M10.6 Content Test Other")
 
+	// auditLogCount (M15) is the identity_audit_log row-count assertion helper every new Record
+	// call site below is checked against, mirroring
+	// internal/core/core_super_admin_integration_test.go's own count-based assertion style.
+	auditLogCount := func(action, targetKind, targetID string) int {
+		var n int
+		if err := pool.QueryRow(context.Background(), `
+			SELECT count(*) FROM openfaithmap.identity_audit_log
+			WHERE action = $1 AND target_kind = $2 AND target_id = $3`, action, targetKind, targetID,
+		).Scan(&n); err != nil {
+			t.Fatalf("auditLogCount(%s, %s, %s): %v", action, targetKind, targetID, err)
+		}
+		return n
+	}
+	// auditLogCountForActor is scoped to one actor_person_id rather than the whole table — this
+	// test's own person rows are unique per run, but go test ./... runs every package's own
+	// integration test binary concurrently against the same live Postgres instance, so an
+	// unscoped whole-table count would race against sibling packages' own Record calls.
+	auditLogCountForActor := func(personID string) int {
+		var n int
+		if err := pool.QueryRow(context.Background(), `
+			SELECT count(*) FROM openfaithmap.identity_audit_log WHERE actor_person_id = $1`, personID,
+		).Scan(&n); err != nil {
+			t.Fatalf("auditLogCountForActor(%s): %v", personID, err)
+		}
+		return n
+	}
+
 	unit, err := directorySvc.CreateUnitWithEdge(ctx, directorydomain.Unit{Name: "M10.6 Content Test Congregation"}, seed.RootUnitID, directorydomain.CanonicalGraphCode)
 	if err != nil {
 		t.Fatalf("CreateUnitWithEdge: %v", err)
@@ -175,6 +218,11 @@ func TestContentIntegration(t *testing.T) {
 	if site.CongregationUnitRID != unit.ID {
 		t.Errorf("CreateSite result = %+v, want CongregationUnitRID %s", site, unit.ID)
 	}
+	// M15: CreateSite writes exactly one identity_audit_log row, attributed to the acting admin —
+	// the denied attempt above (otherCtx) must not have written one.
+	if n := auditLogCount("CREATE_SITE", "SITE", site.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for CREATE_SITE/%s = %d, want 1", site.ID, n)
+	}
 
 	// --- UpdateSiteTheme resolves the target unit from the site itself, and gates the same way:
 	// denied for the non-manager, allowed for the admin.
@@ -193,6 +241,11 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if err := json.Unmarshal(updated.Theme, &theme); err != nil || theme.Accent != "indigo" {
 		t.Errorf("UpdateSiteTheme result theme = %s, want accent=indigo", updated.Theme)
+	}
+	// M15: UpdateSiteTheme writes exactly one identity_audit_log row per successful call — the
+	// denied otherCtx attempt above must not have written one.
+	if n := auditLogCount("UPDATE_SITE_THEME", "SITE", site.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for UPDATE_SITE_THEME/%s = %d, want 1", site.ID, n)
 	}
 
 	// --- M14.12: UpdateSiteTheme rejects a value outside D-CuratedTheme's fixed vocabulary with a
@@ -260,6 +313,10 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if chromedSite.LogoURL == nil || *chromedSite.LogoURL != logoURL || chromedSite.SocialLinks.Facebook == nil || *chromedSite.SocialLinks.Facebook != fbURL {
 		t.Errorf("UpdateSiteChrome result = %+v, want LogoURL=%s Facebook=%s", chromedSite, logoURL, fbURL)
+	}
+	// M15: UpdateSiteChrome writes exactly one identity_audit_log row.
+	if n := auditLogCount("UPDATE_SITE_CHROME", "SITE", site.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for UPDATE_SITE_CHROME/%s = %d, want 1", site.ID, n)
 	}
 
 	// --- M14.11: GetSiteChrome composes live name/address/schedules from religion_sites/
@@ -404,10 +461,17 @@ func TestContentIntegration(t *testing.T) {
 		t.Errorf("PutBlocks(button, javascript: href) error field = %q, want %q", urlErr.Field, "href")
 	}
 
+	// M15: PutBlocks is explicitly OUT of scope for auditLog.Record (document/block content already
+	// gets its own trail via M14.6's content_document_revisions) — a successful call here must add
+	// zero identity_audit_log rows.
+	auditCountBeforePutBlocks := auditLogCountForActor(adminID)
 	if _, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
 		{BlockTypeCode: "button", Position: 0, Data: json.RawMessage(`{"label":"x","href":"https://example.org"}`)},
 	}); err != nil {
 		t.Errorf("PutBlocks(button, https: href) error = %v, want nil", err)
+	}
+	if n := auditLogCountForActor(adminID); n != auditCountBeforePutBlocks {
+		t.Errorf("identity_audit_log rows for actor adminID grew from %d to %d after PutBlocks, want no growth (covered by content_document_revisions instead)", auditCountBeforePutBlocks, n)
 	}
 
 	_, err = contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
@@ -630,8 +694,14 @@ func TestContentIntegration(t *testing.T) {
 		t.Fatalf("PutBlocks(reset before publish): %v", err)
 	}
 
+	// M15: TransitionDocument is likewise out of scope for auditLog.Record — same reasoning as
+	// PutBlocks above.
+	auditCountBeforePublish := auditLogCountForActor(adminID)
 	if _, err := contentSvc.TransitionDocument(adminCtx, doc.ID, contentdomain.ActionPublish, nil); err != nil {
 		t.Fatalf("TransitionDocument(PUBLISH): %v", err)
+	}
+	if n := auditLogCountForActor(adminID); n != auditCountBeforePublish {
+		t.Errorf("identity_audit_log rows for actor adminID grew from %d to %d after TransitionDocument, want no growth", auditCountBeforePublish, n)
 	}
 	publishedFirst, err := contentSvc.GetPublicBlocks(context.Background(), doc.ID)
 	if err != nil {
@@ -1213,6 +1283,7 @@ func TestContentIntegration(t *testing.T) {
 	}
 
 	// --- PutNavItems: full CRUD round trip, mixing an internal target with an external URL.
+	auditCountBeforeNavItems := auditLogCount("PUT_NAV_ITEMS", "NAV_ITEMS", site.ID)
 	navItems, err := contentSvc.PutNavItems(adminCtx, site.ID, []contentdomain.NavItemInput{
 		{Label: "Top", TargetDocumentID: &topPage.ID, SortOrder: 0},
 		{Label: "Our Friends", TargetURL: strPtr("https://example.org/friends"), SortOrder: 1},
@@ -1223,6 +1294,12 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if len(navItems) != 3 {
 		t.Fatalf("PutNavItems returned %d items, want 3", len(navItems))
+	}
+	// M15: PutNavItems writes exactly one new identity_audit_log row per successful call — a
+	// delta check rather than an exact count, since PutNavItems(site.ID) already succeeded once
+	// earlier in this test (the M14.15 scheduled-page nav item above).
+	if n := auditLogCount("PUT_NAV_ITEMS", "NAV_ITEMS", site.ID); n != auditCountBeforeNavItems+1 {
+		t.Errorf("identity_audit_log rows for PUT_NAV_ITEMS/%s = %d, want %d", site.ID, n, auditCountBeforeNavItems+1)
 	}
 	listedNavItems, err := contentSvc.ListNavItems(adminCtx, site.ID)
 	if err != nil {
@@ -1487,6 +1564,10 @@ func TestContentIntegration(t *testing.T) {
 	if newBlockType.Status != contentdomain.BlockTypeActive {
 		t.Errorf("CreateBlockType result Status = %q, want ACTIVE", newBlockType.Status)
 	}
+	// M15: CreateBlockType writes exactly one identity_audit_log row, attributed to the moderator.
+	if n := auditLogCount("CREATE_BLOCK_TYPE", "BLOCK_TYPE", newBlockType.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for CREATE_BLOCK_TYPE/%s = %d, want 1", newBlockType.ID, n)
+	}
 	publicTypes, err := contentSvc.ListBlockTypes(context.Background())
 	if err != nil {
 		t.Fatalf("ListBlockTypes (public) after CreateBlockType: %v", err)
@@ -1528,6 +1609,10 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if retired.Status != contentdomain.BlockTypeRetired || !bytes.Equal(retired.JSONSchema, newBlockType.JSONSchema) {
 		t.Errorf("UpdateBlockType (retire) result = %+v, want Status=RETIRED, unchanged JSONSchema", retired)
+	}
+	// M15: UpdateBlockType writes exactly one identity_audit_log row.
+	if n := auditLogCount("UPDATE_BLOCK_TYPE", "BLOCK_TYPE", newBlockType.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for UPDATE_BLOCK_TYPE/%s = %d, want 1", newBlockType.ID, n)
 	}
 	// A retired type is excluded from the public active-only list but still visible to the moderator
 	// catalog read.
@@ -1583,6 +1668,10 @@ func TestContentIntegration(t *testing.T) {
 	if !foundPattern {
 		t.Errorf("ListPatterns (public) = %+v, want to contain %s", patterns, newPattern.ID)
 	}
+	// M15: CreatePattern writes exactly one identity_audit_log row.
+	if n := auditLogCount("CREATE_PATTERN", "PATTERN", newPattern.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for CREATE_PATTERN/%s = %d, want 1", newPattern.ID, n)
+	}
 
 	updatedName := "M14.13 Test Pattern (updated)"
 	updatedPattern, err := contentSvc.UpdatePattern(modCtx, newPattern.ID, contentdomain.UpdatePatternInput{Name: &updatedName})
@@ -1591,6 +1680,10 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if updatedPattern.Name != updatedName || len(updatedPattern.Blocks) != len(patternBlocks) || updatedPattern.Blocks[0].BlockTypeCode != patternBlocks[0].BlockTypeCode {
 		t.Errorf("UpdatePattern result = %+v, want Name=%q, unchanged Blocks", updatedPattern, updatedName)
+	}
+	// M15: UpdatePattern writes exactly one identity_audit_log row.
+	if n := auditLogCount("UPDATE_PATTERN", "PATTERN", newPattern.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for UPDATE_PATTERN/%s = %d, want 1", newPattern.ID, n)
 	}
 
 	var patternNotFoundErr *contentdomain.PatternNotFoundError
@@ -1604,6 +1697,10 @@ func TestContentIntegration(t *testing.T) {
 	}
 	if err := contentSvc.DeletePattern(modCtx, newPattern.ID); err != nil {
 		t.Fatalf("DeletePattern by moderator: %v", err)
+	}
+	// M15: DeletePattern writes exactly one identity_audit_log row.
+	if n := auditLogCount("DELETE_PATTERN", "PATTERN", newPattern.ID); n != 1 {
+		t.Errorf("identity_audit_log rows for DELETE_PATTERN/%s = %d, want 1", newPattern.ID, n)
 	}
 	if err := contentSvc.DeletePattern(modCtx, newPattern.ID); !errors.As(err, &patternNotFoundErr) {
 		t.Errorf("DeletePattern (already deleted) error = %v, want *PatternNotFoundError", err)

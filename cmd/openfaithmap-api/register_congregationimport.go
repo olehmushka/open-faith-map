@@ -101,7 +101,7 @@ func registerCongregationImport(ctx context.Context, info witchcraft.InitInfo, d
 
 	congregationimportStore := congregationimportadapters.NewRepository(deps.Pool)
 	congregationimportAppSvc := congregationimportapplication.NewService(
-		congregationimportStore, deps.ReligionSvc, deps.LocationSvc, deps.RefdataSvc, deps.AuthzSvc,
+		congregationimportStore, deps.ReligionSvc, deps.LocationSvc, deps.RefdataSvc, deps.AuthzSvc, deps.AuditLogSvc,
 		congregationimportapplication.Config{
 			RootUnitID:                       deps.CoreRootUnitID,
 			ActiveGeocoderCode:               os.Getenv("CONGREGATIONIMPORT_GEOCODER"),

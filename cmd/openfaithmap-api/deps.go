@@ -13,6 +13,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	auditlogapplication "github.com/olehmushka/open-faith-map/internal/auditlog/application"
 	"github.com/olehmushka/open-faith-map/internal/authz"
 	contentapplication "github.com/olehmushka/open-faith-map/internal/content/application"
 	contentdomain "github.com/olehmushka/open-faith-map/internal/content/domain"
@@ -70,6 +71,9 @@ type Deps struct {
 	LocationSvc   *locationapplication.Service
 	MembershipSvc *membershipapplication.Service
 	RefdataSvc    *refdataapplication.Service
+	// AuditLogSvc is M11.2's self-contained audit-log module — built once here, consumed by every
+	// module registered afterward that needs to log a mutation (M15, DS-OFM-15).
+	AuditLogSvc *auditlogapplication.Service
 
 	// IdentitySvc is populated by registerIdentity (which already builds one for JIT) — M10.7's
 	// registerCore reuses this exact instance for internal/core/application rather than

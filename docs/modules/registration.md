@@ -143,7 +143,9 @@ achievable headlessly. See `milestones-2026-08-07-2026-08-26.md`'s M2.3 "As impl
   `grantAssignment`), `identityfederation` (`whoami`) — via the Go SDK,
   `internal/coreintegration.NewUserClient` bound to the caller's forwarded token. Never the
   service-principal path for anything in this module — every write is the real person's own
-  authority.
+  authority. [auditlog.md](auditlog.md) (M15) — `ensureUnit` (the congregation unit an approval
+  creates) and `ensureGrant` (the congregation-admin role grant) each log one
+  `identity_audit_log` row, attributed to the approving operator.
 - **Called by:** `openfaithmap-admin`'s `/register` (submit), `/admin/registrations` (operator
   approve/reject), `/my-congregation` (reads an approved request's `createdUnitId`, then calls
   go-oikumenea directly for the roster) — via a hand-written fetch client
