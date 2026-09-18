@@ -258,6 +258,10 @@ consequence of that reuse.
 - **Calls:** [core-integration](core-integration.md) for the congregation-unit authority check on
   every write; go-oikumenea's `localization` module is **not** used — content translation is a
   separate-document model, not a label map (see [conventions.md](../architecture/conventions.md)).
+  [auditlog.md](auditlog.md) (M15) — every site/nav/catalog write (`CreateSite`,
+  `UpdateSiteTheme`, `UpdateSiteChrome`, `PutNavItems`, and the catalog CRUD) logs one
+  `identity_audit_log` row. Document/block content (`PutBlocks`, `TransitionDocument`) does
+  **not** — it already has its own trail via M14.6's `content_document_revisions`.
 - **Called by:** [discovery.md](discovery.md) (a site's published pages/posts feed the public
   search index for full-text content matches — content-only, never location); the
   [web-facade](web-facade.md) (renders the published public site) and

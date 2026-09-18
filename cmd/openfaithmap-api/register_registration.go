@@ -18,7 +18,7 @@ import (
 // all populated by registerCore (M10.6) before registerOrder (main.go) reaches this function.
 func registerRegistration(ctx context.Context, info witchcraft.InitInfo, deps *Deps) error {
 	store := regadapters.NewRepository(deps.Pool)
-	appSvc := regapplication.NewService(store, deps.ReligionSvc, deps.LocationSvc, deps.MembershipSvc, deps.DirectorySvc, deps.AuthzSvc, regapplication.Config{
+	appSvc := regapplication.NewService(store, deps.ReligionSvc, deps.LocationSvc, deps.MembershipSvc, deps.DirectorySvc, deps.AuthzSvc, deps.AuditLogSvc, regapplication.Config{
 		RootUnitID:              deps.CoreRootUnitID,
 		CongregationAdminRoleID: deps.CoreCongregationAdminRoleID,
 	})
