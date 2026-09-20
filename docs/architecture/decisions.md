@@ -2561,7 +2561,7 @@ not part of M14.9. **Built at M14.9 (2026-08-28)**: `PermContentManage` ("conten
 - Constrains [D-ProductionDeployment](#d-productiondeployment--single-cheap-vm-docker-compose-caddy-for-tls--provider-agnostic)'s
   deferred VM/DNS-provider choice for the first time: the provider must expose a DNS API a Caddy
   module supports (DNS-01 wildcard issuance) — recorded as **U14** in
-  [milestones-2026-08-26-now.md](../milestones-2026-08-26-now.md), blocking only M14.18; every
+  [milestones-2026-09-20-now.md](../milestones-2026-09-20-now.md), blocking only M14.18; every
   other M14 milestone verifies against `*.localhost` with no DNS at all.
 - `content.md`'s Authorization touchpoints and Open seams sections now describe the tightened
   `content.manage` grant as the live behavior, not a target state.

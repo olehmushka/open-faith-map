@@ -1,6 +1,6 @@
 # Deployment (M14.18, D-ProductionDeployment, D-TenantSubdomains)
 
-🔶 **Gated on U14** (`docs/milestones-2026-08-26-now.md`): no apex domain is registered and no
+🔶 **Gated on U14** (`docs/milestones-2026-09-20-now.md`): no apex domain is registered and no
 DNS-provider API token exists yet. Everything in this directory is real, validated config — it
 just hasn't served real traffic, and the milestone stays 🔶 until it has. Every other M14
 milestone is verified locally against `*.localhost`, which needs none of this.

@@ -2,9 +2,10 @@
 
 > **Audience: Claude Code (and any future contributor).** These docs are the source of truth code is
 > held to. Part of the system is built and part is still design-only — the stage board is
-> authoritative for which is which: [the active one](milestones-2026-08-26-now.md#stage-board) for
-> anything after 2026-08-26, [the closed record](milestones-2026-08-07-2026-08-26.md#stage-board)
-> for M0–M13.6. [Status](#status) summarizes it. Every module doc is self-contained: read one
+> authoritative for which is which: [the active one](milestones-2026-09-20-now.md#stage-board) for
+> anything after 2026-09-20, [the closed record for M14–M15](milestones-2026-08-20-2026-09-20.md#stage-board),
+> and [the closed record for M0–M13.6](milestones-2026-08-07-2026-08-26.md#stage-board).
+> [Status](#status) summarizes it. Every module doc is self-contained: read one
 > without reading the others. Treat [`architecture/decisions.md`](architecture/decisions.md) as
 > binding, and follow the feature pipeline in [`development-process.md`](development-process.md).
 
@@ -82,13 +83,14 @@ search, and the audit trail.
    of it.
 8. The relevant [`modules/*.md`](modules/) for the work at hand.
 9. [`open-questions.md`](open-questions.md) — the live backlog for the next planning session.
-10. [`milestones-2026-08-26-now.md`](milestones-2026-08-26-now.md) — the active implementation
-    roadmap and its [stage board](milestones-2026-08-26-now.md#stage-board), the scannable index of
+10. [`milestones-2026-09-20-now.md`](milestones-2026-09-20-now.md) — the active implementation
+    roadmap and its [stage board](milestones-2026-09-20-now.md#stage-board), the scannable index of
     where each current milestone sits. It opens with the
-    [unresolved-unknowns index](milestones-2026-08-26-now.md#unresolved-unknowns--read-this-before-building-anything)
-    — read that before starting any build work, whichever milestone you're on. M0–M13.6 (all done)
+    [unresolved-unknowns index](milestones-2026-09-20-now.md#unresolved-unknowns--read-this-before-building-anything)
+    — read that before starting any build work, whichever milestone you're on. M0–M15 (all done)
     are closed history in
-    [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md).
+    [`milestones-2026-08-20-2026-09-20.md`](milestones-2026-08-20-2026-09-20.md) (M14–M15) and
+    [`milestones-2026-08-07-2026-08-26.md`](milestones-2026-08-07-2026-08-26.md) (M0–M13.6).
 11. [`development-process.md`](development-process.md) — the feature pipeline (idea → decided →
     designed → backend → migrated → ui → verified), the runbook to advance a milestone, and how the
     stage board is kept honest. Read it before starting or reporting on any feature.
@@ -136,7 +138,7 @@ OpenFaithMap — content, discovery glue, moderation, vouching — are unchanged
 **Build order:** M0 → M1 → M2 → M2.3–M2.6 → M3 → M4 → M4.1 → M5 → M6 → M7 → M8 → M9 → **M10.1–M10.9**.
 
 > **Before building anything, read
-> [milestones-2026-08-26-now.md's unresolved-unknowns index](milestones-2026-08-26-now.md#unresolved-unknowns--read-this-before-building-anything).**
+> [milestones-2026-09-20-now.md's unresolved-unknowns index](milestones-2026-09-20-now.md#unresolved-unknowns--read-this-before-building-anything).**
 > Everything carried in from the archive is closed (two were resolved back in 2026-08-09/2026-08-10
 > but never struck until the file split, plus one deferred decision and two contradictions/orphans
 > resolved the same day). **Three new items opened on 2026-08-26 when M14 was scoped** and are open

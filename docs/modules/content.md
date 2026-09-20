@@ -131,7 +131,7 @@ application service injected for this, the same direct-interface-call cross-modu
   when the item points off-site instead) · `sort_order INT NOT NULL`
 - Independent of `content_documents.parent_document_id` — M14.0 replaces the original
   page-tree-derived-nav assumption with a hand-built menu (see the M14.10 note in
-  [milestones-2026-08-26-now.md](../milestones-2026-08-26-now.md)); `parent_document_id` still
+  [milestones-2026-08-20-2026-09-20.md](../milestones-2026-08-20-2026-09-20.md)); `parent_document_id` still
   governs page nesting/breadcrumbs, just not the nav menu itself.
 
 **`content_form_submissions`** (M14.16, new, [D-InAppInbox](../architecture/decisions.md#d-inappinbox--contact-submissions-stay-in-app-no-email-sent))

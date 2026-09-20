@@ -17,7 +17,7 @@ migrated → ui → verified. In short:
   `docs/architecture/decisions.md` **before** the code lands.
 - A new module needs its doc under `docs/modules/` written to the fixed template before its
   `backend` gate.
-- [`docs/milestones-2026-08-26-now.md`](docs/milestones-2026-08-26-now.md)'s stage board is updated
+- [`docs/milestones-2026-09-20-now.md`](docs/milestones-2026-09-20-now.md)'s stage board is updated
   in the **same** PR that passes a gate — not as a follow-up.
 
 If you're unsure whether something is decided or designed yet, check the stage board first.
@@ -109,7 +109,7 @@ Keep composing commits the way this repo already does: one commit per gate advan
 slice of one), bundling backend + migration + UI + docs for that slice rather than splitting them
 into separate commits. The body is where the real content lives — what was built, what was verified
 end-to-end (cite the actual command/test, not "should work"), and which `D-<Name>` / module doc /
-milestone row it touches. [`docs/milestones-2026-08-26-now.md`](docs/milestones-2026-08-26-now.md)'s stage board gets updated in
+milestone row it touches. [`docs/milestones-2026-09-20-now.md`](docs/milestones-2026-09-20-now.md)'s stage board gets updated in
 the *same* commit that passes a gate, never a follow-up — restating
 [`docs/development-process.md`](docs/development-process.md)'s rule here because it's a
 commit-composition rule as much as a process one.

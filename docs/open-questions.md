@@ -60,7 +60,7 @@ from the module doc it was raised in.
   header/footer, which has no single translatable document behind the root feed) offering only
   `PUBLISHED` translation-group siblings, `hreflang` alternates via the page route's own
   `generateMetadata`, and an editor-side Translations panel with a "create translation" action. See
-  [milestones-2026-08-26-now.md](milestones-2026-08-26-now.md#m1414--locale-switching--closes-ds-ofm-7).
+  [milestones-2026-08-20-2026-09-20.md](milestones-2026-08-20-2026-09-20.md#m1414--locale-switching--closes-ds-ofm-7).
 - **DS-OFM-8 — Taxon-level exclusion has no go-oikumenea-native home.** ~~Currently facade-side only
   (OpenFaithMap is the only consumer needing it). If a second consuming app ever needs the same
   "block this whole tradition" behavior, it becomes a real go-oikumenea feature request rather than
