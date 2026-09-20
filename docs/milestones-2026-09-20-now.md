@@ -21,8 +21,11 @@ that full history. Only two things carried forward from that window:
 
 Two new milestones are scoped as of 2026-09-20:
 
-- **M16 · CLAUDE.md** — a repo-onboarding doc for engineers and AI agents working in this codebase,
-  built interactively with the owner rather than inferred from other docs alone. Docs-only.
+- **M16 · CLAUDE.md and formalized code-style conventions** — built (2026-09-20). A repo-onboarding
+  doc, built interactively with the owner rather than inferred from docs alone, codifying Go and
+  frontend conventions already observed in the codebase plus two real gaps it closed along the way:
+  Prettier now formats both frontend apps, and `vitest run` is now a required CI step (previously a
+  script that existed but nothing ever invoked in CI). Not docs-only, in the end.
 - **M17 · Admin entity pickers, replacing raw-UUID inputs** — every admin screen that currently asks
   an operator to hand-type a UUID (role grants, person merge, unit reparenting, vouching,
   explain-access, audit-log filters, congregation-import aliases — ~13 fields across 11 files) gets a
@@ -53,7 +56,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 | # | Decided | Designed | Backend | Migrated | UI | Verified | Stage |
 |---|---|---|---|---|---|---|---|
 | M14.18 · Deployment wiring | ✅ | ✅ | ➖ | ➖ | ➖ | 🔶 | **Config written (2026-09-04); still blocked on U14: a registered apex domain + a DNS-provider API token.** `deploy/caddy/Caddyfile` with the DNS-01 wildcard block (wildcards cannot be issued over HTTP-01 — a new, real constraint on the provider choice D-ProductionDeployment deliberately left open), HSTS with `includeSubDomains`, per-tenant read rate limiting, plus `docker-compose.prod.yml` and `.env.prod.example` — all validated locally (custom Caddy image builds, both third-party modules load, `caddy validate` accepts the config). Confirms the backup story is unchanged: no blobs to back up, because there are no uploads. Records the `openfaithmap-sites` extraction as the named Phase 2 trigger. `🔶` stays until a real domain actually serves — see `deploy/README.md`. |
-| M16 · CLAUDE.md | ✅ | ⬜ | ➖ | ➖ | ➖ | ⬜ | **Scoped (2026-09-20).** A root `CLAUDE.md` built interactively with the owner — conventions, gotchas, and anything a new engineer or agent would get wrong on the first try, on top of what `README.md`/`docs/architecture`/`docs/modules` already state. Docs-only. |
+| M16 · CLAUDE.md and formalized code-style conventions | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Built (2026-09-20).** Root `CLAUDE.md`, built through an interactive Q&A with the owner rather than inferred — Go and frontend code-style conventions formalized from what the codebase already does (error handling, file layout, DI wiring, naming, comments; React prop typing, form pattern, data-fetching, TypeScript conventions), plus explicit quality-gate and business-logic-test-coverage rules. Two real gaps closed along the way, decided with the owner rather than assumed: Prettier added to both frontend apps (`.prettierrc.json`, `format`/`format:check` scripts, existing code reformatted) and `npm run test` (vitest) wired into `.github/workflows/ci.yml`'s `web` job, which previously never ran it. `Verified` awaits CI green on `main`. |
 | M17 · Admin entity pickers | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided/Designed (2026-09-20).** See its own detail section below for the full target list and component design. Backend/UI build is a follow-up pass. |
 
 ## Per-milestone detail
@@ -89,22 +92,52 @@ named trigger for the owner's Phase 2.
 certificate. HSTS present. The reserved-slug blocklist holds against a real registration attempt.
 `🔶` clears only when a real domain is serving — not when the Caddyfile is written.
 
-### M16 · CLAUDE.md
+### M16 · CLAUDE.md and formalized code-style conventions
 
-**Scoped (2026-09-20).** Depends on nothing; docs-only. A root `CLAUDE.md` is the file this and
-every future Claude Code session reads automatically — the highest-leverage place to record what
-this repo's own docs (`README.md`, `docs/architecture/*`, `docs/modules/*`,
-`development-process.md`) can't state on their own: day-to-day conventions, house style, and
-gotchas worth repeating so they aren't rediscovered by trial and error each session.
+**Built (2026-09-20).** Depends on nothing. A root `CLAUDE.md` is the file this and every future
+Claude Code session reads automatically — the highest-leverage place to record what this repo's
+own docs (`README.md`, `docs/architecture/*`, `docs/modules/*`, `development-process.md`) don't
+state on their own: day-to-day code style, quality-gate rules, and gotchas worth repeating so they
+aren't rediscovered by trial and error each session.
+
+**docs/architecture/conventions.md covers schema/layering/authorization conventions; it does not
+cover day-to-day code style** (error-handling shape, file layout, naming, form patterns, ...) —
+that was the actual gap this milestone closes.
 
 **Built by interactive Q&A with the owner**, not inferred, precisely because the value of a
-`CLAUDE.md` is the stuff that isn't already written down anywhere else. Seeded from the existing
-doc set (stack, module boundaries, the idea→decided→designed→backend→migrated→ui→verified gate
-pipeline, quickstart commands) so the questions asked are about the gaps, not a re-derivation of
-what's already in `README.md`.
+`CLAUDE.md` is the stuff that isn't already written down anywhere else. Three rounds of questions,
+each seeded by a factual survey of the actual codebase (not assumptions) across Go backend,
+frontend, and testing:
 
-**Acceptance criteria.** `CLAUDE.md` exists at the repo root and reflects the owner's own answers,
-not just a summary of existing docs.
+- **Go backend** — codified as *mandatory*, not just observed: the sentinel/typed-error +
+  per-module `mapErr` pattern; one-file-per-use-case `application/` layout plus the
+  `register_<module>.go` DI wiring pattern; `ID` never `Id`, role-named interfaces; comments may
+  cite `D-<Name>` decisions (permanent) but must not cite milestone IDs (`M14.13`) going forward,
+  since milestone files get archived/renamed as the roadmap moves (as this very session just did).
+  Flagged, not changed: golangci-lint's config is currently defaults-only — `errcheck`/`gosec`/
+  `revile` are worth adding in a follow-up.
+- **Frontend** — codified: inline prop typing (no separate `Props` type), `useActionState` +
+  inline server action mandatory for every form (not just secret-bearing ones), `type` over
+  `interface` in hand-written code. Closed a real gap rather than just documenting one: Prettier
+  didn't exist in either app before this milestone — added now (`.prettierrc.json`,
+  `.prettierignore` mirroring each app's ESLint generated-code exclusion, `format`/`format:check`
+  scripts), and both apps' existing code was reformatted to match (lint/test/build re-verified
+  clean after).
+- **Quality gates** — `./godelw verify` (Go) and `npm run lint && npm run format:check && npm run
+  test && npm run build` (frontend) are the required pre-commit bar, now enforced in CI in full for
+  the first time: `.github/workflows/ci.yml`'s `web` job previously ran `lint`/`build` only —
+  `vitest run` existed as a `package.json` script but nothing ever invoked it in CI, so a broken
+  frontend test suite could land on `main` unnoticed. Added `format:check` and `test` steps to
+  close that gap. A concrete, checkable business-logic-test-coverage rule was written (positive +
+  negative + boundary cases required; mock-call-only/render-only/snapshot assertions don't count
+  alone), matching patterns already exemplified by `content_integration_test.go`'s
+  authorization triples and `moderation/domain/rules_test.go`'s exact-boundary grace-period case.
+
+**Acceptance criteria — met.** `CLAUDE.md` exists at the repo root and reflects the owner's own
+answers, not just a summary of existing docs. `npm run format:check` passes clean in both apps.
+`npm run lint`, `npm run test`, and `npm run build` re-verified passing in both apps after the
+Prettier reformat. `.github/workflows/ci.yml`'s `web` job runs `format:check` and `test` for both
+`admin` and `web`.
 
 ### M17 · Admin entity pickers, replacing raw-UUID inputs
 
