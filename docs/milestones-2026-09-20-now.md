@@ -27,10 +27,19 @@ Two new milestones are scoped as of 2026-09-20:
   Prettier now formats both frontend apps, and `vitest run` is now a required CI step (previously a
   script that existed but nothing ever invoked in CI). Not docs-only, in the end.
 - **M17 · Admin entity pickers, replacing raw-UUID inputs** — every admin screen that currently asks
-  an operator to hand-type a UUID (role grants, person merge, unit reparenting, vouching,
-  explain-access, audit-log filters, congregation-import aliases — ~13 fields across 11 files) gets a
-  real search-and-pick control instead. Decided/Designed this session; Backend/Migrated/UI are a
-  follow-up build pass.
+  an operator to hand-type a UUID (role grants, person merge, unit reparenting, explain-access,
+  audit-log filters, congregation-import aliases — 11 of the ~13 originally-scoped fields across
+  11 files) now has a real search-and-pick control instead. Built (2026-09-20): no new backend
+  endpoints were needed (`lib/core.ts` already had query-filtered `listUnits`/`listTaxa`/
+  `searchPersons`); the build pass generalized `JurisdictionField` into a reusable `EntityPicker`
+  built on the `cmdk` primitives. **2 fields deliberately deferred, not silently dropped:**
+  `vouching/new/page.tsx`'s claimant-person and `vouching/page.tsx`'s guarantor-person inputs stay
+  plain `<Input>`s — `searchPersons` is `CoreSuperAdminService`-backed and therefore
+  instance-admin-gated (`RequireInstanceAdmin`), but vouching's pages carry no local authorization
+  gate at all (any logged-in operator can reach them). Wiring `EntityPicker` there would 403 for a
+  non-instance-admin operator filing a real vouch. Fixing this needs a real backend decision (a
+  narrower, non-instance-admin-gated person search has its own privacy implications), not a
+  UI-consolidation call — see its own detail section below.
 
 A **Candidate milestones** section below lists items already tracked in the doc set
 (`open-questions.md`, the unresolved-unknowns table) that aren't yet formally scheduled — surfaced
@@ -57,7 +66,7 @@ named dependency** — always named in that milestone's prose; 🔶 without a na
 |---|---|---|---|---|---|---|---|
 | M14.18 · Deployment wiring | ✅ | ✅ | ➖ | ➖ | ➖ | 🔶 | **Config written (2026-09-04); still blocked on U14: a registered apex domain + a DNS-provider API token.** `deploy/caddy/Caddyfile` with the DNS-01 wildcard block (wildcards cannot be issued over HTTP-01 — a new, real constraint on the provider choice D-ProductionDeployment deliberately left open), HSTS with `includeSubDomains`, per-tenant read rate limiting, plus `docker-compose.prod.yml` and `.env.prod.example` — all validated locally (custom Caddy image builds, both third-party modules load, `caddy validate` accepts the config). Confirms the backup story is unchanged: no blobs to back up, because there are no uploads. Records the `openfaithmap-sites` extraction as the named Phase 2 trigger. `🔶` stays until a real domain actually serves — see `deploy/README.md`. |
 | M16 · CLAUDE.md and formalized code-style conventions | ✅ | ✅ | ➖ | ➖ | ➖ | ⬜ | **Built (2026-09-20).** Root `CLAUDE.md`, built through an interactive Q&A with the owner rather than inferred — Go and frontend code-style conventions formalized from what the codebase already does (error handling, file layout, DI wiring, naming, comments; React prop typing, form pattern, data-fetching, TypeScript conventions), plus explicit quality-gate and business-logic-test-coverage rules. Two real gaps closed along the way, decided with the owner rather than assumed: Prettier added to both frontend apps (`.prettierrc.json`, `format`/`format:check` scripts, existing code reformatted) and `npm run test` (vitest) wired into `.github/workflows/ci.yml`'s `web` job, which previously never ran it. `Verified` awaits CI green on `main`. |
-| M17 · Admin entity pickers | ✅ | ✅ | ⬜ | ➖ | ⬜ | ⬜ | **Decided/Designed (2026-09-20).** See its own detail section below for the full target list and component design. Backend/UI build is a follow-up pass. |
+| M17 · Admin entity pickers | ✅ | ✅ | ✅ | ➖ | ✅ | ⬜ | **Built (2026-09-20).** See its own detail section below for what shipped, the 2 fields deliberately deferred, and why. `Verified` awaits CI green on `main`. |
 
 ## Per-milestone detail
 
@@ -141,51 +150,80 @@ Prettier reformat. `.github/workflows/ci.yml`'s `web` job runs `format:check` an
 
 ### M17 · Admin entity pickers, replacing raw-UUID inputs
 
-**Decided/Designed (2026-09-20).** Depends on nothing structurally; touches only
-`web/apps/admin`. No admin screen should ask an operator to hand-type a UUID for an entity
-reference — a discovery pass across the admin app found ~13 such fields across 11 files, all
-plain `<Input>` text fields bound to a person/unit/taxon id, with no search or picker anywhere
-except one bespoke case.
+**Built (2026-09-20).** Depends on nothing structurally; touches only `web/apps/admin`. No admin
+screen should ask an operator to hand-type a UUID for an entity reference — a discovery pass
+across the admin app found ~13 such fields across 11 files, all plain `<Input>` text fields bound
+to a person/unit/taxon id, with no search or picker anywhere except one bespoke case.
 
-**Design.** Generalize
-`web/apps/admin/app/[locale]/admin/congregation-import/jurisdiction-field.tsx`
-(`JurisdictionField` — today a one-off: a text query box + Search button + a result list of
-buttons that set a hidden ID input, plus an inline "create new unit" dialog) into a reusable
-`EntityPicker`/`SearchSelect` component, parameterized by entity type (person / unit / taxon) and
-its search endpoint. Built on the `cmdk`-based primitives already in
-`web/apps/admin/components/ui/command.tsx` (today used only by `command-palette.tsx`'s global
-nav search) — no new UI dependency needed. Returns a hidden ID field the same way
-`JurisdictionField` already does, so every consuming form's submit path is unchanged; this is a
-drop-in replacement for the `<Input>`, not a form-shape change.
+**No new backend endpoints needed.** `lib/core.ts` already had query-filtered search wrappers for
+all three entity types — `listUnits(query, limit)`, `listTaxa(query, limit)`, `searchPersons(query,
+limit)` — confirming the open question the Decided/Designed pass had left for the build pass. The
+one real gap found instead: `searchPersons` calls `CoreSuperAdminService`, gated as a whole route
+group by `RequireInstanceAdmin` (`cmd/openfaithmap-api/register_core.go`) — see "Deferred" below.
 
-**Conversion targets** (every raw-UUID `<Input>` found; filter-only fields get the picker too, for
-consistency):
+**What shipped.** `components/entity-picker.tsx`'s `EntityPicker` generalizes
+`congregation-import/jurisdiction-field.tsx`'s one-off `JurisdictionField` (now deleted) into a
+reusable component built on the `cmdk` primitives in `components/ui/command.tsx` (previously used
+only by `command-palette.tsx`): live, ~200ms-debounced search-as-you-type in a `Popover`/`Command`
+combobox, replacing `JurisdictionField`'s manual Search-button UX. Uncontrolled by design — its
+selection lives in its own internal state, seeded from a plain serializable `defaultValue` prop,
+because a Server Component parent can only pass plain data or Server Actions (never a synchronous
+state setter) to a Client Component; an `EntityPickerHandle` ref is the one escape hatch, used only
+by `congregation-import/unit-picker-with-create.tsx` (the sole caller needing a create-on-the-spot
+sub-flow, generalizing `JurisdictionField`'s inline "create missing unit" dialog — including that
+dialog's own parent-unit field, now a second, nested `EntityPicker`). Renders the same hidden
+`<input>` carrying the real id `JurisdictionField` already did, so every consuming form/server-
+action/`searchParams` read is unchanged — a drop-in `<Input>` replacement, not a form-shape change.
+`lib/entity-search.ts` is a shared `"use server"` module (`searchUnitsForPicker`,
+`searchPersonsForPicker`, `searchTaxaForPicker`) rather than a per-page inline wrapper, since the
+same three searches are reused across every conversion target; being a `"use server"` file (not
+just `"server-only"`) means these import directly into Client Components too (the per-row pickers
+in `reparent-list.tsx`/`request-list.tsx`), no prop-threading needed.
 
-- `(super-admin)/role-grants/page.tsx` — unit-lookup input, person-link input
-- `(super-admin)/people/[personId]/page.tsx` — grant-role unit input
-- `(super-admin)/people/[personId]/merge/page.tsx` — duplicate-person input
-- `(super-admin)/units/[unitId]/page.tsx` — reparent's new-parent-unit input
-- `registrations/page.tsx` — parent-unit input
-- `registrations/reparent/page.tsx` and `registrations/reparent/reparent-list.tsx` —
-  new-parent-unit inputs
-- `registrations/request-list.tsx` — jurisdiction-unit filter input
-- `congregation-import/aliases/page.tsx` — taxon input, jurisdiction-unit input
-- `congregation-import/jurisdiction-field.tsx`'s own "create missing unit" dialog — parent-unit
-  input (the one place already closest to the target UX, converted for consistency)
-- `vouching/new/page.tsx` — claimant-person, congregation-unit, guarantor-congregation-unit inputs
-- `vouching/page.tsx` — guarantor-person input
-- `(super-admin)/explain-access/page.tsx` — subject-person input, unit input
-- `(super-admin)/audit-log/page.tsx` — actor-person filter input
+**Converted** (11 of the ~13 originally-scoped fields, across 11 files): `(super-admin)/role-
+grants/page.tsx` (unit-lookup filter, both person-link inputs), `(super-admin)/people/
+[personId]/page.tsx` (grant-role unit input), `(super-admin)/people/[personId]/merge/page.tsx`
+(duplicate-person input), `(super-admin)/units/[unitId]/page.tsx` (reparent's new-parent-unit
+input, now showing the already-fetched parent's real name instead of a bare id),
+`registrations/page.tsx` and `registrations/reparent/page.tsx` (each own create-jurisdiction-unit
+parent-unit input), `registrations/reparent/reparent-list.tsx` (per-row new-parent-unit input),
+`registrations/request-list.tsx` (per-row approve-action jurisdiction-unit input),
+`congregation-import/aliases/page.tsx` (taxon input, jurisdiction-unit input),
+`congregation-import/candidate-list.tsx` (jurisdiction-unit input, via the new
+`UnitPickerWithCreate`), `(super-admin)/explain-access/page.tsx` (subject-person input, unit
+input), `(super-admin)/audit-log/page.tsx` (actor-person filter input).
+
+**Deferred, not silently dropped:** `vouching/new/page.tsx`'s claimant-person input and
+`vouching/page.tsx`'s guarantor-person input stay plain `<Input>`s. Both pages are reachable by any
+logged-in operator with no local authorization gate (the API's own per-action PDP check is the real
+gate, per that module's own doc comments) — wiring `searchPersons` there would 403 for a
+non-instance-admin operator simply trying to file a vouch. Resolving this is a real backend
+decision (a narrower, non-instance-admin-gated person search has its own privacy implications — any
+logged-in operator being able to search all persons by name), not something to decide inside a
+UI-consolidation pass. Tracked as a new candidate item below.
+
+**Tests.** `components/entity-picker.test.tsx` — search-as-you-type resolves and selects into the
+hidden input (positive), an empty result set renders the no-matches state (negative), and an
+empty/whitespace-only query never calls `onSearch` (boundary, mirrors the debounce guard
+`command-palette.tsx` already applies).
+
+**Verification.** `npm run lint`/`format:check`/`test`/`build` all pass in `web/apps/admin`
+(46 vitest tests, `next build` compiles all routes). Live-verified against a real running
+docker-compose stack: the backend search endpoints the picker's adapters call
+(`listUnits`/`listTaxa`/`searchPersons`) confirmed returning correctly-shaped real data over real
+HTTP with a dev-minted instance-admin session (`scripts/mint-local-token`), and every converted
+route confirmed rendering (redirecting to login, not 500ing) under the real Next.js server. Full
+interactive browser verification of the picker's click/type/select flow wasn't possible in this
+session's environment — `web/apps/admin`'s login is Google-OAuth-only with no dev bypass
+(`auth.ts`), unlike the API layer's `DEV_ISSUER_HMAC_KEY` — so the component-level vitest coverage
+above is what actually exercises the click/type/select interaction; a real browser pass is a
+follow-up before `Verified`.
 
 **Acceptance criteria.** No admin screen has a freehand text `<Input>` bound to a person/unit/taxon
-id. Every target above uses the generalized picker. Search-by-name (not just exact id) works for
-every entity type the picker supports. Existing form submit paths (hidden id field) are unchanged,
-so no backend endpoint needs to change shape.
-
-**Not yet built.** This session recorded the Decided/Designed columns only. Backend work is
-`⬜` pending confirmation no new search endpoint is needed (existing list endpoints may already
-support a name filter — to confirm during the build pass); UI work is the ~13-site conversion
-above.
+id, except the 2 deliberately-deferred vouching fields above. Every other target uses the
+generalized picker. Search-by-name (not just exact id) works for every entity type the picker
+supports. Existing form submit paths (hidden id field) are unchanged — no backend endpoint changed
+shape.
 
 ## Candidate milestones (not yet scheduled)
 
@@ -193,6 +231,13 @@ Mined from the existing doc set rather than newly invented — each already has 
 write-up; what's missing is a milestone number and a build slot. Listed for prioritization, not
 started.
 
+- **DS-OFM-19 — Vouching's person fields have no non-instance-admin-gated search.** Found at M17:
+  `vouching/new/page.tsx`'s claimant-person and `vouching/page.tsx`'s guarantor-person inputs
+  couldn't get M17's `EntityPicker` because the only person-search endpoint
+  (`CoreSuperAdminService.searchPersons`) is `RequireInstanceAdmin`-gated, while vouching's pages
+  are open to any logged-in operator. Needs a real scoping decision — a narrower person search
+  reachable by any authenticated session has its own privacy implications (any logged-in operator
+  could search all persons by name) — not a UI-consolidation call. See M17's own detail section.
 - **DS-OFM-18 — `GrantUnitRole` gives no created-vs-resumed signal.** Small, well-scoped fix:
   `internal/authz/adapters/repository.go`'s `InsertRoleAssignment` needs a real `created bool` (or
   equivalent) so `core`'s and `registration`'s `auditLog.Record` call sites can skip logging on a

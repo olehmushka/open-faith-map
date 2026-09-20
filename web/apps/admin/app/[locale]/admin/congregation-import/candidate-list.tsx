@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 
 import { CoordinateSuggest } from "./coordinate-suggest";
-import { JurisdictionField } from "./jurisdiction-field";
+import { UnitPickerWithCreate } from "./unit-picker-with-create";
 
 type PickerOption = { id: string; name: string };
 type UnitOption = { id: string; code: string | null; name: string };
@@ -56,7 +56,6 @@ export function CandidateList({
   taxa,
   countries,
   rootUnitId,
-  onSearchJurisdiction,
   onCreateUnit,
   onSuggestCoordinates,
   labels,
@@ -70,7 +69,6 @@ export function CandidateList({
   taxa: PickerOption[];
   countries: PickerOption[];
   rootUnitId: string;
-  onSearchJurisdiction: (query: string) => Promise<UnitOption[]>;
   onCreateUnit: (parentUnitId: string, code: string, name: string) => Promise<UnitOption>;
   onSuggestCoordinates: (candidateId: string) => Promise<{
     latitude: number | "NaN";
@@ -94,17 +92,6 @@ export function CandidateList({
     geocodeLookupFailed: string;
     save: string;
     jurisdictionUnitId: string;
-    jurisdictionNone: string;
-    jurisdictionSearchPlaceholder: string;
-    jurisdictionSearch: string;
-    jurisdictionNoMatches: string;
-    createUnit: string;
-    createUnitHeading: string;
-    createUnitName: string;
-    createUnitCode: string;
-    createUnitParentUnitId: string;
-    createUnitSubmit: string;
-    createUnitCancel: string;
     approve: string;
     reasonPlaceholder: string;
     reject: string;
@@ -256,15 +243,21 @@ export function CandidateList({
             <div className="flex flex-wrap gap-4 border-t pt-3">
               <form action={onApprove} className="flex flex-col gap-2">
                 <input type="hidden" name="id" value={c.id} />
-                <JurisdictionField
-                  candidateId={c.id}
-                  candidateName={c.name}
-                  jurisdictionHint={c.jurisdictionHint}
-                  suggestedJurisdictionUnitId={c.suggestedJurisdictionUnitId}
+                <UnitPickerWithCreate
+                  idSuffix={c.id}
+                  name="jurisdictionUnitId"
+                  defaultValue={
+                    c.suggestedJurisdictionUnitId
+                      ? {
+                          id: c.suggestedJurisdictionUnitId,
+                          label: `${c.suggestedJurisdictionUnitId} (${t("suggestedJurisdiction")})`,
+                        }
+                      : null
+                  }
+                  placeholder={labels.jurisdictionUnitId}
+                  createDefaultName={c.jurisdictionHint ?? c.name}
                   rootUnitId={rootUnitId}
-                  onSearch={onSearchJurisdiction}
                   onCreateUnit={onCreateUnit}
-                  labels={labels}
                 />
                 <Button type="submit" size="sm" className="self-start">
                   {labels.approve}

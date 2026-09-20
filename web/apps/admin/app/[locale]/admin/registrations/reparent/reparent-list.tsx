@@ -7,10 +7,11 @@ import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import type { ReparentingJob, RegistrationRequest } from "@/lib/registration";
+import { searchUnitsForPicker } from "@/lib/entity-search";
 import { DataTable } from "@/components/data-table";
 import { ReparentStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { EntityPicker } from "@/components/entity-picker";
 
 type Row = { request: RegistrationRequest; job: ReparentingJob | null };
 
@@ -97,11 +98,11 @@ export function ReparentList({
               onClick={(e) => e.stopPropagation()}
             >
               <input type="hidden" name="id" value={request.id} />
-              <Input
+              <EntityPicker
                 name="newParentUnitId"
+                onSearch={searchUnitsForPicker}
                 placeholder={labels.newParentUnitIdPlaceholder}
-                required
-                className="h-8 w-48"
+                className="w-48"
               />
               <Button type="submit" size="sm">
                 {resuming ? labels.resumeMove : labels.reparentButton}

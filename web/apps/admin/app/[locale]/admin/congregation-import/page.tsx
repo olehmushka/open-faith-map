@@ -12,7 +12,7 @@ import {
   suggestCoordinates,
 } from "@/lib/congregation-import";
 import { listCountriesForPicker, listTaxaForPicker } from "@/lib/dictionaries";
-import { createJurisdictionUnit, searchJurisdictionUnits } from "@/lib/jurisdiction";
+import { createJurisdictionUnit } from "@/lib/jurisdiction";
 import { refreshRegionAroundPoint } from "@/lib/discovery";
 import { redirect } from "@/i18n/navigation";
 import { Link } from "@/i18n/navigation";
@@ -139,15 +139,10 @@ export default async function CongregationImportPage({
     return listCandidates(status, source, undefined, pageToken);
   }
 
-  // Thin "use server" wrappers — searchJurisdictionUnits/createJurisdictionUnit aren't themselves
-  // Server Actions (lib/jurisdiction.ts is "server-only", not "use server"), same reason
-  // loadMoreCandidates wraps listCandidates above. Called directly (not via <form action>) from
-  // JurisdictionField, mirroring candidate-list.tsx's own handleLoadMore shape.
-  async function searchJurisdictions(query: string) {
-    "use server";
-    return searchJurisdictionUnits(query);
-  }
-
+  // Thin "use server" wrapper — createJurisdictionUnit isn't itself a Server Action
+  // (lib/jurisdiction.ts is "server-only", not "use server"), same reason loadMoreCandidates
+  // wraps listCandidates above. Called directly (not via <form action>) from
+  // UnitPickerWithCreate's create-unit dialog.
   async function createUnit(parentUnitId: string, code: string, name: string) {
     "use server";
     return createJurisdictionUnit(parentUnitId, code, name);
@@ -216,7 +211,6 @@ export default async function CongregationImportPage({
         taxa={taxa}
         countries={countries}
         rootUnitId={rootUnitId}
-        onSearchJurisdiction={searchJurisdictions}
         onCreateUnit={createUnit}
         onSuggestCoordinates={suggestCoordinatesAction}
         labels={{
@@ -234,17 +228,6 @@ export default async function CongregationImportPage({
           geocodeLookupFailed: t("geocodeLookupFailed"),
           save: t("save"),
           jurisdictionUnitId: t("jurisdictionUnitId"),
-          jurisdictionNone: t("jurisdictionNone"),
-          jurisdictionSearchPlaceholder: t("jurisdictionSearchPlaceholder"),
-          jurisdictionSearch: t("jurisdictionSearch"),
-          jurisdictionNoMatches: t("jurisdictionNoMatches"),
-          createUnit: t("createUnit"),
-          createUnitHeading: t("createUnitHeading"),
-          createUnitName: t("createUnitName"),
-          createUnitCode: t("createUnitCode"),
-          createUnitParentUnitId: t("createUnitParentUnitId"),
-          createUnitSubmit: t("createUnitSubmit"),
-          createUnitCancel: t("createUnitCancel"),
           approve: t("approve"),
           reasonPlaceholder: t("reasonPlaceholder"),
           reject: t("reject"),

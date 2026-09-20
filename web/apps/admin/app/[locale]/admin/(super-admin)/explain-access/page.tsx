@@ -1,11 +1,13 @@
 import { getTranslations } from "next-intl/server";
 
 import { explainAccess, type AccessExplanationContribution } from "@/lib/core";
+import { searchPersonsForPicker, searchUnitsForPicker } from "@/lib/entity-search";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
+import { EntityPicker } from "@/components/entity-picker";
 
 type Filters = {
   subjectPersonId?: string;
@@ -43,11 +45,14 @@ export default async function SuperAdminExplainAccessPage({
           <form className="flex flex-wrap items-end gap-3">
             <Label className="flex flex-col items-start gap-1">
               {t("subjectPersonIdLabel")}
-              <Input
+              <EntityPicker
                 name="subjectPersonId"
-                defaultValue={subjectPersonId ?? ""}
+                defaultValue={
+                  subjectPersonId ? { id: subjectPersonId, label: subjectPersonId } : null
+                }
+                onSearch={searchPersonsForPicker}
+                placeholder={t("subjectPersonIdLabel")}
                 className="w-64"
-                required
               />
             </Label>
             <Label className="flex flex-col items-start gap-1">
@@ -62,7 +67,13 @@ export default async function SuperAdminExplainAccessPage({
             </Label>
             <Label className="flex flex-col items-start gap-1">
               {t("unitIdLabel")}
-              <Input name="unitId" defaultValue={unitId ?? ""} className="w-64" required />
+              <EntityPicker
+                name="unitId"
+                defaultValue={unitId ? { id: unitId, label: unitId } : null}
+                onSearch={searchUnitsForPicker}
+                placeholder={t("unitIdLabel")}
+                className="w-64"
+              />
             </Label>
             <Button type="submit">{t("submit")}</Button>
           </form>

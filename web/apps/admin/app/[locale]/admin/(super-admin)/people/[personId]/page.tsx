@@ -15,16 +15,14 @@ import {
   revokeInstanceAdmin,
   revokeSession,
 } from "@/lib/core";
+import { searchUnitsForPicker } from "@/lib/entity-search";
 import { Link, redirect } from "@/i18n/navigation";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityPicker } from "@/components/entity-picker";
 
 // Super-admin person detail (M10.8): instance-admin grant/revoke plus a unit-role grant form.
-// Unit id is a plain text field, matching this app's own established convention for unit selection
-// elsewhere (RegistrationsPage's jurisdictionUnitIdPlaceholder, ReparentPage's
-// newParentUnitIdPlaceholder) rather than introducing a new picker widget for one form.
 export default async function SuperAdminPersonPage({
   params,
 }: {
@@ -251,7 +249,11 @@ export default async function SuperAdminPersonPage({
             </Label>
             <Label className="flex flex-col items-start gap-1">
               {t("unitIdLabel")}
-              <Input name="unitId" required placeholder={t("unitIdPlaceholder")} />
+              <EntityPicker
+                name="unitId"
+                onSearch={searchUnitsForPicker}
+                placeholder={t("unitIdPlaceholder")}
+              />
             </Label>
             <Button type="submit" className="self-start">
               {t("grantRole")}

@@ -7,10 +7,12 @@ import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import type { RegistrationRequest } from "@/lib/registration";
+import { searchUnitsForPicker } from "@/lib/entity-search";
 import { DataTable } from "@/components/data-table";
 import { RegistrationStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EntityPicker } from "@/components/entity-picker";
 
 // Unlike CandidateList/ReportList/AppealList, listRegistrations has no keyset pagination today —
 // the full result set is passed straight through. Still routed through DataTable for consistent
@@ -73,10 +75,11 @@ export function RequestList({
               >
                 <form action={onApprove} className="flex items-center gap-2">
                   <input type="hidden" name="id" value={r.id} />
-                  <Input
+                  <EntityPicker
                     name="jurisdictionUnitId"
+                    onSearch={searchUnitsForPicker}
                     placeholder={labels.jurisdictionUnitIdPlaceholder}
-                    className="h-8 w-56"
+                    className="w-56"
                   />
                   <Button type="submit" size="sm">
                     {labels.approve}
