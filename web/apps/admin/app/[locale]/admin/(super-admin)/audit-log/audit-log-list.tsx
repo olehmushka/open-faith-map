@@ -59,7 +59,9 @@ export function AuditLogList({
         header: labels.actorColumn,
         accessorFn: (e) => e.actorPersonName || e.actorPersonId || "",
         cell: ({ row }) => (
-          <span className="text-sm">{row.original.actorPersonName || row.original.actorPersonId || "—"}</span>
+          <span className="text-sm">
+            {row.original.actorPersonName || row.original.actorPersonId || "—"}
+          </span>
         ),
       },
       {

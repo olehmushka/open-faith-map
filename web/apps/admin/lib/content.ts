@@ -113,7 +113,11 @@ export async function updateSiteTheme(siteId: string, theme: unknown): Promise<S
 }
 
 // M14.11: logoUrl/socialLinks are content_sites' own settings, full-replace like updateSiteTheme.
-export async function updateSiteChrome(siteId: string, logoUrl: string | null, socialLinks: SocialLinks): Promise<Site> {
+export async function updateSiteChrome(
+  siteId: string,
+  logoUrl: string | null,
+  socialLinks: SocialLinks,
+): Promise<Site> {
   return unwrap((await client()).content.updateSiteChrome(siteId, { logoUrl, socialLinks }));
 }
 
@@ -122,18 +126,33 @@ export async function listDocuments(siteId: string): Promise<Document[]> {
   return page.documents;
 }
 
-export async function createDocument(siteId: string, input: CreateDocumentInput): Promise<Document> {
+export async function createDocument(
+  siteId: string,
+  input: CreateDocumentInput,
+): Promise<Document> {
   return unwrap((await client()).content.createDocument(siteId, input));
 }
 
-export async function updateDocument(documentId: string, input: UpdateDocumentInput): Promise<Document> {
+export async function updateDocument(
+  documentId: string,
+  input: UpdateDocumentInput,
+): Promise<Document> {
   return unwrap((await client()).content.updateDocument(documentId, input));
 }
 
 // publishAt is only meaningful for DocumentTransitionAction.SCHEDULE (M14.15) — required (and must
 // be in the future) there, ignored for every other action.
-export async function transitionDocument(documentId: string, action: DocumentTransitionAction, publishAt?: string): Promise<Document> {
-  return unwrap((await client()).content.transitionDocument(documentId, { action, publishAt: publishAt ?? null }));
+export async function transitionDocument(
+  documentId: string,
+  action: DocumentTransitionAction,
+  publishAt?: string,
+): Promise<Document> {
+  return unwrap(
+    (await client()).content.transitionDocument(documentId, {
+      action,
+      publishAt: publishAt ?? null,
+    }),
+  );
 }
 
 export async function getBlocks(documentId: string): Promise<Block[]> {
@@ -191,7 +210,10 @@ export async function createBlockType(input: CreateBlockTypeInput): Promise<Bloc
   return unwrap((await client()).content.createBlockType(input));
 }
 
-export async function updateBlockType(blockTypeId: string, input: UpdateBlockTypeInput): Promise<BlockType> {
+export async function updateBlockType(
+  blockTypeId: string,
+  input: UpdateBlockTypeInput,
+): Promise<BlockType> {
   return unwrap((await client()).content.updateBlockType(blockTypeId, input));
 }
 
@@ -199,7 +221,10 @@ export async function createPattern(input: CreatePatternInput): Promise<Pattern>
   return unwrap((await client()).content.createPattern(input));
 }
 
-export async function updatePattern(patternId: string, input: UpdatePatternInput): Promise<Pattern> {
+export async function updatePattern(
+  patternId: string,
+  input: UpdatePatternInput,
+): Promise<Pattern> {
   return unwrap((await client()).content.updatePattern(patternId, input));
 }
 

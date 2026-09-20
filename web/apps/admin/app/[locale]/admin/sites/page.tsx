@@ -30,12 +30,7 @@ export default async function AdminSitesIndexPage({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <form className="flex gap-2">
-            <Input
-              name="q"
-              defaultValue={q ?? ""}
-              placeholder={t("searchPlaceholder")}
-              autoFocus
-            />
+            <Input name="q" defaultValue={q ?? ""} placeholder={t("searchPlaceholder")} autoFocus />
             <Button type="submit">{t("search")}</Button>
           </form>
 

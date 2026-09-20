@@ -42,7 +42,9 @@ export default async function SuperAdminPeoplePage({
             <Button type="submit">{t("search")}</Button>
           </form>
 
-          {results.length === 0 && <p className="text-sm text-muted-foreground">{t("noResults")}</p>}
+          {results.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t("noResults")}</p>
+          )}
 
           {results.length > 0 && (
             <ul className="flex flex-col divide-y rounded-md border">

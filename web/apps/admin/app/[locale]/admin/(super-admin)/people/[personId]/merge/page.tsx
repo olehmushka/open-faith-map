@@ -67,7 +67,9 @@ export default async function SuperAdminMergePersonPage({
       {preview && duplicate && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{t("previewHeading", { name: duplicate.displayName })}</CardTitle>
+            <CardTitle className="text-base">
+              {t("previewHeading", { name: duplicate.displayName })}
+            </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">

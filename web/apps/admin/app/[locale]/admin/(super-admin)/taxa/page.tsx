@@ -34,7 +34,9 @@ export default async function SuperAdminTaxaPage({
             <Button type="submit">{t("search")}</Button>
           </form>
 
-          {results.length === 0 && <p className="text-sm text-muted-foreground">{t("noResults")}</p>}
+          {results.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t("noResults")}</p>
+          )}
 
           {results.length > 0 && (
             <ul className="flex max-h-[32rem] flex-col divide-y overflow-y-auto rounded-md border">

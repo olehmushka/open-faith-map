@@ -58,7 +58,9 @@ export function CommandPalette({
       return;
     }
     const timeout = setTimeout(() => {
-      onSearchSite(trimmed).then(setSiteResults).catch(() => setSiteResults([]));
+      onSearchSite(trimmed)
+        .then(setSiteResults)
+        .catch(() => setSiteResults([]));
     }, 200);
     return () => clearTimeout(timeout);
   }, [query, onSearchSite]);

@@ -10,7 +10,13 @@
 
 export type BlockCategory = "text" | "media" | "layout" | "info" | "other";
 
-export const BLOCK_CATEGORY_ORDER: readonly BlockCategory[] = ["text", "media", "layout", "info", "other"];
+export const BLOCK_CATEGORY_ORDER: readonly BlockCategory[] = [
+  "text",
+  "media",
+  "layout",
+  "info",
+  "other",
+];
 
 export const BLOCK_CATEGORY_LABELS: Record<BlockCategory, string> = {
   text: "Text",
@@ -28,16 +34,28 @@ interface BlockCatalogEntry {
 const BLOCK_CATALOG: Record<string, BlockCatalogEntry> = {
   heading: { category: "text", description: "A section title, in a few sizes." },
   paragraph: { category: "text", description: "A block of body text." },
-  quote: { category: "text", description: "A pull quote or testimonial, with optional attribution." },
+  quote: {
+    category: "text",
+    description: "A pull quote or testimonial, with optional attribution.",
+  },
   list: { category: "text", description: "A bulleted or numbered list." },
   image: { category: "media", description: "A single photo with alt text." },
   gallery: { category: "media", description: "A grid of several photos." },
   youtube_embed: { category: "media", description: "An embedded YouTube video." },
-  social_embed: { category: "media", description: "An embedded post from a supported social platform." },
+  social_embed: {
+    category: "media",
+    description: "An embedded post from a supported social platform.",
+  },
   button: { category: "layout", description: "A call-to-action link styled as a button." },
-  columns: { category: "layout", description: "Two or more side-by-side columns, each holding its own blocks." },
+  columns: {
+    category: "layout",
+    description: "Two or more side-by-side columns, each holding its own blocks.",
+  },
   divider: { category: "layout", description: "A horizontal rule separating sections." },
-  contact_info: { category: "info", description: "Address, phone, and email, laid out for quick scanning." },
+  contact_info: {
+    category: "info",
+    description: "Address, phone, and email, laid out for quick scanning.",
+  },
   map_embed: { category: "info", description: "An embedded map centered on an address." },
   staff_card: { category: "info", description: "A staff or clergy member's photo, name, and bio." },
 };

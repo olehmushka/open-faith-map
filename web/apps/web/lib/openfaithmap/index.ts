@@ -26,10 +26,7 @@ import { ModerationPublicService } from "./generated/moderation";
 export * from "./generated";
 
 export type Supplier<T> = () => T;
-export type FetchFunction = (
-  url: string | Request,
-  init?: RequestInit,
-) => Promise<Response>;
+export type FetchFunction = (url: string | Request, init?: RequestInit) => Promise<Response>;
 
 export interface OpenFaithMapClientOptions {
   /** Scheme://host[:port] of openfaithmap-api. */
@@ -60,9 +57,7 @@ const DEFAULT_USER_AGENT: IUserAgent = {
  *   const client = createOpenFaithMapClient({ baseUrl: "https://openfaithmap-api:3000" });
  *   const result = await client.discoveryPublic.search(lat, lng, radiusM);
  */
-export function createOpenFaithMapClient(
-  options: OpenFaithMapClientOptions,
-): OpenFaithMapClient {
+export function createOpenFaithMapClient(options: OpenFaithMapClientOptions): OpenFaithMapClient {
   const bridge: IHttpApiBridge = new DefaultHttpApiBridge({
     baseUrl: options.baseUrl,
     userAgent: options.userAgent ?? DEFAULT_USER_AGENT,

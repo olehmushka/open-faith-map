@@ -101,7 +101,11 @@ export function ReportList({
         cell: ({ row }) => {
           const r = row.original;
           return (
-            <form action={takeAction} className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <form
+              action={takeAction}
+              className="flex flex-wrap items-center gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
               <input type="hidden" name="reportId" value={r.id} />
               <Select name="actionKind" defaultValue={ACTION_KINDS[0]}>
                 <SelectTrigger size="sm" className="w-40">
@@ -115,7 +119,12 @@ export function ReportList({
                   ))}
                 </SelectContent>
               </Select>
-              <Input name="reason" placeholder={labels.reasonPlaceholder} required className="h-8 w-48" />
+              <Input
+                name="reason"
+                placeholder={labels.reasonPlaceholder}
+                required
+                className="h-8 w-48"
+              />
               <Button type="submit" size="sm">
                 {labels.takeAction}
               </Button>
@@ -140,7 +149,14 @@ export function ReportList({
         emptyMessage={labels.noReports}
       />
       {nextPageToken && (
-        <Button type="button" variant="outline" size="sm" onClick={handleLoadMore} disabled={isPending} className="self-start">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleLoadMore}
+          disabled={isPending}
+          className="self-start"
+        >
           {isPending ? labels.loading : labels.loadMore}
         </Button>
       )}

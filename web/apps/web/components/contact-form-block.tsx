@@ -19,7 +19,10 @@ export function ContactFormBlock({
 }: {
   heading?: string;
   description?: string;
-  action: (prevState: ContactFormActionState, formData: FormData) => Promise<ContactFormActionState>;
+  action: (
+    prevState: ContactFormActionState,
+    formData: FormData,
+  ) => Promise<ContactFormActionState>;
 }) {
   const t = useTranslations("ContactFormBlock");
   const [state, formAction, pending] = useActionState(action, null);
@@ -46,11 +49,36 @@ export function ContactFormBlock({
         {/* Honeypot: visually hidden and unreachable by keyboard/AT, a field name no real visitor
             fills — a simple bot filling every field it finds triggers this. Server-side, a
             non-empty value is silently discarded, never surfaced as an error (D-InAppInbox). */}
-        <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="sr-only" />
-        <input name="name" placeholder={t("namePlaceholder")} className="rounded border px-2 py-1 text-sm" />
-        <input name="email" type="email" placeholder={t("emailPlaceholder")} className="rounded border px-2 py-1 text-sm" />
-        <textarea name="message" required placeholder={t("messagePlaceholder")} className="rounded border px-2 py-1 text-sm" />
-        <button type="submit" disabled={pending} className="self-start rounded border px-3 py-1 text-sm">
+        <input
+          type="text"
+          name="website"
+          tabIndex={-1}
+          autoComplete="off"
+          aria-hidden="true"
+          className="sr-only"
+        />
+        <input
+          name="name"
+          placeholder={t("namePlaceholder")}
+          className="rounded border px-2 py-1 text-sm"
+        />
+        <input
+          name="email"
+          type="email"
+          placeholder={t("emailPlaceholder")}
+          className="rounded border px-2 py-1 text-sm"
+        />
+        <textarea
+          name="message"
+          required
+          placeholder={t("messagePlaceholder")}
+          className="rounded border px-2 py-1 text-sm"
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="self-start rounded border px-3 py-1 text-sm"
+        >
           {t("submit")}
         </button>
         {state && !state.ok ? <p className="text-sm text-red-600">{t("error")}</p> : null}

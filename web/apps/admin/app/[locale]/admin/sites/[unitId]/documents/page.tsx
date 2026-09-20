@@ -38,10 +38,16 @@ export default async function DocumentsPage({
         {documents.map((d) => (
           <li key={d.id} className="rounded-md border p-4">
             <div className="flex items-baseline justify-between">
-              <Link href={`/admin/sites/${unitId}/documents/${d.id}`} className="font-medium hover:underline">
+              <Link
+                href={`/admin/sites/${unitId}/documents/${d.id}`}
+                className="font-medium hover:underline"
+              >
                 {d.slug}
               </Link>
-              <StatusBadge status={documentStateLabel(tState, d.effectiveState)} tone={DOCUMENT_STATE_TONE[d.effectiveState]} />
+              <StatusBadge
+                status={documentStateLabel(tState, d.effectiveState)}
+                tone={DOCUMENT_STATE_TONE[d.effectiveState]}
+              />
             </div>
             <p className="text-sm text-muted-foreground">
               {d.locale} · {d.kind}

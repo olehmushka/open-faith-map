@@ -45,7 +45,13 @@ export function PatternInserter({
 
   return (
     <>
-      <Button type="button" variant={triggerVariant} size={triggerSize} className="self-start" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        variant={triggerVariant}
+        size={triggerSize}
+        className="self-start"
+        onClick={() => setOpen(true)}
+      >
         <LayoutTemplate /> {triggerLabel ?? t("insertPattern")}
       </Button>
       <CommandDialog
@@ -70,7 +76,9 @@ export function PatternInserter({
                 >
                   <div className="flex flex-col">
                     <span>{p.name}</span>
-                    {p.description ? <span className="text-xs text-muted-foreground">{p.description}</span> : null}
+                    {p.description ? (
+                      <span className="text-xs text-muted-foreground">{p.description}</span>
+                    ) : null}
                   </div>
                 </CommandItem>
               ))}

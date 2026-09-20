@@ -75,7 +75,9 @@ export function JurisdictionField({
   const t = useTranslations("CongregationImportPage");
   const [selectedId, setSelectedId] = useState(suggestedJurisdictionUnitId ?? "");
   const [selectedLabel, setSelectedLabel] = useState(
-    suggestedJurisdictionUnitId ? `${suggestedJurisdictionUnitId} (${t("suggestedJurisdiction")})` : "",
+    suggestedJurisdictionUnitId
+      ? `${suggestedJurisdictionUnitId} (${t("suggestedJurisdiction")})`
+      : "",
   );
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UnitOption[] | null>(null);
@@ -120,7 +122,13 @@ export function JurisdictionField({
           placeholder={labels.jurisdictionSearchPlaceholder}
           className="h-8 w-56"
         />
-        <Button type="button" variant="outline" size="sm" onClick={handleSearch} disabled={isPending}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleSearch}
+          disabled={isPending}
+        >
           <Search className="size-3.5" />
           {labels.jurisdictionSearch}
         </Button>
@@ -149,7 +157,11 @@ export function JurisdictionField({
               </Label>
               <Label className="flex flex-col items-start gap-1 text-xs">
                 {labels.createUnitCode}
-                <Input name="code" required defaultValue={slugify(jurisdictionHint ?? candidateName)} />
+                <Input
+                  name="code"
+                  required
+                  defaultValue={slugify(jurisdictionHint ?? candidateName)}
+                />
               </Label>
               <Label className="flex flex-col items-start gap-1 text-xs">
                 {labels.createUnitParentUnitId}
@@ -171,7 +183,9 @@ export function JurisdictionField({
       </div>
       {results && (
         <ul className="flex flex-col gap-1 text-sm">
-          {results.length === 0 && <li className="text-muted-foreground">{labels.jurisdictionNoMatches}</li>}
+          {results.length === 0 && (
+            <li className="text-muted-foreground">{labels.jurisdictionNoMatches}</li>
+          )}
           {results.map((u) => (
             <li key={u.id}>
               <button

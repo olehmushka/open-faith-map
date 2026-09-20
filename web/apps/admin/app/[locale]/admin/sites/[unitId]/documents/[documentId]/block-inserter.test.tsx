@@ -16,7 +16,15 @@ import type { BlockType } from "@/lib/content";
 import { BlockInserter } from "./block-inserter";
 
 function makeBlockType(code: string, name: string, sortOrder: number): BlockType {
-  return { id: code, code, name, jsonSchema: {}, uiSchema: { fields: [] }, status: "ACTIVE", sortOrder };
+  return {
+    id: code,
+    code,
+    name,
+    jsonSchema: {},
+    uiSchema: { fields: [] },
+    status: "ACTIVE",
+    sortOrder,
+  };
 }
 
 const blockTypes: BlockType[] = [

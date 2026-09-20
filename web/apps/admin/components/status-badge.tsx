@@ -1,8 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type {
-  CandidateStatus,
-} from "@/lib/openfaithmap/generated/congregationimport/candidateStatus";
+import type { CandidateStatus } from "@/lib/openfaithmap/generated/congregationimport/candidateStatus";
 import type { ReportStatus } from "@/lib/openfaithmap/generated/moderation/reportStatus";
 import type { AppealStatus } from "@/lib/openfaithmap/generated/moderation/appealStatus";
 import type { RegistrationStatus } from "@/lib/openfaithmap/generated/registration/registrationStatus";

@@ -76,17 +76,28 @@ async function unwrap<T>(promise: Promise<T>): Promise<T> {
   } catch (e) {
     if (isConjureError(e) && e.body && typeof e.body === "object") {
       const body = e.body as { errorName?: string; parameters?: Record<string, unknown> };
-      throw new CongregationImportApiError(e.status ?? 0, body.errorName ?? "Unknown", body.parameters ?? {});
+      throw new CongregationImportApiError(
+        e.status ?? 0,
+        body.errorName ?? "Unknown",
+        body.parameters ?? {},
+      );
     }
     throw e;
   }
 }
 
-export async function runConnector(sourceCode: string, parameters?: Record<string, string>): Promise<ImportRun> {
+export async function runConnector(
+  sourceCode: string,
+  parameters?: Record<string, string>,
+): Promise<ImportRun> {
   return unwrap((await client()).congregationImport.runConnector({ sourceCode, parameters }));
 }
 
-export async function listRuns(sourceCode?: string, pageSize?: number, pageToken?: string): Promise<RunPage> {
+export async function listRuns(
+  sourceCode?: string,
+  pageSize?: number,
+  pageToken?: string,
+): Promise<RunPage> {
   return unwrap((await client()).congregationImport.listRuns(sourceCode, pageSize, pageToken));
 }
 
@@ -96,15 +107,25 @@ export async function listCandidates(
   pageSize?: number,
   pageToken?: string,
 ): Promise<CandidatePage> {
-  return unwrap((await client()).congregationImport.listCandidates(status, sourceCode, pageSize, pageToken));
+  return unwrap(
+    (await client()).congregationImport.listCandidates(status, sourceCode, pageSize, pageToken),
+  );
 }
 
-export async function editCandidate(candidateId: string, request: IEditCandidateRequest): Promise<Candidate> {
+export async function editCandidate(
+  candidateId: string,
+  request: IEditCandidateRequest,
+): Promise<Candidate> {
   return unwrap((await client()).congregationImport.editCandidate(candidateId, request));
 }
 
-export async function approveCandidate(candidateId: string, jurisdictionUnitId?: string): Promise<Candidate> {
-  return unwrap((await client()).congregationImport.approveCandidate(candidateId, { jurisdictionUnitId }));
+export async function approveCandidate(
+  candidateId: string,
+  jurisdictionUnitId?: string,
+): Promise<Candidate> {
+  return unwrap(
+    (await client()).congregationImport.approveCandidate(candidateId, { jurisdictionUnitId }),
+  );
 }
 
 export async function rejectCandidate(candidateId: string, reason: string): Promise<Candidate> {
@@ -123,7 +144,9 @@ export async function listJurisdictionAliases(sourceCode?: string): Promise<Juri
   return unwrap((await client()).congregationImport.listJurisdictionAliases(sourceCode));
 }
 
-export async function createJurisdictionAlias(request: ICreateJurisdictionAliasRequest): Promise<JurisdictionAlias> {
+export async function createJurisdictionAlias(
+  request: ICreateJurisdictionAliasRequest,
+): Promise<JurisdictionAlias> {
   return unwrap((await client()).congregationImport.createJurisdictionAlias(request));
 }
 

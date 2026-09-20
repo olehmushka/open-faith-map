@@ -14,7 +14,10 @@ import { getSite } from "@/lib/content";
 // Deliberately redirects to the tenant root, not the caller's original locale/path — next-intl's
 // own proxy.ts redirect re-adds the locale prefix on the next hop. Simpler, and correct in every
 // case since this route was never itself locale-aware beyond the prefix.
-export async function GET(request: NextRequest, { params }: { params: Promise<{ unitId: string }> }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ unitId: string }> },
+) {
   const { unitId } = await params;
   const site = await getSite(unitId).catch(() => null);
   if (!site) {

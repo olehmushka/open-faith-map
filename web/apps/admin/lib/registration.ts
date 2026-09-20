@@ -71,17 +71,25 @@ async function unwrap<T>(promise: Promise<T>): Promise<T> {
   } catch (e) {
     if (isConjureError(e) && e.body && typeof e.body === "object") {
       const body = e.body as { errorName?: string; parameters?: Record<string, unknown> };
-      throw new RegistrationApiError(e.status ?? 0, body.errorName ?? "Unknown", body.parameters ?? {});
+      throw new RegistrationApiError(
+        e.status ?? 0,
+        body.errorName ?? "Unknown",
+        body.parameters ?? {},
+      );
     }
     throw e;
   }
 }
 
-export async function submitRegistration(input: SubmitRegistrationInput): Promise<RegistrationRequest> {
+export async function submitRegistration(
+  input: SubmitRegistrationInput,
+): Promise<RegistrationRequest> {
   return unwrap((await client()).registration.submitRequest(input));
 }
 
-export async function listRegistrations(status?: RegistrationStatus): Promise<RegistrationRequestPage> {
+export async function listRegistrations(
+  status?: RegistrationStatus,
+): Promise<RegistrationRequestPage> {
   return unwrap((await client()).registration.listRequests(status));
 }
 
@@ -103,7 +111,10 @@ export async function rejectRegistration(id: string, reason: string): Promise<Re
 }
 
 /** Starts or resumes re-parenting an APPROVED request's congregation unit (M4.1, D-JurisdictionUnits). */
-export async function reparentRegistration(id: string, newParentUnitId: string): Promise<ReparentingJob> {
+export async function reparentRegistration(
+  id: string,
+  newParentUnitId: string,
+): Promise<ReparentingJob> {
   return unwrap((await client()).registration.reparentRequest(id, { newParentUnitId }));
 }
 

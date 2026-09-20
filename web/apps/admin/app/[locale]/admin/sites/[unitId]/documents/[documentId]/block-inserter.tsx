@@ -53,7 +53,13 @@ export function BlockInserter({
 
   return (
     <>
-      <Button type="button" variant={triggerVariant} size={triggerSize} className="self-start" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        variant={triggerVariant}
+        size={triggerSize}
+        className="self-start"
+        onClick={() => setOpen(true)}
+      >
         <Plus /> {triggerLabel ?? t("addBlock")}
       </Button>
       <CommandDialog
@@ -81,7 +87,9 @@ export function BlockInserter({
                     >
                       <div className="flex flex-col">
                         <span>{bt.name}</span>
-                        {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
+                        {description ? (
+                          <span className="text-xs text-muted-foreground">{description}</span>
+                        ) : null}
                       </div>
                     </CommandItem>
                   );

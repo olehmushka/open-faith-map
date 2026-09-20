@@ -28,7 +28,10 @@ export default async function TenantSiteLayout({
   const { locale, slug } = await params;
   const site = await getSiteBySlug(slug).catch(() => null);
   const [navItems, chrome] = site
-    ? await Promise.all([listPublicNavItems(site.id).catch(() => []), getSiteChrome(site.id).catch(() => null)])
+    ? await Promise.all([
+        listPublicNavItems(site.id).catch(() => []),
+        getSiteChrome(site.id).catch(() => null),
+      ])
     : [[], null];
 
   // M14.12: theme resolution never trusts site.theme's shape — a pre-M14.12 row (or any future
@@ -36,8 +39,19 @@ export default async function TenantSiteLayout({
   const theme = parseTheme(site?.theme);
 
   return (
-    <div className="min-h-dvh bg-background text-foreground" style={resolveThemeStyle(theme)} data-theme={resolveThemeDataAttr(theme)}>
-      {chrome ? <SiteHeader chrome={chrome} navItems={navItems} uiLocale={locale} layout={theme.headerLayout} /> : null}
+    <div
+      className="min-h-dvh bg-background text-foreground"
+      style={resolveThemeStyle(theme)}
+      data-theme={resolveThemeDataAttr(theme)}
+    >
+      {chrome ? (
+        <SiteHeader
+          chrome={chrome}
+          navItems={navItems}
+          uiLocale={locale}
+          layout={theme.headerLayout}
+        />
+      ) : null}
       {children}
       {chrome ? <SiteFooter chrome={chrome} /> : null}
     </div>

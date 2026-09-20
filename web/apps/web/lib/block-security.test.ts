@@ -6,19 +6,23 @@ import { describe, expect, it } from "vitest";
 import { isValidYoutubeVideoId, safeEmbedSrc, safeSocialEmbedUrl, safeUrl } from "./block-security";
 
 describe("safeUrl", () => {
-  it.each(["https://example.org", "http://example.org", "mailto:a@example.org", "tel:+15551234567"])(
-    "allows %s",
-    (url) => {
-      expect(safeUrl(url)).toBe(url);
-    },
-  );
+  it.each([
+    "https://example.org",
+    "http://example.org",
+    "mailto:a@example.org",
+    "tel:+15551234567",
+  ])("allows %s", (url) => {
+    expect(safeUrl(url)).toBe(url);
+  });
 
-  it.each(["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "ftp://example.org/file", "vbscript:msgbox(1)"])(
-    "rejects %s",
-    (url) => {
-      expect(safeUrl(url)).toBeUndefined();
-    },
-  );
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "ftp://example.org/file",
+    "vbscript:msgbox(1)",
+  ])("rejects %s", (url) => {
+    expect(safeUrl(url)).toBeUndefined();
+  });
 
   it("rejects a relative path (no scheme)", () => {
     expect(safeUrl("/some/path")).toBeUndefined();
@@ -38,7 +42,9 @@ describe("safeUrl", () => {
 
 describe("safeSocialEmbedUrl", () => {
   it("allows a URL on the platform's own host", () => {
-    expect(safeSocialEmbedUrl("https://www.facebook.com/post/1", "facebook")).toBe("https://www.facebook.com/post/1");
+    expect(safeSocialEmbedUrl("https://www.facebook.com/post/1", "facebook")).toBe(
+      "https://www.facebook.com/post/1",
+    );
     expect(safeSocialEmbedUrl("https://x.com/post/1", "twitter")).toBe("https://x.com/post/1");
   });
 
@@ -62,11 +68,15 @@ describe("safeEmbedSrc", () => {
   });
 
   it("rejects a youtube_embed src on a different host", () => {
-    expect(safeEmbedSrc("youtube_embed", "https://evil.example.com/embed/dQw4w9WgXcQ")).toBeUndefined();
+    expect(
+      safeEmbedSrc("youtube_embed", "https://evil.example.com/embed/dQw4w9WgXcQ"),
+    ).toBeUndefined();
   });
 
   it("rejects a non-https youtube_embed src", () => {
-    expect(safeEmbedSrc("youtube_embed", "http://www.youtube.com/embed/dQw4w9WgXcQ")).toBeUndefined();
+    expect(
+      safeEmbedSrc("youtube_embed", "http://www.youtube.com/embed/dQw4w9WgXcQ"),
+    ).toBeUndefined();
   });
 
   it("rejects an unknown block type entirely (no allowlist entry)", () => {

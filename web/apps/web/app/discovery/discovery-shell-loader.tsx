@@ -16,7 +16,10 @@ function ShellLoadingFallback() {
   return <div className="flex min-h-[70vh] items-center justify-center p-4">{t("loadingMap")}</div>;
 }
 
-export const DiscoveryShell = dynamic(() => import("./discovery-shell").then((m) => m.DiscoveryShell), {
-  ssr: false,
-  loading: ShellLoadingFallback,
-});
+export const DiscoveryShell = dynamic(
+  () => import("./discovery-shell").then((m) => m.DiscoveryShell),
+  {
+    ssr: false,
+    loading: ShellLoadingFallback,
+  },
+);

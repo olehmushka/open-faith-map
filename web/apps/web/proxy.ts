@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
 import { routing } from "./i18n/routing";
-import { injectSitesSegment, isSitesPath, parseApexHost, resolveTenantSlug } from "./lib/tenant-host";
+import {
+  injectSitesSegment,
+  isSitesPath,
+  parseApexHost,
+  resolveTenantSlug,
+} from "./lib/tenant-host";
 
 const intlMiddleware = createMiddleware(routing);
 

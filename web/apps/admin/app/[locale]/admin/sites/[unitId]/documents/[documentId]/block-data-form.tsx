@@ -8,7 +8,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { BlockType } from "@/lib/content";
 
@@ -60,7 +66,9 @@ function parseUiSchema(raw: unknown): UiSchema {
 }
 
 function asObject(value: unknown): JsonObject {
-  return value && typeof value === "object" && !Array.isArray(value) ? { ...(value as JsonObject) } : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? { ...(value as JsonObject) }
+    : {};
 }
 
 function asArray(value: unknown): unknown[] {
@@ -168,11 +176,15 @@ function FieldControl({
         </ScalarField>
       );
     case "textarea":
-      return <JsonTextareaField field={field} value={value} onChange={onChange} isErrored={isErrored} />;
+      return (
+        <JsonTextareaField field={field} value={value} onChange={onChange} isErrored={isErrored} />
+      );
     case "array":
       return <ArrayField field={field} value={value} onChange={onChange} blockTypes={blockTypes} />;
     case "block-list":
-      return <BlockListField field={field} value={value} onChange={onChange} blockTypes={blockTypes} />;
+      return (
+        <BlockListField field={field} value={value} onChange={onChange} blockTypes={blockTypes} />
+      );
     default:
       return null;
   }
@@ -296,7 +308,13 @@ function ArrayField({
           </div>
         );
       })}
-      <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => onChange([...items, {}])}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="self-start"
+        onClick={() => onChange([...items, {}])}
+      >
         Add {field.itemLabel ?? "item"}
       </Button>
     </div>
@@ -367,7 +385,9 @@ function BlockListField({
                 blockType={nestedType}
                 blockTypes={blockTypes}
                 value={item.data}
-                onChange={(nextData) => updateItem(index, { blockTypeCode: item.blockTypeCode, data: nextData })}
+                onChange={(nextData) =>
+                  updateItem(index, { blockTypeCode: item.blockTypeCode, data: nextData })
+                }
               />
             )}
           </div>

@@ -19,7 +19,10 @@ export default async function RegisterPage({
   const t = await getTranslations("RegisterPage");
   const { error } = await searchParams;
 
-  const [taxa, countryOptions] = await Promise.all([listTaxaForPicker(), listCountriesForPicker(locale)]);
+  const [taxa, countryOptions] = await Promise.all([
+    listTaxaForPicker(),
+    listCountriesForPicker(locale),
+  ]);
 
   async function submit(formData: FormData) {
     "use server";
@@ -59,7 +62,9 @@ export default async function RegisterPage({
 
       {error && (
         <p className="rounded border border-red-500 p-3 text-sm">
-          {error === "Registration:TaxonExcluded" ? t("errorTaxonExcluded") : t("errorGeneric", { error })}
+          {error === "Registration:TaxonExcluded"
+            ? t("errorTaxonExcluded")
+            : t("errorGeneric", { error })}
         </p>
       )}
 
@@ -106,11 +111,23 @@ export default async function RegisterPage({
         <div className="grid grid-cols-2 gap-4">
           <label className="flex flex-col gap-1">
             <span className="text-sm font-medium">{t("latitudeLabel")}</span>
-            <input name="latitude" type="number" step="any" required className="rounded border px-3 py-2" />
+            <input
+              name="latitude"
+              type="number"
+              step="any"
+              required
+              className="rounded border px-3 py-2"
+            />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-sm font-medium">{t("longitudeLabel")}</span>
-            <input name="longitude" type="number" step="any" required className="rounded border px-3 py-2" />
+            <input
+              name="longitude"
+              type="number"
+              step="any"
+              required
+              className="rounded border px-3 py-2"
+            />
           </label>
         </div>
 

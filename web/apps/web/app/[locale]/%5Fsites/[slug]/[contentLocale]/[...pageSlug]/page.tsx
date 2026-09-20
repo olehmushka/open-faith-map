@@ -8,7 +8,15 @@ import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ContentLocalePicker } from "@/components/content-locale-picker";
 import { JsonLd } from "@/components/json-ld";
 import { PageDocument } from "@/components/page-document";
-import { ContentApiError, getPublicBlocks, getPublicDocumentByPath, getSiteBySlug, getSiteChrome, type DocumentWithAncestors, type Site } from "@/lib/content";
+import {
+  ContentApiError,
+  getPublicBlocks,
+  getPublicDocumentByPath,
+  getSiteBySlug,
+  getSiteChrome,
+  type DocumentWithAncestors,
+  type Site,
+} from "@/lib/content";
 import { deriveDescription, deriveTitle, resolveOrigin } from "@/lib/seo";
 import { breadcrumbListJsonLd } from "@/lib/structured-data";
 
@@ -35,7 +43,9 @@ export const dynamic = "force-dynamic";
 // resolution — a congregation can author a page in any language, not only the 4 chrome locales.
 type RouteParams = { locale: string; slug: string; contentLocale: string; pageSlug: string[] };
 
-async function resolve(params: Promise<RouteParams>): Promise<{ params: RouteParams; resolved: DocumentWithAncestors; site: Site } | null> {
+async function resolve(
+  params: Promise<RouteParams>,
+): Promise<{ params: RouteParams; resolved: DocumentWithAncestors; site: Site } | null> {
   const routeParams = await params;
   const { slug, contentLocale, pageSlug } = routeParams;
   if (pageSlug.length === 0 || pageSlug.length > 3) return null;
@@ -55,7 +65,11 @@ async function resolve(params: Promise<RouteParams>): Promise<{ params: RoutePar
 // First generateMetadata in this app (M14.14 added it for alternates.languages only; M14.17 fills
 // in the rest) — title/description (explicit metaTitle/metaDescription override, else derived from
 // the document's own blocks), canonical, and OpenGraph/Twitter, alongside the existing hreflang.
-export async function generateMetadata({ params }: { params: Promise<RouteParams> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<RouteParams>;
+}): Promise<Metadata> {
   const found = await resolve(params);
   if (!found) return {};
   const { params: routeParams, resolved, site } = found;
@@ -79,15 +93,29 @@ export async function generateMetadata({ params }: { params: Promise<RouteParams
     alternates: {
       canonical,
       ...(resolved.translations.length >= 2 && origin
-        ? { languages: Object.fromEntries(resolved.translations.map((t) => [t.locale, `${origin}/${routeParams.locale}${t.href}`])) }
+        ? {
+            languages: Object.fromEntries(
+              resolved.translations.map((t) => [
+                t.locale,
+                `${origin}/${routeParams.locale}${t.href}`,
+              ]),
+            ),
+          }
         : {}),
     },
     openGraph: { title, description, url: canonical, images: ogImage ? [ogImage] : undefined },
-    twitter: { card: "summary_large_image", title, description, images: ogImage ? [ogImage] : undefined },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: ogImage ? [ogImage] : undefined,
+    },
   };
 }
 
-function firstImageBlockUrl(blocks: { blockTypeCode: string; position: number; data: unknown }[]): string | undefined {
+function firstImageBlockUrl(
+  blocks: { blockTypeCode: string; position: number; data: unknown }[],
+): string | undefined {
   const sorted = [...blocks].sort((a, b) => a.position - b.position);
   for (const b of sorted) {
     if (b.blockTypeCode !== "image") continue;
@@ -106,18 +134,31 @@ export default async function TenantPageRoute({ params }: { params: Promise<Rout
   return (
     <main
       className="mx-auto flex max-w-3xl flex-col gap-6"
-      style={{ paddingInline: "calc(1.5rem * var(--of-space-scale, 1))", paddingBlock: "calc(3rem * var(--of-space-scale, 1))" }}
+      style={{
+        paddingInline: "calc(1.5rem * var(--of-space-scale, 1))",
+        paddingBlock: "calc(3rem * var(--of-space-scale, 1))",
+      }}
     >
       {resolved.ancestors.length > 0 && origin ? (
         <JsonLd
           data={breadcrumbListJsonLd(
             [...resolved.ancestors, resolved.document],
-            (slugChain) => `${origin}/${routeParams.locale}/${routeParams.contentLocale}/${slugChain.join("/")}`,
+            (slugChain) =>
+              `${origin}/${routeParams.locale}/${routeParams.contentLocale}/${slugChain.join("/")}`,
           )}
         />
       ) : null}
-      <Breadcrumbs ancestors={resolved.ancestors} current={resolved.document} uiLocale={routeParams.locale} contentLocale={routeParams.contentLocale} />
-      <ContentLocalePicker translations={resolved.translations} uiLocale={routeParams.locale} activeContentLocale={routeParams.contentLocale} />
+      <Breadcrumbs
+        ancestors={resolved.ancestors}
+        current={resolved.document}
+        uiLocale={routeParams.locale}
+        contentLocale={routeParams.contentLocale}
+      />
+      <ContentLocalePicker
+        translations={resolved.translations}
+        uiLocale={routeParams.locale}
+        activeContentLocale={routeParams.contentLocale}
+      />
       <PageDocument documentId={resolved.document.id} siteId={site.id} />
     </main>
   );

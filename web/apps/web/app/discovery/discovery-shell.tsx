@@ -9,7 +9,11 @@ import { useSearchParams } from "next/navigation";
 import { searchAction } from "../actions";
 import type { DiscoverySite, DiscoveryFacets } from "@/lib/discovery";
 import { DEFAULT_CENTER, useGeolocation } from "@/lib/geolocation";
-import { filtersToSearchParams, parseFilters, type DiscoveryFilters } from "@/lib/discovery-url-state";
+import {
+  filtersToSearchParams,
+  parseFilters,
+  type DiscoveryFilters,
+} from "@/lib/discovery-url-state";
 import { haversineMeters, resolveDistanceUnit } from "@/lib/geo";
 import { cn } from "@/lib/utils";
 import { useRouter } from "@/i18n/navigation";
@@ -51,7 +55,11 @@ export function DiscoveryShell({
 
   const [lastSearchedViewport, setLastSearchedViewport] = useState<PendingViewport | null>(
     hasExplicitLocation
-      ? { lat: filters.lat as number, lng: filters.lng as number, radiusM: filters.radiusM ?? DEFAULT_RADIUS_M }
+      ? {
+          lat: filters.lat as number,
+          lng: filters.lng as number,
+          radiusM: filters.radiusM ?? DEFAULT_RADIUS_M,
+        }
       : null,
   );
   const [pendingViewport, setPendingViewport] = useState<PendingViewport | null>(null);
@@ -74,7 +82,10 @@ export function DiscoveryShell({
         onlineOnly: next.onlineOnly,
       });
       setSites(result);
-      router.replace({ pathname: "/", query: Object.fromEntries(filtersToSearchParams(next)) }, { scroll: false });
+      router.replace(
+        { pathname: "/", query: Object.fromEntries(filtersToSearchParams(next)) },
+        { scroll: false },
+      );
     });
   }
 
@@ -90,7 +101,10 @@ export function DiscoveryShell({
   }
 
   function handleMoreFiltersSubmit(
-    next: Pick<DiscoveryFilters, "tradition" | "language" | "dayOfWeek" | "accessibility" | "onlineOnly">,
+    next: Pick<
+      DiscoveryFilters,
+      "tradition" | "language" | "dayOfWeek" | "accessibility" | "onlineOnly"
+    >,
   ) {
     const location = lastSearchedViewport;
     runSearch({

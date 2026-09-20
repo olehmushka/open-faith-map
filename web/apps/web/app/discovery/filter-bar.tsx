@@ -7,7 +7,13 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { DiscoveryFacets } from "@/lib/discovery";
 import type { DiscoveryFilters } from "@/lib/discovery-url-state";
 import { MoreFiltersSheet } from "./more-filters-sheet";
@@ -35,7 +41,10 @@ export function FilterBar({
   facets: DiscoveryFacets;
   onSubmit: (filters: Pick<DiscoveryFilters, "tradition" | "language">) => void;
   onMoreFiltersSubmit: (
-    filters: Pick<DiscoveryFilters, "tradition" | "language" | "dayOfWeek" | "accessibility" | "onlineOnly">,
+    filters: Pick<
+      DiscoveryFilters,
+      "tradition" | "language" | "dayOfWeek" | "accessibility" | "onlineOnly"
+    >,
   ) => void;
   pending: boolean;
 }) {

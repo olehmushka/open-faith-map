@@ -11,7 +11,12 @@
 import { getTranslations } from "next-intl/server";
 
 import { ContactFormBlock, type ContactFormActionState } from "@/components/contact-form-block";
-import { isValidYoutubeVideoId, safeEmbedSrc, safeSocialEmbedUrl, safeUrl } from "@/lib/block-security";
+import {
+  isValidYoutubeVideoId,
+  safeEmbedSrc,
+  safeSocialEmbedUrl,
+  safeUrl,
+} from "@/lib/block-security";
 import { ContentApiError, submitContactForm, type Block } from "@/lib/content";
 import { RichText } from "@/lib/rich-text";
 
@@ -26,7 +31,15 @@ export async function Blocks({ blocks, siteId }: { blocks: Block[]; siteId?: str
     <div className="flex flex-col gap-4">
       {[...blocks]
         .sort((a, b) => a.position - b.position)
-        .map((b) => <BlockView key={b.id} blockTypeCode={b.blockTypeCode} data={b.data} t={t} siteId={siteId} />)}
+        .map((b) => (
+          <BlockView
+            key={b.id}
+            blockTypeCode={b.blockTypeCode}
+            data={b.data}
+            t={t}
+            siteId={siteId}
+          />
+        ))}
     </div>
   );
 }
@@ -81,12 +94,16 @@ function BlockView({
             loading="lazy"
             referrerPolicy="no-referrer"
           />
-          {data.caption ? <figcaption className="text-sm text-gray-500">{String(data.caption)}</figcaption> : null}
+          {data.caption ? (
+            <figcaption className="text-sm text-gray-500">{String(data.caption)}</figcaption>
+          ) : null}
         </figure>
       );
     }
     case "gallery": {
-      const images = Array.isArray(data.images) ? (data.images as { url: string; alt?: string }[]) : [];
+      const images = Array.isArray(data.images)
+        ? (data.images as { url: string; alt?: string }[])
+        : [];
       const safeImages = images
         .map((img) => ({ ...img, url: safeUrl(img.url) }))
         .filter((img): img is { url: string; alt?: string } => Boolean(img.url));
@@ -150,10 +167,30 @@ function BlockView({
     case "contact_info":
       return (
         <dl className="flex flex-col gap-1 text-sm">
-          {data.address ? <div><dt className="inline font-medium">{t("address")} </dt><dd className="inline">{String(data.address)}</dd></div> : null}
-          {data.phone ? <div><dt className="inline font-medium">{t("phone")} </dt><dd className="inline">{String(data.phone)}</dd></div> : null}
-          {data.email ? <div><dt className="inline font-medium">{t("email")} </dt><dd className="inline">{String(data.email)}</dd></div> : null}
-          {data.hours ? <div><dt className="inline font-medium">{t("hours")} </dt><dd className="inline">{String(data.hours)}</dd></div> : null}
+          {data.address ? (
+            <div>
+              <dt className="inline font-medium">{t("address")} </dt>
+              <dd className="inline">{String(data.address)}</dd>
+            </div>
+          ) : null}
+          {data.phone ? (
+            <div>
+              <dt className="inline font-medium">{t("phone")} </dt>
+              <dd className="inline">{String(data.phone)}</dd>
+            </div>
+          ) : null}
+          {data.email ? (
+            <div>
+              <dt className="inline font-medium">{t("email")} </dt>
+              <dd className="inline">{String(data.email)}</dd>
+            </div>
+          ) : null}
+          {data.hours ? (
+            <div>
+              <dt className="inline font-medium">{t("hours")} </dt>
+              <dd className="inline">{String(data.hours)}</dd>
+            </div>
+          ) : null}
         </dl>
       );
     case "map_embed":
@@ -201,17 +238,29 @@ function BlockView({
           <p>
             <RichText nodes={data.text} />
           </p>
-          {data.attribution ? <cite className="block text-sm not-italic text-gray-500">— {String(data.attribution)}</cite> : null}
+          {data.attribution ? (
+            <cite className="block text-sm not-italic text-gray-500">
+              — {String(data.attribution)}
+            </cite>
+          ) : null}
         </blockquote>
       );
     case "columns": {
-      const columns = Array.isArray(data.columns) ? (data.columns as { blocks: NestedBlock[] }[]) : [];
+      const columns = Array.isArray(data.columns)
+        ? (data.columns as { blocks: NestedBlock[] }[])
+        : [];
       return (
         <div className="flex flex-col gap-4 sm:flex-row">
           {columns.map((col, i) => (
             <div key={i} className="flex-1">
               {(col.blocks ?? []).map((nb, j) => (
-                <BlockView key={j} blockTypeCode={nb.blockTypeCode} data={nb.data} t={t} siteId={siteId} />
+                <BlockView
+                  key={j}
+                  blockTypeCode={nb.blockTypeCode}
+                  data={nb.data}
+                  t={t}
+                  siteId={siteId}
+                />
               ))}
             </div>
           ))}
@@ -230,7 +279,10 @@ function BlockView({
       // server-side in application.Service.SubmitContactForm; this action just forwards the two
       // anti-spam fields the client component captured, and never tells the caller which case (if
       // either) fired.
-      async function submitAction(_prevState: ContactFormActionState, formData: FormData): Promise<ContactFormActionState> {
+      async function submitAction(
+        _prevState: ContactFormActionState,
+        formData: FormData,
+      ): Promise<ContactFormActionState> {
         "use server";
         const name = String(formData.get("name") ?? "").trim();
         const email = String(formData.get("email") ?? "").trim();

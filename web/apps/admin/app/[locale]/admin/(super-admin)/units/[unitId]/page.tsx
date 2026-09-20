@@ -87,7 +87,10 @@ export default async function SuperAdminUnitPage({
       await deleteUnit(unitId);
     } catch (e) {
       if (e instanceof CoreApiError) {
-        redirect({ href: `/admin/units/${unitId}?deleteError=${encodeURIComponent(e.errorName)}`, locale });
+        redirect({
+          href: `/admin/units/${unitId}?deleteError=${encodeURIComponent(e.errorName)}`,
+          locale,
+        });
       }
       throw e;
     }
@@ -102,7 +105,10 @@ export default async function SuperAdminUnitPage({
       await moveUnit(unitId, newParentUnitId);
     } catch (e) {
       if (e instanceof CoreApiError) {
-        redirect({ href: `/admin/units/${unitId}?moveError=${encodeURIComponent(e.errorName)}`, locale });
+        redirect({
+          href: `/admin/units/${unitId}?moveError=${encodeURIComponent(e.errorName)}`,
+          locale,
+        });
       }
       throw e;
     }
@@ -307,13 +313,17 @@ export default async function SuperAdminUnitPage({
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {deleteErrorKey && (
-              <p className="rounded-md border border-destructive p-3 text-sm">{t(deleteErrorKey)}</p>
+              <p className="rounded-md border border-destructive p-3 text-sm">
+                {t(deleteErrorKey)}
+              </p>
             )}
             {eligibility && !eligibility.canDelete ? (
               <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
                 {eligibility.hasChildren && <li>{t("deleteBlockedChildren")}</li>}
                 {eligibility.hasOrgProfile && <li>{t("deleteBlockedOrgProfile")}</li>}
-                {eligibility.hasActiveRoleAssignments && <li>{t("deleteBlockedRoleAssignments")}</li>}
+                {eligibility.hasActiveRoleAssignments && (
+                  <li>{t("deleteBlockedRoleAssignments")}</li>
+                )}
               </ul>
             ) : (
               <form action={deleteUnitAction}>

@@ -108,7 +108,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // access_type=offline is what makes Google issue a refresh_token at all; prompt=consent
       // forces it on every sign-in rather than only the first (Google otherwise omits it on a
       // returning user's silent re-auth), so a revoked-then-re-granted consent still gets one.
-      authorization: { params: { scope: "openid email profile", access_type: "offline", prompt: "consent" } },
+      authorization: {
+        params: { scope: "openid email profile", access_type: "offline", prompt: "consent" },
+      },
     }),
   ],
   callbacks: {

@@ -51,11 +51,7 @@ export function RunConnectorForm({
         </SelectContent>
       </Select>
       {PARAMETERIZED_SOURCES.has(sourceCode) && (
-        <Input
-          name="countryCodes"
-          placeholder={t("runCountryCodesPlaceholder")}
-          className="w-64"
-        />
+        <Input name="countryCodes" placeholder={t("runCountryCodesPlaceholder")} className="w-64" />
       )}
       <Button type="submit" size="sm">
         {t("runConnector")}

@@ -17,7 +17,11 @@ export type JurisdictionUnit = {
   name: string;
 };
 
-function toJurisdictionUnit(u: { id: string; code?: string | null; name: string }): JurisdictionUnit {
+function toJurisdictionUnit(u: {
+  id: string;
+  code?: string | null;
+  name: string;
+}): JurisdictionUnit {
   return { id: u.id, code: u.code ?? null, name: u.name };
 }
 

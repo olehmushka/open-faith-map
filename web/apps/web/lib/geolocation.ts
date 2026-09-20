@@ -31,7 +31,11 @@ export function useGeolocation(): GeolocationResult {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         if (cancelled) return;
-        setResult({ status: "granted", lat: position.coords.latitude, lng: position.coords.longitude });
+        setResult({
+          status: "granted",
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
       },
       () => {
         if (cancelled) return;

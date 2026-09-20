@@ -75,7 +75,11 @@ export default async function CongregationImportAliasesPage({
           <form action={addTaxonAlias} className="flex flex-wrap items-end gap-3">
             <Label className="flex flex-col items-start gap-1 text-xs">
               {t("sourceCode")}
-              <Input name="sourceCode" placeholder={t("sourceCodeAllPlaceholder")} className="h-8" />
+              <Input
+                name="sourceCode"
+                placeholder={t("sourceCodeAllPlaceholder")}
+                className="h-8"
+              />
             </Label>
             <Label className="flex flex-col items-start gap-1 text-xs">
               {t("aliasText")}
@@ -90,7 +94,9 @@ export default async function CongregationImportAliasesPage({
             </Button>
           </form>
           <ul className="flex flex-col gap-1 text-sm">
-            {taxonAliases.length === 0 && <li className="text-muted-foreground">{t("noAliases")}</li>}
+            {taxonAliases.length === 0 && (
+              <li className="text-muted-foreground">{t("noAliases")}</li>
+            )}
             {taxonAliases.map((a) => (
               <li key={a.id} className="flex flex-wrap items-center gap-2">
                 <code className="rounded bg-muted px-1">{a.sourceCode ?? t("global")}</code>
@@ -112,7 +118,11 @@ export default async function CongregationImportAliasesPage({
           <form action={addJurisdictionAlias} className="flex flex-wrap items-end gap-3">
             <Label className="flex flex-col items-start gap-1 text-xs">
               {t("sourceCode")}
-              <Input name="sourceCode" placeholder={t("sourceCodeAllPlaceholder")} className="h-8" />
+              <Input
+                name="sourceCode"
+                placeholder={t("sourceCodeAllPlaceholder")}
+                className="h-8"
+              />
             </Label>
             <Label className="flex flex-col items-start gap-1 text-xs">
               {t("aliasText")}
@@ -127,7 +137,9 @@ export default async function CongregationImportAliasesPage({
             </Button>
           </form>
           <ul className="flex flex-col gap-1 text-sm">
-            {jurisdictionAliases.length === 0 && <li className="text-muted-foreground">{t("noAliases")}</li>}
+            {jurisdictionAliases.length === 0 && (
+              <li className="text-muted-foreground">{t("noAliases")}</li>
+            )}
             {jurisdictionAliases.map((a) => (
               <li key={a.id} className="flex flex-wrap items-center gap-2">
                 <code className="rounded bg-muted px-1">{a.sourceCode ?? t("global")}</code>

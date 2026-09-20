@@ -65,7 +65,11 @@ function GeolocationRecenter({
   return null;
 }
 
-function ViewportWatcher({ onViewportChange }: { onViewportChange: (viewport: PendingViewport) => void }) {
+function ViewportWatcher({
+  onViewportChange,
+}: {
+  onViewportChange: (viewport: PendingViewport) => void;
+}) {
   useMapEvents({
     moveend(e) {
       const map = e.target;
@@ -172,9 +176,13 @@ export function MapPane({
                         still the right "has this congregation published a site at all" signal. */}
                     <div className="pt-1">
                       {s.contentSiteId ? (
-                        <Link href={`/congregations/${s.congregationUnitRid}`}>{t("viewCongregationPage")}</Link>
+                        <Link href={`/congregations/${s.congregationUnitRid}`}>
+                          {t("viewCongregationPage")}
+                        </Link>
                       ) : (
-                        <span className="text-xs text-muted-foreground">{t("noPublishedPage")}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {t("noPublishedPage")}
+                        </span>
                       )}
                     </div>
                   </Popup>

@@ -43,7 +43,10 @@ export default async function BlockTypesPage({
       await updateBlockType(blockTypeId, { status: nextStatus });
     } catch (e) {
       if (e && typeof e === "object" && "errorName" in e) {
-        redirect({ href: `/admin/block-types?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`, locale });
+        redirect({
+          href: `/admin/block-types?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`,
+          locale,
+        });
       }
       throw e;
     }
@@ -69,7 +72,10 @@ export default async function BlockTypesPage({
       await createBlockType({ code, name, jsonSchema, uiSchema, sortOrder });
     } catch (e) {
       if (e && typeof e === "object" && "errorName" in e) {
-        redirect({ href: `/admin/block-types?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`, locale });
+        redirect({
+          href: `/admin/block-types?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`,
+          locale,
+        });
       }
       throw e;
     }
@@ -93,7 +99,10 @@ export default async function BlockTypesPage({
             .slice()
             .sort((a, b) => a.sortOrder - b.sortOrder)
             .map((bt) => (
-              <div key={bt.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
+              <div
+                key={bt.id}
+                className="flex items-center justify-between gap-3 rounded-md border p-3"
+              >
                 <div className="flex flex-col">
                   <span className="font-medium">{bt.name}</span>
                   <span className="text-xs text-muted-foreground">
@@ -101,10 +110,16 @@ export default async function BlockTypesPage({
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant={bt.status === "ACTIVE" ? "default" : "secondary"}>{bt.status}</Badge>
+                  <Badge variant={bt.status === "ACTIVE" ? "default" : "secondary"}>
+                    {bt.status}
+                  </Badge>
                   <form action={toggleStatus}>
                     <input type="hidden" name="blockTypeId" value={bt.id} />
-                    <input type="hidden" name="nextStatus" value={bt.status === "ACTIVE" ? "RETIRED" : "ACTIVE"} />
+                    <input
+                      type="hidden"
+                      name="nextStatus"
+                      value={bt.status === "ACTIVE" ? "RETIRED" : "ACTIVE"}
+                    />
                     <Button type="submit" variant="outline" size="sm">
                       {bt.status === "ACTIVE" ? t("retire") : t("reactivate")}
                     </Button>
@@ -123,7 +138,13 @@ export default async function BlockTypesPage({
           <form action={create} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="code">{t("codeLabel")}</Label>
-              <Input id="code" name="code" required pattern="[a-z][a-z0-9_]*" placeholder="feast_banner" />
+              <Input
+                id="code"
+                name="code"
+                required
+                pattern="[a-z][a-z0-9_]*"
+                placeholder="feast_banner"
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="name">{t("nameLabel")}</Label>
@@ -135,12 +156,25 @@ export default async function BlockTypesPage({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="jsonSchema">{t("jsonSchemaLabel")}</Label>
-              <Textarea id="jsonSchema" name="jsonSchema" rows={6} className="font-mono text-xs" required defaultValue='{"type":"object","properties":{}}' />
+              <Textarea
+                id="jsonSchema"
+                name="jsonSchema"
+                rows={6}
+                className="font-mono text-xs"
+                required
+                defaultValue='{"type":"object","properties":{}}'
+              />
               <p className="text-xs text-muted-foreground">{t("jsonSchemaHint")}</p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="uiSchema">{t("uiSchemaLabel")}</Label>
-              <Textarea id="uiSchema" name="uiSchema" rows={4} className="font-mono text-xs" defaultValue="{}" />
+              <Textarea
+                id="uiSchema"
+                name="uiSchema"
+                rows={4}
+                className="font-mono text-xs"
+                defaultValue="{}"
+              />
             </div>
             <Button type="submit" className="self-start">
               {t("createSubmit")}

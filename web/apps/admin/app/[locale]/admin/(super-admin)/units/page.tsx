@@ -52,7 +52,9 @@ export default async function SuperAdminUnitsPage({
             <Button type="submit">{t("search")}</Button>
           </form>
 
-          {q && results.length === 0 && <p className="text-sm text-muted-foreground">{t("noResults")}</p>}
+          {q && results.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t("noResults")}</p>
+          )}
 
           {results.length > 0 && <BulkArchiveForm units={results} action={bulkArchive} />}
         </CardContent>

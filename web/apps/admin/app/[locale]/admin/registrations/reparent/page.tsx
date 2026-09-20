@@ -25,7 +25,9 @@ export default async function ReparentPage({
   const t = await getTranslations("ReparentPage");
   const { requests } = await listRegistrations("APPROVED");
   const { jurisdictionQuery } = await searchParams;
-  const jurisdictionResults = jurisdictionQuery ? await searchJurisdictionUnits(jurisdictionQuery) : [];
+  const jurisdictionResults = jurisdictionQuery
+    ? await searchJurisdictionUnits(jurisdictionQuery)
+    : [];
 
   const jobs = await Promise.all(
     requests.map(async (r) => ({ requestId: r.id, job: await getReparentStatus(r.id) })),
@@ -101,7 +103,9 @@ export default async function ReparentPage({
           </form>
           {jurisdictionQuery && (
             <ul className="flex flex-col gap-1 text-sm">
-              {jurisdictionResults.length === 0 && <li className="text-muted-foreground">{t("noMatches")}</li>}
+              {jurisdictionResults.length === 0 && (
+                <li className="text-muted-foreground">{t("noMatches")}</li>
+              )}
               {jurisdictionResults.map((u) => (
                 <li key={u.id} className="flex items-center gap-2">
                   <code className="rounded bg-muted px-1">{u.id}</code>

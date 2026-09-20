@@ -79,7 +79,11 @@ export function AppealList({
         cell: ({ row }) => {
           const a = row.original;
           return (
-            <form action={decide} className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <form
+              action={decide}
+              className="flex flex-wrap items-center gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
               <input type="hidden" name="appealId" value={a.id} />
               <Input name="note" placeholder={labels.notePlaceholder} className="h-8 w-48" />
               <Button type="submit" name="decision" value="UPHELD" size="sm" variant="outline">
@@ -109,7 +113,14 @@ export function AppealList({
         emptyMessage={labels.noAppeals}
       />
       {nextPageToken && (
-        <Button type="button" variant="outline" size="sm" onClick={handleLoadMore} disabled={isPending} className="self-start">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleLoadMore}
+          disabled={isPending}
+          className="self-start"
+        >
           {isPending ? labels.loading : labels.loadMore}
         </Button>
       )}

@@ -146,9 +146,7 @@ export function AdminSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1 text-sm font-semibold">
-          {t("brand")}
-        </div>
+        <div className="flex items-center gap-2 px-2 py-1 text-sm font-semibold">{t("brand")}</div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

@@ -35,7 +35,13 @@ import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Document, NavItem, NavItemInput } from "@/lib/content";
 
 export type NavSaveResult =
@@ -43,7 +49,11 @@ export type NavSaveResult =
   | {
       ok: false;
       sortOrder?: number;
-      error: "errorNavTargetInvalid" | "errorNavTargetAmbiguous" | "errorDuplicateNavItemSortOrder" | "errorGeneric";
+      error:
+        | "errorNavTargetInvalid"
+        | "errorNavTargetAmbiguous"
+        | "errorDuplicateNavItemSortOrder"
+        | "errorGeneric";
       raw?: string;
     };
 
@@ -118,7 +128,16 @@ export function NavItemListEditor({
   function addRow() {
     setRows((prev) => {
       setLiveMessage(t("itemAddedAnnouncement"));
-      return [...prev, { key: newKey(), label: "", mode: "page", targetDocumentId: pages[0]?.id ?? null, targetUrl: null }];
+      return [
+        ...prev,
+        {
+          key: newKey(),
+          label: "",
+          mode: "page",
+          targetDocumentId: pages[0]?.id ?? null,
+          targetUrl: null,
+        },
+      ];
     });
   }
 
@@ -152,7 +171,10 @@ export function NavItemListEditor({
       setStatus("saved");
       return;
     }
-    setError({ sortOrder: result.sortOrder, message: t(result.error, result.raw ? { error: result.raw } : undefined) });
+    setError({
+      sortOrder: result.sortOrder,
+      message: t(result.error, result.raw ? { error: result.raw } : undefined),
+    });
     setStatus("error");
   }, [rows, onSave, t]);
 
@@ -198,7 +220,9 @@ export function NavItemListEditor({
           {status === "saving" && t("saving")}
           {status === "saved" && t("saved")}
         </span>
-        {status === "error" && error.message ? <span className="text-sm text-destructive">{error.message}</span> : null}
+        {status === "error" && error.message ? (
+          <span className="text-sm text-destructive">{error.message}</span>
+        ) : null}
       </div>
     </div>
   );
@@ -248,7 +272,14 @@ function SortableNavItemRow({
         <GripVertical className="size-4" />
       </button>
       <div className="mt-1 flex flex-col gap-1">
-        <Button type="button" variant="ghost" size="icon" aria-label={t("moveItemUp")} disabled={index === 0} onClick={onMoveUp}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t("moveItemUp")}
+          disabled={index === 0}
+          onClick={onMoveUp}
+        >
           <ChevronUp />
         </Button>
         <Button
@@ -265,7 +296,12 @@ function SortableNavItemRow({
       <div className="flex w-full flex-col gap-2">
         <Label className="flex flex-col items-start gap-1">
           {t("labelLabel")}
-          <Input value={row.label} onChange={(e) => onChange({ label: e.target.value })} required aria-invalid={hasError || undefined} />
+          <Input
+            value={row.label}
+            onChange={(e) => onChange({ label: e.target.value })}
+            required
+            aria-invalid={hasError || undefined}
+          />
         </Label>
         <div className="flex gap-2">
           <Button
@@ -286,7 +322,10 @@ function SortableNavItemRow({
           </Button>
         </div>
         {row.mode === "page" ? (
-          <Select value={row.targetDocumentId ?? undefined} onValueChange={(v) => onChange({ targetDocumentId: v })}>
+          <Select
+            value={row.targetDocumentId ?? undefined}
+            onValueChange={(v) => onChange({ targetDocumentId: v })}
+          >
             <SelectTrigger className="w-full" aria-invalid={hasError || undefined}>
               <SelectValue placeholder={t("pagePlaceholder")} />
             </SelectTrigger>

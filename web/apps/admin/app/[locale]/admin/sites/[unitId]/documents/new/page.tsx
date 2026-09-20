@@ -21,7 +21,10 @@ export default async function NewDocumentPage({
 }) {
   const { locale, unitId } = await params;
   const { translationGroupId: initialTranslationGroupId, kind: lockedKindRaw } = await searchParams;
-  const lockedKind = lockedKindRaw && Object.values(DocumentKind).includes(lockedKindRaw as DocumentKind) ? (lockedKindRaw as DocumentKind) : undefined;
+  const lockedKind =
+    lockedKindRaw && Object.values(DocumentKind).includes(lockedKindRaw as DocumentKind)
+      ? (lockedKindRaw as DocumentKind)
+      : undefined;
   const t = await getTranslations("NewDocumentPage");
   const site = await getSite(unitId).catch(() => null);
   if (!site) return redirect({ href: `/admin/sites/${unitId}`, locale });
@@ -31,7 +34,10 @@ export default async function NewDocumentPage({
 
   // M14.8: returns state instead of redirecting with ?error=<name> on failure — see
   // new-document-form.tsx. The success path still redirects, same as before.
-  async function create(_prevState: CreateActionState, formData: FormData): Promise<CreateActionState> {
+  async function create(
+    _prevState: CreateActionState,
+    formData: FormData,
+  ): Promise<CreateActionState> {
     "use server";
     const kind = (String(formData.get("kind") ?? "PAGE") as DocumentKind) || DocumentKind.PAGE;
     // Renamed from the original's `locale` to avoid shadowing the outer routing `locale` (en/uk/es/
@@ -41,11 +47,22 @@ export default async function NewDocumentPage({
     const slug = String(formData.get("slug") ?? "");
     const translationGroupId = String(formData.get("translationGroupId") ?? "") || undefined;
     // Parent nesting only applies to PAGE — never send one for POST/EVENT (DB CHECK would reject it).
-    const parentDocumentIdRaw = kind === DocumentKind.PAGE ? String(formData.get("parentDocumentId") ?? "") : "";
-    const parentDocumentId = parentDocumentIdRaw && parentDocumentIdRaw !== NO_PARENT ? parentDocumentIdRaw : undefined;
-    const eventStartsAt = kind === DocumentKind.EVENT ? String(formData.get("eventStartsAt") ?? "") || undefined : undefined;
-    const eventEndsAt = kind === DocumentKind.EVENT ? String(formData.get("eventEndsAt") ?? "") || undefined : undefined;
-    const eventRecurrenceRrule = kind === DocumentKind.EVENT ? String(formData.get("eventRecurrenceRrule") ?? "") || undefined : undefined;
+    const parentDocumentIdRaw =
+      kind === DocumentKind.PAGE ? String(formData.get("parentDocumentId") ?? "") : "";
+    const parentDocumentId =
+      parentDocumentIdRaw && parentDocumentIdRaw !== NO_PARENT ? parentDocumentIdRaw : undefined;
+    const eventStartsAt =
+      kind === DocumentKind.EVENT
+        ? String(formData.get("eventStartsAt") ?? "") || undefined
+        : undefined;
+    const eventEndsAt =
+      kind === DocumentKind.EVENT
+        ? String(formData.get("eventEndsAt") ?? "") || undefined
+        : undefined;
+    const eventRecurrenceRrule =
+      kind === DocumentKind.EVENT
+        ? String(formData.get("eventRecurrenceRrule") ?? "") || undefined
+        : undefined;
 
     try {
       const doc = await createDocument(site!.id, {

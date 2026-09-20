@@ -19,7 +19,10 @@ export default async function SuperAdminInvitePage({
   const { locale } = await params;
   const t = await getTranslations("SuperAdminInvitePage");
 
-  async function createInvite(_prevState: InviteActionState, formData: FormData): Promise<InviteActionState> {
+  async function createInvite(
+    _prevState: InviteActionState,
+    formData: FormData,
+  ): Promise<InviteActionState> {
     "use server";
     const email = String(formData.get("email") ?? "");
     const displayName = String(formData.get("displayName") ?? "");
@@ -31,7 +34,12 @@ export default async function SuperAdminInvitePage({
       };
     } catch (e) {
       if (e instanceof CoreApiError) {
-        return { error: e.errorName === "Core:AccountAlreadyExists" ? "errorAccountAlreadyExists" : "errorGeneric" };
+        return {
+          error:
+            e.errorName === "Core:AccountAlreadyExists"
+              ? "errorAccountAlreadyExists"
+              : "errorGeneric",
+        };
       }
       throw e;
     }

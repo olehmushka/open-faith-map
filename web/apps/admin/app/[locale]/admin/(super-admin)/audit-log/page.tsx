@@ -64,7 +64,11 @@ export default async function SuperAdminAuditLogPage({
           <form className="flex flex-wrap items-end gap-3">
             <Label className="flex flex-col items-start gap-1">
               {t("actorFilterLabel")}
-              <Input name="actorPersonId" defaultValue={filters.actorPersonId ?? ""} className="w-56" />
+              <Input
+                name="actorPersonId"
+                defaultValue={filters.actorPersonId ?? ""}
+                className="w-56"
+              />
             </Label>
             <Label className="flex flex-col items-start gap-1">
               {t("targetKindFilterLabel")}
