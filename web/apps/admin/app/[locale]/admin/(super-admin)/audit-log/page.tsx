@@ -1,11 +1,13 @@
 import { getTranslations } from "next-intl/server";
 
 import { listAuditLog } from "@/lib/core";
+import { searchPersonsForPicker } from "@/lib/entity-search";
 import { Link } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityPicker } from "@/components/entity-picker";
 
 import { AuditLogList } from "./audit-log-list";
 
@@ -64,9 +66,15 @@ export default async function SuperAdminAuditLogPage({
           <form className="flex flex-wrap items-end gap-3">
             <Label className="flex flex-col items-start gap-1">
               {t("actorFilterLabel")}
-              <Input
+              <EntityPicker
                 name="actorPersonId"
-                defaultValue={filters.actorPersonId ?? ""}
+                defaultValue={
+                  filters.actorPersonId
+                    ? { id: filters.actorPersonId, label: filters.actorPersonId }
+                    : null
+                }
+                onSearch={searchPersonsForPicker}
+                placeholder={t("actorFilterLabel")}
                 className="w-56"
               />
             </Label>

@@ -3,10 +3,12 @@ import { getTranslations } from "next-intl/server";
 import { createJurisdictionUnit, searchJurisdictionUnits } from "@/lib/jurisdiction";
 import { approveRegistration, listRegistrations, rejectRegistration } from "@/lib/registration";
 import { refreshRegionAroundPoint } from "@/lib/discovery";
+import { searchUnitsForPicker } from "@/lib/entity-search";
 import { redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityPicker } from "@/components/entity-picker";
 
 import { RequestList } from "./request-list";
 
@@ -112,7 +114,12 @@ export default async function RegistrationsPage({
           <form action={createJurisdiction} className="flex flex-wrap gap-2">
             <Input name="code" placeholder={t("newUnitCodePlaceholder")} required className="h-8" />
             <Input name="name" placeholder={t("newUnitNamePlaceholder")} required className="h-8" />
-            <Input name="parentUnitId" placeholder={t("parentUnitIdPlaceholder")} className="h-8" />
+            <EntityPicker
+              name="parentUnitId"
+              onSearch={searchUnitsForPicker}
+              placeholder={t("parentUnitIdPlaceholder")}
+              className="w-56"
+            />
             <Button type="submit" size="sm">
               {t("createJurisdictionUnit")}
             </Button>

@@ -10,11 +10,13 @@ import {
   listJurisdictionAliases,
   listTaxonAliases,
 } from "@/lib/congregation-import";
+import { searchTaxaForPicker, searchUnitsForPicker } from "@/lib/entity-search";
 import { Link, redirect } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityPicker } from "@/components/entity-picker";
 
 // A secondary page under congregation-import (mirrors /admin/registrations/reparent's own
 // "secondary page under the same feature" shape) — previously SQL-only
@@ -87,7 +89,11 @@ export default async function CongregationImportAliasesPage({
             </Label>
             <Label className="flex flex-col items-start gap-1 text-xs">
               {t("taxonId")}
-              <Input name="taxonId" required className="h-8" />
+              <EntityPicker
+                name="taxonId"
+                onSearch={searchTaxaForPicker}
+                placeholder={t("taxonId")}
+              />
             </Label>
             <Button type="submit" size="sm">
               {t("add")}
@@ -130,7 +136,11 @@ export default async function CongregationImportAliasesPage({
             </Label>
             <Label className="flex flex-col items-start gap-1 text-xs">
               {t("jurisdictionUnitId")}
-              <Input name="jurisdictionUnitId" required className="h-8" />
+              <EntityPicker
+                name="jurisdictionUnitId"
+                onSearch={searchUnitsForPicker}
+                placeholder={t("jurisdictionUnitId")}
+              />
             </Label>
             <Button type="submit" size="sm">
               {t("add")}

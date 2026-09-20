@@ -1,20 +1,19 @@
 import { getTranslations } from "next-intl/server";
 
 import { getPerson, mergePersons, previewMergePersons } from "@/lib/core";
+import { searchPersonsForPicker } from "@/lib/entity-search";
 import { redirect } from "@/i18n/navigation";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityPicker } from "@/components/entity-picker";
 
-// M11.8 — the "merge with another person" flow off the person detail page: find the duplicate
-// (via the existing /admin/people search — no new inline search built for this, matching this
-// page family's own plain-text-id convention for unitId), preview what will move, confirm. The id
-// field is a plain GET <form> with no action attribute (same convention audit-log/page.tsx's own
-// filter form uses — a real server-side refetch through previewMergePersons, not a client
-// re-render); the confirm button is a Server Action, same shape as this page's own
-// deactivateAccount/revokeSession. No confirm dialog: this app has none anywhere, and the
-// preview-then-destructive-button IS its existing risk-communication convention.
+// M11.8 — the "merge with another person" flow off the person detail page: find the duplicate,
+// preview what will move, confirm. The id field is a plain GET <form> with no action attribute
+// (same convention audit-log/page.tsx's own filter form uses — a real server-side refetch through
+// previewMergePersons, not a client re-render); the confirm button is a Server Action, same shape
+// as this page's own deactivateAccount/revokeSession. No confirm dialog: this app has none
+// anywhere, and the preview-then-destructive-button IS its existing risk-communication convention.
 export default async function SuperAdminMergePersonPage({
   params,
   searchParams,
@@ -50,10 +49,10 @@ export default async function SuperAdminMergePersonPage({
           <form className="flex flex-col gap-4">
             <Label className="flex flex-col items-start gap-1">
               {t("duplicateIdLabel")}
-              <Input
+              <EntityPicker
                 name="duplicatePersonId"
-                required
-                defaultValue={duplicatePersonId ?? ""}
+                defaultValue={duplicate ? { id: duplicate.id, label: duplicate.displayName } : null}
+                onSearch={searchPersonsForPicker}
                 placeholder={t("duplicateIdPlaceholder")}
               />
             </Label>

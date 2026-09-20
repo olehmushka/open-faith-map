@@ -718,5 +718,9 @@
     "myCongregation": "Моя громада",
     "signIn": "Увійти через Google",
     "signOut": "Вийти"
+  },
+  "EntityPicker": {
+    "searchPlaceholder": "Search…",
+    "noMatches": "No matches."
   }
 }

@@ -12,12 +12,14 @@ import {
   revokeRoleAssignment,
   searchPersons,
 } from "@/lib/core";
+import { searchPersonsForPicker, searchUnitsForPicker } from "@/lib/entity-search";
 import { redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
+import { EntityPicker } from "@/components/entity-picker";
 import { BulkGrantForm } from "./bulk-grant-form";
 
 // Super-admin role-grants console (M10.8): a unit picker over CoreSuperAdminService's
@@ -110,11 +112,12 @@ export default async function SuperAdminRoleGrantsPage({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <form className="flex gap-2">
-            <Input
+            <EntityPicker
               name="unitId"
-              defaultValue={unitId ?? ""}
+              defaultValue={unitId ? { id: unitId, label: unitId } : null}
+              onSearch={searchUnitsForPicker}
               placeholder={t("unitIdPlaceholder")}
-              autoFocus
+              className="max-w-xs"
             />
             <Button type="submit">{t("load")}</Button>
           </form>
@@ -174,7 +177,11 @@ export default async function SuperAdminRoleGrantsPage({
               <input type="hidden" name="unitId" value={unitId} />
               <Label className="flex flex-col items-start gap-1">
                 {t("personIdLabel")}
-                <Input name="personId" required placeholder={t("personIdPlaceholder")} />
+                <EntityPicker
+                  name="personId"
+                  onSearch={searchPersonsForPicker}
+                  placeholder={t("personIdPlaceholder")}
+                />
               </Label>
               <Label className="flex flex-col items-start gap-1">
                 {t("roleLabel")}
@@ -243,7 +250,12 @@ export default async function SuperAdminRoleGrantsPage({
 
           <form action={toggleInstanceAdmin} className="flex gap-2 border-t pt-4">
             <input type="hidden" name="action" value="grant" />
-            <Input name="personId" required placeholder={t("personIdPlaceholder")} />
+            <EntityPicker
+              name="personId"
+              onSearch={searchPersonsForPicker}
+              placeholder={t("personIdPlaceholder")}
+              className="max-w-xs"
+            />
             <Button type="submit">{t("grantInstanceAdmin")}</Button>
           </form>
         </CardContent>

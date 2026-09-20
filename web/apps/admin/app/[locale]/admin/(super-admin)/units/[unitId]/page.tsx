@@ -13,12 +13,14 @@ import {
   unitDeleteEligibility,
   updateUnit,
 } from "@/lib/core";
+import { searchUnitsForPicker } from "@/lib/entity-search";
 import { Link, redirect } from "@/i18n/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { UnitMoveStatusBadge, UnitStatusBadge } from "@/components/status-badge";
+import { EntityPicker } from "@/components/entity-picker";
 
 // Super-admin unit detail (M10.8, full CRUD since M12.5). getOrgProfile is .catch(() => null)'d —
 // not every unit is a religion org (jurisdiction units aren't), so no profile is a normal state,
@@ -212,7 +214,12 @@ export default async function SuperAdminUnitPage({
             <form action={moveUnitAction} className="flex flex-col gap-4">
               <Label className="flex flex-col items-start gap-1">
                 {t("newParentLabel")}
-                <Input name="newParentUnitId" defaultValue={parent?.id ?? ""} required />
+                <EntityPicker
+                  name="newParentUnitId"
+                  defaultValue={parent ? { id: parent.id, label: parent.name } : null}
+                  onSearch={searchUnitsForPicker}
+                  placeholder={t("newParentLabel")}
+                />
               </Label>
               <Button type="submit" className="self-start">
                 {t("moveUnit")}

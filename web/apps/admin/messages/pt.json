@@ -718,5 +718,9 @@
     "myCongregation": "Minha congregação",
     "signIn": "Entrar com o Google",
     "signOut": "Sair"
+  },
+  "EntityPicker": {
+    "searchPlaceholder": "Search…",
+    "noMatches": "No matches."
   }
 }
