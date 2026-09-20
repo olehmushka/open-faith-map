@@ -90,7 +90,10 @@ export async function listVouches(claimant?: string, congregation?: string): Pro
   return unwrap((await client()).vouching.listVouches(claimant, congregation));
 }
 
-export async function revokeGuarantor(personRid: string, reason: string): Promise<GuarantorStatusRecord> {
+export async function revokeGuarantor(
+  personRid: string,
+  reason: string,
+): Promise<GuarantorStatusRecord> {
   return unwrap((await client()).vouching.revokeGuarantor(personRid, { reason }));
 }
 

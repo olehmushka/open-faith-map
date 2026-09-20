@@ -44,7 +44,11 @@ export function ThemeForm({
 }) {
   const [theme, setTheme] = useState(initial);
 
-  const select = (field: keyof ThemeInput, label: string, options: { name: string; label: string }[]) => (
+  const select = (
+    field: keyof ThemeInput,
+    label: string,
+    options: { name: string; label: string }[],
+  ) => (
     <Label className="flex flex-col items-start gap-1">
       {label}
       <select

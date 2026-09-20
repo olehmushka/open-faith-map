@@ -88,7 +88,10 @@ export function useDebouncedAutosave<T>(
         setStatus("unsaved");
         return;
       }
-      if (snapshot.text !== lastSavedRef.current && Date.now() - lastChangeAtRef.current >= debounceMs) {
+      if (
+        snapshot.text !== lastSavedRef.current &&
+        Date.now() - lastChangeAtRef.current >= debounceMs
+      ) {
         flush();
       }
     }, pollMs);

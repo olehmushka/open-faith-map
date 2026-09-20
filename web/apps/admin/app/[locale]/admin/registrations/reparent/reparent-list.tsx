@@ -91,9 +91,18 @@ export function ReparentList({
           const { request, job } = row.original;
           const resuming = job && job.status !== "VERIFIED" && job.status !== "FAILED";
           return (
-            <form action={onReparent} className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <form
+              action={onReparent}
+              className="flex items-center gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
               <input type="hidden" name="id" value={request.id} />
-              <Input name="newParentUnitId" placeholder={labels.newParentUnitIdPlaceholder} required className="h-8 w-48" />
+              <Input
+                name="newParentUnitId"
+                placeholder={labels.newParentUnitIdPlaceholder}
+                required
+                className="h-8 w-48"
+              />
               <Button type="submit" size="sm">
                 {resuming ? labels.resumeMove : labels.reparentButton}
               </Button>

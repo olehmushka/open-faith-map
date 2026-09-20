@@ -49,7 +49,13 @@ import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, ChevronUp, GripVertical, Redo2, Trash2, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Block, BlockType, Pattern } from "@/lib/content";
 import { useDebouncedAutosave, type AutosaveStatus } from "@/hooks/use-debounced-autosave";
@@ -180,7 +186,12 @@ export function BlockListEditor({
     function keyHandler(e: KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
       const target = e.target as HTMLElement | null;
-      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
+      if (
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable
+      )
+        return;
       e.preventDefault();
       if (e.shiftKey) {
         handleRedo();
@@ -234,7 +245,14 @@ export function BlockListEditor({
   function insertPattern(pattern: Pattern) {
     setItems((prev) => {
       setLiveMessage(t("patternInsertedAnnouncement", { name: pattern.name }));
-      return [...prev, ...pattern.blocks.map((b) => ({ key: newKey(), blockTypeCode: b.blockTypeCode, data: b.data }))];
+      return [
+        ...prev,
+        ...pattern.blocks.map((b) => ({
+          key: newKey(),
+          blockTypeCode: b.blockTypeCode,
+          data: b.data,
+        })),
+      ];
     });
   }
 
@@ -259,10 +277,24 @@ export function BlockListEditor({
       {/* Rendered unconditionally (not inside the empty-state branch below): deleting the last
           block is exactly when a visible undo control matters most. */}
       <div className="flex items-center gap-1">
-        <Button type="button" variant="ghost" size="icon" aria-label={t("undo")} disabled={!canUndo} onClick={handleUndo}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t("undo")}
+          disabled={!canUndo}
+          onClick={handleUndo}
+        >
           <Undo2 />
         </Button>
-        <Button type="button" variant="ghost" size="icon" aria-label={t("redo")} disabled={!canRedo} onClick={handleRedo}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t("redo")}
+          disabled={!canRedo}
+          onClick={handleRedo}
+        >
           <Redo2 />
         </Button>
       </div>
@@ -310,7 +342,9 @@ export function BlockListEditor({
                     dragToReorder: (name: string) => t("dragToReorder", { name }),
                   }}
                   onTypeChange={(code) =>
-                    setItems((prev) => prev.map((b, i) => (i === index ? { ...b, blockTypeCode: code } : b)))
+                    setItems((prev) =>
+                      prev.map((b, i) => (i === index ? { ...b, blockTypeCode: code } : b)),
+                    )
                   }
                   onMoveUp={() => moveBlock(index, index - 1)}
                   onMoveDown={() => moveBlock(index, index + 1)}
@@ -430,9 +464,19 @@ function SortableBlockRow({
         </SelectContent>
       </Select>
       {blockType ? (
-        <BlockDataForm blockType={blockType} blockTypes={blockTypes} initialData={block.data} erroredField={erroredField} />
+        <BlockDataForm
+          blockType={blockType}
+          blockTypes={blockTypes}
+          initialData={block.data}
+          erroredField={erroredField}
+        />
       ) : (
-        <Textarea name="data" defaultValue={JSON.stringify(block.data)} rows={3} className="font-mono text-xs" />
+        <Textarea
+          name="data"
+          defaultValue={JSON.stringify(block.data)}
+          rows={3}
+          className="font-mono text-xs"
+        />
       )}
       <Button
         type="button"

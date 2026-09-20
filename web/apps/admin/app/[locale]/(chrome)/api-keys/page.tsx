@@ -4,7 +4,13 @@
 import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/auth";
-import { CoreApiError, createApiKey, listMyApiKeys, listPermissionCatalog, revokeMyApiKey } from "@/lib/core";
+import {
+  CoreApiError,
+  createApiKey,
+  listMyApiKeys,
+  listPermissionCatalog,
+  revokeMyApiKey,
+} from "@/lib/core";
 import { redirect } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -24,16 +30,29 @@ export default async function ApiKeysPage({ params }: { params: Promise<{ locale
   const t = await getTranslations("ApiKeysPage");
   const [keys, permissionCatalog] = await Promise.all([listMyApiKeys(), listPermissionCatalog()]);
 
-  async function createApiKeyAction(_prevState: ApiKeyActionState, formData: FormData): Promise<ApiKeyActionState> {
+  async function createApiKeyAction(
+    _prevState: ApiKeyActionState,
+    formData: FormData,
+  ): Promise<ApiKeyActionState> {
     "use server";
     const label = String(formData.get("label") ?? "");
     const permissionCodes = formData.getAll("permissionCodes").map(String);
     try {
       const result = await createApiKey(label, permissionCodes);
-      return { id: result.id, label: result.label, permissionCodes: result.permissionCodes, token: result.token };
+      return {
+        id: result.id,
+        label: result.label,
+        permissionCodes: result.permissionCodes,
+        token: result.token,
+      };
     } catch (e) {
       if (e instanceof CoreApiError) {
-        return { error: e.errorName === "Core:UnknownPermissionCode" ? "errorUnknownPermissionCode" : "errorGeneric" };
+        return {
+          error:
+            e.errorName === "Core:UnknownPermissionCode"
+              ? "errorUnknownPermissionCode"
+              : "errorGeneric",
+        };
       }
       throw e;
     }
@@ -56,13 +75,18 @@ export default async function ApiKeysPage({ params }: { params: Promise<{ locale
           <p className="text-sm text-muted-foreground">{t("noKeys")}</p>
         ) : (
           keys.map((k) => (
-            <div key={k.id} className="flex items-center justify-between gap-4 rounded-md border p-3">
+            <div
+              key={k.id}
+              className="flex items-center justify-between gap-4 rounded-md border p-3"
+            >
               <div className="flex flex-col gap-1">
                 <p className="text-sm font-medium">{k.label}</p>
                 <p className="text-xs text-muted-foreground">{k.permissionCodes.join(", ")}</p>
                 <p className="text-xs text-muted-foreground">
                   {t("createdAt", { date: new Date(k.createdAt).toLocaleString(locale) })}
-                  {k.lastUsedAt ? ` · ${t("lastUsedAt", { date: new Date(k.lastUsedAt).toLocaleString(locale) })}` : ""}
+                  {k.lastUsedAt
+                    ? ` · ${t("lastUsedAt", { date: new Date(k.lastUsedAt).toLocaleString(locale) })}`
+                    : ""}
                 </p>
               </div>
               <form action={revokeMyApiKeyAction}>

@@ -9,7 +9,11 @@ import { Link, redirect } from "@/i18n/navigation";
 // operator, so filter to their own submissions explicitly rather than assuming scoping) and renders
 // the unit's membership roster. M10.7: repointed from go-oikumenea (lib/oikumenea.ts, deleted this
 // milestone) to lib/core.ts; the per-member getPerson loop is now one batched getPersons call.
-export default async function MyCongregationPage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function MyCongregationPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
   const { locale } = await params;
   const t = await getTranslations("MyCongregationPage");
   const who = await whoami().catch(() => null);
@@ -17,7 +21,9 @@ export default async function MyCongregationPage({ params }: { params: Promise<{
 
   const { requests } = await listRegistrations();
   const mine = requests
-    .filter((r) => r.submittedByPersonId === who.personId && r.status === "APPROVED" && r.createdUnitId)
+    .filter(
+      (r) => r.submittedByPersonId === who.personId && r.status === "APPROVED" && r.createdUnitId,
+    )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
   if (mine.length === 0) {

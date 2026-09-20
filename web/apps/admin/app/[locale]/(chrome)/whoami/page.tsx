@@ -1,7 +1,14 @@
 import { getTranslations } from "next-intl/server";
 
 import { auth, signOut } from "@/auth";
-import { getPerson, listMyRoleAssignments, listMySessions, revokeMySession, updateMyProfile, whoami } from "@/lib/core";
+import {
+  getPerson,
+  listMyRoleAssignments,
+  listMySessions,
+  revokeMySession,
+  updateMyProfile,
+  whoami,
+} from "@/lib/core";
 import { Link, redirect } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,7 +61,12 @@ export default async function WhoamiPage({ params }: { params: Promise<{ locale:
           <form action={updateProfileAction} className="flex flex-col gap-4">
             <Label className="flex flex-col items-start gap-1">
               {t("displayNameLabel")}
-              <Input name="displayName" required defaultValue={person.displayName} placeholder={t("displayNamePlaceholder")} />
+              <Input
+                name="displayName"
+                required
+                defaultValue={person.displayName}
+                placeholder={t("displayNamePlaceholder")}
+              />
             </Label>
             <Button type="submit" className="self-start">
               {t("saveProfile")}
@@ -77,7 +89,10 @@ export default async function WhoamiPage({ params }: { params: Promise<{ locale:
             roleAssignments.map((a) => {
               const isExpired = a.expiresAt ? new Date(a.expiresAt) <= new Date() : false;
               return (
-                <p key={a.id} className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <p
+                  key={a.id}
+                  className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+                >
                   {t("roleAssignment", { roleName: a.roleCode, unitId: a.targetUnitId })}
                   {isExpired && <StatusBadge status={t("roleExpired")} tone="danger" />}
                 </p>

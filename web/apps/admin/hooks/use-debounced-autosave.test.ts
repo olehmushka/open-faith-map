@@ -90,7 +90,7 @@ describe("useDebouncedAutosave", () => {
     expect(save).toHaveBeenCalledWith("changed");
   });
 
-  it("surfaces a failed save as status \"error\"", async () => {
+  it('surfaces a failed save as status "error"', async () => {
     const save = vi.fn().mockResolvedValue({ ok: false });
     let value = "initial";
     const { result } = renderHook(() =>

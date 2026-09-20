@@ -28,12 +28,24 @@ export function churchJsonLd(chrome: SiteChrome, url: string) {
     // No telephone: religion.Site (this data's own source, GetSiteChrome) carries no phone/email
     // field at all — a named gap, not an oversight.
     ...(chrome.latitude != null && chrome.longitude != null
-      ? { geo: { "@type": "GeoCoordinates", latitude: chrome.latitude, longitude: chrome.longitude } }
+      ? {
+          geo: {
+            "@type": "GeoCoordinates",
+            latitude: chrome.latitude,
+            longitude: chrome.longitude,
+          },
+        }
       : {}),
   };
 }
 
-export function eventJsonLd(name: string, startDate: string, endDate: string | undefined, url: string, address: string | undefined) {
+export function eventJsonLd(
+  name: string,
+  startDate: string,
+  endDate: string | undefined,
+  url: string,
+  address: string | undefined,
+) {
   return {
     "@context": "https://schema.org",
     "@type": "Event",

@@ -24,7 +24,9 @@ export default async function NewVouchPage({ params }: { params: Promise<{ local
     "use server";
     const claimantPersonId = String(formData.get("claimantPersonId") ?? "").trim();
     const congregationUnitId = String(formData.get("congregationUnitId") ?? "").trim();
-    const guarantorCongregationUnitId = String(formData.get("guarantorCongregationUnitId") ?? "").trim();
+    const guarantorCongregationUnitId = String(
+      formData.get("guarantorCongregationUnitId") ?? "",
+    ).trim();
     const statement = String(formData.get("statement") ?? "").trim() || undefined;
     if (!claimantPersonId || !congregationUnitId || !guarantorCongregationUnitId) return;
     await createVouch(claimantPersonId, congregationUnitId, guarantorCongregationUnitId, statement);

@@ -72,9 +72,13 @@ export function CandidateList({
   rootUnitId: string;
   onSearchJurisdiction: (query: string) => Promise<UnitOption[]>;
   onCreateUnit: (parentUnitId: string, code: string, name: string) => Promise<UnitOption>;
-  onSuggestCoordinates: (
-    candidateId: string,
-  ) => Promise<{ latitude: number | "NaN"; longitude: number | "NaN"; precision?: string | null; displayName: string; provider: string }>;
+  onSuggestCoordinates: (candidateId: string) => Promise<{
+    latitude: number | "NaN";
+    longitude: number | "NaN";
+    precision?: string | null;
+    displayName: string;
+    provider: string;
+  }>;
   labels: {
     noCandidates: string;
     taxonId: string;
@@ -197,7 +201,8 @@ export function CandidateList({
           <div className="flex flex-col gap-4 py-2">
             {c.suggestedJurisdictionUnitId && (
               <p className="text-sm">
-                {t("suggestedJurisdiction")}: <code className="rounded bg-muted px-1">{c.suggestedJurisdictionUnitId}</code>
+                {t("suggestedJurisdiction")}:{" "}
+                <code className="rounded bg-muted px-1">{c.suggestedJurisdictionUnitId}</code>
               </p>
             )}
 
@@ -267,7 +272,12 @@ export function CandidateList({
               </form>
               <form action={onReject} className="flex items-end gap-2">
                 <input type="hidden" name="id" value={c.id} />
-                <Input name="reason" placeholder={labels.reasonPlaceholder} required className="h-8 w-56" />
+                <Input
+                  name="reason"
+                  placeholder={labels.reasonPlaceholder}
+                  required
+                  className="h-8 w-56"
+                />
                 <Button type="submit" size="sm" variant="destructive">
                   {labels.reject}
                 </Button>
@@ -277,11 +287,17 @@ export function CandidateList({
         )}
       />
       {nextPageToken && (
-        <Button type="button" variant="outline" size="sm" onClick={handleLoadMore} disabled={isPending} className="self-start">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleLoadMore}
+          disabled={isPending}
+          className="self-start"
+        >
           {isPending ? labels.loading : labels.loadMore}
         </Button>
       )}
     </div>
   );
 }
-

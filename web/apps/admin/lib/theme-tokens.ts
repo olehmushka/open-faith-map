@@ -44,7 +44,12 @@ export interface ThemeFontPairingOption {
 }
 
 export const THEME_FONT_PAIRING_OPTIONS: ThemeFontPairingOption[] = [
-  { name: "modern-sans", label: "Modern Sans", heading: "ui-sans-serif, system-ui, sans-serif", body: "ui-sans-serif, system-ui, sans-serif" },
+  {
+    name: "modern-sans",
+    label: "Modern Sans",
+    heading: "ui-sans-serif, system-ui, sans-serif",
+    body: "ui-sans-serif, system-ui, sans-serif",
+  },
   {
     name: "classic-serif",
     label: "Classic Serif",

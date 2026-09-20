@@ -12,7 +12,11 @@ import { isConjureError } from "conjure-client";
 import { auth } from "@/auth";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
-import type { ISite, ISiteAttributes, IUpdateSiteAttributesRequest } from "./openfaithmap/generated/religion";
+import type {
+  ISite,
+  ISiteAttributes,
+  IUpdateSiteAttributesRequest,
+} from "./openfaithmap/generated/religion";
 
 export type Site = ISite;
 export type SiteAttributes = ISiteAttributes;
@@ -72,7 +76,10 @@ export async function getSite(unitId: string): Promise<Site> {
   return unwrap((await client()).religion.getSite(unitId));
 }
 
-export async function updateSiteAttributes(unitId: string, attributes: SiteAttributes): Promise<Site> {
+export async function updateSiteAttributes(
+  unitId: string,
+  attributes: SiteAttributes,
+): Promise<Site> {
   const request: IUpdateSiteAttributesRequest = { attributes };
   return unwrap((await client()).religion.updateSiteAttributes(unitId, request));
 }

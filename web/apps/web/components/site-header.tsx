@@ -58,7 +58,12 @@ export function SiteHeader({
           {navItems.map((item) => (
             <li key={`${item.label}-${item.href}`}>
               {item.external ? (
-                <a href={item.href} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                <a
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline"
+                >
                   {item.label}
                 </a>
               ) : (
@@ -75,7 +80,10 @@ export function SiteHeader({
   if (layout === "centered") {
     return (
       <header className="border-b">
-        <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 text-center" style={padding}>
+        <div
+          className="mx-auto flex max-w-3xl flex-col items-center gap-3 text-center"
+          style={padding}
+        >
           {logo}
           {nav}
         </div>

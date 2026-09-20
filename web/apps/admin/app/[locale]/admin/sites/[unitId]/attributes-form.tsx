@@ -44,7 +44,10 @@ export function AttributesForm({
             id={key}
             checked={attrs.accessibility[key]}
             onCheckedChange={(checked) =>
-              setAttrs((prev) => ({ ...prev, accessibility: { ...prev.accessibility, [key]: checked === true } }))
+              setAttrs((prev) => ({
+                ...prev,
+                accessibility: { ...prev.accessibility, [key]: checked === true },
+              }))
             }
           />
           <Label htmlFor={key}>{labels[key]}</Label>

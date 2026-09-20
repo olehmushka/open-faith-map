@@ -289,7 +289,10 @@ export async function listMyApiKeys(): Promise<ApiKey[]> {
 }
 
 /** M11.9 — mints a new API key for the caller, scoped to permissionCodes. token is returned exactly once. */
-export async function createApiKey(label: string, permissionCodes: string[]): Promise<CreateApiKeyResult> {
+export async function createApiKey(
+  label: string,
+  permissionCodes: string[],
+): Promise<CreateApiKeyResult> {
   return unwrap((await client()).core.createApiKey({ label, permissionCodes }));
 }
 
@@ -322,7 +325,9 @@ export async function explainAccess(
   permissionCode: string,
   unitId: string,
 ): Promise<AccessExplanation> {
-  return unwrap((await client()).coreSuperAdmin.explainAccess(subjectPersonId, permissionCode, unitId));
+  return unwrap(
+    (await client()).coreSuperAdmin.explainAccess(subjectPersonId, permissionCode, unitId),
+  );
 }
 
 // expiresAt (M12.3) is an optional ISO-8601 datetime string — nil/omitted for a non-expiring grant.
@@ -335,7 +340,15 @@ export async function grantUnitRole(
   unitId: string,
   expiresAt?: string,
 ): Promise<void> {
-  return unwrap((await client()).coreSuperAdmin.grantUnitRole({ personId, roleId, unitId, scope: "unit", expiresAt }));
+  return unwrap(
+    (await client()).coreSuperAdmin.grantUnitRole({
+      personId,
+      roleId,
+      unitId,
+      scope: "unit",
+      expiresAt,
+    }),
+  );
 }
 
 export async function revokeRoleAssignment(assignmentId: string): Promise<void> {
@@ -357,7 +370,13 @@ export async function bulkGrantUnitRole(
   expiresAt?: string,
 ): Promise<void> {
   return unwrap(
-    (await client()).coreSuperAdmin.bulkGrantUnitRole({ personIds, roleId, unitId, scope: "unit", expiresAt }),
+    (await client()).coreSuperAdmin.bulkGrantUnitRole({
+      personIds,
+      roleId,
+      unitId,
+      scope: "unit",
+      expiresAt,
+    }),
   );
 }
 
@@ -387,8 +406,13 @@ export async function reactivateAccount(personId: string): Promise<AccountStatus
 }
 
 /** M11.8 — read-only preview of what mergePersons(personId, duplicatePersonId) would move/end. */
-export async function previewMergePersons(personId: string, duplicatePersonId: string): Promise<MergePreview> {
-  return unwrap((await client()).coreSuperAdmin.previewMergePersons(personId, { duplicatePersonId }));
+export async function previewMergePersons(
+  personId: string,
+  duplicatePersonId: string,
+): Promise<MergePreview> {
+  return unwrap(
+    (await client()).coreSuperAdmin.previewMergePersons(personId, { duplicatePersonId }),
+  );
 }
 
 /**
@@ -396,7 +420,10 @@ export async function previewMergePersons(personId: string, duplicatePersonId: s
  * assignments and memberships, moves or disables its account, soft-deletes it. Destructive and
  * irreversible; callers should call previewMergePersons first.
  */
-export async function mergePersons(personId: string, duplicatePersonId: string): Promise<MergeResult> {
+export async function mergePersons(
+  personId: string,
+  duplicatePersonId: string,
+): Promise<MergeResult> {
   return unwrap((await client()).coreSuperAdmin.mergePersons(personId, { duplicatePersonId }));
 }
 

@@ -10,7 +10,13 @@ import { useRouter } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Document } from "@/lib/content";
 
@@ -54,8 +60,16 @@ export function DocumentDetailsForm({
     <form action={formAction} className="flex flex-col gap-4">
       <Label className="flex flex-col items-start gap-1">
         {t("slugLabel")}
-        <Input name="slug" defaultValue={doc.slug} required pattern="[a-z0-9-]+" aria-invalid={fieldError === "slug"} />
-        {fieldError === "slug" && <span className="text-xs text-destructive">{t("errorSlugTaken")}</span>}
+        <Input
+          name="slug"
+          defaultValue={doc.slug}
+          required
+          pattern="[a-z0-9-]+"
+          aria-invalid={fieldError === "slug"}
+        />
+        {fieldError === "slug" && (
+          <span className="text-xs text-destructive">{t("errorSlugTaken")}</span>
+        )}
       </Label>
       <Label className="flex flex-col items-start gap-1">
         {t("parentPageLabel")}

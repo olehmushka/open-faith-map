@@ -3,7 +3,13 @@
 
 import { getTranslations } from "next-intl/server";
 
-import { getSite, listDocuments, listNavItems, putNavItems, type NavItemInput } from "@/lib/content";
+import {
+  getSite,
+  listDocuments,
+  listNavItems,
+  putNavItems,
+  type NavItemInput,
+} from "@/lib/content";
 import { redirect } from "@/i18n/navigation";
 
 import { NavItemListEditor, type NavSaveResult } from "./nav-item-list-editor";
@@ -34,20 +40,37 @@ export default async function NavPage({
       if (e && typeof e === "object" && "errorName" in e) {
         const errorName = String((e as { errorName: string }).errorName);
         const parameters =
-          "parameters" in e ? (e as { parameters?: Record<string, unknown> }).parameters : undefined;
+          "parameters" in e
+            ? (e as { parameters?: Record<string, unknown> }).parameters
+            : undefined;
         switch (errorName) {
           case "Content:NavTargetInvalid": {
             // Unlike NavTargetAmbiguous/DuplicateNavItemSortOrder (which carry sortOrder directly),
             // NavTargetInvalid's own safe-arg is the offending targetDocumentId — the row it
             // belongs to is found by matching it back against the items actually submitted.
-            const targetDocumentId = typeof parameters?.targetDocumentId === "string" ? parameters.targetDocumentId : undefined;
-            const sortOrder = items.find((item) => item.targetDocumentId === targetDocumentId)?.sortOrder;
+            const targetDocumentId =
+              typeof parameters?.targetDocumentId === "string"
+                ? parameters.targetDocumentId
+                : undefined;
+            const sortOrder = items.find(
+              (item) => item.targetDocumentId === targetDocumentId,
+            )?.sortOrder;
             return { ok: false, sortOrder, error: "errorNavTargetInvalid" };
           }
           case "Content:NavTargetAmbiguous":
-            return { ok: false, sortOrder: typeof parameters?.sortOrder === "number" ? parameters.sortOrder : undefined, error: "errorNavTargetAmbiguous" };
+            return {
+              ok: false,
+              sortOrder:
+                typeof parameters?.sortOrder === "number" ? parameters.sortOrder : undefined,
+              error: "errorNavTargetAmbiguous",
+            };
           case "Content:DuplicateNavItemSortOrder":
-            return { ok: false, sortOrder: typeof parameters?.sortOrder === "number" ? parameters.sortOrder : undefined, error: "errorDuplicateNavItemSortOrder" };
+            return {
+              ok: false,
+              sortOrder:
+                typeof parameters?.sortOrder === "number" ? parameters.sortOrder : undefined,
+              error: "errorDuplicateNavItemSortOrder",
+            };
           default:
             return { ok: false, error: "errorGeneric", raw: errorName };
         }

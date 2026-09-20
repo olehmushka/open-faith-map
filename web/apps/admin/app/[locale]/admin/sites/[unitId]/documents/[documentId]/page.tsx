@@ -51,7 +51,9 @@ export default async function DocumentEditorPage({
 
   // M14.14: no dedicated "list translation group siblings" endpoint exists — same "filter what
   // you already have" convention as otherPages below (documents is already one full-site fetch).
-  const translations = documents.filter((d) => d.translationGroupId === doc.translationGroupId && d.id !== doc.id);
+  const translations = documents.filter(
+    (d) => d.translationGroupId === doc.translationGroupId && d.id !== doc.id,
+  );
 
   const [blocks, blockTypes, patterns, revisions, previewToken] = await Promise.all([
     getBlocks(documentId),
@@ -64,7 +66,10 @@ export default async function DocumentEditorPage({
   const previewUrl = buildPreviewUrl(site, locale, previewToken);
 
   // M14.8: returns state instead of redirecting with ?error=<name> — see document-details-form.tsx.
-  async function saveDetails(_prevState: DetailsActionState, formData: FormData): Promise<DetailsActionState> {
+  async function saveDetails(
+    _prevState: DetailsActionState,
+    formData: FormData,
+  ): Promise<DetailsActionState> {
     "use server";
     const slug = String(formData.get("slug") ?? "");
     const parentDocumentId = String(formData.get("parentDocumentId") ?? "");
@@ -73,7 +78,8 @@ export default async function DocumentEditorPage({
     try {
       await updateDocument(documentId, {
         slug,
-        parentDocumentId: parentDocumentId && parentDocumentId !== NO_PARENT ? parentDocumentId : undefined,
+        parentDocumentId:
+          parentDocumentId && parentDocumentId !== NO_PARENT ? parentDocumentId : undefined,
         clearParent: !parentDocumentId || parentDocumentId === NO_PARENT,
         metaTitle,
         metaDescription,
@@ -105,7 +111,9 @@ export default async function DocumentEditorPage({
     } catch (e) {
       if (e && typeof e === "object" && "errorName" in e) {
         const parameters =
-          "parameters" in e ? (e as { parameters?: Record<string, unknown> }).parameters : undefined;
+          "parameters" in e
+            ? (e as { parameters?: Record<string, unknown> }).parameters
+            : undefined;
         return {
           ok: false,
           position: typeof parameters?.position === "number" ? parameters.position : undefined,
@@ -138,7 +146,10 @@ export default async function DocumentEditorPage({
   // M14.15. Unlike publish/unlist/revertToDraft above, a bad publishAt needs to surface inline
   // (ScheduleForm's useActionState), not throw into the error boundary — the one gap those three
   // plain server-action forms already have and this deliberately does not also introduce.
-  async function schedule(_prevState: ScheduleActionState, formData: FormData): Promise<ScheduleActionState> {
+  async function schedule(
+    _prevState: ScheduleActionState,
+    formData: FormData,
+  ): Promise<ScheduleActionState> {
     "use server";
     const publishAt = String(formData.get("publishAt") ?? "");
     try {
@@ -177,7 +188,10 @@ export default async function DocumentEditorPage({
         <h1 className="text-2xl font-semibold">{doc.slug}</h1>
         {/* M14.15/D-PublishOnRead: always effectiveState, never the raw state column — a document
             past its publishAt reads as Published here, exactly like a real one. */}
-        <StatusBadge status={documentStateLabel(tState, doc.effectiveState)} tone={DOCUMENT_STATE_TONE[doc.effectiveState]} />
+        <StatusBadge
+          status={documentStateLabel(tState, doc.effectiveState)}
+          tone={DOCUMENT_STATE_TONE[doc.effectiveState]}
+        />
         {doc.effectiveState === "SCHEDULED" && doc.publishAt && (
           <span className="text-xs text-muted-foreground">
             {t("scheduledForLabel", { date: new Date(doc.publishAt).toLocaleString(locale) })}
@@ -187,12 +201,22 @@ export default async function DocumentEditorPage({
 
       <div className="flex flex-wrap items-end gap-3">
         <form action={publish}>
-          <Button type="submit" variant="outline" size="sm" disabled={doc.effectiveState === "PUBLISHED"}>
+          <Button
+            type="submit"
+            variant="outline"
+            size="sm"
+            disabled={doc.effectiveState === "PUBLISHED"}
+          >
             {doc.effectiveState === "SCHEDULED" ? t("publishNow") : t("publish")}
           </Button>
         </form>
         <form action={unlist}>
-          <Button type="submit" variant="outline" size="sm" disabled={doc.effectiveState !== "PUBLISHED"}>
+          <Button
+            type="submit"
+            variant="outline"
+            size="sm"
+            disabled={doc.effectiveState !== "PUBLISHED"}
+          >
             {t("unlist")}
           </Button>
         </form>
@@ -206,7 +230,10 @@ export default async function DocumentEditorPage({
             {doc.effectiveState === "SCHEDULED" ? t("cancelSchedule") : t("backToDraft")}
           </Button>
         </form>
-        <ScheduleForm action={schedule} disabled={doc.effectiveState === "PUBLISHED" || doc.effectiveState === "SCHEDULED"} />
+        <ScheduleForm
+          action={schedule}
+          disabled={doc.effectiveState === "PUBLISHED" || doc.effectiveState === "SCHEDULED"}
+        />
         {/* M14.7: opens on the tenant subdomain, never embedded here — no congregation content ever
             renders inside this admin origin (the same cross-origin guarantee D-TenantSubdomains'
             preview design relies on). */}
@@ -232,7 +259,12 @@ export default async function DocumentEditorPage({
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">{t("blocksHint")}</p>
-          <BlockListEditor blocks={blocks} blockTypes={blockTypes} patterns={patterns} onAutosave={autosaveBlocks} />
+          <BlockListEditor
+            blocks={blocks}
+            blockTypes={blockTypes}
+            patterns={patterns}
+            onAutosave={autosaveBlocks}
+          />
         </CardContent>
       </Card>
 
@@ -279,16 +311,24 @@ export default async function DocumentEditorPage({
           ) : (
             <ul className="flex flex-col gap-2">
               {translations.map((tr) => (
-                <li key={tr.id} className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                <li
+                  key={tr.id}
+                  className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm"
+                >
                   <a href={`/admin/sites/${unitId}/documents/${tr.id}`} className="hover:underline">
-                    {t("translationItem", { locale: tr.locale, state: documentStateLabel(tState, tr.effectiveState) })}
+                    {t("translationItem", {
+                      locale: tr.locale,
+                      state: documentStateLabel(tState, tr.effectiveState),
+                    })}
                   </a>
                 </li>
               ))}
             </ul>
           )}
           <Button variant="outline" size="sm" className="self-start" asChild>
-            <a href={`/admin/sites/${unitId}/documents/new?translationGroupId=${doc.translationGroupId}&kind=${doc.kind}`}>
+            <a
+              href={`/admin/sites/${unitId}/documents/new?translationGroupId=${doc.translationGroupId}&kind=${doc.kind}`}
+            >
               {t("createTranslation")}
             </a>
           </Button>

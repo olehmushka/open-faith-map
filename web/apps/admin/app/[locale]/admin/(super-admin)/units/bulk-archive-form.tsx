@@ -47,7 +47,10 @@ export function BulkArchiveForm({
               onChange={() => toggle(u.id)}
               className="size-4 rounded border-input"
             />
-            <Link href={`/admin/units/${u.id}`} className="flex flex-1 items-center gap-2 hover:underline">
+            <Link
+              href={`/admin/units/${u.id}`}
+              className="flex flex-1 items-center gap-2 hover:underline"
+            >
               <Building2 className="size-4 text-muted-foreground" />
               <span className="flex-1">{u.name}</span>
               {u.code && <span className="text-xs text-muted-foreground">{u.code}</span>}
@@ -61,7 +64,13 @@ export function BulkArchiveForm({
         {[...selected].map((id) => (
           <input key={id} type="hidden" name="unitIds" value={id} />
         ))}
-        <Button type="submit" variant="outline" size="sm" disabled={selected.size === 0} className="self-start">
+        <Button
+          type="submit"
+          variant="outline"
+          size="sm"
+          disabled={selected.size === 0}
+          className="self-start"
+        >
           {t("archiveSelected", { count: selected.size })}
         </Button>
       </form>

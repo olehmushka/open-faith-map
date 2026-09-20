@@ -22,8 +22,11 @@ export default async function VouchingConsolePage({
   const t = await getTranslations("VouchingConsolePage");
   const { guarantorPersonId, claimant, congregation } = await searchParams;
 
-  const guarantorStatus = guarantorPersonId ? await getGuarantorStatus(guarantorPersonId) : undefined;
-  const { vouches } = claimant || congregation ? await listVouches(claimant, congregation) : { vouches: [] };
+  const guarantorStatus = guarantorPersonId
+    ? await getGuarantorStatus(guarantorPersonId)
+    : undefined;
+  const { vouches } =
+    claimant || congregation ? await listVouches(claimant, congregation) : { vouches: [] };
 
   async function revoke(formData: FormData) {
     "use server";
@@ -68,13 +71,23 @@ export default async function VouchingConsolePage({
               </div>
               {guarantorStatus.revokedAt && (
                 <p className="text-sm text-muted-foreground">
-                  {t("revokedAt", { date: guarantorStatus.revokedAt })} — {guarantorStatus.revokedReason}
+                  {t("revokedAt", { date: guarantorStatus.revokedAt })} —{" "}
+                  {guarantorStatus.revokedReason}
                 </p>
               )}
               {guarantorStatus.status === "TRUSTED" && (
                 <form action={revoke} className="flex flex-wrap gap-2">
-                  <input type="hidden" name="guarantorPersonId" value={guarantorStatus.guarantorPersonId} />
-                  <Input name="reason" placeholder={t("reasonPlaceholder")} required className="h-8 w-56" />
+                  <input
+                    type="hidden"
+                    name="guarantorPersonId"
+                    value={guarantorStatus.guarantorPersonId}
+                  />
+                  <Input
+                    name="reason"
+                    placeholder={t("reasonPlaceholder")}
+                    required
+                    className="h-8 w-56"
+                  />
                   <Button type="submit" size="sm" variant="destructive">
                     {t("revoke")}
                   </Button>
@@ -91,7 +104,12 @@ export default async function VouchingConsolePage({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <form className="flex flex-wrap gap-2">
-            <Input name="claimant" defaultValue={claimant} placeholder={t("claimantPlaceholder")} className="h-8" />
+            <Input
+              name="claimant"
+              defaultValue={claimant}
+              placeholder={t("claimantPlaceholder")}
+              className="h-8"
+            />
             <Input
               name="congregation"
               defaultValue={congregation}
@@ -103,14 +121,22 @@ export default async function VouchingConsolePage({
             </Button>
           </form>
 
-          {vouches.length === 0 && <p className="text-sm text-muted-foreground">{t("noVouches")}</p>}
+          {vouches.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t("noVouches")}</p>
+          )}
           <ul className="flex flex-col gap-3">
             {vouches.map((v) => (
               <li key={v.id} className="rounded-md border p-3">
-                <p className="text-sm">{t("vouchLine", { guarantor: v.guarantorPersonId, claimant: v.claimantPersonId })}</p>
-                <p className="text-sm text-muted-foreground">{t("congregationLine", { unit: v.congregationUnitId })}</p>
+                <p className="text-sm">
+                  {t("vouchLine", { guarantor: v.guarantorPersonId, claimant: v.claimantPersonId })}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t("congregationLine", { unit: v.congregationUnitId })}
+                </p>
                 {v.statement && <p className="text-sm">{v.statement}</p>}
-                <p className="text-xs text-muted-foreground">{t("filedAt", { date: v.createdAt })}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("filedAt", { date: v.createdAt })}
+                </p>
               </li>
             ))}
           </ul>

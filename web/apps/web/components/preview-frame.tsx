@@ -39,7 +39,13 @@ export function PreviewFrame({ children }: { children: React.ReactNode }) {
               className={cn(device !== key && "text-background hover:text-background")}
               onClick={() => setDevice(key)}
             >
-              {t(key === "mobile" ? "deviceMobile" : key === "tablet" ? "deviceTablet" : "deviceFull")}
+              {t(
+                key === "mobile"
+                  ? "deviceMobile"
+                  : key === "tablet"
+                    ? "deviceTablet"
+                    : "deviceFull",
+              )}
             </Button>
           ))}
         </div>

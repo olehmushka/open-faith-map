@@ -12,7 +12,15 @@ import type { Block, BlockType, Pattern } from "@/lib/content";
 import { BlockListEditor } from "./block-list-editor";
 
 function makeBlockType(code: string, name: string, sortOrder: number): BlockType {
-  return { id: code, code, name, jsonSchema: {}, uiSchema: { fields: [] }, status: "ACTIVE", sortOrder };
+  return {
+    id: code,
+    code,
+    name,
+    jsonSchema: {},
+    uiSchema: { fields: [] },
+    status: "ACTIVE",
+    sortOrder,
+  };
 }
 
 function makeBlock(id: string, blockTypeCode: string, position: number): Block {
@@ -27,12 +35,21 @@ function makeBlock(id: string, blockTypeCode: string, position: number): Block {
   };
 }
 
-function makePattern(id: string, name: string, description: string, blockTypeCodes: string[]): Pattern {
+function makePattern(
+  id: string,
+  name: string,
+  description: string,
+  blockTypeCodes: string[],
+): Pattern {
   return {
     id,
     name,
     description,
-    blocks: blockTypeCodes.map((blockTypeCode, position) => ({ blockTypeCode, position, data: {} })),
+    blocks: blockTypeCodes.map((blockTypeCode, position) => ({
+      blockTypeCode,
+      position,
+      data: {},
+    })),
     sortOrder: 0,
     createdAt: "2026-08-27T00:00:00Z",
     updatedAt: "2026-08-27T00:00:00Z",
@@ -45,18 +62,32 @@ const blockTypes: BlockType[] = [
   makeBlockType("quote", "Quote", 120),
 ];
 
-const blocks: Block[] = [makeBlock("b1", "heading", 0), makeBlock("b2", "paragraph", 1), makeBlock("b3", "quote", 2)];
+const blocks: Block[] = [
+  makeBlock("b1", "heading", 0),
+  makeBlock("b2", "paragraph", 1),
+  makeBlock("b3", "quote", 2),
+];
 
-function renderEditor(onAutosave = vi.fn().mockResolvedValue({ ok: true }), patterns: Pattern[] = []) {
+function renderEditor(
+  onAutosave = vi.fn().mockResolvedValue({ ok: true }),
+  patterns: Pattern[] = [],
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <BlockListEditor blocks={blocks} blockTypes={blockTypes} patterns={patterns} onAutosave={onAutosave} />
+      <BlockListEditor
+        blocks={blocks}
+        blockTypes={blockTypes}
+        patterns={patterns}
+        onAutosave={onAutosave}
+      />
     </NextIntlClientProvider>,
   );
 }
 
 function dragHandleNames(): (string | null)[] {
-  return screen.getAllByRole("button", { name: /Drag to reorder/ }).map((el) => el.getAttribute("aria-label"));
+  return screen
+    .getAllByRole("button", { name: /Drag to reorder/ })
+    .map((el) => el.getAttribute("aria-label"));
 }
 
 describe("BlockListEditor", () => {
@@ -74,13 +105,21 @@ describe("BlockListEditor", () => {
     const user = userEvent.setup();
     renderEditor();
 
-    expect(dragHandleNames()).toEqual(["Drag to reorder Heading", "Drag to reorder Paragraph", "Drag to reorder Quote"]);
+    expect(dragHandleNames()).toEqual([
+      "Drag to reorder Heading",
+      "Drag to reorder Paragraph",
+      "Drag to reorder Quote",
+    ]);
 
     const moveDownButtons = screen.getAllByRole("button", { name: "Move block down" });
     moveDownButtons[0].focus();
     await user.keyboard("{Enter}");
 
-    expect(dragHandleNames()).toEqual(["Drag to reorder Paragraph", "Drag to reorder Heading", "Drag to reorder Quote"]);
+    expect(dragHandleNames()).toEqual([
+      "Drag to reorder Paragraph",
+      "Drag to reorder Heading",
+      "Drag to reorder Quote",
+    ]);
     expect(screen.getByText(/Heading moved to position 2 of 3/)).toBeInTheDocument();
   });
 
@@ -127,7 +166,10 @@ describe("BlockListEditor", () => {
   // there is no per-block insert call and no reference back to the pattern afterward.
   it("appends every block of an inserted pattern to the end of the list", async () => {
     const user = userEvent.setup();
-    const pattern = makePattern("p1", "Feast-day announcement", "A short announcement", ["heading", "paragraph"]);
+    const pattern = makePattern("p1", "Feast-day announcement", "A short announcement", [
+      "heading",
+      "paragraph",
+    ]);
     renderEditor(vi.fn().mockResolvedValue({ ok: true }), [pattern]);
 
     await user.click(screen.getByRole("button", { name: "Insert pattern" }));
@@ -233,7 +275,12 @@ describe("BlockListEditor undo/redo", () => {
     const editableBlocks: Block[] = [makeBlock("b1", "paragraph", 0)];
     render(
       <NextIntlClientProvider locale="en" messages={messages}>
-        <BlockListEditor blocks={editableBlocks} blockTypes={editableTypes} patterns={[]} onAutosave={vi.fn().mockResolvedValue({ ok: true })} />
+        <BlockListEditor
+          blocks={editableBlocks}
+          blockTypes={editableTypes}
+          patterns={[]}
+          onAutosave={vi.fn().mockResolvedValue({ ok: true })}
+        />
       </NextIntlClientProvider>,
     );
     await settle();
@@ -289,7 +336,12 @@ describe("BlockListEditor empty state", () => {
   it("shows a CTA instead of an empty form when there are no blocks", () => {
     render(
       <NextIntlClientProvider locale="en" messages={messages}>
-        <BlockListEditor blocks={[]} blockTypes={blockTypes} patterns={[]} onAutosave={vi.fn().mockResolvedValue({ ok: true })} />
+        <BlockListEditor
+          blocks={[]}
+          blockTypes={blockTypes}
+          patterns={[]}
+          onAutosave={vi.fn().mockResolvedValue({ ok: true })}
+        />
       </NextIntlClientProvider>,
     );
 
@@ -301,7 +353,12 @@ describe("BlockListEditor empty state", () => {
     const user = userEvent.setup();
     render(
       <NextIntlClientProvider locale="en" messages={messages}>
-        <BlockListEditor blocks={[blocks[0]]} blockTypes={blockTypes} patterns={[]} onAutosave={vi.fn().mockResolvedValue({ ok: true })} />
+        <BlockListEditor
+          blocks={[blocks[0]]}
+          blockTypes={blockTypes}
+          patterns={[]}
+          onAutosave={vi.fn().mockResolvedValue({ ok: true })}
+        />
       </NextIntlClientProvider>,
     );
 

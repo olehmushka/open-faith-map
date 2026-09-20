@@ -30,7 +30,9 @@ export default async function MessagesPage({
           <li key={m.id} className="rounded-md border p-4">
             <div className="flex items-baseline justify-between">
               <span className="font-medium">{m.name || t("anonymousLabel")}</span>
-              <span className="text-sm text-muted-foreground">{new Date(m.createdAt).toLocaleString(locale)}</span>
+              <span className="text-sm text-muted-foreground">
+                {new Date(m.createdAt).toLocaleString(locale)}
+              </span>
             </div>
             {m.email && (
               <p className="text-sm text-muted-foreground">

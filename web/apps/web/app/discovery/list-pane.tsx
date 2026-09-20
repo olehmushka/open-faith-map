@@ -28,7 +28,9 @@ export function ListPane({
 
   return (
     <div className="flex h-full flex-col gap-2 overflow-y-auto p-2">
-      <p className="px-2 text-sm text-muted-foreground">{t("resultsCount", { count: sites.length })}</p>
+      <p className="px-2 text-sm text-muted-foreground">
+        {t("resultsCount", { count: sites.length })}
+      </p>
       {sites.map((s) => (
         <Card
           key={s.id}

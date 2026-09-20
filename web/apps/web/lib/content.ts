@@ -9,7 +9,18 @@ import { isConjureError } from "conjure-client";
 import { cache } from "react";
 
 import { createOpenFaithMapClient, type FetchFunction } from "./openfaithmap";
-import type { IBlock, IBlockType, IDocument, IDocumentTranslation, IDocumentWithAncestors, IPublicNavItem, ISite, ISiteChrome, ISitemapEntry, ISubmitContactFormRequest } from "./openfaithmap/generated/content";
+import type {
+  IBlock,
+  IBlockType,
+  IDocument,
+  IDocumentTranslation,
+  IDocumentWithAncestors,
+  IPublicNavItem,
+  ISite,
+  ISiteChrome,
+  ISitemapEntry,
+  ISubmitContactFormRequest,
+} from "./openfaithmap/generated/content";
 
 export type Site = ISite;
 export type Document = IDocument;
@@ -57,7 +68,11 @@ function client(cache?: { tags?: string[]; revalidate?: number } | "no-store") {
   const fetchImpl: FetchFunction =
     cache === "no-store"
       ? (url, init) => fetch(url, { ...init, cache: "no-store" })
-      : (url, init) => fetch(url, { ...init, next: { tags: cache.tags, revalidate: cache.revalidate ?? CACHE_REVALIDATE_SECONDS } });
+      : (url, init) =>
+          fetch(url, {
+            ...init,
+            next: { tags: cache.tags, revalidate: cache.revalidate ?? CACHE_REVALIDATE_SECONDS },
+          });
   return createOpenFaithMapClient({ baseUrl: requireBaseUrl(), fetch: fetchImpl });
 }
 
@@ -102,7 +117,9 @@ export const getSiteChrome = cache(async (siteId: string): Promise<SiteChrome> =
 });
 
 export async function listPublicDocuments(siteId: string, kind?: string): Promise<Document[]> {
-  const page = await unwrap(client({ tags: [siteTag(siteId)] }).contentPublic.listPublicDocuments(siteId, kind));
+  const page = await unwrap(
+    client({ tags: [siteTag(siteId)] }).contentPublic.listPublicDocuments(siteId, kind),
+  );
   return page.documents;
 }
 
@@ -110,7 +127,9 @@ export async function listPublicDocuments(siteId: string, kind?: string): Promis
 // route's generateMetadata (title/description/OG derived from these same blocks) and its default
 // export both resolve one document's blocks, deduped to one network call per request.
 export const getPublicBlocks = cache(async (documentId: string): Promise<Block[]> => {
-  const list = await unwrap(client({ tags: [documentTag(documentId)] }).contentPublic.getPublicBlocks(documentId));
+  const list = await unwrap(
+    client({ tags: [documentTag(documentId)] }).contentPublic.getPublicBlocks(documentId),
+  );
   return list.blocks;
 });
 
@@ -119,8 +138,14 @@ export const getPublicBlocks = cache(async (documentId: string): Promise<Block[]
 // since this app never holds one. Throws ContentApiError with errorName "Content:PreviewTokenInvalid"
 // for a missing/malformed/expired/wrong-site token. Never cached (M14.17): a preview's whole point
 // is to reflect the draft as it stands right now (M14.7), not up to 60s ago.
-export async function listPreviewDocuments(siteId: string, token: string, kind?: string): Promise<Document[]> {
-  const page = await unwrap(client("no-store").contentPublic.listPreviewDocuments(siteId, token, kind));
+export async function listPreviewDocuments(
+  siteId: string,
+  token: string,
+  kind?: string,
+): Promise<Document[]> {
+  const page = await unwrap(
+    client("no-store").contentPublic.listPreviewDocuments(siteId, token, kind),
+  );
   return page.documents;
 }
 
@@ -131,7 +156,9 @@ export async function getPreviewBlocks(documentId: string, token: string): Promi
 
 // M14.10: the site's hand-built nav menu, targets already resolved to ready-to-render hrefs.
 export async function listPublicNavItems(siteId: string): Promise<PublicNavItem[]> {
-  const list = await unwrap(client({ tags: [siteTag(siteId)] }).contentPublic.listPublicNavItems(siteId));
+  const list = await unwrap(
+    client({ tags: [siteTag(siteId)] }).contentPublic.listPublicNavItems(siteId),
+  );
   return list.items;
 }
 
@@ -148,13 +175,21 @@ export async function listPublicNavItems(siteId: string): Promise<PublicNavItem[
 // default export both resolve the same document, deduped to one network call per request.
 export const getPublicDocumentByPath = cache(
   async (siteId: string, contentLocale: string, path: string[]): Promise<DocumentWithAncestors> => {
-    return unwrap(client({ tags: [siteTag(siteId)] }).contentPublic.getPublicDocumentByPath(siteId, contentLocale, path.join("/")));
+    return unwrap(
+      client({ tags: [siteTag(siteId)] }).contentPublic.getPublicDocumentByPath(
+        siteId,
+        contentLocale,
+        path.join("/"),
+      ),
+    );
   },
 );
 
 // M14.17: backs app/sitemap.ts — every effectively-PUBLISHED PAGE document's resolved href.
 export async function listSitemapEntries(siteId: string): Promise<SitemapEntry[]> {
-  const list = await unwrap(client({ tags: [siteTag(siteId)] }).contentPublic.listSitemapEntries(siteId));
+  const list = await unwrap(
+    client({ tags: [siteTag(siteId)] }).contentPublic.listSitemapEntries(siteId),
+  );
   return list.entries;
 }
 
@@ -162,6 +197,9 @@ export async function listSitemapEntries(siteId: string): Promise<SitemapEntry[]
 // two (lib/moderation.ts's fileReport). Always resolves — a honeypot hit or a too-fast submission
 // is handled server-side and still reports success, so this app has no way to tell a real
 // submission from a silently-discarded one, by design.
-export async function submitContactForm(siteId: string, input: SubmitContactFormInput): Promise<void> {
+export async function submitContactForm(
+  siteId: string,
+  input: SubmitContactFormInput,
+): Promise<void> {
   return unwrap(client().contentPublic.submitContactForm(siteId, input));
 }

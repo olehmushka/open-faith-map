@@ -11,17 +11,32 @@ import { resolveOrigin } from "@/lib/seo";
 // M14.17: replaces force-dynamic — see the page route's own comment (lib/content.ts's tag-based
 // revalidation, 60s TTL, replaces re-querying openfaithmap-api on every anonymous view).
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
   const { slug } = await params;
   const site = await getSiteBySlug(slug).catch(() => null);
   if (!site) return {};
-  const [chrome, origin] = await Promise.all([getSiteChrome(site.id).catch(() => null), resolveOrigin()]);
+  const [chrome, origin] = await Promise.all([
+    getSiteChrome(site.id).catch(() => null),
+    resolveOrigin(),
+  ]);
   if (!chrome) return {};
   const canonical = origin ? `${origin}/` : undefined;
   return {
     title: chrome.congregationName,
-    openGraph: { title: chrome.congregationName, url: canonical, images: chrome.logoUrl ? [chrome.logoUrl] : undefined },
-    twitter: { card: "summary_large_image", title: chrome.congregationName, images: chrome.logoUrl ? [chrome.logoUrl] : undefined },
+    openGraph: {
+      title: chrome.congregationName,
+      url: canonical,
+      images: chrome.logoUrl ? [chrome.logoUrl] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: chrome.congregationName,
+      images: chrome.logoUrl ? [chrome.logoUrl] : undefined,
+    },
     alternates: { canonical },
   };
 }

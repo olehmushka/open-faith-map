@@ -37,7 +37,11 @@ export interface ThemeFontPairing {
 }
 
 export const THEME_FONT_PAIRINGS: ThemeFontPairing[] = [
-  { name: "modern-sans", heading: "ui-sans-serif, system-ui, sans-serif", body: "ui-sans-serif, system-ui, sans-serif" },
+  {
+    name: "modern-sans",
+    heading: "ui-sans-serif, system-ui, sans-serif",
+    body: "ui-sans-serif, system-ui, sans-serif",
+  },
   {
     name: "classic-serif",
     heading: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',

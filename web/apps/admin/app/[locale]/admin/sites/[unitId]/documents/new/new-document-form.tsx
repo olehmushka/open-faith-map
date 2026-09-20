@@ -9,7 +9,13 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DocumentKind } from "@/lib/openfaithmap/generated/content";
 import type { Document } from "@/lib/content";
 
@@ -50,7 +56,9 @@ export function NewDocumentForm({
   return (
     <form action={formAction} className="flex flex-col gap-4">
       {lockedKind ? (
-        <p className="rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">{t("translationGroupLockedHint")}</p>
+        <p className="rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">
+          {t("translationGroupLockedHint")}
+        </p>
       ) : null}
 
       <Label className="flex flex-col items-start gap-1">
@@ -74,13 +82,17 @@ export function NewDocumentForm({
       <Label className="flex flex-col items-start gap-1">
         {t("localeLabel")}
         <Input name="locale" required placeholder="eng" aria-invalid={fieldError === "locale"} />
-        {fieldError === "locale" && <span className="text-xs text-destructive">{t("errorTranslationLocaleTaken")}</span>}
+        {fieldError === "locale" && (
+          <span className="text-xs text-destructive">{t("errorTranslationLocaleTaken")}</span>
+        )}
       </Label>
 
       <Label className="flex flex-col items-start gap-1">
         {t("slugLabel")}
         <Input name="slug" required pattern="[a-z0-9-]+" aria-invalid={fieldError === "slug"} />
-        {fieldError === "slug" && <span className="text-xs text-destructive">{t("errorSlugTaken")}</span>}
+        {fieldError === "slug" && (
+          <span className="text-xs text-destructive">{t("errorSlugTaken")}</span>
+        )}
       </Label>
 
       <Label className="flex flex-col items-start gap-1">
@@ -104,7 +116,11 @@ export function NewDocumentForm({
         <legend className="px-1 text-sm font-medium">{t("eventFieldsLegend")}</legend>
         <Label className="flex flex-col items-start gap-1">
           {t("eventStartsAtLabel")}
-          <Input type="datetime-local" name="eventStartsAt" aria-invalid={fieldError === "eventStartsAt"} />
+          <Input
+            type="datetime-local"
+            name="eventStartsAt"
+            aria-invalid={fieldError === "eventStartsAt"}
+          />
           {fieldError === "eventStartsAt" && (
             <span className="text-xs text-destructive">{t("errorEventMissingStart")}</span>
           )}

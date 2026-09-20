@@ -19,10 +19,7 @@ export function LocaleSwitcher() {
   const t = useTranslations("LocaleSwitcher");
 
   return (
-    <Select
-      value={locale}
-      onValueChange={(value) => router.replace(pathname, { locale: value })}
-    >
+    <Select value={locale} onValueChange={(value) => router.replace(pathname, { locale: value })}>
       <SelectTrigger aria-label={t("label")} size="sm" className="w-auto">
         <SelectValue />
       </SelectTrigger>

@@ -37,16 +37,22 @@ describe("resolveTenantSlug", () => {
 });
 
 describe("isSitesPath", () => {
-  it.each(["/_sites/grace", "/_sites", "/_sites/grace/about", "/en/_sites/grace", "/uk/_sites/grace/about"])(
-    "matches %s",
+  it.each([
+    "/_sites/grace",
+    "/_sites",
+    "/_sites/grace/about",
+    "/en/_sites/grace",
+    "/uk/_sites/grace/about",
+  ])("matches %s", (path) => {
+    expect(isSitesPath(path)).toBe(true);
+  });
+
+  it.each(["/", "/about", "/en/about", "/sites/grace", "/_sitesnot/grace"])(
+    "does not match %s",
     (path) => {
-      expect(isSitesPath(path)).toBe(true);
+      expect(isSitesPath(path)).toBe(false);
     },
   );
-
-  it.each(["/", "/about", "/en/about", "/sites/grace", "/_sitesnot/grace"])("does not match %s", (path) => {
-    expect(isSitesPath(path)).toBe(false);
-  });
 });
 
 describe("protocolForHost", () => {
@@ -55,12 +61,15 @@ describe("protocolForHost", () => {
     expect(protocolForHost("localhost:3002")).toBe("http");
   });
 
-  it("is http for a tenant subdomain of localhost — the bug this fixes: a naive " +
-    "startsWith('localhost') check misses this, since the Host header here is 'grace.localhost', " +
-    "not 'localhost'", () => {
-    expect(protocolForHost("grace.localhost:3002")).toBe("http");
-    expect(protocolForHost("grace.localhost")).toBe("http");
-  });
+  it(
+    "is http for a tenant subdomain of localhost — the bug this fixes: a naive " +
+      "startsWith('localhost') check misses this, since the Host header here is 'grace.localhost', " +
+      "not 'localhost'",
+    () => {
+      expect(protocolForHost("grace.localhost:3002")).toBe("http");
+      expect(protocolForHost("grace.localhost")).toBe("http");
+    },
+  );
 
   it("is http for 127.0.0.1, with or without a port", () => {
     expect(protocolForHost("127.0.0.1:3002")).toBe("http");
@@ -76,6 +85,8 @@ describe("injectSitesSegment", () => {
   it("inserts _sites/{slug} right after the locale segment", () => {
     expect(injectSitesSegment("/en", "grace")).toBe("/en/_sites/grace");
     expect(injectSitesSegment("/en/about", "grace")).toBe("/en/_sites/grace/about");
-    expect(injectSitesSegment("/uk/events/christmas", "grace")).toBe("/uk/_sites/grace/events/christmas");
+    expect(injectSitesSegment("/uk/events/christmas", "grace")).toBe(
+      "/uk/_sites/grace/events/christmas",
+    );
   });
 });

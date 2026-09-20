@@ -41,9 +41,9 @@ Full detail — request paths, deployment topology, module boundaries — lives 
 
 ## Status
 
-The stage board is authoritative: [the active one](docs/milestones-2026-08-26-now.md#stage-board)
-for anything after 2026-08-26, [the closed record](docs/milestones-2026-08-07-2026-08-26.md#stage-board)
-for M0–M13.6 (all done).
+The stage board is authoritative: [the active one](docs/milestones-2026-09-20-now.md#stage-board)
+for anything after 2026-09-20, [the closed record for M14–M15](docs/milestones-2026-08-20-2026-09-20.md#stage-board),
+and [the closed record for M0–M13.6](docs/milestones-2026-08-07-2026-08-26.md#stage-board) (all done).
 
 > **Corrected 2026-08-18.** This section previously described a go-oikumenea-dependent architecture
 > with M10 "decided but not started." M10 (D-OwnCore) is now built: the core it once depended on

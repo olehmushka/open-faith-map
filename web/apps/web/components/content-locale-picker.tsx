@@ -40,7 +40,10 @@ export async function ContentLocalePicker({
                   {translation.locale}
                 </span>
               ) : (
-                <a href={`/${uiLocale}${translation.href}`} className="underline-offset-2 hover:underline">
+                <a
+                  href={`/${uiLocale}${translation.href}`}
+                  className="underline-offset-2 hover:underline"
+                >
                   {translation.locale}
                 </a>
               )}

@@ -47,7 +47,9 @@ export function ScheduleForm({
       </Button>
       {state && "error" in state && (
         <span className="text-xs text-destructive">
-          {state.error === "errorGeneric" ? t("errorGeneric", { error: state.raw }) : t(state.error)}
+          {state.error === "errorGeneric"
+            ? t("errorGeneric", { error: state.raw })
+            : t(state.error)}
         </span>
       )}
     </form>

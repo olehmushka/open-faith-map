@@ -71,8 +71,15 @@ export function CoordinateSuggest({
         );
       } catch (e) {
         setIsError(true);
-        const errorName = e && typeof e === "object" && "errorName" in e ? String((e as { errorName: unknown }).errorName) : "";
-        setMessage(errorName === "CongregationImport:GeocodeNoMatch" ? labels.geocodeNoMatch : labels.geocodeLookupFailed);
+        const errorName =
+          e && typeof e === "object" && "errorName" in e
+            ? String((e as { errorName: unknown }).errorName)
+            : "";
+        setMessage(
+          errorName === "CongregationImport:GeocodeNoMatch"
+            ? labels.geocodeNoMatch
+            : labels.geocodeLookupFailed,
+        );
       }
     });
   }
@@ -82,19 +89,37 @@ export function CoordinateSuggest({
       <div className="flex flex-wrap items-end gap-2">
         <Label className="flex flex-col items-start gap-1 text-xs">
           {labels.latitude}
-          <Input ref={latRef} name="latitude" defaultValue={defaultLatitude ?? ""} className="h-8 w-24" />
+          <Input
+            ref={latRef}
+            name="latitude"
+            defaultValue={defaultLatitude ?? ""}
+            className="h-8 w-24"
+          />
         </Label>
         <Label className="flex flex-col items-start gap-1 text-xs">
           {labels.longitude}
-          <Input ref={lngRef} name="longitude" defaultValue={defaultLongitude ?? ""} className="h-8 w-24" />
+          <Input
+            ref={lngRef}
+            name="longitude"
+            defaultValue={defaultLongitude ?? ""}
+            className="h-8 w-24"
+          />
         </Label>
-        <Button type="button" variant="outline" size="sm" onClick={handleSuggest} disabled={isPending}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleSuggest}
+          disabled={isPending}
+        >
           <MapPin className="size-3.5" />
           {isPending ? labels.suggesting : labels.suggestCoordinates}
         </Button>
       </div>
       {message && (
-        <span className={cn("text-xs", isError ? "text-destructive" : "text-muted-foreground")}>{message}</span>
+        <span className={cn("text-xs", isError ? "text-destructive" : "text-muted-foreground")}>
+          {message}
+        </span>
       )}
     </div>
   );

@@ -35,12 +35,18 @@ export default async function RegistrationsPage({
       rejectionReasonById[r.id] = t("rejectionReason", { reason: r.rejectionReason });
     }
   }
-  const jurisdictionResults = jurisdictionQuery ? await searchJurisdictionUnits(jurisdictionQuery) : [];
+  const jurisdictionResults = jurisdictionQuery
+    ? await searchJurisdictionUnits(jurisdictionQuery)
+    : [];
 
   async function approve(formData: FormData) {
     "use server";
     const jurisdictionUnitId = String(formData.get("jurisdictionUnitId") ?? "").trim() || undefined;
-    const approved = await approveRegistration(String(formData.get("id")), undefined, jurisdictionUnitId);
+    const approved = await approveRegistration(
+      String(formData.get("id")),
+      undefined,
+      jurisdictionUnitId,
+    );
     await refreshRegionAroundPoint(approved.coordinate.latitude, approved.coordinate.longitude);
     redirect({ href: "/admin/registrations", locale });
   }
@@ -54,7 +60,10 @@ export default async function RegistrationsPage({
     const rootUnitId = process.env.REGISTRATION_ROOT_UNIT_ID;
     if (!rootUnitId) throw new Error("REGISTRATION_ROOT_UNIT_ID is not set.");
     const unit = await createJurisdictionUnit(parentUnitId ?? rootUnitId, code, name);
-    redirect({ href: `/admin/registrations?jurisdictionQuery=${encodeURIComponent(unit.name)}`, locale });
+    redirect({
+      href: `/admin/registrations?jurisdictionQuery=${encodeURIComponent(unit.name)}`,
+      locale,
+    });
   }
 
   async function reject(formData: FormData) {
@@ -88,7 +97,9 @@ export default async function RegistrationsPage({
           </form>
           {jurisdictionQuery && (
             <ul className="flex flex-col gap-1 text-sm">
-              {jurisdictionResults.length === 0 && <li className="text-muted-foreground">{t("noMatches")}</li>}
+              {jurisdictionResults.length === 0 && (
+                <li className="text-muted-foreground">{t("noMatches")}</li>
+              )}
               {jurisdictionResults.map((u) => (
                 <li key={u.id} className="flex items-center gap-2">
                   <code className="rounded bg-muted px-1">{u.id}</code>

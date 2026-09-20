@@ -25,7 +25,8 @@ export default tseslint.config(
         "error",
         {
           selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
-          message: "dangerouslySetInnerHTML is banned in this app (D-PublicSiteCSP) — render structured data, never raw HTML.",
+          message:
+            "dangerouslySetInnerHTML is banned in this app (D-PublicSiteCSP) — render structured data, never raw HTML.",
         },
       ],
     },

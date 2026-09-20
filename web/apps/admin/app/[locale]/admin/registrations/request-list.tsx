@@ -67,17 +67,29 @@ export function RequestList({
           const r = row.original;
           if (r.status === "PENDING") {
             return (
-              <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="flex flex-wrap items-center gap-2"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <form action={onApprove} className="flex items-center gap-2">
                   <input type="hidden" name="id" value={r.id} />
-                  <Input name="jurisdictionUnitId" placeholder={labels.jurisdictionUnitIdPlaceholder} className="h-8 w-56" />
+                  <Input
+                    name="jurisdictionUnitId"
+                    placeholder={labels.jurisdictionUnitIdPlaceholder}
+                    className="h-8 w-56"
+                  />
                   <Button type="submit" size="sm">
                     {labels.approve}
                   </Button>
                 </form>
                 <form action={onReject} className="flex items-center gap-2">
                   <input type="hidden" name="id" value={r.id} />
-                  <Input name="reason" placeholder={labels.rejectionReasonPlaceholder} required className="h-8 w-40" />
+                  <Input
+                    name="reason"
+                    placeholder={labels.rejectionReasonPlaceholder}
+                    required
+                    className="h-8 w-40"
+                  />
                   <Button type="submit" size="sm" variant="destructive">
                     {labels.reject}
                   </Button>
@@ -86,7 +98,11 @@ export function RequestList({
             );
           }
           if (r.status === "REJECTED" && r.rejectionReason) {
-            return <span className="text-sm text-muted-foreground">{labels.rejectionReasonById[r.id]}</span>;
+            return (
+              <span className="text-sm text-muted-foreground">
+                {labels.rejectionReasonById[r.id]}
+              </span>
+            );
           }
           return null;
         },

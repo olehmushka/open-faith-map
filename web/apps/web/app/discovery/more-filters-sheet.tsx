@@ -18,9 +18,19 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { ACCESSIBILITY_KEYS, ACCESSIBILITY_MESSAGE_KEYS, type AccessibilityKey } from "@/lib/accessibility";
+import {
+  ACCESSIBILITY_KEYS,
+  ACCESSIBILITY_MESSAGE_KEYS,
+  type AccessibilityKey,
+} from "@/lib/accessibility";
 import type { DiscoveryFacets } from "@/lib/discovery";
 import type { DiscoveryFilters } from "@/lib/discovery-url-state";
 
@@ -61,7 +71,9 @@ export function MoreFiltersSheet({
   const [open, setOpen] = useState(false);
   const [tradition, setTradition] = useState(initialTradition ?? ANY);
   const [language, setLanguage] = useState(initialLanguage ?? ANY);
-  const [dayOfWeek, setDayOfWeek] = useState(initialDayOfWeek != null ? String(initialDayOfWeek) : ANY);
+  const [dayOfWeek, setDayOfWeek] = useState(
+    initialDayOfWeek != null ? String(initialDayOfWeek) : ANY,
+  );
   const [accessibility, setAccessibility] = useState<Set<AccessibilityKey>>(
     new Set(initialAccessibility as AccessibilityKey[] | undefined),
   );
@@ -191,7 +203,11 @@ export function MoreFiltersSheet({
           <Separator />
 
           <div className="flex items-center gap-2">
-            <Switch id="more-filters-online-only" checked={onlineOnly} onCheckedChange={setOnlineOnly} />
+            <Switch
+              id="more-filters-online-only"
+              checked={onlineOnly}
+              onCheckedChange={setOnlineOnly}
+            />
             <label htmlFor="more-filters-online-only" className="text-sm">
               {t("onlineOnlyLabel")}
             </label>

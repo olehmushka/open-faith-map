@@ -71,7 +71,11 @@ async function unwrap<T>(promise: Promise<T>): Promise<T> {
   } catch (e) {
     if (isConjureError(e) && e.body && typeof e.body === "object") {
       const body = e.body as { errorName?: string; parameters?: Record<string, unknown> };
-      throw new ModerationApiError(e.status ?? 0, body.errorName ?? "Unknown", body.parameters ?? {});
+      throw new ModerationApiError(
+        e.status ?? 0,
+        body.errorName ?? "Unknown",
+        body.parameters ?? {},
+      );
     }
     throw e;
   }
@@ -86,7 +90,11 @@ export async function listReports(
   return unwrap((await client()).moderation.listReports(scope, status, pageSize, pageToken));
 }
 
-export async function takeActionOnReport(reportId: string, actionKind: ActionKind, reason: string): Promise<ModerationAction> {
+export async function takeActionOnReport(
+  reportId: string,
+  actionKind: ActionKind,
+  reason: string,
+): Promise<ModerationAction> {
   return unwrap((await client()).moderation.takeActionOnReport(reportId, { actionKind, reason }));
 }
 
@@ -94,10 +102,18 @@ export async function reverseAction(actionId: string, reason: string): Promise<M
   return unwrap((await client()).moderation.reverseAction(actionId, { reason }));
 }
 
-export async function listAppeals(status?: AppealStatus, pageSize?: number, pageToken?: string): Promise<AppealPage> {
+export async function listAppeals(
+  status?: AppealStatus,
+  pageSize?: number,
+  pageToken?: string,
+): Promise<AppealPage> {
   return unwrap((await client()).moderation.listAppeals(status, pageSize, pageToken));
 }
 
-export async function decideAppeal(appealId: string, decision: AppealDecision, note?: string): Promise<Appeal> {
+export async function decideAppeal(
+  appealId: string,
+  decision: AppealDecision,
+  note?: string,
+): Promise<Appeal> {
   return unwrap((await client()).moderation.decideAppeal(appealId, { decision, note }));
 }

@@ -65,7 +65,12 @@ export default async function SitePage({
       <CardContent>
         <AttributesForm
           initial={religionSite.attributes}
-          labels={Object.fromEntries(ACCESSIBILITY_KEYS.map((key) => [key, t(`${key}Label`)])) as Record<(typeof ACCESSIBILITY_KEYS)[number], string>}
+          labels={
+            Object.fromEntries(ACCESSIBILITY_KEYS.map((key) => [key, t(`${key}Label`)])) as Record<
+              (typeof ACCESSIBILITY_KEYS)[number],
+              string
+            >
+          }
           onlineStreamLabel={t("onlineStreamLabel")}
           submitLabel={t("saveAttributes")}
           action={saveAttributes}

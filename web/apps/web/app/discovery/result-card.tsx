@@ -27,7 +27,12 @@ export function ResultCard({
   const distance =
     origin && hasCoords
       ? formatDistance(
-          haversineMeters(origin.lat, origin.lng, site.latitude as number, site.longitude as number),
+          haversineMeters(
+            origin.lat,
+            origin.lng,
+            site.latitude as number,
+            site.longitude as number,
+          ),
           unit,
         )
       : null;
@@ -36,11 +41,15 @@ export function ResultCard({
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium">{site.name || t("unnamedSite")}</span>
-        {distance ? <span className="shrink-0 text-xs text-muted-foreground">{distance}</span> : null}
+        {distance ? (
+          <span className="shrink-0 text-xs text-muted-foreground">{distance}</span>
+        ) : null}
       </div>
       {site.address ? <span className="text-xs text-muted-foreground">{site.address}</span> : null}
       <div className="flex flex-wrap gap-1 pt-0.5">
-        {site.traditionTaxonName ? <Badge variant="secondary">{site.traditionTaxonName}</Badge> : null}
+        {site.traditionTaxonName ? (
+          <Badge variant="secondary">{site.traditionTaxonName}</Badge>
+        ) : null}
         {site.attributes.onlineStream ? <Badge variant="outline">{t("onlineStream")}</Badge> : null}
         {ACCESSIBILITY_KEYS.filter((key) => site.attributes.accessibility[key]).map((key) => (
           <Badge key={key} variant="outline">

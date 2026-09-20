@@ -202,12 +202,25 @@ export function UnitTree({
               onClick={() => {
                 if (!isLeaf) toggle(unit.id);
               }}
-              aria-label={isExpanded ? t("collapse", { name: unit.name }) : t("expand", { name: unit.name })}
-              className={cn("flex size-4 shrink-0 items-center justify-center", isLeaf && "invisible")}
+              aria-label={
+                isExpanded ? t("collapse", { name: unit.name }) : t("expand", { name: unit.name })
+              }
+              className={cn(
+                "flex size-4 shrink-0 items-center justify-center",
+                isLeaf && "invisible",
+              )}
             >
-              {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+              {isExpanded ? (
+                <ChevronDown className="size-4" />
+              ) : (
+                <ChevronRight className="size-4" />
+              )}
             </button>
-            <Link href={`/admin/units/${unit.id}`} tabIndex={-1} className="flex flex-1 items-center gap-2 hover:underline">
+            <Link
+              href={`/admin/units/${unit.id}`}
+              tabIndex={-1}
+              className="flex flex-1 items-center gap-2 hover:underline"
+            >
               <span>{unit.name}</span>
               {unit.code && <span className="text-xs text-muted-foreground">{unit.code}</span>}
               <UnitStatusBadge status={unit.state} />

@@ -13,7 +13,11 @@ import { isConjureError } from "conjure-client";
 import { auth } from "@/auth";
 
 import { createOpenFaithMapClient } from "./openfaithmap";
-import type { IDiscoverySite, IRefreshRegionRequest, IRefreshResult } from "./openfaithmap/generated/discovery";
+import type {
+  IDiscoverySite,
+  IRefreshRegionRequest,
+  IRefreshResult,
+} from "./openfaithmap/generated/discovery";
 
 export type DiscoverySite = IDiscoverySite;
 export type RefreshRegionInput = IRefreshRegionRequest;
@@ -59,7 +63,11 @@ async function unwrap<T>(promise: Promise<T>): Promise<T> {
   } catch (e) {
     if (isConjureError(e) && e.body && typeof e.body === "object") {
       const body = e.body as { errorName?: string; parameters?: Record<string, unknown> };
-      throw new DiscoveryApiError(e.status ?? 0, body.errorName ?? "Unknown", body.parameters ?? {});
+      throw new DiscoveryApiError(
+        e.status ?? 0,
+        body.errorName ?? "Unknown",
+        body.parameters ?? {},
+      );
     }
     throw e;
   }

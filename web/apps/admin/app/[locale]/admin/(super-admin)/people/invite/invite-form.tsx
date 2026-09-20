@@ -10,10 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export type InviteActionState =
-  | { path: string; expiresAt: string }
-  | { error: string }
-  | null;
+export type InviteActionState = { path: string; expiresAt: string } | { error: string } | null;
 
 // Client component, not a plain Server Action + redirect (every other mutation on this app's
 // super-admin pages, e.g. toggleAccountStatus, ends in redirect): the one-time token this action
@@ -28,7 +25,10 @@ export function InviteForm({
   const t = useTranslations("SuperAdminInvitePage");
   const [state, formAction, pending] = useActionState(action, null);
 
-  const link = state && "path" in state && typeof window !== "undefined" ? `${window.location.origin}${state.path}` : null;
+  const link =
+    state && "path" in state && typeof window !== "undefined"
+      ? `${window.location.origin}${state.path}`
+      : null;
 
   return (
     <div className="flex flex-col gap-4">

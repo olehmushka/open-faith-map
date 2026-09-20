@@ -33,7 +33,9 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
   };
 }
 
-function renderForm(action: (prevState: DetailsActionState, formData: FormData) => Promise<DetailsActionState>) {
+function renderForm(
+  action: (prevState: DetailsActionState, formData: FormData) => Promise<DetailsActionState>,
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages}>
       <DocumentDetailsForm action={action} doc={makeDoc()} otherPages={[]} />
@@ -44,7 +46,9 @@ function renderForm(action: (prevState: DetailsActionState, formData: FormData) 
 describe("DocumentDetailsForm", () => {
   it("never puts an error in the URL: a slug-taken failure renders inline and doesn't navigate", async () => {
     const user = userEvent.setup();
-    const action = vi.fn().mockResolvedValue({ error: "errorSlugTaken", field: "slug" } satisfies DetailsActionState);
+    const action = vi
+      .fn()
+      .mockResolvedValue({ error: "errorSlugTaken", field: "slug" } satisfies DetailsActionState);
     renderForm(action);
 
     // Captured before the error appears: once it does, the destructive helper text renders inside
@@ -55,7 +59,9 @@ describe("DocumentDetailsForm", () => {
     await user.type(slugInput, "taken-slug");
     await user.click(screen.getByRole("button", { name: "Save details" }));
 
-    expect(await screen.findByText("That slug is already taken for this locale.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("That slug is already taken for this locale."),
+    ).toBeInTheDocument();
     expect(slugInput).toHaveAttribute("aria-invalid", "true");
     expect(refresh).not.toHaveBeenCalled();
   });
@@ -68,12 +74,17 @@ describe("DocumentDetailsForm", () => {
     await user.click(screen.getByRole("button", { name: "Save details" }));
 
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText("That slug is already taken for this locale.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("That slug is already taken for this locale."),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the generic error banner for a non-slug failure", async () => {
     const user = userEvent.setup();
-    const action = vi.fn().mockResolvedValue({ error: "errorGeneric", raw: "Content:Unknown" } satisfies DetailsActionState);
+    const action = vi.fn().mockResolvedValue({
+      error: "errorGeneric",
+      raw: "Content:Unknown",
+    } satisfies DetailsActionState);
     renderForm(action);
 
     await user.click(screen.getByRole("button", { name: "Save details" }));

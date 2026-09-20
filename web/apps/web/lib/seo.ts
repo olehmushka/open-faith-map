@@ -34,7 +34,9 @@ function richTextToPlainText(nodes: unknown): string {
       const n = node as TextNode | ListNode;
       if (n.type === "text") return String((n as TextNode).text ?? "");
       if (n.type === "list") {
-        const items = Array.isArray((n as ListNode).items) ? ((n as ListNode).items as ListItemNode[]) : [];
+        const items = Array.isArray((n as ListNode).items)
+          ? ((n as ListNode).items as ListItemNode[])
+          : [];
         return items.map((item) => richTextToPlainText(item?.content)).join(" ");
       }
       return "";

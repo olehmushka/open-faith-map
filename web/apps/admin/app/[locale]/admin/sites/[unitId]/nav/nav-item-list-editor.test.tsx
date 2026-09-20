@@ -30,19 +30,30 @@ const pages: Document[] = [makePage("p1", "about"), makePage("p2", "contact")];
 
 const navItems: NavItem[] = [
   { id: "n1", siteId: "site-1", label: "About", targetDocumentId: "p1", sortOrder: 0 },
-  { id: "n2", siteId: "site-1", label: "Our Friends", targetUrl: "https://example.org", sortOrder: 1 },
+  {
+    id: "n2",
+    siteId: "site-1",
+    label: "Our Friends",
+    targetUrl: "https://example.org",
+    sortOrder: 1,
+  },
 ];
 
 function renderEditor(onSave = vi.fn().mockResolvedValue({ ok: true } satisfies NavSaveResult)) {
-  return { onSave, ...render(
-    <NextIntlClientProvider locale="en" messages={messages}>
-      <NavItemListEditor items={navItems} pages={pages} onSave={onSave} />
-    </NextIntlClientProvider>,
-  ) };
+  return {
+    onSave,
+    ...render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <NavItemListEditor items={navItems} pages={pages} onSave={onSave} />
+      </NextIntlClientProvider>,
+    ),
+  };
 }
 
 function dragHandleNames(): (string | null)[] {
-  return screen.getAllByRole("button", { name: /Drag to reorder/ }).map((el) => el.getAttribute("aria-label"));
+  return screen
+    .getAllByRole("button", { name: /Drag to reorder/ })
+    .map((el) => el.getAttribute("aria-label"));
 }
 
 describe("NavItemListEditor", () => {
@@ -88,7 +99,11 @@ describe("NavItemListEditor", () => {
 
     await user.click(screen.getByRole("button", { name: "Add item" }));
 
-    expect(dragHandleNames()).toEqual(["Drag to reorder About", "Drag to reorder Our Friends", "Drag to reorder Untitled item"]);
+    expect(dragHandleNames()).toEqual([
+      "Drag to reorder About",
+      "Drag to reorder Our Friends",
+      "Drag to reorder Untitled item",
+    ]);
     // A fresh row defaults to "page" mode — its external-URL input must not be present.
     const urlInputs = screen.getAllByPlaceholderText("https://…");
     expect(urlInputs).toHaveLength(1); // only the pre-existing "Our Friends" external row
@@ -119,7 +134,12 @@ describe("NavItemListEditor", () => {
     const submitted = onSave.mock.calls[0][0] as NavItemInput[];
     expect(submitted).toEqual([
       { label: "About", targetDocumentId: "p1", targetUrl: undefined, sortOrder: 0 },
-      { label: "Our Friends", targetDocumentId: undefined, targetUrl: "https://example.org", sortOrder: 1 },
+      {
+        label: "Our Friends",
+        targetDocumentId: undefined,
+        targetUrl: "https://example.org",
+        sortOrder: 1,
+      },
     ]);
     expect(await screen.findByText("Saved")).toBeInTheDocument();
   });

@@ -99,7 +99,9 @@ export default async function SuperAdminPersonPage({
               <p className="text-sm text-muted-foreground">{t("accountStatusActive")}</p>
               <p className="text-sm text-muted-foreground">
                 {accountStatus.lastActiveAt
-                  ? t("lastActive", { date: new Date(accountStatus.lastActiveAt).toLocaleString(locale) })
+                  ? t("lastActive", {
+                      date: new Date(accountStatus.lastActiveAt).toLocaleString(locale),
+                    })
                   : t("neverActive")}
               </p>
               <form action={toggleAccountStatus}>
@@ -114,7 +116,9 @@ export default async function SuperAdminPersonPage({
               <p className="text-sm text-muted-foreground">{t("accountStatusDisabled")}</p>
               <p className="text-sm text-muted-foreground">
                 {accountStatus.lastActiveAt
-                  ? t("lastActive", { date: new Date(accountStatus.lastActiveAt).toLocaleString(locale) })
+                  ? t("lastActive", {
+                      date: new Date(accountStatus.lastActiveAt).toLocaleString(locale),
+                    })
                   : t("neverActive")}
               </p>
               <form action={toggleAccountStatus}>
@@ -172,7 +176,9 @@ export default async function SuperAdminPersonPage({
                   <p className="text-xs text-muted-foreground">
                     {k.revokedAt
                       ? t("apiKeyRevokedAt", { date: new Date(k.revokedAt).toLocaleString(locale) })
-                      : t("apiKeyCreatedAt", { date: new Date(k.createdAt).toLocaleString(locale) })}
+                      : t("apiKeyCreatedAt", {
+                          date: new Date(k.createdAt).toLocaleString(locale),
+                        })}
                   </p>
                 </div>
                 {!k.revokedAt && (
@@ -197,7 +203,9 @@ export default async function SuperAdminPersonPage({
           {instanceAdminGrant ? (
             <>
               <p className="text-sm text-muted-foreground">
-                {t("isInstanceAdminYes", { date: new Date(instanceAdminGrant.grantedAt).toLocaleString(locale) })}
+                {t("isInstanceAdminYes", {
+                  date: new Date(instanceAdminGrant.grantedAt).toLocaleString(locale),
+                })}
               </p>
               <form action={toggleInstanceAdmin}>
                 <input type="hidden" name="action" value="revoke" />
@@ -228,7 +236,11 @@ export default async function SuperAdminPersonPage({
           <form action={grantRole} className="flex flex-col gap-4">
             <Label className="flex flex-col items-start gap-1">
               {t("roleLabel")}
-              <select name="roleId" required className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm">
+              <select
+                name="roleId"
+                required
+                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm"
+              >
                 <option value="">{t("rolePlaceholder")}</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>

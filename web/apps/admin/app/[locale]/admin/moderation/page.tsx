@@ -10,7 +10,11 @@ import { ReportList } from "./report-list";
 // on the root unit), never a locally-cached role (D-Facade). This page adds no local "isModerator"
 // gate of its own; a non-moderator's call simply comes back Forbidden, same discipline
 // /admin/registrations already follows.
-export default async function ModerationQueuePage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function ModerationQueuePage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
   const { locale } = await params;
   const t = await getTranslations("ModerationQueuePage");
   const { reports, nextPageToken } = await listReports(undefined, "OPEN");

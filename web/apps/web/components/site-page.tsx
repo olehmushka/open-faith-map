@@ -7,7 +7,14 @@ import { Blocks } from "@/app/blocks";
 import { JsonLd } from "@/components/json-ld";
 import { Badge } from "@/components/ui/badge";
 import { ACCESSIBILITY_KEYS, ACCESSIBILITY_MESSAGE_KEYS } from "@/lib/accessibility";
-import { getPreviewBlocks, getPublicBlocks, getSiteChrome, listPreviewDocuments, listPublicDocuments, type Site } from "@/lib/content";
+import {
+  getPreviewBlocks,
+  getPublicBlocks,
+  getSiteChrome,
+  listPreviewDocuments,
+  listPublicDocuments,
+  type Site,
+} from "@/lib/content";
 import { getSite as getDiscoverySite } from "@/lib/discovery";
 import { fileReport, type FileReportInput } from "@/lib/moderation";
 import { redirect } from "@/i18n/navigation";
@@ -92,7 +99,10 @@ export async function SitePage({
   return (
     <main
       className="mx-auto flex max-w-3xl flex-col gap-10"
-      style={{ paddingInline: "calc(1.5rem * var(--of-space-scale, 1))", paddingBlock: "calc(3rem * var(--of-space-scale, 1))" }}
+      style={{
+        paddingInline: "calc(1.5rem * var(--of-space-scale, 1))",
+        paddingBlock: "calc(3rem * var(--of-space-scale, 1))",
+      }}
     >
       {chrome && siteUrl ? <JsonLd data={churchJsonLd(chrome, siteUrl)} /> : null}
       {discoverySite ? (
@@ -107,11 +117,13 @@ export async function SitePage({
             {discoverySite.attributes.onlineStream ? (
               <Badge variant="outline">{tm("onlineStream")}</Badge>
             ) : null}
-            {ACCESSIBILITY_KEYS.filter((key) => discoverySite.attributes.accessibility[key]).map((key) => (
-              <Badge key={key} variant="outline">
-                {tm(ACCESSIBILITY_MESSAGE_KEYS[key])}
-              </Badge>
-            ))}
+            {ACCESSIBILITY_KEYS.filter((key) => discoverySite.attributes.accessibility[key]).map(
+              (key) => (
+                <Badge key={key} variant="outline">
+                  {tm(ACCESSIBILITY_MESSAGE_KEYS[key])}
+                </Badge>
+              ),
+            )}
           </div>
           {discoverySite.serviceLanguages.length > 0 ? (
             <p className="text-sm">
@@ -176,7 +188,12 @@ export async function SitePage({
           <p className="text-sm">{t("reportThanks")}</p>
         ) : (
           <form action={report} className="flex flex-col gap-2">
-            <select name="reasonCode" required className="rounded border px-2 py-1 text-sm" defaultValue="">
+            <select
+              name="reasonCode"
+              required
+              className="rounded border px-2 py-1 text-sm"
+              defaultValue=""
+            >
               <option value="" disabled>
                 {t("reportReasonPlaceholder")}
               </option>
@@ -220,18 +237,38 @@ async function EventBlocks({
   siteUrl: string | null;
   address?: string;
 }) {
-  const blocks = previewToken ? await getPreviewBlocks(documentId, previewToken) : await getPublicBlocks(documentId);
+  const blocks = previewToken
+    ? await getPreviewBlocks(documentId, previewToken)
+    : await getPublicBlocks(documentId);
   return (
     <>
       {siteUrl && startsAt ? (
-        <JsonLd data={eventJsonLd(deriveTitle(blocks, slug), startsAt, endsAt ?? undefined, siteUrl, address)} />
+        <JsonLd
+          data={eventJsonLd(
+            deriveTitle(blocks, slug),
+            startsAt,
+            endsAt ?? undefined,
+            siteUrl,
+            address,
+          )}
+        />
       ) : null}
       <Blocks blocks={blocks} siteId={siteId} />
     </>
   );
 }
 
-async function PostBlocks({ documentId, siteId, previewToken }: { documentId: string; siteId: string; previewToken?: string }) {
-  const blocks = previewToken ? await getPreviewBlocks(documentId, previewToken) : await getPublicBlocks(documentId);
+async function PostBlocks({
+  documentId,
+  siteId,
+  previewToken,
+}: {
+  documentId: string;
+  siteId: string;
+  previewToken?: string;
+}) {
+  const blocks = previewToken
+    ? await getPreviewBlocks(documentId, previewToken)
+    : await getPublicBlocks(documentId);
   return <Blocks blocks={blocks} siteId={siteId} />;
 }

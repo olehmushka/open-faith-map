@@ -34,7 +34,10 @@ export default async function PatternsPage({
 
   function redirectWithError(e: unknown): never {
     if (e && typeof e === "object" && "errorName" in e) {
-      redirect({ href: `/admin/patterns?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`, locale });
+      redirect({
+        href: `/admin/patterns?error=${encodeURIComponent(String((e as { errorName: string }).errorName))}`,
+        locale,
+      });
     }
     throw e;
   }
@@ -115,11 +118,21 @@ export default async function PatternsPage({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor={`description-${p.id}`}>{t("descriptionLabel")}</Label>
-                  <Input id={`description-${p.id}`} name="description" defaultValue={p.description} />
+                  <Input
+                    id={`description-${p.id}`}
+                    name="description"
+                    defaultValue={p.description}
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor={`sortOrder-${p.id}`}>{t("sortOrderLabel")}</Label>
-                  <Input id={`sortOrder-${p.id}`} name="sortOrder" type="number" defaultValue={p.sortOrder} required />
+                  <Input
+                    id={`sortOrder-${p.id}`}
+                    name="sortOrder"
+                    type="number"
+                    defaultValue={p.sortOrder}
+                    required
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor={`blocks-${p.id}`}>{t("blocksLabel")}</Label>
@@ -160,7 +173,11 @@ export default async function PatternsPage({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="description">{t("descriptionLabel")}</Label>
-              <Input id="description" name="description" placeholder={t("descriptionPlaceholder")} />
+              <Input
+                id="description"
+                name="description"
+                placeholder={t("descriptionPlaceholder")}
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sortOrder">{t("sortOrderLabel")}</Label>
@@ -175,7 +192,13 @@ export default async function PatternsPage({
                 className="font-mono text-xs"
                 required
                 defaultValue={JSON.stringify(
-                  [{ blockTypeCode: "heading", position: 0, data: { level: 2, text: [{ type: "text", text: "New pattern" }] } }],
+                  [
+                    {
+                      blockTypeCode: "heading",
+                      position: 0,
+                      data: { level: 2, text: [{ type: "text", text: "New pattern" }] },
+                    },
+                  ],
                   null,
                   2,
                 )}

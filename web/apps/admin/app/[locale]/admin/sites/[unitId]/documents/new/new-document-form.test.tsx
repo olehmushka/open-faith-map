@@ -11,7 +11,9 @@ import type { Document } from "@/lib/content";
 
 import { NewDocumentForm, type CreateActionState } from "./new-document-form";
 
-function renderForm(action: (prevState: CreateActionState, formData: FormData) => Promise<CreateActionState>) {
+function renderForm(
+  action: (prevState: CreateActionState, formData: FormData) => Promise<CreateActionState>,
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages}>
       <NewDocumentForm action={action} existingPages={[] as Document[]} />
@@ -33,21 +35,26 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>, slug: stri
 describe("NewDocumentForm", () => {
   it("renders a slug-taken failure inline on the slug field, with no query string involved", async () => {
     const user = userEvent.setup();
-    const action = vi.fn().mockResolvedValue({ error: "errorSlugTaken", field: "slug" } satisfies CreateActionState);
+    const action = vi
+      .fn()
+      .mockResolvedValue({ error: "errorSlugTaken", field: "slug" } satisfies CreateActionState);
     renderForm(action);
 
     const slugInput = await fillRequired(user, "home");
     await user.click(screen.getByRole("button", { name: "Create document" }));
 
-    expect(await screen.findByText("That slug is already taken for this locale.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("That slug is already taken for this locale."),
+    ).toBeInTheDocument();
     expect(slugInput).toHaveAttribute("aria-invalid", "true");
   });
 
   it("renders a missing-start-date failure inline on the event start field", async () => {
     const user = userEvent.setup();
-    const action = vi
-      .fn()
-      .mockResolvedValue({ error: "errorEventMissingStart", field: "eventStartsAt" } satisfies CreateActionState);
+    const action = vi.fn().mockResolvedValue({
+      error: "errorEventMissingStart",
+      field: "eventStartsAt",
+    } satisfies CreateActionState);
     renderForm(action);
 
     const slugInput = await fillRequired(user, "sunday-service");
@@ -62,7 +69,10 @@ describe("NewDocumentForm", () => {
 
   it("shows the generic error banner for any other failure", async () => {
     const user = userEvent.setup();
-    const action = vi.fn().mockResolvedValue({ error: "errorGeneric", raw: "Content:Unknown" } satisfies CreateActionState);
+    const action = vi.fn().mockResolvedValue({
+      error: "errorGeneric",
+      raw: "Content:Unknown",
+    } satisfies CreateActionState);
     renderForm(action);
 
     await fillRequired(user, "about");

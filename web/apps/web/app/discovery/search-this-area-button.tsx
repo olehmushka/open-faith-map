@@ -7,7 +7,13 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 
-export function SearchThisAreaButton({ onClick, pending }: { onClick: () => void; pending: boolean }) {
+export function SearchThisAreaButton({
+  onClick,
+  pending,
+}: {
+  onClick: () => void;
+  pending: boolean;
+}) {
   const t = useTranslations("DiscoveryMap");
 
   return (
