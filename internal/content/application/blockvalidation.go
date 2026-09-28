@@ -130,7 +130,8 @@ func topLevelPropertyNames(schemaDoc any) map[string]bool {
 
 // allowedURLSchemes is D-PublicSiteCSP's scheme allowlist, applied to every URL-bearing block
 // field repo-wide. Deliberately small: no "ftp", no "data", and no "javascript" — javascript: is
-// exactly the live stored-XSS this closes.
+// exactly the live stored-XSS this closes. Navigational link fields (button.href, rich-text link
+// marks) additionally accept a same-page fragment href with no scheme at all — see checkLinkHref.
 var allowedURLSchemes = map[string]bool{
 	"https": true, "http": true, "mailto": true, "tel": true,
 }
@@ -148,6 +149,8 @@ var socialEmbedHosts = map[string][]string{
 // scheme/host with a typed, field-naming error — belt-and-braces with the render-time re-check in
 // web/apps/web/lib/block-security.ts, which exists because rows written before this landed, and
 // any future block type reintroducing an unguarded field, both bypass this write-time gate.
+// Navigational fields (button.href, rich-text link marks) run through checkLinkHref instead of
+// plain checkScheme, accepting a same-page fragment href in addition to the scheme allowlist.
 //
 // youtube_embed.videoId is not itself a URL (the embed src is server-constructed at render time),
 // contact_info.email is format:"email" not a URL-scheme concern, and map_embed's link is built
@@ -172,8 +175,21 @@ func validateBlockURLs(blockType domain.BlockType, position int, instance any) e
 		return nil
 	}
 
+	// checkLinkHref is checkScheme plus a same-page-anchor carve-out for navigational fields
+	// (button.href, rich-text link marks): a fragment-only href like "#service-times" has no
+	// scheme at all, so plain checkScheme rejects it indistinguishably from "javascript:...". A
+	// fragment is safe to allow unconditionally — the browser never executes anything after "#",
+	// it only scrolls/updates the hash — unlike image/gallery/photoUrl/social_embed fields, which
+	// must always resolve to a real external resource and so stay on checkScheme.
+	checkLinkHref := func(field string, v any) error {
+		if s, ok := v.(string); ok && strings.HasPrefix(s, "#") {
+			return nil
+		}
+		return checkScheme(field, v)
+	}
+
 	// checkRichTextLinks walks a richText node array (D-RichTextNodes) and runs every "link" mark's
-	// href through checkScheme, recursing into "list" nodes' items — a link mark is the one URL
+	// href through checkLinkHref, recursing into "list" nodes' items — a link mark is the one URL
 	// value nested inside a tree rather than living directly on the block, so it needs its own walk
 	// instead of a single field lookup. Reports the top-level field name (e.g. "text"), matching the
 	// existing "as precise as it's cheap to be" precedent (images[%d].url) rather than a full node
@@ -194,7 +210,7 @@ func validateBlockURLs(blockType domain.BlockType, position int, instance any) e
 					if mark == nil || mark["type"] != "link" {
 						continue
 					}
-					if err := checkScheme(field, mark["href"]); err != nil {
+					if err := checkLinkHref(field, mark["href"]); err != nil {
 						return err
 					}
 				}
@@ -228,7 +244,7 @@ func validateBlockURLs(blockType domain.BlockType, position int, instance any) e
 			}
 		}
 	case "button":
-		if err := checkScheme("href", data["href"]); err != nil {
+		if err := checkLinkHref("href", data["href"]); err != nil {
 			return err
 		}
 	case "paragraph", "heading", "quote":

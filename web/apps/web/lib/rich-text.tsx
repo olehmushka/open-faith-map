@@ -8,7 +8,7 @@
 //
 // A malformed or legacy (pre-M14.2, still-a-plain-string) value renders as nothing rather than
 // crashing the page — the same defensive posture block-security.ts already takes for URLs.
-import { safeUrl } from "@/lib/block-security";
+import { safeLinkHref } from "@/lib/block-security";
 
 interface TextMark {
   type: "bold" | "italic" | "link";
@@ -44,7 +44,7 @@ function renderTextNode(node: TextNode, key: number): React.ReactNode {
 
   const linkMark = marks.find((m) => m?.type === "link");
   if (linkMark) {
-    const href = safeUrl(linkMark.href);
+    const href = safeLinkHref(linkMark.href);
     if (href) {
       content = (
         <a href={href} className="underline">

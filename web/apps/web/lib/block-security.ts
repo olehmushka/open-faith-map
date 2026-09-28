@@ -24,6 +24,19 @@ export function safeUrl(raw: unknown): string | undefined {
   }
 }
 
+/**
+ * safeUrl plus a same-page-anchor carve-out for navigational fields (button.href, rich-text link
+ * marks): a fragment-only href like "#service-times" has no scheme for `new URL()` to parse, so
+ * plain safeUrl drops it. A fragment is safe to keep unconditionally — the browser never executes
+ * anything after "#" — unlike image/gallery/photoUrl/social_embed, which stay on plain safeUrl
+ * because they must always resolve to a real external resource. Mirrors
+ * internal/content/application/blockvalidation.go's checkLinkHref.
+ */
+export function safeLinkHref(raw: unknown): string | undefined {
+  if (typeof raw === "string" && raw.startsWith("#")) return raw;
+  return safeUrl(raw);
+}
+
 // Embed-host allowlist for social_embed.url, keyed by its declared platform — mirrors
 // socialEmbedHosts in blockvalidation.go.
 const SOCIAL_EMBED_HOSTS: Record<string, string[]> = {
