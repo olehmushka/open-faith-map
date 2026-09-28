@@ -25,8 +25,8 @@ func (f fakeStore) ActiveGrantsForSubject(_ context.Context, personID string) ([
 	return f.grants[personID], nil
 }
 
-func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _, _, _ string, _ *time.Time) (string, error) {
-	return "", nil
+func (f fakeStore) InsertRoleAssignment(_ context.Context, _, _, _, _, _, _ string, _ *time.Time) (string, bool, error) {
+	return "", true, nil
 }
 
 func (f fakeStore) UpsertRoleAssignment(_ context.Context, _, _, _, _, _, _ string, _ *time.Time) (string, error) {

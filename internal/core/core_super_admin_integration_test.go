@@ -203,6 +203,22 @@ func TestSuperAdminAuditTrailIntegration(t *testing.T) {
 	assertJSONField(t, row.after, "roleId", roleID)
 	assertJSONField(t, row.after, "unitId", unit.ID)
 
+	// --- DS-OFM-18: a resumed retry of the exact same grant (same person/role/unit/scope — the
+	// idempotent-conflict shape InsertRoleAssignment's unique-index catch handles) must not write a
+	// second GRANT_UNIT_ROLE audit row against the same assignment id.
+	if err := coreApp.GrantUnitRole(actorCtx, targetID, roleID, unit.ID, "unit", "", nil); err != nil {
+		t.Fatalf("GrantUnitRole (resumed retry): %v", err)
+	}
+	var grantUnitRoleCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM openfaithmap.identity_audit_log
+		WHERE action = 'GRANT_UNIT_ROLE' AND target_id = $1`, assignmentID).Scan(&grantUnitRoleCount); err != nil {
+		t.Fatalf("count GRANT_UNIT_ROLE audit rows: %v", err)
+	}
+	if grantUnitRoleCount != 1 {
+		t.Errorf("GRANT_UNIT_ROLE audit rows for assignment=%s after a resumed retry = %d, want 1 (no duplicate log on a no-op)", assignmentID, grantUnitRoleCount)
+	}
+
 	// --- RevokeRoleAssignment.
 	if err := coreApp.RevokeRoleAssignment(actorCtx, assignmentID); err != nil {
 		t.Fatalf("RevokeRoleAssignment: %v", err)
@@ -754,7 +770,7 @@ func TestExplainAccessIntegration(t *testing.T) {
 		t.Fatalf("ListRoles = %+v, want it to include the seeded registration-operator role", roles)
 	}
 
-	assignmentID, err = authzSvc.GrantUnitRole(ctx, personID, roleID, unit.ID, authzdomain.ScopeUnit, "", personID, nil)
+	assignmentID, _, err = authzSvc.GrantUnitRole(ctx, personID, roleID, unit.ID, authzdomain.ScopeUnit, "", personID, nil)
 	if err != nil {
 		t.Fatalf("GrantUnitRole: %v", err)
 	}
@@ -987,7 +1003,7 @@ func TestMergePersonsIntegration(t *testing.T) {
 	// --- Happy path: duplicate has a role assignment, a plain membership, an instance-admin grant,
 	// and (Case A) an account+identity while the survivor has none of these. Everything should move.
 	sHappy, dHappy := insertPerson("M11.8 Happy Survivor"), insertPerson("M11.8 Happy Duplicate")
-	if _, err := authzSvc.GrantUnitRole(ctx, dHappy, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID, nil); err != nil {
+	if _, _, err := authzSvc.GrantUnitRole(ctx, dHappy, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID, nil); err != nil {
 		t.Fatalf("pre-grant role for happy path: %v", err)
 	}
 	insertMembership(dHappy)
@@ -1068,7 +1084,7 @@ func TestMergePersonsIntegration(t *testing.T) {
 	// revoked/ended as redundant, not duplicated onto the survivor.
 	sColl, dColl := insertPerson("M11.8 Collision Survivor"), insertPerson("M11.8 Collision Duplicate")
 	for _, p := range []string{sColl, dColl} {
-		if _, err := authzSvc.GrantUnitRole(ctx, p, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID, nil); err != nil {
+		if _, _, err := authzSvc.GrantUnitRole(ctx, p, roleID, unit.ID, authzdomain.ScopeUnit, "", actorID, nil); err != nil {
 			t.Fatalf("pre-grant role for collision case (%s): %v", p, err)
 		}
 		insertMembership(p)

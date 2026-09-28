@@ -872,6 +872,8 @@ func insertRoleAssignment(ctx context.Context, pool *pgxpool.Pool, store *authza
 	// Always scope="unit" here (M12.2 added scope/graphID params) — this matrix's own seed points are
 	// all exact-unit grants; target_scoped_unit_move's own scope="subtree" grant (M12.2) goes through
 	// the real grantUnitRole HTTP endpoint instead of this helper, deliberately, since proving that
-	// endpoint's own scope field is part of what that subtest closes.
-	return store.InsertRoleAssignment(ctx, personID, roleID, unitID, "unit", "", personID, nil)
+	// endpoint's own scope field is part of what that subtest closes. The created bool (DS-OFM-18) is
+	// irrelevant to this matrix's own seed-grant helper, which only ever cares about the resulting id.
+	id, _, err := store.InsertRoleAssignment(ctx, personID, roleID, unitID, "unit", "", personID, nil)
+	return id, err
 }

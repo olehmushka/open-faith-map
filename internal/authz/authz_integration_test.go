@@ -96,7 +96,7 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	}
 
 	// --- GrantUnitRole (existing, M10.6) + ListRoleAssignmentsByUnit (new) + RevokeRoleAssignment (new).
-	if _, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, domain.ScopeUnit, "", "", nil); err != nil {
+	if _, _, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, domain.ScopeUnit, "", "", nil); err != nil {
 		t.Fatalf("GrantUnitRole: %v", err)
 	}
 	assignments, err := svc.ListRoleAssignmentsByUnit(ctx, unit.ID)
@@ -160,7 +160,7 @@ func TestAuthzAdminSurfaceIntegration(t *testing.T) {
 	// ActiveGrantsForSubject (the PDP's own enforcement path, unchanged by this milestone but
 	// re-checked here now that a real expiry can finally be written).
 	futureExpiry := time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
-	expiringAssignmentID, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, domain.ScopeUnit, "", "", &futureExpiry)
+	expiringAssignmentID, _, err := svc.GrantUnitRole(ctx, personID, registrationOperatorRoleID, unit.ID, domain.ScopeUnit, "", "", &futureExpiry)
 	if err != nil {
 		t.Fatalf("GrantUnitRole (with expiry): %v", err)
 	}

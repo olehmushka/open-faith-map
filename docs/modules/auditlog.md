@@ -95,14 +95,6 @@ registration/congregationimport operator gate, …) is each caller's own job, al
 
 ## Open seams
 
-- **`GrantUnitRole`'s conflict-as-success path gives no created-vs-resumed signal.**
-  `internal/authz/adapters/repository.go`'s `InsertRoleAssignment` catches a `23505` conflict on
-  `authz_role_assignments_active_idx` and returns the *pre-existing* row's id on both a genuine
-  create and a resumed retry — so both `internal/core`'s and `internal/registration`'s
-  `auditLog.Record` calls after `GrantUnitRole` may write a second, redundant `GRANT_UNIT_ROLE` row
-  on a resumed retry. Low severity (append-only, no state corruption, the duplicate row is
-  truthful) but real. Fixing it properly means giving `InsertRoleAssignment` a real `created bool`
-  — worth doing once, fixing both call sites at once, not worth a one-off workaround in either.
 - **`congregationimport.RunJurisdictionSync` stays unattributed, coupled to `DS-OFM-16`.** Its
   jurisdiction-tier unit creation runs under `authz.SystemContext`, deliberately, to keep automated
   sync unattributed to whichever operator triggered it (see that file's own doc comment and

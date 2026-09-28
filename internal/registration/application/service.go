@@ -357,16 +357,17 @@ func (s *Service) ensureFilled(ctx context.Context, position membershipdomain.Po
 
 // ensureGrant grants CongregationAdminRoleID to personID on unitID. GrantUnitRole's own
 // unique-index-conflict-as-success handling (internal/authz/adapters/repository.go's
-// InsertRoleAssignment) makes the WRITE itself idempotent on a resumed retry — but it returns the
-// same assignmentID on both the first grant and a resumed no-op, with no created-vs-existing
-// signal, so the auditLog.Record call below may write a second, redundant GRANT_UNIT_ROLE row on a
-// resumed retry. internal/core/application's own GrantUnitRole wrapper has this exact same gap
-// today (it calls Record unconditionally too); this mirrors that accepted behavior rather than
-// diverging from it. See DS-OFM-18 (docs/open-questions.md).
+// InsertRoleAssignment) makes the WRITE itself idempotent on a resumed retry, and now (DS-OFM-18)
+// also reports a real created bool, so a resumed retry (a crash mid-Approve, replayed) skips the
+// auditLog.Record call below instead of writing a second, redundant GRANT_UNIT_ROLE row.
+// internal/core/application's own GrantUnitRole wrapper applies the identical skip.
 func (s *Service) ensureGrant(ctx context.Context, personID, unitID, grantedByPersonID string) error {
-	assignmentID, err := s.authzSvc.GrantUnitRole(ctx, personID, s.cfg.CongregationAdminRoleID, unitID, authzdomain.ScopeUnit, "", grantedByPersonID, nil)
+	assignmentID, created, err := s.authzSvc.GrantUnitRole(ctx, personID, s.cfg.CongregationAdminRoleID, unitID, authzdomain.ScopeUnit, "", grantedByPersonID, nil)
 	if err != nil {
 		return fmt.Errorf("grantUnitRole: %w", err)
+	}
+	if !created {
+		return nil
 	}
 	after := map[string]any{"personId": personID, "roleId": s.cfg.CongregationAdminRoleID, "unitId": unitID, "scope": string(authzdomain.ScopeUnit)}
 	return s.auditLog.Record(ctx, auditActionGrantUnitRole, auditTargetRoleAssignment, assignmentID, nil, after)

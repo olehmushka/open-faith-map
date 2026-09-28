@@ -23,8 +23,10 @@ type GrantStore interface {
 	// InsertRoleAssignment's scope is "unit" or "subtree" (domain.Scope); graphID is required (and
 	// only meaningful) when scope is "subtree" (M12.2, resolving U14 — see GrantUnitRole's own doc).
 	// expiresAt is nil for a non-expiring grant (M12.3) — the PDP already enforces it, this call is
-	// what finally lets a caller set it.
-	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string, expiresAt *time.Time) (string, error)
+	// what finally lets a caller set it. The bool return is a real created-vs-resumed signal
+	// (DS-OFM-18): false on a resumed retry that hit the idempotent-conflict fallback, so
+	// GrantUnitRole's own callers can skip a redundant audit-log write.
+	InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string, expiresAt *time.Time) (string, bool, error)
 	// UpsertRoleAssignment is BulkGrantUnitRole's (M11.7) per-row statement, called in a loop inside
 	// Service.inTx — a real upsert, not InsertRoleAssignment's catch-then-select, since a caught
 	// 23505 inside an explicit multi-statement tx would abort the whole transaction. See the
@@ -140,9 +142,11 @@ func (s *Service) enforce(ctx context.Context, subjectPersonID string, action do
 // never pass for a non-root move — subtree was fully implemented in the PDP but unprovisionable
 // through any surface. No epoch bump, no cache to invalidate (D-InProcessAuthz's amendment: grants
 // are read fresh per request), so a grant is visible to the very next Require call with no extra
-// step. Returns the assignment's id (M11.2: super-admin callers use it as the audit log's target_id).
+// step. Returns the assignment's id (M11.2: super-admin callers use it as the audit log's
+// target_id) and a created bool (DS-OFM-18: false on a resumed retry that hit the store's
+// idempotent-conflict fallback, so a caller's own audit-log write can skip a redundant record).
 // expiresAt is nil for a non-expiring grant (M12.3).
-func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string, scope domain.Scope, graphID, grantedByPersonID string, expiresAt *time.Time) (string, error) {
+func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID string, scope domain.Scope, graphID, grantedByPersonID string, expiresAt *time.Time) (string, bool, error) {
 	return s.store.InsertRoleAssignment(ctx, personID, roleID, unitID, string(scope), graphID, grantedByPersonID, expiresAt)
 }
 

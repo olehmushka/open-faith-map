@@ -108,7 +108,7 @@ from the module doc it was raised in.
   justify. Coupled to `DS-OFM-15` — attribution is only worth adding if there is somewhere to
   attribute it to.
 - **DS-OFM-18 — `GrantUnitRole` gives no created-vs-resumed signal.** Opened 2026-09-15 (M15).
-  `internal/authz/adapters/repository.go`'s `InsertRoleAssignment` catches a `23505` conflict on
+  ~~`internal/authz/adapters/repository.go`'s `InsertRoleAssignment` catches a `23505` conflict on
   `authz_role_assignments_active_idx` and returns the *pre-existing* row's id on both a genuine
   create and a resumed retry — there is no `created bool` or equivalent anywhere in the chain. Both
   `internal/core`'s and `internal/registration`'s `auditLog.Record` calls after `GrantUnitRole`
@@ -116,8 +116,14 @@ from the module doc it was raised in.
   second, redundant `GRANT_UNIT_ROLE` `identity_audit_log` row against the same assignment id.
   Low severity today (append-only, no state corruption, the duplicate row is truthful about what
   happened) but real. Fix: give `InsertRoleAssignment` a real `created bool` (or equivalent) so
-  both call sites can skip logging on a genuine no-op — one change, fixes both at once. See
-  [auditlog.md](modules/auditlog.md#open-seams).
+  both call sites can skip logging on a genuine no-op — one change, fixes both at once.~~
+  **Resolved (2026-09-28):** `InsertRoleAssignment` now returns a real `created bool` — `true` on
+  the genuine insert, `false` on the conflict-fallback lookup — threaded through
+  `authz.GrantStore`/`authz.Service.GrantUnitRole`. Both `internal/core/application/service.go`'s
+  `GrantUnitRole` and `internal/registration/application/service.go`'s `ensureGrant` now skip
+  `auditLog.Record` when `!created`. Regression-tested in
+  `internal/core/core_super_admin_integration_test.go` (a resumed retry with identical args writes
+  no second `GRANT_UNIT_ROLE` row). See [auditlog.md](modules/auditlog.md#open-seams).
 - **DS-OFM-14 — Per-surface OAuth clients, and WireGuard in front of `oikumenea-console`.** Both are
   recorded as required before any non-local-dev deployment
   ([D-OAuthClients](architecture/decisions.md),
