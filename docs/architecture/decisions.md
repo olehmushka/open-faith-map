@@ -2806,3 +2806,19 @@ catalog endpoints could reintroduce an unguarded field without either layer alon
   and reason.
 - D-RichTextNodes' `link` mark and D-ExternalMediaOnly's image URLs both go through this same
   allowlist rather than each defining their own.
+
+> **Update (2026-09-28): a same-page fragment href is now a carve-out for navigational fields
+> only.** `button.href` and D-RichTextNodes' `link` mark accept a fragment-only value (e.g.
+> `"#service-times"`) with no scheme at all, in addition to the allowlist above — a bare fragment
+> is never executed by the browser (it only scrolls/updates the hash), so it carries none of the
+> `javascript:`/`data:` risk this decision closes. Found via the seeded `content_patterns` row
+> "Parish home page" (`migrations/0029_content_patterns.sql`, M14.13): its button links to
+> `"#service-times"`, which this allowlist rejected identically to a disallowed scheme, failing
+> validation on every real insert of an otherwise-valid, built-in pattern — the seed row was
+> authored by hand against the JSON-Schema shape and never actually round-tripped through
+> `validateBlockData`/`validateBlockURLs` before being committed. `image.url`,
+> `gallery.images[].url`, `staff_card.photoUrl`, and `social_embed.url` are unaffected — those must
+> still always resolve to a real external resource, so they keep the exact allowlist above with no
+> fragment exception. Implemented as `checkLinkHref` in `blockvalidation.go` (mirrored by
+> `safeLinkHref` in `web/apps/web/lib/block-security.ts`), used only by the `button` case and
+> `checkRichTextLinks`.

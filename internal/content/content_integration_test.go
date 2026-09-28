@@ -461,6 +461,16 @@ func TestContentIntegration(t *testing.T) {
 		t.Errorf("PutBlocks(button, javascript: href) error field = %q, want %q", urlErr.Field, "href")
 	}
 
+	// A same-page fragment href (no scheme at all) is a legitimate in-page anchor, not a disallowed
+	// scheme — this is the exact shape the seeded "Parish home page" content_patterns row uses
+	// (migrations/0029_content_patterns.sql), which was previously rejected indistinguishably from
+	// a "javascript:" href.
+	if _, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "button", Position: 0, Data: json.RawMessage(`{"label":"x","href":"#service-times"}`)},
+	}); err != nil {
+		t.Errorf("PutBlocks(button, fragment href) error = %v, want nil", err)
+	}
+
 	// M15: PutBlocks is explicitly OUT of scope for auditLog.Record (document/block content already
 	// gets its own trail via M14.6's content_document_revisions) — a successful call here must add
 	// zero identity_audit_log rows.
@@ -512,6 +522,15 @@ func TestContentIntegration(t *testing.T) {
 		t.Errorf("PutBlocks(paragraph, javascript: link) error = %v, want BlockUrlNotAllowedError", err)
 	} else if richTextErr.Field != "text" {
 		t.Errorf("PutBlocks(paragraph, javascript: link) error field = %q, want %q", richTextErr.Field, "text")
+	}
+
+	// A rich-text link mark's href accepts the same fragment-anchor carve-out as button.href.
+	if _, err := contentSvc.PutBlocks(adminCtx, doc.ID, []contentdomain.BlockInput{
+		{BlockTypeCode: "paragraph", Position: 10, Data: json.RawMessage(`{"text":[
+			{"type":"text","text":"jump","marks":[{"type":"link","href":"#anchor"}]}
+		]}`)},
+	}); err != nil {
+		t.Errorf("PutBlocks(paragraph, fragment link) error = %v, want nil", err)
 	}
 
 	// A `list` block round-trips; a bad-scheme link nested inside a list item is rejected the same
@@ -1668,6 +1687,20 @@ func TestContentIntegration(t *testing.T) {
 	if !foundPattern {
 		t.Errorf("ListPatterns (public) = %+v, want to contain %s", patterns, newPattern.ID)
 	}
+
+	// Every pattern content_patterns actually ships — including the migrations/0029_content_patterns.sql
+	// seed rows, built by hand against the schema and never previously round-tripped through Go's
+	// own validation — must insert cleanly through the exact path the admin editor's "insert
+	// pattern" UI uses (a full PutBlocks call). This is the regression coverage for the "Parish
+	// home page" pattern's button once wrongly rejecting its "#service-times" anchor href as a
+	// disallowed URL scheme: every seeded pattern is a "should always be valid" predefined design,
+	// and none of them were previously exercised against blockvalidation.go's real rules by any test.
+	for _, p := range patterns {
+		if _, err := contentSvc.PutBlocks(adminCtx, doc.ID, p.Blocks); err != nil {
+			t.Errorf("PutBlocks(pattern %q) error = %v, want nil", p.Name, err)
+		}
+	}
+
 	// M15: CreatePattern writes exactly one identity_audit_log row.
 	if n := auditLogCount("CREATE_PATTERN", "PATTERN", newPattern.ID); n != 1 {
 		t.Errorf("identity_audit_log rows for CREATE_PATTERN/%s = %d, want 1", newPattern.ID, n)

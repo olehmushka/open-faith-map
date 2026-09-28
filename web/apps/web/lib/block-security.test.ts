@@ -3,7 +3,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { isValidYoutubeVideoId, safeEmbedSrc, safeSocialEmbedUrl, safeUrl } from "./block-security";
+import {
+  isValidYoutubeVideoId,
+  safeEmbedSrc,
+  safeLinkHref,
+  safeSocialEmbedUrl,
+  safeUrl,
+} from "./block-security";
 
 describe("safeUrl", () => {
   it.each([
@@ -28,6 +34,10 @@ describe("safeUrl", () => {
     expect(safeUrl("/some/path")).toBeUndefined();
   });
 
+  it("rejects a fragment-only anchor (that carve-out is safeLinkHref's job, not safeUrl's)", () => {
+    expect(safeUrl("#service-times")).toBeUndefined();
+  });
+
   it("rejects a malformed URL", () => {
     expect(safeUrl("not a url at all")).toBeUndefined();
   });
@@ -37,6 +47,29 @@ describe("safeUrl", () => {
     expect(safeUrl(null)).toBeUndefined();
     expect(safeUrl(42)).toBeUndefined();
     expect(safeUrl("")).toBeUndefined();
+  });
+});
+
+describe("safeLinkHref", () => {
+  it("allows a same-page fragment anchor with no scheme", () => {
+    expect(safeLinkHref("#service-times")).toBe("#service-times");
+  });
+
+  it("still allows every scheme safeUrl allows", () => {
+    expect(safeLinkHref("https://example.org")).toBe("https://example.org");
+    expect(safeLinkHref("mailto:a@example.org")).toBe("mailto:a@example.org");
+  });
+
+  it("still rejects a disallowed scheme", () => {
+    expect(safeLinkHref("javascript:alert(1)")).toBeUndefined();
+  });
+
+  it("still rejects a relative path (not a fragment)", () => {
+    expect(safeLinkHref("/some/path")).toBeUndefined();
+  });
+
+  it("rejects non-string input", () => {
+    expect(safeLinkHref(undefined)).toBeUndefined();
   });
 });
 

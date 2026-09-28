@@ -14,6 +14,7 @@ import { ContactFormBlock, type ContactFormActionState } from "@/components/cont
 import {
   isValidYoutubeVideoId,
   safeEmbedSrc,
+  safeLinkHref,
   safeSocialEmbedUrl,
   safeUrl,
 } from "@/lib/block-security";
@@ -149,7 +150,7 @@ function BlockView({
       );
     }
     case "button": {
-      const href = safeUrl(data.href);
+      const href = safeLinkHref(data.href);
       if (!href) return null;
       return (
         <a
