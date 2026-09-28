@@ -216,8 +216,11 @@ func (r *Repository) ActiveGrantsForSubject(ctx context.Context, personID string
 // a repeat grant identical to an existing active one (the unique index on
 // subject/role/unit/scope/graph WHERE revoked_at IS NULL) is treated as success, not an error.
 // Returns the assignment's id either way (the audit log needs a real target_id even on the
-// idempotent-conflict path, so that path looks the existing row's id up rather than returning empty).
-func (r *Repository) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string, expiresAt *time.Time) (string, error) {
+// idempotent-conflict path, so that path looks the existing row's id up rather than returning empty)
+// plus a real created bool (DS-OFM-18): true only on the genuine insert, false on the
+// conflict-fallback lookup, so a caller's own audit-log write can skip a resumed no-op retry instead
+// of double-logging.
+func (r *Repository) InsertRoleAssignment(ctx context.Context, personID, roleID, targetUnitID, scope, graphID, grantedBy string, expiresAt *time.Time) (string, bool, error) {
 	graphIDArg := nullableText(graphID)
 	id, err := r.q.InsertRoleAssignment(ctx, authzsql.InsertRoleAssignmentParams{
 		SubjectPersonID: personID, RoleID: roleID, TargetUnitID: targetUnitID, Scope: scope,
@@ -226,13 +229,14 @@ func (r *Repository) InsertRoleAssignment(ctx context.Context, personID, roleID,
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "authz_role_assignments_active_idx" {
-			return r.q.GetActiveRoleAssignmentID(ctx, authzsql.GetActiveRoleAssignmentIDParams{
+			existingID, lookupErr := r.q.GetActiveRoleAssignmentID(ctx, authzsql.GetActiveRoleAssignmentIDParams{
 				SubjectPersonID: personID, RoleID: roleID, TargetUnitID: targetUnitID, Scope: scope, GraphID: graphIDArg,
 			})
+			return existingID, false, lookupErr
 		}
-		return "", err
+		return "", false, err
 	}
-	return id, nil
+	return id, true, nil
 }
 
 // UpsertRoleAssignment is BulkInsertRoleAssignments' per-row statement (see

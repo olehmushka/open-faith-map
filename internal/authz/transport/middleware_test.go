@@ -25,8 +25,8 @@ func (f fakeGrantStore) IsActiveInstanceAdmin(_ context.Context, personID string
 func (f fakeGrantStore) ActiveGrantsForSubject(context.Context, string) ([]domain.ActiveGrant, error) {
 	return nil, nil
 }
-func (f fakeGrantStore) InsertRoleAssignment(context.Context, string, string, string, string, string, string, *time.Time) (string, error) {
-	return "", nil
+func (f fakeGrantStore) InsertRoleAssignment(context.Context, string, string, string, string, string, string, *time.Time) (string, bool, error) {
+	return "", true, nil
 }
 func (f fakeGrantStore) UpsertRoleAssignment(context.Context, string, string, string, string, string, string, *time.Time) (string, error) {
 	return "", nil

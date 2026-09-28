@@ -567,9 +567,15 @@ func (s *Service) GrantUnitRole(ctx context.Context, personID, roleID, unitID, s
 	if err != nil {
 		return err
 	}
-	assignmentID, err := s.authz.GrantUnitRole(ctx, personID, roleID, unitID, authzScope, graphID, subject.PersonID, expiresAt)
+	assignmentID, created, err := s.authz.GrantUnitRole(ctx, personID, roleID, unitID, authzScope, graphID, subject.PersonID, expiresAt)
 	if err != nil {
 		return err
+	}
+	if !created {
+		// DS-OFM-18: a resumed retry hit the store's idempotent-conflict fallback rather than a
+		// genuine insert — the grant already happened and was already audit-logged, so logging again
+		// here would write a redundant GRANT_UNIT_ROLE row against the same assignment id.
+		return nil
 	}
 	return s.auditLog.Record(ctx, auditActionGrantUnitRole, auditTargetRoleAssignment, assignmentID,
 		nil, map[string]any{"personId": personID, "roleId": roleID, "unitId": unitID, "scope": scope, "graphId": graphID, "expiresAt": expiresAt})

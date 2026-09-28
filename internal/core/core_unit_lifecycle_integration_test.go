@@ -222,7 +222,7 @@ func TestUnitLifecycleIntegration(t *testing.T) {
 		VALUES ($1, 'unit.lifecycle') ON CONFLICT DO NOTHING`, seed.RegistrationOperatorRoleID); err != nil {
 		t.Fatalf("grant test-local unit.lifecycle to registration-operator: %v", err)
 	}
-	grantedAssignmentID, err = authzSvc.GrantUnitRole(ctx, grantedPersonID, seed.RegistrationOperatorRoleID, parentID, authzdomain.ScopeUnit, "", adminPersonID, nil)
+	grantedAssignmentID, _, err = authzSvc.GrantUnitRole(ctx, grantedPersonID, seed.RegistrationOperatorRoleID, parentID, authzdomain.ScopeUnit, "", adminPersonID, nil)
 	if err != nil {
 		t.Fatalf("GrantUnitRole(grantedPerson, registration-operator, parent): %v", err)
 	}

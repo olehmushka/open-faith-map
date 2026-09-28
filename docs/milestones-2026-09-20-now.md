@@ -45,6 +45,11 @@ A **Candidate milestones** section below lists items already tracked in the doc 
 (`open-questions.md`, the unresolved-unknowns table) that aren't yet formally scheduled — surfaced
 here for the owner to prioritize, not started.
 
+One candidate has since been closed directly (not promoted to its own `M#`, since it was a
+same-shape bug fix with no new contract or UI surface): **DS-OFM-18** (`GrantUnitRole` gave no
+created-vs-resumed signal, so a resumed retry could double-log `GRANT_UNIT_ROLE`) — resolved
+2026-09-28, see [open-questions.md](open-questions.md).
+
 ## Unresolved unknowns — read this before building anything
 
 Carried forward unchanged from
@@ -238,12 +243,6 @@ started.
   are open to any logged-in operator. Needs a real scoping decision — a narrower person search
   reachable by any authenticated session has its own privacy implications (any logged-in operator
   could search all persons by name) — not a UI-consolidation call. See M17's own detail section.
-- **DS-OFM-18 — `GrantUnitRole` gives no created-vs-resumed signal.** Small, well-scoped fix:
-  `internal/authz/adapters/repository.go`'s `InsertRoleAssignment` needs a real `created bool` (or
-  equivalent) so `core`'s and `registration`'s `auditLog.Record` call sites can skip logging on a
-  resumed no-op retry, instead of possibly double-logging `GRANT_UNIT_ROLE`. Low severity today
-  (append-only, no state corruption) but cheap to close. See
-  [open-questions.md](open-questions.md).
 - **DS-OFM-5 — Full-text content search.** Searching page/post bodies (not just location) has no
   owner yet. Real scoping work — index choice, what's searchable, ranking — not started. See
   [content.md](modules/content.md#open-seams).
